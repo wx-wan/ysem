@@ -1,12 +1,28 @@
 # 义乌寿春企业管理系统 (YSEM)
 
-义乌寿春企业管理系统，包含用户管理、角色权限管理、部门管理等功能模块。
+义乌寿春企业管理系统，涵盖用户权限管理、客户关系管理 (CRM)、订单管理、销售管理、数据报告等核心业务模块。
+
+## 功能模块
+
+| 模块 | 说明 |
+|------|------|
+| 仪表盘 | 系统概览、关键指标展示 |
+| 用户管理 | 用户 CRUD，支持角色分配与部门归属 |
+| 部门管理 | 组织架构管理，支持树形层级 |
+| 角色管理 | 角色 CRUD，灵活分配菜单与接口权限 |
+| 权限管理 | 权限树配置，细粒度访问控制 |
+| 客户管理 | 公海/私海客户管理，支持导入导出、阶段流转（线索→商机→样品单→订单） |
+| 订单管理 | 订单 CRUD，关联客户与金额，多币种支持 |
+| 销售管理 | 销售记录追踪 |
+| 数据报告 | 12 项核心指标看板（线索量/商机量/样品单数/订单数/新老客户数/转化率/成交金额） |
+| 多语言 | 中/英文切换 |
+| 货币 | 多币种汇率自动同步与展示 |
 
 ## 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | React 18 + TypeScript + Vite + Ant Design 5 + Zustand + React Router 6 |
+| 前端 | React 18 + TypeScript + Vite + Ant Design 5 + Zustand + React Router 6 + i18next |
 | 后端 | Node.js + Express + TypeScript + Prisma ORM |
 | 数据库 | SQLite (开发) / PostgreSQL (生产) |
 | 认证 | JWT (Access Token + Refresh Token) |
@@ -19,6 +35,8 @@
 ├── client/                 # 前端项目
 │   ├── src/
 │   │   ├── api/           # API 接口封装
+│   │   ├── components/    # 公共组件
+│   │   ├── i18n/          # 多语言配置
 │   │   ├── layouts/       # 布局组件
 │   │   ├── pages/         # 页面组件
 │   │   ├── stores/        # 状态管理 (Zustand)
@@ -39,6 +57,7 @@
 ├── docker-compose.yml      # Docker 编排
 ├── Dockerfile.server       # 后端 Docker 镜像
 ├── Dockerfile.client       # 前端 Docker 镜像
+├── start.sh                # 一键启动脚本
 └── README.md
 ```
 
@@ -136,6 +155,20 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 | 角色 | POST | /api/roles/:id/permissions | 分配权限 |
 | 部门 | GET | /api/departments | 部门列表 |
 | 权限 | GET | /api/permissions/tree | 权限树 |
+| 客户 | GET | /api/customers | 客户列表（支持公海/私海筛选） |
+| 客户 | POST | /api/customers | 创建客户 |
+| 客户 | PUT | /api/customers/:id | 更新客户 |
+| 客户 | DELETE | /api/customers/:id | 删除客户 |
+| 客户 | GET | /api/customers/report | 获取报告统计数据 |
+| 订单 | GET | /api/orders | 订单列表 |
+| 订单 | POST | /api/orders | 创建订单 |
+| 订单 | PUT | /api/orders/:id | 更新订单 |
+| 订单 | DELETE | /api/orders/:id | 删除订单 |
+| 订单 | GET | /api/orders/customer/:customerId | 按客户查询订单 |
+| 销售 | GET | /api/sales | 销售记录列表 |
+| 销售 | POST | /api/sales | 创建销售记录 |
+| 汇率 | GET | /api/ext/exchange | 获取汇率数据 |
+| 健康 | GET | /api/health | 健康检查 |
 
 ## Git 提交规范
 
