@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ========== 用户表 ==========
+model User {
+  id          String       @id @default(uuid())
+  username    String       @unique
+  password    String
+  realName    String
+  email       String?      @unique
+  phone       String?
+  avatar      String?
+  status      UserStatus   @default(ACTIVE)
+  departmentId String?
+  department  Department?  @relation(fields: [departmentId], references: [id])
+  roleId      String?
+  role        Role?        @relation(fields: [roleId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  lastLoginAt DateTime?
+  loginLogs   LoginLog[]
+  createdBy   String?
+  creator     User?        @relation("CreatedUsers", fields: [createdBy], references: [id])
+  createdUsers User[]      @relation("CreatedUsers")
+  refreshToken String?
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+  LOCKED
+}
+
+// ========== 角色表 ==========
+model Role {
+  id          String      @id @default(uuid())
+  name        String      @unique
+  code        String      @unique
+  description String?
+  status      Int         @default(1)
+  sort        Int         @default(0)
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+// ========== 权限表 ==========
+model Permission {
+  id       String           @id @default(uuid())
+  name     String           @unique
+  code     String           @unique
+  type     PermissionType   @default(BUTTON)
+  parentId String?
+  parent   Permission?      @relation("PermissionTree", fields: [parentId], references: [id])
+  children Permission[]     @relation("PermissionTree")
+  roles    RolePermission[]
+  sort     Int              @default(0)
+  path     String?
+  icon     String?
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+enum PermissionType {
+  MENU
+  BUTTON
+  API
+}
+
+// ========== 角色-权限关联表 ==========
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ========== 部门表 ==========
+model Department {
+  id          String       @id @default(uuid())
+  name        String
+  code        String       @unique
+  parentId    String?
+  parent      Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children    Department[] @relation("DeptTree")
+  leader      String?
+  phone       String?
+  email       String?
+  sort        Int          @default(0)
+  status      Int          @default(1)
+  users       User[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+// ========== 登录日志表 ==========
+model LoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  loginAt   DateTime @default(now())
+  success   Boolean  @default(true)
+  message   String?
+}
+
+// ========== 操作日志表 ==========
+model OperationLog {
+  id        String   @id @default(uuid())
+  userId    String
+  username  String
+  action    String
+  module    String
+  target    String?
+  detail    String?
+  ip        String?
+  createdAt DateTime @default(now())
+}
