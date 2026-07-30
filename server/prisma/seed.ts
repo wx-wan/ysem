@@ -122,7 +122,7 @@ async function main() {
   // 5. 创建默认管理员
   const username = process.env.ADMIN_USERNAME || 'admin';
   const password = process.env.ADMIN_PASSWORD || 'admin123';
-  const email = process.env.ADMIN_EMAIL || 'admin@enterprise.com';
+  const email = process.env.ADMIN_EMAIL || 'admin@ysem.com';
   const hashedPassword = await bcrypt.hash(password, 12);
 
   await prisma.user.upsert({

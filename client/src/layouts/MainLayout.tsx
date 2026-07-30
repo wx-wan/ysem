@@ -90,7 +90,7 @@ export default function MainLayout() {
         width={220}
       >
         <div className={`logo ${collapsed ? 'logo-collapsed' : ''}`}>
-          {collapsed ? '企管' : '企业管理系统'}
+          {collapsed ? '寿春' : '义乌寿春企业管理'}
         </div>
         <Menu
           theme="dark"

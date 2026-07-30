@@ -4,12 +4,12 @@ services:
   # PostgreSQL 数据库
   db:
     image: postgres:16-alpine
-    container_name: enterprise-db
+    container_name: ysem-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-your-password}
-      POSTGRES_DB: enterprise
+      POSTGRES_DB: ysem
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -25,7 +25,7 @@ services:
     build:
       context: ./server
       dockerfile: ../Dockerfile.server
-    container_name: enterprise-server
+    container_name: ysem-server
     restart: unless-stopped
     depends_on:
       db:
@@ -33,7 +33,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD:-your-password}@db:5432/enterprise?schema=public"
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD:-your-password}@db:5432/ysem?schema=public"
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
@@ -45,7 +45,7 @@ services:
     build:
       context: ./client
       dockerfile: ../Dockerfile.client
-    container_name: enterprise-client
+    container_name: ysem-client
     restart: unless-stopped
     depends_on:
       - server

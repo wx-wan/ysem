@@ -28,8 +28,8 @@ export default function LoginPage() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>企业管理系统</h1>
-        <p className="subtitle">Enterprise Management System</p>
+        <h1>义乌寿春企业管理系统</h1>
+        <p className="subtitle">Yiwu Shouchun Enterprise</p>
         <Form
           name="login"
           size="large"

@@ -1,6 +1,6 @@
-# 企业管理系统 (Enterprise Management System)
+# 义乌寿春企业管理系统 (YSEM)
 
-全栈企业管理系统，包含用户管理、角色权限管理、部门管理等功能模块。
+义乌寿春企业管理系统，包含用户管理、角色权限管理、部门管理等功能模块。
 
 ## 技术栈
 
@@ -88,8 +88,8 @@ cd client && npm run dev
 docker-compose up -d
 
 # 初始化数据库
-docker exec -it enterprise-server npx prisma db push
-docker exec -it enterprise-server npx tsx prisma/seed.ts
+docker exec -it ysem-server npx prisma db push
+docker exec -it ysem-server npx tsx prisma/seed.ts
 ```
 
 ### 生产环境
@@ -108,8 +108,8 @@ cp server/.env.production .env
 docker-compose -f docker-compose.yml --env-file .env up -d
 
 # 4. 初始化数据库
-docker exec -it enterprise-server npx prisma db push
-docker exec -it enterprise-server npx tsx prisma/seed.ts
+docker exec -it ysem-server npx prisma db push
+docker exec -it ysem-server npx tsx prisma/seed.ts
 ```
 
 ## 云服务器部署建议

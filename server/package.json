@@ -1,7 +1,7 @@
 {
-  "name": "enterprise-server",
+  "name": "ysem-server",
   "version": "1.0.0",
-  "description": "Enterprise Management System - Backend",
+  "description": "义乌寿春企业管理系统 - 后端服务",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
