@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { message } from 'antd';
+import i18n from '../i18n';
 
 export interface ApiResponse<T = unknown> {
   code: number;
@@ -50,7 +51,7 @@ request.interceptors.response.use(
       localStorage.clear();
       window.location.href = '/login';
     }
-    const msg = error.response?.data?.message || '网络错误，请稍后重试';
+    const msg = error.response?.data?.message || i18n.t('error.networkError');
     message.error(msg);
     return Promise.reject(error);
   },

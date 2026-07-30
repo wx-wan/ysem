@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Table, Button, Input, Select, Space, Tag, Modal, Form, message, Popconfirm } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 
 interface UserRecord {
@@ -28,6 +29,7 @@ interface DeptOption {
 }
 
 export default function UserPage() {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -86,7 +88,7 @@ export default function UserPage() {
   const handleDelete = async (id: string) => {
     try {
       await request.delete(`/users/${id}`);
-      message.success('删除成功');
+      message.success(t('user.deleteSuccess'));
       fetchUsers();
     } catch { /* handled */ }
   };
@@ -97,10 +99,10 @@ export default function UserPage() {
       if (editingUser) {
         const { username, password, ...rest } = values;
         await request.put(`/users/${editingUser.id}`, rest);
-        message.success('更新成功');
+        message.success(t('user.updateSuccess'));
       } else {
         await request.post('/users', values);
-        message.success('创建成功');
+        message.success(t('user.createSuccess'));
       }
       setModalOpen(false);
       fetchUsers();
@@ -108,36 +110,36 @@ export default function UserPage() {
   };
 
   const statusMap: Record<string, { color: string; text: string }> = {
-    ACTIVE: { color: 'green', text: '正常' },
-    DISABLED: { color: 'red', text: '禁用' },
-    LOCKED: { color: 'orange', text: '锁定' },
+    ACTIVE: { color: 'green', text: t('user.statusActive') },
+    DISABLED: { color: 'red', text: t('user.statusDisabled') },
+    LOCKED: { color: 'orange', text: t('user.statusLocked') },
   };
 
   const columns: ColumnsType<UserRecord> = [
-    { title: '用户名', dataIndex: 'username', width: 120 },
-    { title: '真实姓名', dataIndex: 'realName', width: 120 },
-    { title: '邮箱', dataIndex: 'email', width: 180, ellipsis: true },
-    { title: '手机号', dataIndex: 'phone', width: 130 },
-    { title: '角色', dataIndex: ['role', 'name'], width: 120, render: (v) => v || '-' },
-    { title: '部门', dataIndex: ['department', 'name'], width: 120, render: (v) => v || '-' },
+    { title: t('user.username'), dataIndex: 'username', width: 120 },
+    { title: t('user.realName'), dataIndex: 'realName', width: 120 },
+    { title: t('user.email'), dataIndex: 'email', width: 180, ellipsis: true },
+    { title: t('user.phone'), dataIndex: 'phone', width: 130 },
+    { title: t('user.role'), dataIndex: ['role', 'name'], width: 120, render: (v) => v || t('common.noData') },
+    { title: t('user.dept'), dataIndex: ['department', 'name'], width: 120, render: (v) => v || t('common.noData') },
     {
-      title: '状态', dataIndex: 'status', width: 80,
+      title: t('user.status'), dataIndex: 'status', width: 80,
       render: (s: string) => {
         const info = statusMap[s] || { color: 'default', text: s };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
     {
-      title: '创建时间', dataIndex: 'createdAt', width: 170,
-      render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : '-',
+      title: t('user.createdAt'), dataIndex: 'createdAt', width: 170,
+      render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : t('common.noData'),
     },
     {
-      title: '操作', width: 150, fixed: 'right',
+      title: t('common.operation'), width: 150, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定删除该用户吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          <Popconfirm title={t('user.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -146,10 +148,10 @@ export default function UserPage() {
 
   return (
     <>
-      <div className="page-header"><h2>用户管理</h2></div>
+      <div className="page-header"><h2>{t('user.title')}</h2></div>
       <div className="search-bar">
         <Input
-          placeholder="搜索用户名/姓名/邮箱"
+          placeholder={t('user.searchPlaceholder')}
           prefix={<SearchOutlined />}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
@@ -157,9 +159,9 @@ export default function UserPage() {
           style={{ width: 260 }}
           allowClear
         />
-        <Button type="primary" icon={<SearchOutlined />} onClick={() => { setPage(1); fetchUsers(); }}>查询</Button>
-        <Button icon={<ReloadOutlined />} onClick={fetchUsers}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增用户</Button>
+        <Button type="primary" icon={<SearchOutlined />} onClick={() => { setPage(1); fetchUsers(); }}>{t('common.search')}</Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchUsers}>{t('common.refresh')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('user.addTitle')}</Button>
       </div>
 
       <div className="table-container">
@@ -170,14 +172,14 @@ export default function UserPage() {
           loading={loading}
           scroll={{ x: 1100 }}
           pagination={{
-            current: page, pageSize, total, showSizeChanger: true, showTotal: (t) => `共 ${t} 条`,
+            current: page, pageSize, total, showSizeChanger: true, showTotal: (count) => t('common.total', { count }),
             onChange: (p, ps) => { setPage(p); setPageSize(ps); },
           }}
         />
       </div>
 
       <Modal
-        title={editingUser ? '编辑用户' : '新增用户'}
+        title={editingUser ? t('user.editTitle') : t('user.addTitle')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
@@ -185,39 +187,39 @@ export default function UserPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="username" label="用户名" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input disabled={!!editingUser} placeholder="请输入用户名" />
+          <Form.Item name="username" label={t('user.username')} rules={[{ required: true, message: t('user.usernameRequired') }]}>
+            <Input disabled={!!editingUser} placeholder={t('user.usernamePlaceholder')} />
           </Form.Item>
           {!editingUser && (
-            <Form.Item name="password" label="密码" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-              <Input.Password placeholder="请输入密码" />
+            <Form.Item name="password" label={t('user.password')} rules={[{ required: true, min: 6, message: t('user.passwordRequired') }]}>
+              <Input.Password placeholder={t('user.passwordPlaceholder')} />
             </Form.Item>
           )}
-          <Form.Item name="realName" label="真实姓名" rules={[{ required: true, message: '请输入真实姓名' }]}>
-            <Input placeholder="请输入真实姓名" />
+          <Form.Item name="realName" label={t('user.realName')} rules={[{ required: true, message: t('user.realNameRequired') }]}>
+            <Input placeholder={t('user.realNamePlaceholder')} />
           </Form.Item>
-          <Form.Item name="email" label="邮箱">
-            <Input placeholder="请输入邮箱" />
+          <Form.Item name="email" label={t('user.email')}>
+            <Input placeholder={t('user.emailPlaceholder')} />
           </Form.Item>
-          <Form.Item name="phone" label="手机号">
-            <Input placeholder="请输入手机号" />
+          <Form.Item name="phone" label={t('user.phone')}>
+            <Input placeholder={t('user.phonePlaceholder')} />
           </Form.Item>
-          <Form.Item name="roleId" label="角色">
-            <Select placeholder="请选择角色" allowClear>
+          <Form.Item name="roleId" label={t('user.role')}>
+            <Select placeholder={t('user.rolePlaceholder')} allowClear>
               {roles.map((r) => <Select.Option key={r.id} value={r.id}>{r.name}</Select.Option>)}
             </Select>
           </Form.Item>
-          <Form.Item name="departmentId" label="部门">
-            <Select placeholder="请选择部门" allowClear>
+          <Form.Item name="departmentId" label={t('user.dept')}>
+            <Select placeholder={t('user.deptPlaceholder')} allowClear>
               {depts.map((d) => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
             </Select>
           </Form.Item>
           {editingUser && (
-            <Form.Item name="status" label="状态">
+            <Form.Item name="status" label={t('user.status')}>
               <Select>
-                <Select.Option value="ACTIVE">正常</Select.Option>
-                <Select.Option value="DISABLED">禁用</Select.Option>
-                <Select.Option value="LOCKED">锁定</Select.Option>
+                <Select.Option value="ACTIVE">{t('user.statusActive')}</Select.Option>
+                <Select.Option value="DISABLED">{t('user.statusDisabled')}</Select.Option>
+                <Select.Option value="LOCKED">{t('user.statusLocked')}</Select.Option>
               </Select>
             </Form.Item>
           )}

@@ -9,6 +9,10 @@ import userRoutes from './routes/user.routes';
 import roleRoutes from './routes/role.routes';
 import departmentRoutes from './routes/department.routes';
 import permissionRoutes from './routes/permission.routes';
+import exchangeRoutes from './routes/exchange.routes';
+import salesRoutes from './routes/sales.routes';
+import customerRoutes from './routes/customer.routes';
+import orderRoutes from './routes/order.routes';
 
 const app = express();
 
@@ -22,9 +26,10 @@ app.use(cors({
 // 限流
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
+  max: 500,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => req.path.includes('/ext/'),
 });
 app.use('/api/', limiter);
 
@@ -44,6 +49,10 @@ app.use('/api/users', userRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/ext/exchange', exchangeRoutes);
+app.use('/api/sales', salesRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/orders', orderRoutes);
 
 // 错误处理
 app.use(errorHandler);

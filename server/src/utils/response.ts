@@ -17,3 +17,7 @@ export const created = <T>(res: Response, data: T, message = '创建成功'): vo
 export const fail = (res: Response, code: number, message: string): void => {
   res.status(code).json({ code, message });
 };
+
+export const error = (res: Response, message: string, code = 400): void => {
+  res.status(code).json({ code, message });
+};

@@ -29,6 +29,8 @@ model User {
   creator     User?        @relation("CreatedUsers", fields: [createdBy], references: [id])
   createdUsers User[]      @relation("CreatedUsers")
   refreshToken String?
+  salesPipelines SalesPipeline[]
+  customers      Customer[]
 }
 
 
@@ -118,4 +120,128 @@ model OperationLog {
   detail    String?
   ip        String?
   createdAt DateTime @default(now())
+}
+
+// ========== 客户表 ==========
+model Customer {
+  id          String   @id @default(uuid())
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+  country     String?
+  source      String?  // MANUAL / EXCEL / XIAOMAN
+  notes       String?
+
+  // 归属（null = 公海）
+  ownerId String?
+  owner   User?   @relation(fields: [ownerId], references: [id])
+
+  // 重点客户标记
+  isKeyAccount Boolean  @default(false)
+  intentLevel  String?  // LOW / MEDIUM / HIGH / READY
+
+  // 首次下单日期（自动推算：取其下最早订单日期）
+  firstOrderDate String?
+
+  // 关联数据
+  orders     Order[]
+  pipelines  SalesPipeline[]
+  activities CustomerActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========== 客户活动日志 ==========
+model CustomerActivity {
+  id         String   @id @default(uuid())
+  customerId String
+  action     String   // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
+  detail     String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+// ========== 订单表 ==========
+model Order {
+  id           String   @id @default(uuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderNo      String?
+  orderDate    String?
+  amountCNY    Float?
+  deliveryDate String?
+  paymentTerms String?
+  status       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
+  notes        String?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ========== 销售管道 ==========
+model SalesPipeline {
+  id          String      @id @default(uuid())
+  stage       String      @default("LEAD") // LEAD → OPPORTUNITY → SAMPLE → ORDER
+
+  // 关联客户
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id])
+
+  // 基础信息（各阶段通用）
+  title       String
+  companyName String
+  contactName String?
+  email       String?
+  phone       String?
+  country     String?
+
+  // 线索阶段
+  source          String?  // 来源: XIAOMAN / EXCEL / MANUAL
+  productInterest String?  // 感兴趣的产品
+  leadNotes       String?
+
+  // 商机阶段
+  estimatedAmount    Float?  // 预估金额(CNY)
+  estimatedCloseDate String? // 预计成交日期
+  probability        Int?    // 成交概率(%)
+  opportunityNotes   String?
+
+  // 样品阶段
+  sampleType     String?   // 样品类型
+  sampleQuantity Int?      // 样品数量
+  sampleStatus   String?   // PENDING / SENT / CONFIRMED / FEEDBACK
+  sampleNotes    String?
+
+  // 订单阶段
+  orderAmount       Float?   // 订单金额(CNY)
+  orderDate         String?  // 下单日期
+  deliveryDate      String?  // 交付日期
+  paymentTerms      String?  // 付款条件
+  orderStatus       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
+  orderNotes        String?
+
+  // 系统字段
+  assignedTo String?
+  assignee   User?       @relation(fields: [assignedTo], references: [id])
+  activities SalesActivity[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+// ========== 销售活动日志 ==========
+model SalesActivity {
+  id         String   @id @default(uuid())
+  pipelineId String
+  action     String   // STAGE_CHANGE / NOTE_ADDED / CREATED / UPDATED
+  fromStage  String?
+  toStage    String?
+  comment    String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  pipeline SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
 }

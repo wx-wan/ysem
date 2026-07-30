@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Avatar, Dropdown, Button, theme } from 'antd';
+import { Layout, Avatar, Dropdown, Badge, theme } from 'antd';
 import {
   DashboardOutlined,
   SettingOutlined,
@@ -8,37 +8,30 @@ import {
   TeamOutlined,
   ApartmentOutlined,
   SafetyOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
+  BellOutlined,
+  TranslationOutlined,
+  DollarOutlined,
   LogoutOutlined,
   KeyOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
+import i18n from '../i18n';
 import { useAuthStore } from '../stores/useAuthStore';
+import { useCurrencyStore, CURRENCIES } from '../stores/useCurrencyStore';
 import { authApi } from '../api/auth';
 
-const { Header, Sider, Content } = Layout;
-
-const menuItems = [
-  { key: '/dashboard', icon: <DashboardOutlined />, label: '仪表盘' },
-  {
-    key: '/system',
-    icon: <SettingOutlined />,
-    label: '系统管理',
-    children: [
-      { key: '/system/user', icon: <UserOutlined />, label: '用户管理' },
-      { key: '/system/role', icon: <TeamOutlined />, label: '角色管理' },
-      { key: '/system/dept', icon: <ApartmentOutlined />, label: '部门管理' },
-      { key: '/system/perm', icon: <SafetyOutlined />, label: '权限管理' },
-    ],
-  },
-];
+const { Header, Content } = Layout;
 
 export default function MainLayout() {
-  const [collapsed, setCollapsed] = useState(false);
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const { currency, fetchRates, getRateToCNY } = useCurrencyStore();
+  const rateToCNY = getRateToCNY();
   const { token: { colorBgContainer } } = theme.useToken();
+
+  const currentLang = i18n.language;
 
   // 获取用户信息
   useEffect(() => {
@@ -56,9 +49,10 @@ export default function MainLayout() {
     }
   }, []);
 
-  const handleMenuClick = ({ key }: { key: string }) => {
-    navigate(key);
-  };
+  // 获取汇率
+  useEffect(() => {
+    fetchRates();
+  }, []);
 
   const handleLogout = () => {
     authApi.logout().finally(() => {
@@ -67,63 +61,162 @@ export default function MainLayout() {
     });
   };
 
-  const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '个人信息' },
-    { key: 'password', icon: <KeyOutlined />, label: '修改密码' },
-    { type: 'divider' as const },
-    { key: 'logout', icon: <LogoutOutlined />, label: '退出登录', danger: true },
-  ];
-
-  const handleUserMenuClick = ({ key }: { key: string }) => {
-    if (key === 'logout') handleLogout();
+  const toggleLanguage = () => {
+    const nextLang = currentLang === 'zh' ? 'en' : 'zh';
+    i18n.changeLanguage(nextLang);
   };
 
-  const openKeys = ['/system'];
+  const handleMenuClick = ({ key }: { key: string }) => {
+    if (key === 'logout') handleLogout();
+    else if (key.startsWith('/')) navigate(key);
+  };
+
+  const navItems = [
+    { key: '/dashboard', label: t('menu.dashboard') },
+    { key: '/customers', label: t('menu.customers') },
+    { key: '/sales', label: t('menu.sales') },
+    { key: '/orders', label: t('menu.orders') },
+    { key: '/reports', label: t('menu.reports') },
+  ];
+
+  // ==================== 角色权限配置 ====================
+  // admin: 全部模块 + 系统管理
+  // business / user: 仅业务模块（仪表盘、销售、客户、订单）
+  const allowedNavKeys: Record<string, string[]> = {
+    admin: ['/dashboard', '/sales', '/customers', '/reports', '/orders'],
+    business: ['/dashboard', '/customers', '/sales', '/orders', '/reports'],
+    user: ['/dashboard', '/customers', '/sales', '/orders', '/reports'],
+  };
+
+  const roleCode = user?.role?.code || 'user';
+  const visibleNavKeys = allowedNavKeys[roleCode] || allowedNavKeys.user;
+  const visibleNavItems = navItems.filter((item) => visibleNavKeys.includes(item.key));
+
+  // 系统管理仅 admin 可见
+  const hasSystemAccess = roleCode === 'admin';
+
+  const avatarMenuItems = [
+    {
+      key: 'profile',
+      icon: <UserOutlined />,
+      label: t('header.profile'),
+      onClick: () => navigate('/profile'),
+    },
+    {
+      key: 'password',
+      icon: <KeyOutlined />,
+      label: t('header.changePassword'),
+    },
+    ...(hasSystemAccess
+      ? [
+          {
+            key: 'system',
+            icon: <SettingOutlined />,
+            label: t('menu.system'),
+            children: [
+              { key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') },
+              { key: '/system/role', icon: <TeamOutlined />, label: t('menu.systemRole') },
+              { key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') },
+              { key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') },
+            ],
+          } as const,
+        ]
+      : []),
+    { type: 'divider' as const },
+    {
+      key: 'logout',
+      icon: <LogoutOutlined />,
+      label: t('header.logout'),
+      danger: true,
+      onClick: handleLogout,
+    },
+  ];
+
+  const activePath = location.pathname;
 
   return (
-    <Layout className="main-layout">
-      <Sider
-        trigger={null}
-        collapsible
-        collapsed={collapsed}
-        breakpoint="lg"
-        width={220}
-      >
-        <div className={`logo ${collapsed ? 'logo-collapsed' : ''}`}>
-          {collapsed ? '寿春' : '义乌寿春企业管理'}
-        </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          defaultOpenKeys={openKeys}
-          items={menuItems}
-          onClick={handleMenuClick}
-        />
-      </Sider>
-
-      <Layout>
-        <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', alignItems: 'center' }}>
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={() => setCollapsed(!collapsed)}
-            style={{ fontSize: 16, width: 48, height: 48 }}
-          />
-          <div className="header-right">
-            <Dropdown menu={{ items: userMenuItems, onClick: handleUserMenuClick }} placement="bottomRight">
-              <div style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Avatar icon={<UserOutlined />} />
-                <span>{user?.realName || '用户'}</span>
-              </div>
-            </Dropdown>
+    <Layout className="main-layout horizontal">
+      <Header className="top-header" style={{ background: colorBgContainer }}>
+        {/* 左侧品牌 */}
+        <div className="header-brand" onClick={() => navigate('/')}>
+          <div className="logo-placeholder">
+            {/* 预留图片位 */}
+            <DashboardOutlined style={{ fontSize: 22, color: '#6366f1' }} />
           </div>
-        </Header>
+          <span className="brand-text">Joylifetoy</span>
+        </div>
 
-        <Content className="page-container">
-          <Outlet />
-        </Content>
-      </Layout>
+        {/* 中间导航 */}
+        <nav className="header-nav">
+          {visibleNavItems.map((item) => (
+            <div
+              key={item.key}
+              className={`nav-item ${activePath === item.key || activePath.startsWith(item.key) ? 'active' : ''}`}
+              onClick={() => navigate(item.key)}
+            >
+              {item.label}
+            </div>
+          ))}
+        </nav>
+
+        {/* 右侧工具区 */}
+        <div className="header-tools">
+          <Badge dot>
+            <BellOutlined className="tool-icon" />
+          </Badge>
+
+          <div className="lang-switch" onClick={toggleLanguage}>
+            <TranslationOutlined />
+            <span>{currentLang === 'zh' ? 'EN' : '中文'}</span>
+          </div>
+
+          <Dropdown
+            menu={{
+              items: CURRENCIES.map((c) => ({
+                key: c.code,
+                label: (
+                  <span>
+                    <span style={{ marginRight: 8 }}>{c.symbol}</span>
+                    {c.code} — {currentLang === 'zh' ? c.labelZh : c.label}
+                  </span>
+                ),
+              })),
+              selectedKeys: [currency.code],
+              onClick: ({ key }) => useCurrencyStore.getState().setCurrency(key),
+            }}
+            placement="bottomRight"
+          >
+            <div className="lang-switch currency-switch">
+              <DollarOutlined />
+              <span>{currency.code}</span>
+            </div>
+          </Dropdown>
+
+          {rateToCNY && (
+            <span className="exchange-rate-display">{rateToCNY}</span>
+          )}
+
+          <Dropdown
+            menu={{
+              items: avatarMenuItems,
+              onClick: handleMenuClick,
+            }}
+            placement="bottomRight"
+          >
+            <div className="user-avatar">
+              <Avatar icon={<UserOutlined />} size="small" />
+              <div className="user-info">
+                <span className="user-name">{user?.realName || user?.username || t('common.noData')}</span>
+                <span className="user-role">{user?.role?.name || t('menu.systemUser')}</span>
+              </div>
+            </div>
+          </Dropdown>
+        </div>
+      </Header>
+
+      <Content className="page-container">
+        <Outlet />
+      </Content>
     </Layout>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Table, Button, Space, Tag, Modal, Form, Input, InputNumber, Select, message, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 
 interface PermRecord {
@@ -16,6 +17,7 @@ interface PermRecord {
 }
 
 export default function PermPage() {
+  const { t } = useTranslation();
   const [permissions, setPermissions] = useState<PermRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -54,7 +56,7 @@ export default function PermPage() {
   const handleDelete = async (id: string) => {
     try {
       await request.delete(`/permissions/${id}`);
-      message.success('删除成功');
+      message.success(t('perm.deleteSuccess'));
       fetchPerms();
     } catch { /* handled */ }
   };
@@ -64,10 +66,10 @@ export default function PermPage() {
       const values = await form.validateFields();
       if (editingPerm) {
         await request.put(`/permissions/${editingPerm.id}`, values);
-        message.success('更新成功');
+        message.success(t('perm.updateSuccess'));
       } else {
         await request.post('/permissions', values);
-        message.success('创建成功');
+        message.success(t('perm.createSuccess'));
       }
       setModalOpen(false);
       fetchPerms();
@@ -75,32 +77,32 @@ export default function PermPage() {
   };
 
   const typeMap: Record<string, { color: string; text: string }> = {
-    MENU: { color: 'blue', text: '菜单' },
-    BUTTON: { color: 'green', text: '按钮' },
-    API: { color: 'orange', text: '接口' },
+    MENU: { color: 'blue', text: t('perm.typeMenu') },
+    BUTTON: { color: 'green', text: t('perm.typeButton') },
+    API: { color: 'orange', text: t('perm.typeApi') },
   };
 
   const columns: ColumnsType<PermRecord> = [
-    { title: '权限名称', dataIndex: 'name', width: 160 },
-    { title: '权限编码', dataIndex: 'code', width: 200 },
+    { title: t('perm.name'), dataIndex: 'name', width: 160 },
+    { title: t('perm.code'), dataIndex: 'code', width: 200 },
     {
-      title: '类型', dataIndex: 'type', width: 80,
-      render: (t: string) => {
-        const info = typeMap[t] || { color: 'default', text: t };
+      title: t('perm.type'), dataIndex: 'type', width: 80,
+      render: (tp: string) => {
+        const info = typeMap[tp] || { color: 'default', text: tp };
         return <Tag color={info.color}>{info.text}</Tag>;
       },
     },
-    { title: '路由路径', dataIndex: 'path', width: 180, render: (v: string) => v || '-' },
-    { title: '图标', dataIndex: 'icon', width: 160, render: (v: string) => v || '-' },
-    { title: '排序', dataIndex: 'sort', width: 70 },
+    { title: t('perm.path'), dataIndex: 'path', width: 180, render: (v: string) => v || t('common.noData') },
+    { title: t('perm.icon'), dataIndex: 'icon', width: 160, render: (v: string) => v || t('common.noData') },
+    { title: t('perm.sort'), dataIndex: 'sort', width: 70 },
     {
-      title: '操作', width: 200, fixed: 'right',
+      title: t('common.operation'), width: 200, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>添加子级</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定删除该权限吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('perm.addChild')}</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          <Popconfirm title={t('perm.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -113,10 +115,10 @@ export default function PermPage() {
 
   return (
     <>
-      <div className="page-header"><h2>权限管理</h2></div>
+      <div className="page-header"><h2>{t('perm.title')}</h2></div>
       <div className="search-bar">
-        <Button icon={<ReloadOutlined />} onClick={fetchPerms}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>新增权限</Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchPerms}>{t('common.refresh')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('perm.addTitle')}</Button>
       </div>
 
       <div className="table-container">
@@ -131,36 +133,36 @@ export default function PermPage() {
       </div>
 
       <Modal
-        title={editingPerm ? '编辑权限' : '新增权限'}
+        title={editingPerm ? t('perm.editTitle') : t('perm.addTitle')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="权限名称" rules={[{ required: true }]}>
-            <Input placeholder="请输入权限名称" />
+          <Form.Item name="name" label={t('perm.name')} rules={[{ required: true, message: t('perm.nameRequired') }]}>
+            <Input placeholder={t('perm.namePlaceholder')} />
           </Form.Item>
-          <Form.Item name="code" label="权限编码" rules={[{ required: true }]}>
-            <Input placeholder="请输入权限编码（如 system:user:create）" disabled={!!editingPerm} />
+          <Form.Item name="code" label={t('perm.code')} rules={[{ required: true, message: t('perm.codeRequired') }]}>
+            <Input placeholder={t('perm.codePlaceholder')} disabled={!!editingPerm} />
           </Form.Item>
-          <Form.Item name="type" label="权限类型" rules={[{ required: true }]}>
+          <Form.Item name="type" label={t('perm.type')} rules={[{ required: true }]}>
             <Select>
-              <Select.Option value="MENU">菜单</Select.Option>
-              <Select.Option value="BUTTON">按钮</Select.Option>
-              <Select.Option value="API">接口</Select.Option>
+              <Select.Option value="MENU">{t('perm.typeMenu')}</Select.Option>
+              <Select.Option value="BUTTON">{t('perm.typeButton')}</Select.Option>
+              <Select.Option value="API">{t('perm.typeApi')}</Select.Option>
             </Select>
           </Form.Item>
-          <Form.Item name="parentId" label="上级菜单">
-            <Select placeholder="请选择上级菜单" allowClear options={parentOptions} />
+          <Form.Item name="parentId" label={t('perm.parentMenu')}>
+            <Select placeholder={t('perm.parentPlaceholder')} allowClear options={parentOptions} />
           </Form.Item>
-          <Form.Item name="path" label="路由路径">
-            <Input placeholder="如 /system/user" />
+          <Form.Item name="path" label={t('perm.path')}>
+            <Input placeholder={t('perm.pathPlaceholder')} />
           </Form.Item>
-          <Form.Item name="icon" label="图标">
-            <Input placeholder="如 UserOutlined" />
+          <Form.Item name="icon" label={t('perm.icon')}>
+            <Input placeholder={t('perm.iconPlaceholder')} />
           </Form.Item>
-          <Form.Item name="sort" label="排序">
+          <Form.Item name="sort" label={t('perm.sort')}>
             <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
         </Form>

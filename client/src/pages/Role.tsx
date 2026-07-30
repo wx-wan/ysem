@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Table, Button, Space, Tag, Modal, Form, Input, InputNumber, message, Popconfirm, Tree } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 
 interface RoleRecord {
@@ -21,6 +22,7 @@ interface PermissionNode {
 }
 
 export default function RolePage() {
+  const { t } = useTranslation();
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -57,7 +59,7 @@ export default function RolePage() {
   const handleDelete = async (id: string) => {
     try {
       await request.delete(`/roles/${id}`);
-      message.success('删除成功');
+      message.success(t('role.deleteSuccess'));
       fetchRoles();
     } catch { /* handled */ }
   };
@@ -67,10 +69,10 @@ export default function RolePage() {
       const values = await form.validateFields();
       if (editingRole) {
         await request.put(`/roles/${editingRole.id}`, values);
-        message.success('更新成功');
+        message.success(t('role.updateSuccess'));
       } else {
         await request.post('/roles', values);
-        message.success('创建成功');
+        message.success(t('role.createSuccess'));
       }
       setModalOpen(false);
       fetchRoles();
@@ -96,7 +98,7 @@ export default function RolePage() {
       await request.post(`/roles/${currentRoleId}/permissions`, {
         permissionIds: checkedKeys,
       });
-      message.success('权限分配成功');
+      message.success(t('role.assignSuccess'));
       setPermModalOpen(false);
     } catch { /* handled */ }
   };
@@ -111,20 +113,20 @@ export default function RolePage() {
   };
 
   const columns: ColumnsType<RoleRecord> = [
-    { title: '角色名称', dataIndex: 'name', width: 150 },
-    { title: '角色编码', dataIndex: 'code', width: 120,
+    { title: t('role.name'), dataIndex: 'name', width: 150 },
+    { title: t('role.code'), dataIndex: 'code', width: 120,
       render: (v: string) => <Tag color="blue">{v}</Tag> },
-    { title: '描述', dataIndex: 'description', ellipsis: true },
-    { title: '排序', dataIndex: 'sort', width: 80 },
-    { title: '用户数', dataIndex: ['_count', 'users'], width: 80 },
+    { title: t('role.description'), dataIndex: 'description', ellipsis: true },
+    { title: t('role.sort'), dataIndex: 'sort', width: 80 },
+    { title: t('role.userCount'), dataIndex: ['_count', 'users'], width: 80 },
     {
-      title: '操作', width: 220, fixed: 'right',
+      title: t('common.operation'), width: 220, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>权限</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定删除该角色吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>{t('role.permission')}</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -133,10 +135,10 @@ export default function RolePage() {
 
   return (
     <>
-      <div className="page-header"><h2>角色管理</h2></div>
+      <div className="page-header"><h2>{t('role.title')}</h2></div>
       <div className="search-bar">
-        <Button icon={<ReloadOutlined />} onClick={fetchRoles}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增角色</Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchRoles}>{t('common.refresh')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('role.addTitle')}</Button>
       </div>
 
       <div className="table-container">
@@ -150,30 +152,30 @@ export default function RolePage() {
       </div>
 
       <Modal
-        title={editingRole ? '编辑角色' : '新增角色'}
+        title={editingRole ? t('role.editTitle') : t('role.addTitle')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="角色名称" rules={[{ required: true }]}>
-            <Input placeholder="请输入角色名称" />
+          <Form.Item name="name" label={t('role.name')} rules={[{ required: true, message: t('role.nameRequired') }]}>
+            <Input placeholder={t('role.namePlaceholder')} />
           </Form.Item>
-          <Form.Item name="code" label="角色编码" rules={[{ required: true }]}>
-            <Input placeholder="请输入角色编码（如 admin）" disabled={!!editingRole} />
+          <Form.Item name="code" label={t('role.code')} rules={[{ required: true, message: t('role.codeRequired') }]}>
+            <Input placeholder={t('role.codePlaceholder')} disabled={!!editingRole} />
           </Form.Item>
-          <Form.Item name="description" label="描述">
-            <Input.TextArea placeholder="请输入角色描述" rows={3} />
+          <Form.Item name="description" label={t('role.description')}>
+            <Input.TextArea placeholder={t('role.descPlaceholder')} rows={3} />
           </Form.Item>
-          <Form.Item name="sort" label="排序">
+          <Form.Item name="sort" label={t('role.sort')}>
             <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
         </Form>
       </Modal>
 
       <Modal
-        title="分配权限"
+        title={t('role.assignPerm')}
         open={permModalOpen}
         onCancel={() => setPermModalOpen(false)}
         onOk={handleAssignPerms}

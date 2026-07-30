@@ -32,6 +32,17 @@ async function main() {
     },
   });
 
+  const businessRole = await prisma.role.upsert({
+    where: { code: 'business' },
+    update: {},
+    create: {
+      name: '业务人员',
+      code: 'business',
+      description: '业务人员，可查看仪表盘、销售、客户、订单',
+      sort: 2,
+    },
+  });
+
   // 2. 创建默认权限（菜单 & 按钮）
   const menuPermissions = [
     { name: '仪表盘', code: 'dashboard', type: 'MENU' as const, path: '/dashboard', icon: 'DashboardOutlined', sort: 0 },
@@ -119,7 +130,7 @@ async function main() {
     create: { name: '人事部', code: 'HR', parentId: rootDept.id, sort: 2 },
   });
 
-  // 5. 创建默认管理员
+  // 创建默认管理员
   const username = process.env.ADMIN_USERNAME || 'admin';
   const password = process.env.ADMIN_PASSWORD || 'admin123';
   const email = process.env.ADMIN_EMAIL || 'admin@ysem.com';
@@ -139,8 +150,25 @@ async function main() {
     },
   });
 
+  // 创建测试业务员
+  const bizPwd = await bcrypt.hash('business123', 12);
+  await prisma.user.upsert({
+    where: { username: 'business' },
+    update: {},
+    create: {
+      username: 'business',
+      password: bizPwd,
+      realName: '张三',
+      email: 'business@ysem.com',
+      roleId: businessRole.id,
+      departmentId: rootDept.id,
+      status: 'ACTIVE',
+    },
+  });
+
   console.log('✅ 数据库初始化完成！');
-  console.log(`📧 默认管理员: ${username} / ${password}`);
+  console.log(`📧 管理员: ${username} / ${password}`);
+  console.log(`📧 业务员: business / business123`);
 }
 
 main()

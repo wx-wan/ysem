@@ -22,7 +22,7 @@ html, body, #root {
   width: 400px;
   padding: 40px;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 16px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
 }
 
@@ -30,52 +30,236 @@ html, body, #root {
   text-align: center;
   margin-bottom: 8px;
   font-size: 24px;
-  color: #1a1a1a;
+  color: #1e293b;
+  font-weight: 700;
 }
 
 .login-card .subtitle {
   text-align: center;
   margin-bottom: 32px;
-  color: #999;
-  font-size: 14px;
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 /* 主布局 */
 .main-layout {
   min-height: 100vh;
+  background: #f8fafc !important;
 }
 
-.main-layout .ant-layout-sider {
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.05);
-}
-
-.logo {
+.main-layout.horizontal .ant-layout-header {
   height: 64px;
+  padding: 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff !important;
+}
+
+/* 顶部品牌 */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.logo-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+}
+
+.brand-text {
   font-size: 18px;
-  font-weight: bold;
+  font-weight: 700;
+  color: #1e293b;
+  letter-spacing: -0.5px;
+}
+
+/* 顶部导航 */
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #f0f2f5;
+  height: 40px;
+  padding: 3px;
+  border-radius: 20px;
+}
+
+.nav-item {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 34px;
+  line-height: 34px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  border-radius: 17px;
+  cursor: pointer;
+  user-select: none;
   white-space: nowrap;
+
+  /* 核心过渡 */
+  transition:
+    color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* 点击波纹 */
   overflow: hidden;
 }
 
-.logo-collapsed {
-  font-size: 14px;
+/* 波纹效果 */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 17px;
+  opacity: 0;
+  background: radial-gradient(circle, rgba(22, 119, 255, 0.12) 0%, transparent 70%);
+  transform: scale(0.5);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
-.header-right {
+.nav-item:active::before {
+  opacity: 1;
+  transform: scale(1.5);
+  transition: opacity 0s, transform 0s;
+}
+
+/* 悬停态 */
+.nav-item:hover {
+  color: #1677ff;
+  background: rgba(22, 119, 255, 0.08);
+}
+
+/* 选中态 — Ant Design 品牌蓝 */
+.nav-item.active {
+  color: #fff;
+  background: #1677ff;
+  font-weight: 600;
+}
+
+.nav-item.active:hover {
+  color: #fff;
+  background: #4096ff;
+}
+
+/* 底部指示线（仅 hover 出现） */
+.nav-item::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 0;
+  height: 2px;
+  background: #1677ff;
+  border-radius: 1px;
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1), left 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-item:hover::after {
+  width: 40%;
+  left: 30%;
+}
+
+.nav-item.active::after {
+  display: none;
+}
+
+/* 右侧工具区 */
+.header-tools {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-left: auto;
+  gap: 20px;
+}
+
+.tool-icon {
+  font-size: 20px;
+  color: #64748b;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.tool-icon:hover {
+  color: #1e293b;
+}
+
+.lang-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.lang-switch:hover {
+  background: #f1f5f9;
+}
+
+.currency-switch {
+  min-width: 72px;
+}
+
+.exchange-rate-display {
+  font-size: 12px;
+  color: #8b8fa3;
+  white-space: nowrap;
+  margin-left: 4px;
+  background: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.user-avatar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.user-avatar:hover {
+  background: #f1f5f9;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.user-role {
+  font-size: 11px;
+  color: #94a3b8;
 }
 
 /* 页面内容 */
 .page-container {
-  padding: 24px;
-  background: #f5f5f5;
+  padding: 24px 32px;
+  background: #f8fafc;
   min-height: calc(100vh - 64px);
 }
 
@@ -85,7 +269,8 @@ html, body, #root {
 
 .page-header h2 {
   font-size: 20px;
-  color: #1a1a1a;
+  font-weight: 700;
+  color: #1e293b;
 }
 
 /* 搜索区域 */
@@ -94,14 +279,424 @@ html, body, #root {
   flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 16px;
-  padding: 16px;
+  padding: 16px 20px;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 /* 表格区域 */
 .table-container {
-  padding: 16px;
+  padding: 16px 20px;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.table-container .ant-table-thead > tr > th {
+  background: #f8fafc !important;
+  font-weight: 500;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+
+.table-container .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f8fafc;
+  font-size: 13px;
+}
+
+/* ========== 现代仪表盘样式 ========== */
+
+.dashboard-modern {
+  padding: 0;
+}
+
+/* ========== 顶部三列卡片（Flex 等高） ========== */
+.dashboard-welcome-row {
+  margin-bottom: 24px;
+}
+
+/* 核心：让 Col 成为 flex 容器，Card 拉伸填满 */
+.dashboard-welcome-row > .ant-col {
+  display: flex;
+}
+
+.welcome-card,
+.countdown-card,
+.export-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.welcome-card:hover,
+.countdown-card:hover,
+.export-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+.welcome-card .ant-card-body,
+.countdown-card .ant-card-body,
+.export-card .ant-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px;
+}
+
+/* ---------- 字体层级 ---------- */
+.card-heading {
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  color: #1e293b !important;
+  margin: 0 0 8px 0 !important;
+}
+
+.card-subtitle {
+  display: block;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.card-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+}
+
+/* 导出按钮 */
+.export-btn {
+  border-radius: 8px !important;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* ---------- 倒计时 ---------- */
+.month-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.countdown-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 16px;
+}
+
+.countdown-digits {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.countdown-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 10px 14px;
+  min-width: 58px;
+}
+
+.countdown-num {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.2;
+}
+
+.countdown-unit {
+  font-size: 10px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.countdown-sep {
+  font-size: 22px;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+/* ---------- 统计卡片 ---------- */
+.stats-row {
+  margin-bottom: 16px;
+}
+
+.stat-card {
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+.stat-card .ant-card-body {
+  padding: 20px 20px 16px;
+}
+
+.stat-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.stat-card-label {
+  font-size: 13px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.stat-card-icon {
+  font-size: 16px;
+  color: #94a3b8;
+}
+
+.stat-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.1;
+  margin-bottom: 10px;
+}
+
+.stat-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.trend-up {
+  color: #10b981;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.trend-down {
+  color: #ef4444;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.trend-label {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+/* 图表内卡片 */
+.stat-card.chart-inside .stat-card-value {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+/* ---------- 表格卡片 ---------- */
+.recent-table-card,
+.sales-overview-card {
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+}
+
+.recent-table-card .ant-card-head,
+.sales-overview-card .ant-card-head {
+  border-bottom: none;
+  padding: 20px 20px 0;
+}
+
+.recent-table-card .ant-card-body,
+.sales-overview-card .ant-card-body {
+  padding: 12px 20px 20px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.card-title-sub {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.recent-table-card .ant-table {
+  font-size: 13px;
+}
+
+.recent-table-card .ant-table-thead > tr > th {
+  background: #f8fafc;
+  font-weight: 500;
+  color: #64748b;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 12px;
+}
+
+.recent-table-card .ant-table-tbody > tr > td {
+  border-bottom: 1px solid #f8fafc;
+  padding: 10px 12px;
+}
+
+/* ---------- 销售概览 ---------- */
+.sales-legend {
+  display: flex;
+  justify-content: space-around;
+  margin: 12px 0 20px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-name {
+  color: #64748b;
+}
+
+.legend-value {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* 产品列表 */
+.product-list-header {
+  display: grid;
+  grid-template-columns: 1fr 80px 70px;
+  gap: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+
+.product-list-item {
+  display: grid;
+  grid-template-columns: 1fr 80px 70px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f8fafc;
+}
+
+.product-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.product-icon {
+  font-size: 18px;
+}
+
+.product-percent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.percent-bar-bg {
+  width: 40px;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.percent-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease;
+}
+
+.product-earnings {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ========== 响应式 (Ant Design 断点) ========== */
+@media (max-width: 576px) {
+  /* xs */
+  .page-container {
+    padding: 12px;
+  }
+
+  .dashboard-greeting {
+    font-size: 16px !important;
+  }
+
+  .welcome-card .ant-card-body,
+  .countdown-card .ant-card-body,
+  .export-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .countdown-num {
+    font-size: 20px;
+  }
+
+  .countdown-block {
+    min-width: 44px;
+    padding: 6px 8px;
+  }
+
+  .stat-card-value {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 768px) {
+  /* sm / md 边界 */
+  .top-header {
+    padding: 0 16px !important;
+  }
+
+  .header-nav {
+    display: none;
+  }
+
+  .stat-card .ant-card-body {
+    padding: 16px;
+  }
+
+  .stat-card-value {
+    font-size: 24px;
+  }
 }

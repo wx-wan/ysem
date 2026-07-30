@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Table, Button, Space, Tag, Modal, Form, Input, InputNumber, Select, message, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 
 interface DeptRecord {
@@ -19,6 +20,7 @@ interface DeptRecord {
 }
 
 export default function DeptPage() {
+  const { t } = useTranslation();
   const [depts, setDepts] = useState<DeptRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -52,7 +54,7 @@ export default function DeptPage() {
   const handleDelete = async (id: string) => {
     try {
       await request.delete(`/departments/${id}`);
-      message.success('删除成功');
+      message.success(t('dept.deleteSuccess'));
       fetchDepts();
     } catch { /* handled */ }
   };
@@ -62,10 +64,10 @@ export default function DeptPage() {
       const values = await form.validateFields();
       if (editingDept) {
         await request.put(`/departments/${editingDept.id}`, values);
-        message.success('更新成功');
+        message.success(t('dept.updateSuccess'));
       } else {
         await request.post('/departments', values);
-        message.success('创建成功');
+        message.success(t('dept.createSuccess'));
       }
       setModalOpen(false);
       fetchDepts();
@@ -73,24 +75,24 @@ export default function DeptPage() {
   };
 
   const columns: ColumnsType<DeptRecord> = [
-    { title: '部门名称', dataIndex: 'name', width: 180 },
-    { title: '部门编码', dataIndex: 'code', width: 120, render: (v: string) => <Tag color="purple">{v}</Tag> },
-    { title: '负责人', dataIndex: 'leader', width: 100, render: (v: string) => v || '-' },
-    { title: '电话', dataIndex: 'phone', width: 130, render: (v: string) => v || '-' },
-    { title: '排序', dataIndex: 'sort', width: 80 },
+    { title: t('dept.name'), dataIndex: 'name', width: 180 },
+    { title: t('dept.code'), dataIndex: 'code', width: 120, render: (v: string) => <Tag color="purple">{v}</Tag> },
+    { title: t('dept.leader'), dataIndex: 'leader', width: 100, render: (v: string) => v || t('common.noData') },
+    { title: t('dept.phone'), dataIndex: 'phone', width: 130, render: (v: string) => v || t('common.noData') },
+    { title: t('dept.sort'), dataIndex: 'sort', width: 80 },
     {
-      title: '状态', dataIndex: 'status', width: 80,
-      render: (s: number) => <Tag color={s === 1 ? 'green' : 'red'}>{s === 1 ? '启用' : '禁用'}</Tag>,
+      title: t('dept.status'), dataIndex: 'status', width: 80,
+      render: (s: number) => <Tag color={s === 1 ? 'green' : 'red'}>{s === 1 ? t('dept.statusEnabled') : t('dept.statusDisabled')}</Tag>,
     },
-    { title: '用户数', dataIndex: ['_count', 'users'], width: 80 },
+    { title: t('dept.userCount'), dataIndex: ['_count', 'users'], width: 80 },
     {
-      title: '操作', width: 200, fixed: 'right',
+      title: t('common.operation'), width: 200, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>添加子部门</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>编辑</Button>
-          <Popconfirm title="确定删除该部门吗？" onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>删除</Button>
+          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('dept.addChild')}</Button>
+          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          <Popconfirm title={t('dept.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
           </Popconfirm>
         </Space>
       ),
@@ -101,10 +103,10 @@ export default function DeptPage() {
 
   return (
     <>
-      <div className="page-header"><h2>部门管理</h2></div>
+      <div className="page-header"><h2>{t('dept.title')}</h2></div>
       <div className="search-bar">
-        <Button icon={<ReloadOutlined />} onClick={fetchDepts}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>新增部门</Button>
+        <Button icon={<ReloadOutlined />} onClick={fetchDepts}>{t('common.refresh')}</Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('dept.addTitle')}</Button>
       </div>
 
       <div className="table-container">
@@ -119,38 +121,38 @@ export default function DeptPage() {
       </div>
 
       <Modal
-        title={editingDept ? '编辑部门' : '新增部门'}
+        title={editingDept ? t('dept.editTitle') : t('dept.addTitle')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleSubmit}
         destroyOnClose
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label="部门名称" rules={[{ required: true }]}>
-            <Input placeholder="请输入部门名称" />
+          <Form.Item name="name" label={t('dept.name')} rules={[{ required: true, message: t('dept.nameRequired') }]}>
+            <Input placeholder={t('dept.namePlaceholder')} />
           </Form.Item>
-          <Form.Item name="code" label="部门编码" rules={[{ required: true }]}>
-            <Input placeholder="请输入部门编码" disabled={!!editingDept} />
+          <Form.Item name="code" label={t('dept.code')} rules={[{ required: true, message: t('dept.codeRequired') }]}>
+            <Input placeholder={t('dept.codePlaceholder')} disabled={!!editingDept} />
           </Form.Item>
-          <Form.Item name="parentId" label="上级部门">
-            <Select placeholder="请选择上级部门（留空为顶级部门）" allowClear options={parentDeptOptions} />
+          <Form.Item name="parentId" label={t('dept.parentDept')}>
+            <Select placeholder={t('dept.parentPlaceholder')} allowClear options={parentDeptOptions} />
           </Form.Item>
-          <Form.Item name="leader" label="负责人">
-            <Input placeholder="请输入负责人" />
+          <Form.Item name="leader" label={t('dept.leader')}>
+            <Input placeholder={t('dept.leaderPlaceholder')} />
           </Form.Item>
-          <Form.Item name="phone" label="联系电话">
-            <Input placeholder="请输入联系电话" />
+          <Form.Item name="phone" label={t('dept.phone')}>
+            <Input placeholder={t('dept.phonePlaceholder')} />
           </Form.Item>
-          <Form.Item name="email" label="邮箱">
-            <Input placeholder="请输入邮箱" />
+          <Form.Item name="email" label={t('dept.email')}>
+            <Input placeholder={t('dept.emailPlaceholder')} />
           </Form.Item>
-          <Form.Item name="sort" label="排序">
+          <Form.Item name="sort" label={t('dept.sort')}>
             <InputNumber style={{ width: '100%' }} min={0} />
           </Form.Item>
-          <Form.Item name="status" label="状态">
+          <Form.Item name="status" label={t('dept.status')}>
             <Select>
-              <Select.Option value={1}>启用</Select.Option>
-              <Select.Option value={0}>禁用</Select.Option>
+              <Select.Option value={1}>{t('dept.statusEnabled')}</Select.Option>
+              <Select.Option value={0}>{t('dept.statusDisabled')}</Select.Option>
             </Select>
           </Form.Item>
         </Form>

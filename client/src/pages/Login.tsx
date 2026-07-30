@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { authApi } from '../api/auth';
 import { useAuthStore } from '../stores/useAuthStore';
 
 export default function LoginPage() {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
@@ -16,7 +18,7 @@ export default function LoginPage() {
       const res = await authApi.login(values);
       const { user, accessToken, refreshToken } = res.data.data;
       setAuth(user, accessToken, refreshToken);
-      message.success('登录成功');
+      message.success(t('login.success'));
       navigate('/', { replace: true });
     } catch {
       // 错误已在拦截器中处理
@@ -28,23 +30,23 @@ export default function LoginPage() {
   return (
     <div className="login-container">
       <div className="login-card">
-        <h1>义乌寿春企业管理系统</h1>
-        <p className="subtitle">Yiwu Shouchun Enterprise</p>
+        <h1>{t('common.appName')}</h1>
+        <p className="subtitle">{t('common.appSubtitle')}</p>
         <Form
           name="login"
           size="large"
           onFinish={onFinish}
           initialValues={{ username: 'admin', password: 'admin123' }}
         >
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input prefix={<UserOutlined />} placeholder="用户名" />
+          <Form.Item name="username" rules={[{ required: true, message: t('login.usernameRequired') }]}>
+            <Input prefix={<UserOutlined />} placeholder={t('login.usernamePlaceholder')} />
           </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+          <Form.Item name="password" rules={[{ required: true, message: t('login.passwordRequired') }]}>
+            <Input.Password prefix={<LockOutlined />} placeholder={t('login.passwordPlaceholder')} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
-              登 录
+              {t('login.submit')}
             </Button>
           </Form.Item>
         </Form>
