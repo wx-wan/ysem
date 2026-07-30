@@ -16,7 +16,7 @@ model User {
   email       String?      @unique
   phone       String?
   avatar      String?
-  status      UserStatus   @default(ACTIVE)
+  status      String       @default("ACTIVE")
   departmentId String?
   department  Department?  @relation(fields: [departmentId], references: [id])
   roleId      String?
@@ -31,11 +31,7 @@ model User {
   refreshToken String?
 }
 
-enum UserStatus {
-  ACTIVE
-  DISABLED
-  LOCKED
-}
+
 
 // ========== 角色表 ==========
 model Role {
@@ -56,7 +52,7 @@ model Permission {
   id       String           @id @default(uuid())
   name     String           @unique
   code     String           @unique
-  type     PermissionType   @default(BUTTON)
+  type     String           @default("BUTTON")
   parentId String?
   parent   Permission?      @relation("PermissionTree", fields: [parentId], references: [id])
   children Permission[]     @relation("PermissionTree")
@@ -68,11 +64,7 @@ model Permission {
   updatedAt DateTime        @updatedAt
 }
 
-enum PermissionType {
-  MENU
-  BUTTON
-  API
-}
+
 
 // ========== 角色-权限关联表 ==========
 model RolePermission {
