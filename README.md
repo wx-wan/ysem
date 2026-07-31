@@ -11,9 +11,11 @@
 | 部门管理 | 组织架构管理，支持树形层级 |
 | 角色管理 | 角色 CRUD，灵活分配菜单与接口权限 |
 | 权限管理 | 权限树配置，细粒度访问控制 |
-| 客户管理 | 公海/私海客户管理，支持导入导出、阶段流转（线索→商机→样品单→订单） |
+| 客户管理 | 公海/私海客户管理，支持导入导出、转交、标签、重点客户标记、阶段流转（线索→商机→样品单→订单） |
 | 订单管理 | 订单 CRUD，关联客户与金额，多币种支持 |
-| 销售管理 | 销售记录追踪 |
+| 销售管理 | 销售全生命周期追踪，阶段联动表单（线索→商机→样品单→订单→成交/流失） |
+| 生产管理 | 生产任务跟踪 |
+| 发货管理 | 发货物流管理 |
 | 数据报告 | 12 项核心指标看板（线索量/商机量/样品单数/订单数/新老客户数/转化率/成交金额） |
 | 多语言 | 中/英文切换 |
 | 货币 | 多币种汇率自动同步与展示 |
@@ -35,10 +37,18 @@
 ├── client/                 # 前端项目
 │   ├── src/
 │   │   ├── api/           # API 接口封装
-│   │   ├── components/    # 公共组件
+│   │   ├── components/    # 公共组件 & 弹窗组件
+│   │   │   ├── customer/  # 客户相关组件 (表单/导入/转交/统计/工具栏)
+│   │   │   ├── sales/     # 销售相关组件 (表单/导入/详情抽屉)
+│   │   │   ├── order/     # 订单相关组件 (表单/详情)
+│   │   │   ├── user/      # 用户表单组件
+│   │   │   ├── role/      # 角色表单/权限分配组件
+│   │   │   ├── dept/      # 部门表单组件
+│   │   │   └── perm/      # 权限表单组件
+│   │   ├── data/          # 静态数据 (国家列表等)
 │   │   ├── i18n/          # 多语言配置
 │   │   ├── layouts/       # 布局组件
-│   │   ├── pages/         # 页面组件
+│   │   ├── pages/         # 页面组件 (13 个页面)
 │   │   ├── stores/        # 状态管理 (Zustand)
 │   │   └── styles/        # 全局样式
 │   ├── index.html
@@ -49,6 +59,7 @@
 │   │   ├── middleware/     # 中间件 (认证/错误处理)
 │   │   ├── routes/        # 路由
 │   │   ├── lib/           # 工具库 (Prisma)
+│   │   ├── scripts/       # 脚本 (种子数据等)
 │   │   └── utils/         # 工具函数
 │   ├── prisma/
 │   │   ├── schema.prisma  # 数据模型
@@ -152,13 +163,23 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 | 用户 | DELETE | /api/users/:id | 删除用户 |
 | 角色 | GET | /api/roles | 角色列表 |
 | 角色 | POST | /api/roles | 创建角色 |
+| 角色 | PUT | /api/roles/:id | 更新角色 |
+| 角色 | DELETE | /api/roles/:id | 删除角色 |
 | 角色 | POST | /api/roles/:id/permissions | 分配权限 |
 | 部门 | GET | /api/departments | 部门列表 |
+| 部门 | POST | /api/departments | 创建部门 |
+| 部门 | PUT | /api/departments/:id | 更新部门 |
+| 部门 | DELETE | /api/departments/:id | 删除部门 |
 | 权限 | GET | /api/permissions/tree | 权限树 |
+| 权限 | POST | /api/permissions | 创建权限 |
+| 权限 | PUT | /api/permissions/:id | 更新权限 |
+| 权限 | DELETE | /api/permissions/:id | 删除权限 |
 | 客户 | GET | /api/customers | 客户列表（支持公海/私海筛选） |
 | 客户 | POST | /api/customers | 创建客户 |
 | 客户 | PUT | /api/customers/:id | 更新客户 |
 | 客户 | DELETE | /api/customers/:id | 删除客户 |
+| 客户 | POST | /api/customers/import | 批量导入客户 |
+| 客户 | POST | /api/customers/:id/transfer | 转交客户 |
 | 客户 | GET | /api/customers/report | 获取报告统计数据 |
 | 订单 | GET | /api/orders | 订单列表 |
 | 订单 | POST | /api/orders | 创建订单 |
@@ -167,7 +188,9 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 | 订单 | GET | /api/orders/customer/:customerId | 按客户查询订单 |
 | 销售 | GET | /api/sales | 销售记录列表 |
 | 销售 | POST | /api/sales | 创建销售记录 |
-| 汇率 | GET | /api/ext/exchange | 获取汇率数据 |
+| 销售 | PUT | /api/sales/:id | 更新销售记录 |
+| 销售 | DELETE | /api/sales/:id | 删除销售记录 |
+| 汇率 | GET | /api/exchange | 获取汇率数据 |
 | 健康 | GET | /api/health | 健康检查 |
 
 ## Git 提交规范
