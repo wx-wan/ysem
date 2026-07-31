@@ -5,13 +5,33 @@ import * as XLSX from "xlsx";
 
 const prisma = new PrismaClient();
 
+// 辅助：获取客户订单聚合数据
+type OrderAgg = { totalAmount: number; lastOrderDate: string | null };
+const getOrderAggregates = async (customerIds: string[]): Promise<Record<string, OrderAgg>> => {
+  if (customerIds.length === 0) return {};
+  const agg = await prisma.order.groupBy({
+    by: ["customerId"],
+    _sum: { amountCNY: true },
+    _max: { orderDate: true },
+    where: { customerId: { in: customerIds } },
+  });
+  const map: Record<string, OrderAgg> = {};
+  for (const row of agg) {
+    map[row.customerId] = {
+      totalAmount: row._sum.amountCNY || 0,
+      lastOrderDate: row._max.orderDate || null,
+    };
+  }
+  return map;
+};
+
 // 统计维度
 const getCustomerStats = async (ownerId?: string) => {
   const currentYear = new Date().getFullYear().toString();
   const where: any = ownerId ? { ownerId } : { ownerId: { not: null } };
 
   const [total, newCustomers, oldCustomers, keyAccounts, intentStats] = await Promise.all([
-    prisma.customer.count(ownerId ? { where: { ownerId } } : {}),
+    prisma.customer.count({ where: ownerId ? { ownerId } : {} }),
     prisma.customer.count({
       where: {
         ...where,
@@ -22,8 +42,11 @@ const getCustomerStats = async (ownerId?: string) => {
     prisma.customer.count({
       where: {
         ...where,
-        firstOrderDate: { not: null, not: { startsWith: currentYear } },
         isKeyAccount: false,
+        AND: [
+          { firstOrderDate: { not: null } },
+          { firstOrderDate: { not: { startsWith: currentYear } } },
+        ],
       },
     }),
     prisma.customer.count({
@@ -84,8 +107,11 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       where.firstOrderDate = { startsWith: currentYear };
       where.isKeyAccount = false;
     } else if (type === "old") {
-      where.firstOrderDate = { not: null, not: { startsWith: currentYear } };
       where.isKeyAccount = false;
+      where.AND = [
+        { firstOrderDate: { not: null } },
+        { firstOrderDate: { not: { startsWith: currentYear } } },
+      ];
     } else if (type === "key") {
       where.isKeyAccount = true;
     } else if (type === "noOrder") {
@@ -108,7 +134,14 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       getCustomerStats(userId),
     ]);
 
-    success(res, { list, total, page: Number(page), pageSize: take, stats });
+    const orderAgg = await getOrderAggregates(list.map((c) => c.id));
+    const enriched = list.map((c) => ({
+      ...c,
+      totalAmount: orderAgg[c.id]?.totalAmount || 0,
+      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+    }));
+
+    success(res, { list: enriched, total, page: Number(page), pageSize: take, stats });
   } catch (err) {
     next(err);
   }
@@ -143,7 +176,14 @@ export const listPublic = async (req: Request, res: Response, next: NextFunction
       prisma.customer.count({ where }),
     ]);
 
-    success(res, { list, total, page: Number(page), pageSize: take });
+    const orderAgg = await getOrderAggregates(list.map((c) => c.id));
+    const enriched = list.map((c) => ({
+      ...c,
+      totalAmount: orderAgg[c.id]?.totalAmount || 0,
+      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+    }));
+
+    success(res, { list: enriched, total, page: Number(page), pageSize: take });
   } catch (err) {
     next(err);
   }
@@ -172,8 +212,11 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       where.firstOrderDate = { startsWith: currentYear };
       where.isKeyAccount = false;
     } else if (type === "old") {
-      where.firstOrderDate = { not: null, not: { startsWith: currentYear } };
       where.isKeyAccount = false;
+      where.AND = [
+        { firstOrderDate: { not: null } },
+        { firstOrderDate: { not: { startsWith: currentYear } } },
+      ];
     } else if (type === "key") {
       where.isKeyAccount = true;
     } else if (type === "noOrder") {
@@ -209,6 +252,13 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       }),
     ]);
 
+    const orderAgg = await getOrderAggregates(list.map((c) => c.id));
+    const enriched = list.map((c) => ({
+      ...c,
+      totalAmount: orderAgg[c.id]?.totalAmount || 0,
+      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+    }));
+
     const ownerStats = assignees.map((u) => ({
       id: u.id,
       username: u.username,
@@ -232,16 +282,19 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       }),
       prisma.customer.count({
         where: {
-          firstOrderDate: { not: null, not: { startsWith: currentYear } },
           isKeyAccount: false,
           ownerId: { not: null },
+          AND: [
+            { firstOrderDate: { not: null } },
+            { firstOrderDate: { not: { startsWith: currentYear } } },
+          ],
         },
       }),
       prisma.customer.count({ where: { isKeyAccount: true } }),
     ]);
 
     success(res, {
-      list,
+      list: enriched,
       total,
       page: Number(page),
       pageSize: take,
@@ -284,7 +337,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
   try {
     const userId = (req as any).userId;
     const username = (req as any).username;
-    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, intentLevel } =
+    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel } =
       req.body;
 
     if (!companyName) return error(res, "公司名称不能为空", 400);
@@ -300,6 +353,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
         notes,
         ownerId: ownerId !== undefined ? ownerId : userId,
         isKeyAccount: isKeyAccount || false,
+        tags: Array.isArray(tags) ? tags.join(',') : (tags || ''),
         intentLevel: isKeyAccount ? intentLevel || null : null,
       },
     });
@@ -324,11 +378,18 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
   try {
     const { id } = req.params;
     const username = (req as any).username;
-    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, intentLevel, firstOrderDate } =
+    const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
+    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate } =
       req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
+
+    // 只有客户归属人或管理员可以编辑
+    if (existing.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权编辑该客户，请先认领", 403);
+    }
 
     const changes: string[] = [];
     if (companyName && companyName !== existing.companyName) changes.push(`公司名: ${existing.companyName} → ${companyName}`);
@@ -338,6 +399,10 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
     }
     if (intentLevel && intentLevel !== existing.intentLevel)
       changes.push(`意向等级: ${existing.intentLevel || "无"} → ${intentLevel}`);
+    if (tags !== undefined) {
+      const newTags = Array.isArray(tags) ? tags.join(',') : tags;
+      if (newTags !== (existing.tags || '')) changes.push(`标签已更新`);
+    }
 
     const customer = await prisma.customer.update({
       where: { id },
@@ -351,6 +416,7 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
         notes: notes !== undefined ? notes : existing.notes,
         ownerId: ownerId !== undefined ? ownerId : existing.ownerId,
         isKeyAccount: isKeyAccount ?? existing.isKeyAccount,
+        tags: tags !== undefined ? (Array.isArray(tags) ? tags.join(',') : tags) : existing.tags,
         intentLevel: isKeyAccount === false ? null : (intentLevel !== undefined ? intentLevel : existing.intentLevel),
         firstOrderDate: firstOrderDate !== undefined ? firstOrderDate : existing.firstOrderDate,
       },
@@ -377,8 +443,15 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
 export const remove = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
+
+    // 只有客户归属人或管理员可以删除
+    if (existing.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权删除该客户", 403);
+    }
 
     await prisma.customer.delete({ where: { id } });
     success(res, null, "删除成功");
@@ -422,11 +495,18 @@ export const claim = async (req: Request, res: Response, next: NextFunction) => 
 export const release = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const username = (req as any).username;
+    const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
     const { id } = req.params;
 
     const customer = await prisma.customer.findUnique({ where: { id } });
     if (!customer) return error(res, "客户不存在", 404);
     if (!customer.ownerId) return error(res, "该客户已在公海", 400);
+
+    // 只有客户归属人或管理员可以释放
+    if (customer.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权释放该客户", 403);
+    }
 
     await prisma.customer.update({
       where: { id },
@@ -443,6 +523,55 @@ export const release = async (req: Request, res: Response, next: NextFunction) =
     });
 
     success(res, null, "释放成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 转交客户（管理员操作） ==========
+export const transfer = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { newOwnerId } = req.body;
+    const username = (req as any).username;
+    const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
+
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      include: { owner: { select: { id: true, realName: true } } },
+    });
+    if (!customer) return error(res, "客户不存在", 404);
+
+    // 只有客户归属人或管理员可以转交
+    if (customer.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权转交该客户", 403);
+    }
+
+    if (!newOwnerId) return error(res, "请选择新负责人", 400);
+
+    const newOwner = await prisma.user.findUnique({ where: { id: newOwnerId } });
+    if (!newOwner || newOwner.status !== 'ACTIVE') {
+      return error(res, "目标用户不存在或已停用", 400);
+    }
+
+    const oldOwnerName = customer.owner?.realName || '未分配';
+
+    await prisma.customer.update({
+      where: { id },
+      data: { ownerId: newOwnerId },
+    });
+
+    await prisma.customerActivity.create({
+      data: {
+        customerId: id,
+        action: "TRANSFERRED",
+        detail: `${username} 将客户从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」`,
+        createdBy: username,
+      },
+    });
+
+    success(res, null, "转交成功");
   } catch (err) {
     next(err);
   }
@@ -570,7 +699,10 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
       prisma.customer.count({
         where: {
           ...customerWhere,
-          firstOrderDate: { not: null, not: { startsWith: currentYear } },
+          AND: [
+            { firstOrderDate: { not: null } },
+            { firstOrderDate: { not: { startsWith: currentYear } } },
+          ],
         },
       }),
       prisma.order.findMany({
@@ -584,7 +716,10 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
         where: {
           customer: {
             ...customerWhere,
-            firstOrderDate: { not: null, not: { startsWith: currentYear } },
+            AND: [
+              { firstOrderDate: { not: null } },
+              { firstOrderDate: { not: { startsWith: currentYear } } },
+            ],
           },
           amountCNY: { not: null },
         },

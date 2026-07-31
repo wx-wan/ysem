@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Tag, Modal, Form, Input, InputNumber, Select, message, Popconfirm } from 'antd';
+import { useEffect, useState, useMemo } from 'react';
+import { Table, Button, Space, Tag, message, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
+import DeptFormModal from '../components/dept/DeptFormModal';
 
 interface DeptRecord {
   id: string;
@@ -19,13 +20,18 @@ interface DeptRecord {
   children?: DeptRecord[];
 }
 
+const deptApi = {
+  create: (data: any) => request.post('/departments', data),
+  update: (id: string, data: any) => request.put(`/departments/${id}`, data),
+};
+
 export default function DeptPage() {
   const { t } = useTranslation();
   const [depts, setDepts] = useState<DeptRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<DeptRecord | null>(null);
-  const [form] = Form.useForm();
+  const [parentId, setParentId] = useState<string | undefined>(undefined);
 
   const fetchDepts = async () => {
     setLoading(true);
@@ -38,16 +44,15 @@ export default function DeptPage() {
 
   useEffect(() => { fetchDepts(); }, []);
 
-  const handleAdd = (parentId?: string) => {
+  const handleAdd = (pid?: string) => {
     setEditingDept(null);
-    form.resetFields();
-    if (parentId) form.setFieldValue('parentId', parentId);
+    setParentId(pid);
     setModalOpen(true);
   };
 
   const handleEdit = (record: DeptRecord) => {
     setEditingDept(record);
-    form.setFieldsValue(record);
+    setParentId(undefined);
     setModalOpen(true);
   };
 
@@ -59,22 +64,13 @@ export default function DeptPage() {
     } catch { /* handled */ }
   };
 
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingDept) {
-        await request.put(`/departments/${editingDept.id}`, values);
-        message.success(t('dept.updateSuccess'));
-      } else {
-        await request.post('/departments', values);
-        message.success(t('dept.createSuccess'));
-      }
-      setModalOpen(false);
-      fetchDepts();
-    } catch { /* handled */ }
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setEditingDept(null);
+    setParentId(undefined);
   };
 
-  const columns: ColumnsType<DeptRecord> = [
+  const columns: ColumnsType<DeptRecord> = useMemo(() => [
     { title: t('dept.name'), dataIndex: 'name', width: 180 },
     { title: t('dept.code'), dataIndex: 'code', width: 120, render: (v: string) => <Tag color="purple">{v}</Tag> },
     { title: t('dept.leader'), dataIndex: 'leader', width: 100, render: (v: string) => v || t('common.noData') },
@@ -97,9 +93,9 @@ export default function DeptPage() {
         </Space>
       ),
     },
-  ];
+  ], [t]);
 
-  const parentDeptOptions = depts.map((d) => ({ label: d.name, value: d.id }));
+  const parentDeptOptions = useMemo(() => depts.map((d) => ({ label: d.name, value: d.id })), [depts]);
 
   return (
     <>
@@ -120,43 +116,16 @@ export default function DeptPage() {
         />
       </div>
 
-      <Modal
-        title={editingDept ? t('dept.editTitle') : t('dept.addTitle')}
+      <DeptFormModal
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={handleSubmit}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label={t('dept.name')} rules={[{ required: true, message: t('dept.nameRequired') }]}>
-            <Input placeholder={t('dept.namePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="code" label={t('dept.code')} rules={[{ required: true, message: t('dept.codeRequired') }]}>
-            <Input placeholder={t('dept.codePlaceholder')} disabled={!!editingDept} />
-          </Form.Item>
-          <Form.Item name="parentId" label={t('dept.parentDept')}>
-            <Select placeholder={t('dept.parentPlaceholder')} allowClear options={parentDeptOptions} />
-          </Form.Item>
-          <Form.Item name="leader" label={t('dept.leader')}>
-            <Input placeholder={t('dept.leaderPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="phone" label={t('dept.phone')}>
-            <Input placeholder={t('dept.phonePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="email" label={t('dept.email')}>
-            <Input placeholder={t('dept.emailPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="sort" label={t('dept.sort')}>
-            <InputNumber style={{ width: '100%' }} min={0} />
-          </Form.Item>
-          <Form.Item name="status" label={t('dept.status')}>
-            <Select>
-              <Select.Option value={1}>{t('dept.statusEnabled')}</Select.Option>
-              <Select.Option value={0}>{t('dept.statusDisabled')}</Select.Option>
-            </Select>
-          </Form.Item>
-        </Form>
-      </Modal>
+        editingDept={editingDept}
+        parentOptions={parentDeptOptions}
+        onClose={handleModalClose}
+        onSuccess={fetchDepts}
+        api={deptApi}
+        t={t}
+        initialParentId={parentId}
+      />
     </>
   );
 }

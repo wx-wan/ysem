@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './swagger';
 import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -13,11 +15,14 @@ import exchangeRoutes from './routes/exchange.routes';
 import salesRoutes from './routes/sales.routes';
 import customerRoutes from './routes/customer.routes';
 import orderRoutes from './routes/order.routes';
+import path from 'path';
 
 const app = express();
 
 // 安全中间件
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false, // 允许 Swagger UI 加载外部资源
+}));
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
@@ -29,7 +34,7 @@ const limiter = rateLimit({
   max: 500,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.includes('/ext/'),
+  skip: (req) => req.path.includes('/ext/') || req.path.includes('/docs'),
 });
 app.use('/api/', limiter);
 
@@ -37,6 +42,48 @@ app.use('/api/', limiter);
 app.use(morgan('dev'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Swagger API 文档
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'YSEM API 文档',
+  customfavIcon: '',
+}));
+
+// 导出 OpenAPI JSON
+app.get('/api/docs.json', (_req, res) => {
+  res.json(swaggerSpec);
+});
+
+// 根路由 - API 欢迎页
+app.get('/api', (_req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="zh-CN">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>YSEM API</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .card { background: white; border-radius: 16px; padding: 48px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.15); max-width: 480px; }
+        h1 { font-size: 2rem; color: #1a1a2e; margin-bottom: 8px; }
+        p { color: #666; margin-bottom: 24px; }
+        a { display: inline-block; padding: 12px 32px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-decoration: none; border-radius: 8px; font-weight: 500; transition: transform 0.2s, box-shadow 0.2s; }
+        a:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4); }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>🚀 YSEM API</h1>
+        <p>义乌寿春企业管理系统后端 API 服务</p>
+        <a href="/api/docs">📖 查看 API 文档</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 // 健康检查
 app.get('/api/health', (_req, res) => {

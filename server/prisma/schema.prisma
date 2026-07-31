@@ -141,6 +141,9 @@ model Customer {
   isKeyAccount Boolean  @default(false)
   intentLevel  String?  // LOW / MEDIUM / HIGH / READY
 
+  // 客户标签（逗号分隔，如 "VIP,长期合作,高利润"）
+  tags         String?  @default("")
+
   // 首次下单日期（自动推算：取其下最早订单日期）
   firstOrderDate String?
 
@@ -244,4 +247,15 @@ model SalesActivity {
   createdAt  DateTime @default(now())
 
   pipeline SalesPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+}
+
+// ========== 每日汇率表 ==========
+model DailyExchangeRate {
+  id           String   @id @default(uuid())
+  date         String   // "YYYY-MM-DD"
+  currencyCode String   // USD, EUR, GBP, JPY, etc.
+  ratePerCNY   Float    // 1 CNY = 目标币种汇率
+  createdAt    DateTime @default(now())
+
+  @@unique([date, currencyCode], name: "daily_rate_unique")
 }

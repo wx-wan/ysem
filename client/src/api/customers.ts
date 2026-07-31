@@ -1,4 +1,5 @@
 import request from './request';
+import type { ApiResponse } from './request';
 
 // ========== 类型定义 ==========
 export interface Customer {
@@ -13,7 +14,9 @@ export interface Customer {
   ownerId?: string;
   isKeyAccount: boolean;
   intentLevel?: string;
+  tags?: string;     // 逗号分隔的标签
   firstOrderDate?: string;
+  status?: string; // lead / prospect / sample / order
   createdAt: string;
   updatedAt: string;
   owner?: { id: string; username: string; realName: string };
@@ -21,6 +24,8 @@ export interface Customer {
   orders?: Order[];
   pipelines?: any[];
   activities?: CustomerActivity[];
+  totalAmount?: number;
+  lastOrderDate?: string | null;
 }
 
 export interface CustomerActivity {
@@ -81,58 +86,49 @@ export interface OrderListRes {
 
 // ========== 客户 API ==========
 export const customerApi = {
-  // 我的私海客户
   listMy: (params?: Record<string, any>) =>
-    request.get<CustomerListRes>('/customers/my', { params }),
+    request.get<ApiResponse<CustomerListRes>>('/customers/my', { params }),
 
-  // 公海客户
   listPublic: (params?: Record<string, any>) =>
-    request.get<{ list: Customer[]; total: number; page: number; pageSize: number }>('/customers/public', { params }),
+    request.get<ApiResponse<{ list: Customer[]; total: number; page: number; pageSize: number }>>('/customers/public', { params }),
 
-  // 管理员：所有客户
   listAll: (params?: Record<string, any>) =>
-    request.get<AllCustomersRes>('/customers/all', { params }),
+    request.get<ApiResponse<AllCustomersRes>>('/customers/all', { params }),
 
-  // 国家列表
   getCountries: () =>
-    request.get<string[]>('/customers/countries'),
+    request.get<ApiResponse<string[]>>('/customers/countries'),
 
-  // 详情
   getById: (id: string) =>
-    request.get<Customer>(`/customers/${id}`),
+    request.get<ApiResponse<Customer>>(`/customers/${id}`),
 
-  // 创建
   create: (data: Partial<Customer>) =>
-    request.post<Customer>('/customers', data),
+    request.post<ApiResponse<Customer>>('/customers', data),
 
-  // 更新
   update: (id: string, data: Partial<Customer>) =>
-    request.put<Customer>(`/customers/${id}`, data),
+    request.put<ApiResponse<Customer>>(`/customers/${id}`, data),
 
-  // 删除
   remove: (id: string) =>
-    request.delete(`/customers/${id}`),
+    request.delete<ApiResponse<any>>(`/customers/${id}`),
 
-  // 认领
   claim: (id: string) =>
-    request.post(`/customers/${id}/claim`),
+    request.post<ApiResponse<any>>(`/customers/${id}/claim`),
 
-  // 释放到公海
   release: (id: string) =>
-    request.post(`/customers/${id}/release`),
+    request.post<ApiResponse<any>>(`/customers/${id}/release`),
 
-  // Excel 导入
+  transfer: (id: string, newOwnerId: string) =>
+    request.post<ApiResponse<any>>(`/customers/${id}/transfer`, { newOwnerId }),
+
   importExcel: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return request.post<{ created: number; failed: number }>('/customers/import', formData, {
+    return request.post<ApiResponse<{ created: number; failed: number }>>('/customers/import', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 
-  // 报告统计
   report: () =>
-    request.get<{
+    request.get<ApiResponse<{
       leadCount: number;
       opportunityCount: number;
       sampleCount: number;
@@ -145,26 +141,26 @@ export const customerApi = {
       opportunityToNext: number;
       sampleToOrder: number;
       leadToOrder: number;
-    }>('/customers/report'),
+    }>>('/customers/report'),
 };
 
 // ========== 订单 API ==========
 export const orderApi = {
   list: (params?: Record<string, any>) =>
-    request.get<OrderListRes>('/orders', { params }),
+    request.get<ApiResponse<OrderListRes>>('/orders', { params }),
 
   getById: (id: string) =>
-    request.get<Order>(`/orders/${id}`),
+    request.get<ApiResponse<Order>>(`/orders/${id}`),
 
   create: (data: Partial<Order>) =>
-    request.post<Order>('/orders', data),
+    request.post<ApiResponse<Order>>('/orders', data),
 
   update: (id: string, data: Partial<Order>) =>
-    request.put<Order>(`/orders/${id}`, data),
+    request.put<ApiResponse<Order>>(`/orders/${id}`, data),
 
   remove: (id: string) =>
-    request.delete(`/orders/${id}`),
+    request.delete<ApiResponse<any>>(`/orders/${id}`),
 
   listByCustomer: (customerId: string) =>
-    request.get<Order[]>(`/orders/customer/${customerId}`),
+    request.get<ApiResponse<Order[]>>(`/orders/customer/${customerId}`),
 };

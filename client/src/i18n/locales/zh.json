@@ -70,9 +70,11 @@
   "menu": {
     "dashboard": "仪表盘",
     "sales": "销售",
+    "orders": "订单",
+    "production": "生产",
+    "shipment": "出货",
     "customers": "客户",
     "reports": "报告",
-    "orders": "订单",
     "system": "系统管理",
     "systemUser": "用户管理",
     "systemRole": "角色管理",
@@ -247,6 +249,13 @@
     "activityLog": "活动记录",
     "createSuccess": "创建成功",
     "updateSuccess": "更新成功",
-    "deleteSuccess": "删除成功"
+    "deleteSuccess": "删除成功",
+    "transfer": "转交",
+    "transferTitle": "转交客户",
+    "transferTo": "转交给",
+    "transferSuccess": "转交成功",
+    "transferFailed": "转交失败",
+    "selectAssignee": "选择业务员",
+    "filterByOwner": "筛选业务员"
   }
 }

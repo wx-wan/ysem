@@ -61,18 +61,23 @@ html, body, #root {
 .header-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   cursor: pointer;
 }
 
 .logo-placeholder {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
-  background: #f1f5f9;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #1677ff;
+  mask-image: url(/logo.png);
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
+  -webkit-mask-image: url(/logo.png);
+  -webkit-mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
 }
 
 .brand-text {
@@ -584,6 +589,31 @@ html, body, #root {
 .legend-value {
   font-weight: 600;
   color: #1e293b;
+}
+
+.popover-chart-flex .recharts-wrapper {
+  position: static !important;
+  width: auto !important;
+  height: auto !important;
+}
+
+/* 视图切换 Segmented 样式 */
+.view-mode-segmented {
+  background: #fff !important;
+  border-radius: 16px !important;
+  padding: 4px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+}
+.view-mode-segmented .ant-segmented-item {
+  border-radius: 12px !important;
+  min-width: 72px !important;
+  transition: all 0.2s ease !important;
+}
+.view-mode-segmented .ant-segmented-item-selected {
+  background: #1677ff !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.25) !important;
 }
 
 /* 产品列表 */

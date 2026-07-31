@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Table, Button, Modal, Form, Input, Select, Tag, Space,
-  Card, Statistic, Row, Col, message, Popconfirm, DatePicker,
-  Typography,
+  Table, Button, Input, Select, Tag, Space,
+  Card, Statistic, Row, Col, message, Popconfirm,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
@@ -10,10 +9,8 @@ import {
 } from '@ant-design/icons';
 import { orderApi, Order } from '../api/customers';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
-import dayjs from 'dayjs';
-
-const { Text } = Typography;
-const { RangePicker } = DatePicker;
+import OrderFormModal from '../components/order/OrderFormModal';
+import OrderDetailModal from '../components/order/OrderDetailModal';
 
 const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
   PENDING: { label: '待确认', color: 'default' },
@@ -24,7 +21,7 @@ const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
 };
 
 export default function OrdersPage() {
-  const { format } = useCurrencyStore();
+  const { format: formatCurrency, formatWithDate } = useCurrencyStore();
 
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Order[]>([]);
@@ -34,10 +31,10 @@ export default function OrdersPage() {
   const [status, setStatus] = useState('');
   const [totalAmount, setTotalAmount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const [detailFormattedAmount, setDetailFormattedAmount] = useState('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [form] = Form.useForm();
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
@@ -70,34 +67,12 @@ export default function OrdersPage() {
 
   const openCreate = () => {
     setEditingOrder(null);
-    form.resetFields();
-    form.setFieldsValue({ status: 'PENDING' });
     setModalOpen(true);
   };
 
   const openEdit = (order: Order) => {
     setEditingOrder(order);
-    form.setFieldsValue({ ...order });
     setModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingOrder) {
-        await orderApi.update(editingOrder.id, values);
-        message.success('更新成功');
-      } else {
-        await orderApi.create(values);
-        message.success('创建成功');
-      }
-      setModalOpen(false);
-      fetchData();
-    } catch (e: any) {
-      if (e.errorFields) return;
-      const msg = e?.response?.data?.message || e?.message || '操作失败';
-      message.error(msg);
-    }
   };
 
   const handleDelete = async (id: string) => {
@@ -114,8 +89,15 @@ export default function OrdersPage() {
   const openDetail = async (order: Order) => {
     try {
       const res = await orderApi.getById(order.id);
-      setDetailOrder(res.data.data);
+      const ord = res.data.data;
+      setDetailOrder(ord);
       setDetailOpen(true);
+      // 异步获取历史汇率格式化金额
+      if (ord.orderDate) {
+        formatWithDate(ord.amountCNY || 0, ord.orderDate).then(setDetailFormattedAmount);
+      } else {
+        setDetailFormattedAmount(formatCurrency(ord.amountCNY || 0));
+      }
     } catch {
       message.error('加载失败');
     }
@@ -145,12 +127,12 @@ export default function OrdersPage() {
       render: (v: string) => v || '-',
     },
     {
-      title: '金额(CNY)',
+      title: '金额',
       dataIndex: 'amountCNY',
       key: 'amountCNY',
       width: 130,
       align: 'right' as const,
-      render: (v: number) => v != null ? `¥${v.toLocaleString()}` : '-',
+      render: (v: number) => v != null ? formatCurrency(v) : '-',
     },
     {
       title: '交付日期',
@@ -211,10 +193,11 @@ export default function OrdersPage() {
         <Col span={8}>
           <Card size="small">
             <Statistic
-              title="累计金额 (CNY)"
+              title="累计金额"
               value={totalAmount}
               precision={0}
               valueStyle={{ color: '#52c41a' }}
+              formatter={(v) => formatCurrency(Number(v))}
             />
           </Card>
         </Col>
@@ -224,6 +207,7 @@ export default function OrdersPage() {
               title="当前页金额"
               value={list.reduce((s, o) => s + (o.amountCNY || 0), 0)}
               precision={0}
+              formatter={(v) => formatCurrency(Number(v))}
             />
           </Card>
         </Col>
@@ -278,87 +262,21 @@ export default function OrdersPage() {
       />
 
       {/* 创建/编辑弹窗 */}
-      <Modal
-        title={editingOrder ? '编辑订单' : '新增订单'}
+      <OrderFormModal
         open={modalOpen}
-        onOk={handleSave}
-        onCancel={() => setModalOpen(false)}
-        width={560}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item
-            name="customerId"
-            label="客户ID"
-            rules={editingOrder ? [] : [{ required: true, message: '请输入客户ID' }]}
-          >
-            <Input placeholder="从客户详情页复制客户ID" disabled={!!editingOrder} />
-          </Form.Item>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="orderNo" label="订单号" style={{ width: 170 }}>
-              <Input placeholder="订单号" />
-            </Form.Item>
-            <Form.Item name="orderDate" label="订单日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="amountCNY" label="金额(CNY)" style={{ width: 170 }}>
-              <Input type="number" placeholder="0.00" />
-            </Form.Item>
-          </Space>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="deliveryDate" label="交付日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="paymentTerms" label="付款条件" style={{ width: 170 }}>
-              <Input placeholder="如 T/T 30%" />
-            </Form.Item>
-            <Form.Item name="status" label="状态" style={{ width: 170 }}>
-              <Select>
-                <Select.Option value="PENDING">待确认</Select.Option>
-                <Select.Option value="CONFIRMED">已确认</Select.Option>
-                <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-                <Select.Option value="SHIPPED">已发货</Select.Option>
-                <Select.Option value="DELIVERED">已交付</Select.Option>
-              </Select>
-            </Form.Item>
-          </Space>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="备注" />
-          </Form.Item>
-        </Form>
-      </Modal>
+        editingOrder={editingOrder}
+        onClose={() => { setModalOpen(false); setEditingOrder(null); }}
+        onSuccess={fetchData}
+      />
 
       {/* 详情弹窗 */}
-      <Modal
-        title="订单详情"
+      <OrderDetailModal
         open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
-        footer={null}
-        width={560}
-      >
-        {detailOrder && (
-          <div>
-            <Row gutter={[16, 12]}>
-              <Col span={12}><Text type="secondary">订单号</Text><br /><Text strong>{detailOrder.orderNo || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">客户</Text><br /><Text>{detailOrder.customer?.companyName || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">订单日期</Text><br /><Text>{detailOrder.orderDate || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">金额(CNY)</Text><br /><Text strong style={{ fontSize: 16 }}>¥{(detailOrder.amountCNY ?? 0).toLocaleString()}</Text></Col>
-              <Col span={12}><Text type="secondary">交付日期</Text><br /><Text>{detailOrder.deliveryDate || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">付款条件</Text><br /><Text>{detailOrder.paymentTerms || '-'}</Text></Col>
-              <Col span={12}>
-                <Text type="secondary">状态</Text><br />
-                <Tag color={STATUS_OPTIONS[detailOrder.status || '']?.color || 'default'}>
-                  {STATUS_OPTIONS[detailOrder.status || '']?.label || detailOrder.status || '-'}
-                </Tag>
-              </Col>
-              <Col span={12}><Text type="secondary">联系人</Text><br /><Text>{detailOrder.customer?.contactName || '-'}</Text></Col>
-              {detailOrder.notes && (
-                <Col span={24}><Text type="secondary">备注</Text><br /><Text>{detailOrder.notes}</Text></Col>
-              )}
-            </Row>
-          </div>
-        )}
-      </Modal>
+        detailOrder={detailOrder}
+        formattedAmount={detailFormattedAmount}
+        formatCurrency={formatCurrency}
+        onClose={() => { setDetailOpen(false); setDetailOrder(null); }}
+      />
     </div>
   );
 }

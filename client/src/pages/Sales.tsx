@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Card, Button, Space, Input, Select, Table, Modal, Form, Drawer,
-  Tag, Popconfirm, message, Upload, Tabs, Descriptions, Statistic, Row, Col, Empty, Tooltip, Badge,
+  Card, Button, Space, Input, Select, Table, Tag, Popconfirm, message, Upload, Tabs, Modal,
+  Statistic, Row, Col, Empty, Tooltip, Badge,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
@@ -12,18 +12,14 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { salesApi, SalesItem } from '../api/sales';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
+import SalesFormModal from '../components/sales/SalesFormModal';
+import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 
 const STAGES = [
   { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
   { key: 'OPPORTUNITY', label: '商机', color: '#f59e0b', bg: '#fffbeb' },
   { key: 'SAMPLE', label: '样品单', color: '#8b5cf6', bg: '#f5f3ff' },
   { key: 'ORDER', label: '订单', color: '#10b981', bg: '#ecfdf5' },
-];
-
-const SOURCE_OPTIONS = [
-  { label: '手动录入', value: 'MANUAL' },
-  { label: 'Excel导入', value: 'EXCEL' },
-  { label: '小满API', value: 'XIAOMAN' },
 ];
 
 const STAGE_LABELS: Record<string, string> = {
@@ -53,14 +49,11 @@ export default function Sales() {
   // 弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
+  const [initialFormStage, setInitialFormStage] = useState<string>('LEAD');
   const [importOpen, setImportOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<SalesItem | null>(null);
   const [assignUsers, setAssignUsers] = useState<{ id: string; realName: string }[]>([]);
-
-  const [form] = Form.useForm();
-
-  const stageForForm = Form.useWatch('stage', form) || 'LEAD';
 
   // ============ 数据加载 ============
 
@@ -109,15 +102,13 @@ export default function Sales() {
 
   const handleCreate = () => {
     setEditingItem(null);
-    form.resetFields();
-    form.setFieldsValue({ stage: 'LEAD' });
+    setInitialFormStage('LEAD');
     fetchAssignUsers();
     setModalOpen(true);
   };
 
   const handleEdit = (item: SalesItem) => {
     setEditingItem(item);
-    form.setFieldsValue(item);
     fetchAssignUsers();
     setModalOpen(true);
   };
@@ -144,21 +135,6 @@ export default function Sales() {
       await salesApi.batchDelete(selectedKeys);
       message.success('删除成功');
       setSelectedKeys([]);
-      refresh();
-    } catch { /* ignore */ }
-  };
-
-  const handleFormSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingItem) {
-        await salesApi.update(editingItem.id, values);
-        message.success('更新成功');
-      } else {
-        await salesApi.create(values);
-        message.success('创建成功');
-      }
-      setModalOpen(false);
       refresh();
     } catch { /* ignore */ }
   };
@@ -326,7 +302,7 @@ export default function Sales() {
                 <span style={{ fontWeight: 600, color: stage.color }}>{col.title}</span>
                 <span style={{ color: '#94a3b8', fontSize: 13 }}>({col.items.length})</span>
               </Space>
-              <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => { form.resetFields(); form.setFieldsValue({ stage: stage.key }); setEditingItem(null); fetchAssignUsers(); setModalOpen(true); }}>
+              <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => { setEditingItem(null); fetchAssignUsers(); setInitialFormStage(stage.key); setModalOpen(true); }}>
                 新增
               </Button>
             </div>
@@ -394,178 +370,6 @@ export default function Sales() {
     </Card>
   );
 
-  // ============ 创建/编辑弹窗 ============
-
-  const FormModal = () => (
-    <Modal
-      title={editingItem ? '编辑' : '新增'}
-      open={modalOpen}
-      onCancel={() => setModalOpen(false)}
-      onOk={handleFormSubmit}
-      width={720}
-      destroyOnClose
-    >
-      <Form form={form} layout="vertical" preserve={false}>
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="title" label="标题" rules={[{ required: true }]}>
-              <Input placeholder="如：ABC公司询价" />
-            </Form.Item>
-          </Col>
-          <Col span={12}>
-            <Form.Item name="stage" label="阶段">
-              <Select options={STAGES.map((s) => ({ label: s.label, value: s.key }))} />
-            </Form.Item>
-          </Col>
-        </Row>
-
-        <Row gutter={16}>
-          <Col span={12}>
-            <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item name="contactName" label="联系人">
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={6}>
-            <Form.Item name="country" label="国家">
-              <Input />
-            </Form.Item>
-          </Col>
-        </Row>
-
-        <Row gutter={16}>
-          <Col span={8}>
-            <Form.Item name="email" label="邮箱">
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="phone" label="电话">
-              <Input />
-            </Form.Item>
-          </Col>
-          <Col span={8}>
-            <Form.Item name="source" label="来源">
-              <Select options={SOURCE_OPTIONS} />
-            </Form.Item>
-          </Col>
-        </Row>
-
-        {/* --- 线索字段 --- */}
-        {stageForForm === 'LEAD' && (
-          <>
-            <Form.Item name="productInterest" label="感兴趣产品">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-            <Form.Item name="leadNotes" label="备注">
-              <Input.TextArea rows={2} />
-            </Form.Item>
-          </>
-        )}
-
-        {/* --- 商机字段 --- */}
-        {stageForForm === 'OPPORTUNITY' && (
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="estimatedAmount" label="预估金额(¥)">
-                <Input type="number" prefix="¥" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="probability" label="成交概率(%)">
-                <Input type="number" min={0} max={100} suffix="%" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="estimatedCloseDate" label="预计成交日期">
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-          </Row>
-        )}
-
-        {/* --- 样品字段 --- */}
-        {stageForForm === 'SAMPLE' && (
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="sampleType" label="样品类型">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="sampleQuantity" label="样品数量">
-                <Input type="number" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="sampleStatus" label="样品状态">
-                <Select options={[
-                  { label: '待发送', value: 'PENDING' },
-                  { label: '已发送', value: 'SENT' },
-                  { label: '已确认', value: 'CONFIRMED' },
-                  { label: '已反馈', value: 'FEEDBACK' },
-                ]} />
-              </Form.Item>
-            </Col>
-          </Row>
-        )}
-
-        {/* --- 订单字段 --- */}
-        {stageForForm === 'ORDER' && (
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="orderAmount" label="订单金额(¥)">
-                <Input type="number" prefix="¥" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="orderDate" label="下单日期">
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="deliveryDate" label="交付日期">
-                <Input type="date" />
-              </Form.Item>
-            </Col>
-          </Row>
-        )}
-        {stageForForm === 'ORDER' && (
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="paymentTerms" label="付款条件">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="orderStatus" label="订单状态">
-                <Select options={[
-                  { label: '待确认', value: 'PENDING' },
-                  { label: '已确认', value: 'CONFIRMED' },
-                  { label: '生产中', value: 'IN_PRODUCTION' },
-                  { label: '已发货', value: 'SHIPPED' },
-                  { label: '已交付', value: 'DELIVERED' },
-                ]} />
-              </Form.Item>
-            </Col>
-          </Row>
-        )}
-
-        <Form.Item name="assignedTo" label="负责人">
-          <Select
-            allowClear
-            placeholder="选择负责人"
-            options={assignUsers.map((u) => ({ label: u.realName, value: u.id }))}
-          />
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
-
   // ============ 导入弹窗 ============
 
   const ImportModal = () => {
@@ -622,99 +426,6 @@ export default function Sales() {
           },
         ]} />
       </Modal>
-    );
-  };
-
-  // ============ 详情抽屉 ============
-
-  const DetailDrawer = () => {
-    if (!detailItem) return null;
-    const st = STAGES.find((s) => s.key === detailItem.stage);
-    return (
-      <Drawer
-        title="详情"
-        open={detailOpen}
-        onClose={() => setDetailOpen(false)}
-        width={560}
-        extra={
-          <Space>
-            <Select
-              size="small"
-              value={detailItem.stage}
-              style={{ width: 100 }}
-              onChange={(v) => handleStageChange(detailItem.id, v)}
-              options={STAGES.map((s) => ({ label: s.label, value: s.key }))}
-            />
-            <Button icon={<EditOutlined />} onClick={() => { setDetailOpen(false); handleEdit(detailItem); }}>编辑</Button>
-            <Popconfirm title="确定删除？" onConfirm={() => { handleDelete(detailItem.id); setDetailOpen(false); }}>
-              <Button danger icon={<DeleteOutlined />}>删除</Button>
-            </Popconfirm>
-          </Space>
-        }
-      >
-        <Descriptions column={1} size="small" bordered>
-          <Descriptions.Item label="标题">{detailItem.title}</Descriptions.Item>
-          <Descriptions.Item label="阶段">
-            <Tag color={st?.color}>{st?.label || detailItem.stage}</Tag>
-          </Descriptions.Item>
-          <Descriptions.Item label="公司名称">{detailItem.companyName}</Descriptions.Item>
-          <Descriptions.Item label="联系人">{detailItem.contactName || '-'}</Descriptions.Item>
-          <Descriptions.Item label="邮箱">{detailItem.email || '-'}</Descriptions.Item>
-          <Descriptions.Item label="电话">{detailItem.phone || '-'}</Descriptions.Item>
-          <Descriptions.Item label="国家">{detailItem.country || '-'}</Descriptions.Item>
-          <Descriptions.Item label="来源">{detailItem.source || '-'}</Descriptions.Item>
-          <Descriptions.Item label="负责人">{detailItem.assignee?.realName || '未分配'}</Descriptions.Item>
-        </Descriptions>
-
-        {detailItem.stage === 'LEAD' && (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-            <Descriptions.Item label="感兴趣产品">{detailItem.productInterest || '-'}</Descriptions.Item>
-            <Descriptions.Item label="备注">{detailItem.leadNotes || '-'}</Descriptions.Item>
-          </Descriptions>
-        )}
-        {detailItem.stage === 'OPPORTUNITY' && (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-            <Descriptions.Item label="预估金额">{detailItem.estimatedAmount ? formatCurrency(detailItem.estimatedAmount) : '-'}</Descriptions.Item>
-            <Descriptions.Item label="成交概率">{detailItem.probability ? `${detailItem.probability}%` : '-'}</Descriptions.Item>
-            <Descriptions.Item label="预计成交日期">{detailItem.estimatedCloseDate || '-'}</Descriptions.Item>
-          </Descriptions>
-        )}
-        {detailItem.stage === 'SAMPLE' && (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-            <Descriptions.Item label="样品类型">{detailItem.sampleType || '-'}</Descriptions.Item>
-            <Descriptions.Item label="样品数量">{detailItem.sampleQuantity || '-'}</Descriptions.Item>
-            <Descriptions.Item label="样品状态">{detailItem.sampleStatus || '-'}</Descriptions.Item>
-          </Descriptions>
-        )}
-        {detailItem.stage === 'ORDER' && (
-          <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-            <Descriptions.Item label="订单金额">{detailItem.orderAmount ? formatCurrency(detailItem.orderAmount) : '-'}</Descriptions.Item>
-            <Descriptions.Item label="下单日期">{detailItem.orderDate || '-'}</Descriptions.Item>
-            <Descriptions.Item label="交付日期">{detailItem.deliveryDate || '-'}</Descriptions.Item>
-            <Descriptions.Item label="付款条件">{detailItem.paymentTerms || '-'}</Descriptions.Item>
-            <Descriptions.Item label="订单状态">{detailItem.orderStatus || '-'}</Descriptions.Item>
-          </Descriptions>
-        )}
-
-        {/* 活动日志 */}
-        {detailItem.activities && detailItem.activities.length > 0 && (
-          <Card title="活动记录" size="small" style={{ marginTop: 16 }}>
-            {detailItem.activities.map((a) => (
-              <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                <Tag color="blue" style={{ marginRight: 8 }}>{a.action}</Tag>
-                {a.fromStage && <span>{STAGE_LABELS[a.fromStage]} <RightOutlined /> {STAGE_LABELS[a.toStage || '']}</span>}
-                <span style={{ marginLeft: 12, color: '#94a3b8', fontSize: 11 }}>{new Date(a.createdAt).toLocaleString('zh-CN')}</span>
-              </div>
-            ))}
-          </Card>
-        )}
-
-        <div style={{ marginTop: 16 }}>
-          <span style={{ color: '#94a3b8', fontSize: 12 }}>
-            创建于 {new Date(detailItem.createdAt).toLocaleString('zh-CN')} | 更新于 {new Date(detailItem.updatedAt).toLocaleString('zh-CN')}
-          </span>
-        </div>
-      </Drawer>
     );
   };
 
@@ -783,9 +494,25 @@ export default function Sales() {
       {viewMode === 'kanban' ? <KanbanView /> : <ListView />}
 
       {/* 弹窗 */}
-      <FormModal />
+      <SalesFormModal
+        open={modalOpen}
+        editingItem={editingItem}
+        assignUsers={assignUsers}
+        initialStage={initialFormStage}
+        onClose={() => { setModalOpen(false); setEditingItem(null); }}
+        onSuccess={refresh}
+        api={{ create: salesApi.create, update: salesApi.update }}
+      />
       <ImportModal />
-      <DetailDrawer />
+      <SalesDetailDrawer
+        open={detailOpen}
+        detailItem={detailItem}
+        onClose={() => { setDetailOpen(false); setDetailItem(null); }}
+        onStageChange={handleStageChange}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        formatCurrency={formatCurrency}
+      />
     </div>
   );
 }

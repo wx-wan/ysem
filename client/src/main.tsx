@@ -8,6 +8,7 @@ import type { Locale } from 'antd/es/locale';
 import App from './App';
 import './i18n';
 import i18n from './i18n';
+import 'flag-icons/css/flag-icons.min.css';
 import './styles/global.css';
 
 function Root() {
@@ -32,7 +33,7 @@ function Root() {
       theme={{
         token: {
           colorPrimary: '#1677ff',
-          borderRadius: 6,
+          borderRadius: 12,
         },
       }}
     >

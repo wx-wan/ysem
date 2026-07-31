@@ -2,7 +2,6 @@ import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Avatar, Dropdown, Badge, theme } from 'antd';
 import {
-  DashboardOutlined,
   SettingOutlined,
   UserOutlined,
   TeamOutlined,
@@ -73,19 +72,19 @@ export default function MainLayout() {
 
   const navItems = [
     { key: '/dashboard', label: t('menu.dashboard') },
-    { key: '/customers', label: t('menu.customers') },
     { key: '/sales', label: t('menu.sales') },
     { key: '/orders', label: t('menu.orders') },
+    { key: '/production', label: t('menu.production') },
+    { key: '/shipment', label: t('menu.shipment') },
+    { key: '/customers', label: t('menu.customers') },
     { key: '/reports', label: t('menu.reports') },
   ];
 
   // ==================== 角色权限配置 ====================
-  // admin: 全部模块 + 系统管理
-  // business / user: 仅业务模块（仪表盘、销售、客户、订单）
   const allowedNavKeys: Record<string, string[]> = {
-    admin: ['/dashboard', '/sales', '/customers', '/reports', '/orders'],
-    business: ['/dashboard', '/customers', '/sales', '/orders', '/reports'],
-    user: ['/dashboard', '/customers', '/sales', '/orders', '/reports'],
+    admin: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
+    business: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
+    user: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
   };
 
   const roleCode = user?.role?.code || 'user';
@@ -139,10 +138,7 @@ export default function MainLayout() {
       <Header className="top-header" style={{ background: colorBgContainer }}>
         {/* 左侧品牌 */}
         <div className="header-brand" onClick={() => navigate('/')}>
-          <div className="logo-placeholder">
-            {/* 预留图片位 */}
-            <DashboardOutlined style={{ fontSize: 22, color: '#6366f1' }} />
-          </div>
+          <div className="logo-placeholder" />
           <span className="brand-text">Joylifetoy</span>
         </div>
 

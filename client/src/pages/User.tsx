@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Table, Button, Input, Select, Space, Tag, Modal, Form, message, Popconfirm } from 'antd';
+import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Table, Button, Input, Space, Tag, message, Popconfirm } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
+import UserFormModal from '../components/user/UserFormModal';
 
 interface UserRecord {
   id: string;
@@ -28,6 +29,11 @@ interface DeptOption {
   name: string;
 }
 
+const userApi = {
+  create: (data: any) => request.post('/users', data),
+  update: (id: string, data: any) => request.put(`/users/${id}`, data),
+};
+
 export default function UserPage() {
   const { t } = useTranslation();
   const [users, setUsers] = useState<UserRecord[]>([]);
@@ -40,7 +46,6 @@ export default function UserPage() {
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [depts, setDepts] = useState<DeptOption[]>([]);
-  const [form] = Form.useForm();
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -65,22 +70,12 @@ export default function UserPage() {
 
   const handleAdd = () => {
     setEditingUser(null);
-    form.resetFields();
     fetchOptions();
     setModalOpen(true);
   };
 
   const handleEdit = (record: UserRecord) => {
     setEditingUser(record);
-    form.setFieldsValue({
-      username: record.username,
-      realName: record.realName,
-      email: record.email,
-      phone: record.phone,
-      status: record.status,
-      roleId: record.role?.id,
-      departmentId: record.department?.id,
-    });
     fetchOptions();
     setModalOpen(true);
   };
@@ -93,29 +88,18 @@ export default function UserPage() {
     } catch { /* handled */ }
   };
 
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingUser) {
-        const { username, password, ...rest } = values;
-        await request.put(`/users/${editingUser.id}`, rest);
-        message.success(t('user.updateSuccess'));
-      } else {
-        await request.post('/users', values);
-        message.success(t('user.createSuccess'));
-      }
-      setModalOpen(false);
-      fetchUsers();
-    } catch { /* handled */ }
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setEditingUser(null);
   };
 
-  const statusMap: Record<string, { color: string; text: string }> = {
+  const statusMap = useMemo<Record<string, { color: string; text: string }>>(() => ({
     ACTIVE: { color: 'green', text: t('user.statusActive') },
     DISABLED: { color: 'red', text: t('user.statusDisabled') },
     LOCKED: { color: 'orange', text: t('user.statusLocked') },
-  };
+  }), [t]);
 
-  const columns: ColumnsType<UserRecord> = [
+  const columns: ColumnsType<UserRecord> = useMemo(() => [
     { title: t('user.username'), dataIndex: 'username', width: 120 },
     { title: t('user.realName'), dataIndex: 'realName', width: 120 },
     { title: t('user.email'), dataIndex: 'email', width: 180, ellipsis: true },
@@ -144,7 +128,7 @@ export default function UserPage() {
         </Space>
       ),
     },
-  ];
+  ], [t, statusMap]);
 
   return (
     <>
@@ -178,53 +162,16 @@ export default function UserPage() {
         />
       </div>
 
-      <Modal
-        title={editingUser ? t('user.editTitle') : t('user.addTitle')}
+      <UserFormModal
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={handleSubmit}
-        width={560}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="username" label={t('user.username')} rules={[{ required: true, message: t('user.usernameRequired') }]}>
-            <Input disabled={!!editingUser} placeholder={t('user.usernamePlaceholder')} />
-          </Form.Item>
-          {!editingUser && (
-            <Form.Item name="password" label={t('user.password')} rules={[{ required: true, min: 6, message: t('user.passwordRequired') }]}>
-              <Input.Password placeholder={t('user.passwordPlaceholder')} />
-            </Form.Item>
-          )}
-          <Form.Item name="realName" label={t('user.realName')} rules={[{ required: true, message: t('user.realNameRequired') }]}>
-            <Input placeholder={t('user.realNamePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="email" label={t('user.email')}>
-            <Input placeholder={t('user.emailPlaceholder')} />
-          </Form.Item>
-          <Form.Item name="phone" label={t('user.phone')}>
-            <Input placeholder={t('user.phonePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="roleId" label={t('user.role')}>
-            <Select placeholder={t('user.rolePlaceholder')} allowClear>
-              {roles.map((r) => <Select.Option key={r.id} value={r.id}>{r.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
-          <Form.Item name="departmentId" label={t('user.dept')}>
-            <Select placeholder={t('user.deptPlaceholder')} allowClear>
-              {depts.map((d) => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
-          {editingUser && (
-            <Form.Item name="status" label={t('user.status')}>
-              <Select>
-                <Select.Option value="ACTIVE">{t('user.statusActive')}</Select.Option>
-                <Select.Option value="DISABLED">{t('user.statusDisabled')}</Select.Option>
-                <Select.Option value="LOCKED">{t('user.statusLocked')}</Select.Option>
-              </Select>
-            </Form.Item>
-          )}
-        </Form>
-      </Modal>
+        editingUser={editingUser}
+        roles={roles}
+        depts={depts}
+        onClose={handleModalClose}
+        onSuccess={fetchUsers}
+        api={userApi}
+        t={t}
+      />
     </>
   );
 }

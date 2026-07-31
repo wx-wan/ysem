@@ -7,6 +7,7 @@ import {
 } from '@ant-design/icons';
 import { customerApi } from '../api/customers';
 import { orderApi } from '../api/customers';
+import { useCurrencyStore } from '../stores/useCurrencyStore';
 
 const { Text, Title } = Typography;
 
@@ -26,6 +27,7 @@ interface ReportStats {
 }
 
 export default function ReportsPage() {
+  const { format: formatCurrency } = useCurrencyStore();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -74,10 +76,6 @@ export default function ReportsPage() {
     leadToOpportunity: 0, opportunityToNext: 0, sampleToOrder: 0, leadToOrder: 0,
   };
 
-  const fmtCNY = (v: number) => {
-    if (v >= 10000) return `¥${(v / 10000).toFixed(1)}万`;
-    return `¥${v.toLocaleString()}`;
-  };
 
   const cardStyle = (color: string): React.CSSProperties => ({
     borderTop: `3px solid ${color}`,
@@ -92,9 +90,9 @@ export default function ReportsPage() {
     { title: '订单数', value: stats.pipelineOrderCount, color: '#f5222d', icon: <FileDoneOutlined /> },
     // 第二行
     { title: '老客户数', value: stats.oldCustomerCount, color: '#13c2c2', icon: <TeamOutlined /> },
-    { title: '老客户订单金额', value: fmtCNY(stats.oldCustomerAmount), color: '#2f54eb', icon: <DollarOutlined /> },
+    { title: '老客户订单金额', value: formatCurrency(stats.oldCustomerAmount), color: '#2f54eb', icon: <DollarOutlined /> },
     { title: '新客户数', value: stats.newCustomerCount, color: '#722ed1', icon: <FireOutlined /> },
-    { title: '新客户成交金额', value: fmtCNY(stats.newCustomerAmount), color: '#eb2f96', icon: <DollarOutlined /> },
+    { title: '新客户成交金额', value: formatCurrency(stats.newCustomerAmount), color: '#eb2f96', icon: <DollarOutlined /> },
     // 第三行
     { title: '线索→商机转化率', value: stats.leadToOpportunity, color: '#faad14', icon: <PercentageOutlined />, suffix: '%' },
     { title: '商机→样品/订单转化率', value: stats.opportunityToNext, color: '#fa541c', icon: <RiseOutlined />, suffix: '%' },
@@ -147,8 +145,8 @@ export default function ReportsPage() {
               columns={[
                 { title: '订单号', dataIndex: 'orderNo', key: 'orderNo', width: 120, render: (v: string) => v || '-' },
                 { title: '客户', key: 'customer', width: 140, render: (_: any, r: any) => r.customer?.companyName || '-' },
-                { title: '金额(CNY)', dataIndex: 'amountCNY', key: 'amountCNY', width: 110, align: 'right' as const,
-                  render: (v: number) => v != null ? `¥${v.toLocaleString()}` : '-' },
+                { title: '金额', dataIndex: 'amountCNY', key: 'amountCNY', width: 110, align: 'right' as const,
+                  render: (v: number) => v != null ? formatCurrency(v) : '-' },
                 { title: '日期', dataIndex: 'orderDate', key: 'orderDate', width: 100, render: (v: string) => v || '-' },
                 { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag>{v || '-'}</Tag> },
               ]}
@@ -167,7 +165,7 @@ export default function ReportsPage() {
                 { title: '客户', dataIndex: 'companyName', key: 'companyName', render: (v: string) => <Text strong>{v}</Text> },
                 { title: '订单数', dataIndex: 'count', key: 'count', width: 70, align: 'center' as const },
                 { title: '累计金额', dataIndex: 'total', key: 'total', width: 120, align: 'right' as const,
-                  render: (v: number) => <Text strong>¥{v.toLocaleString()}</Text> },
+                  render: (v: number) => <Text strong>{formatCurrency(v)}</Text> },
               ]}
             />
           </Card>

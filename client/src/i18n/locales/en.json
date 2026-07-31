@@ -70,9 +70,11 @@
   "menu": {
     "dashboard": "Dashboard",
     "sales": "Sales",
+    "orders": "Orders",
+    "production": "Production",
+    "shipment": "Shipment",
     "customers": "Customers",
     "reports": "Reports",
-    "orders": "Orders",
     "system": "System Management",
     "systemUser": "User Management",
     "systemRole": "Role Management",
@@ -247,6 +249,13 @@
     "activityLog": "Activity Log",
     "createSuccess": "Created successfully",
     "updateSuccess": "Updated successfully",
-    "deleteSuccess": "Deleted successfully"
+    "deleteSuccess": "Deleted successfully",
+    "transfer": "Transfer",
+    "transferTitle": "Transfer Customer",
+    "transferTo": "Transfer to",
+    "transferSuccess": "Transferred successfully",
+    "transferFailed": "Transfer failed",
+    "selectAssignee": "Select assignee",
+    "filterByOwner": "Filter by owner"
   }
 }

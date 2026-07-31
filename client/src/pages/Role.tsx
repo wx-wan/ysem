@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Table, Button, Space, Tag, Modal, Form, Input, InputNumber, message, Popconfirm, Tree } from 'antd';
+import { useEffect, useState, useMemo } from 'react';
+import { Table, Button, Space, Tag, message, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
+import RoleFormModal from '../components/role/RoleFormModal';
+import RolePermModal from '../components/role/RolePermModal';
 
 interface RoleRecord {
   id: string;
@@ -14,12 +16,17 @@ interface RoleRecord {
   _count: { users: number };
 }
 
-interface PermissionNode {
-  id: string;
-  name: string;
-  code: string;
-  children?: PermissionNode[];
-}
+const roleApi = {
+  create: (data: any) => request.post('/roles', data),
+  update: (id: string, data: any) => request.put(`/roles/${id}`, data),
+};
+
+const permApi = {
+  getPermissions: () => request.get('/permissions/tree'),
+  getRole: (id: string) => request.get(`/roles/${id}`),
+  assign: (roleId: string, permissionIds: string[]) =>
+    request.post(`/roles/${roleId}/permissions`, { permissionIds }),
+};
 
 export default function RolePage() {
   const { t } = useTranslation();
@@ -28,10 +35,7 @@ export default function RolePage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [permModalOpen, setPermModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
-  const [permissions, setPermissions] = useState<PermissionNode[]>([]);
-  const [checkedKeys, setCheckedKeys] = useState<string[]>([]);
   const [currentRoleId, setCurrentRoleId] = useState<string>('');
-  const [form] = Form.useForm();
 
   const fetchRoles = async () => {
     setLoading(true);
@@ -46,13 +50,11 @@ export default function RolePage() {
 
   const handleAdd = () => {
     setEditingRole(null);
-    form.resetFields();
     setModalOpen(true);
   };
 
   const handleEdit = (record: RoleRecord) => {
     setEditingRole(record);
-    form.setFieldsValue(record);
     setModalOpen(true);
   };
 
@@ -64,55 +66,22 @@ export default function RolePage() {
     } catch { /* handled */ }
   };
 
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingRole) {
-        await request.put(`/roles/${editingRole.id}`, values);
-        message.success(t('role.updateSuccess'));
-      } else {
-        await request.post('/roles', values);
-        message.success(t('role.createSuccess'));
-      }
-      setModalOpen(false);
-      fetchRoles();
-    } catch { /* handled */ }
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setEditingRole(null);
   };
 
-  const openPermModal = async (role: RoleRecord) => {
+  const openPermModal = (role: RoleRecord) => {
     setCurrentRoleId(role.id);
-    const [permRes, roleRes] = await Promise.all([
-      request.get('/permissions/tree'),
-      request.get(`/roles/${role.id}`),
-    ]);
-    setPermissions(permRes.data.data || []);
-    const rolePermIds = (roleRes.data.data?.permissions || []).map(
-      (p: { permissionId: string }) => p.permissionId
-    );
-    setCheckedKeys(rolePermIds);
     setPermModalOpen(true);
   };
 
-  const handleAssignPerms = async () => {
-    try {
-      await request.post(`/roles/${currentRoleId}/permissions`, {
-        permissionIds: checkedKeys,
-      });
-      message.success(t('role.assignSuccess'));
-      setPermModalOpen(false);
-    } catch { /* handled */ }
+  const handlePermClose = () => {
+    setPermModalOpen(false);
+    setCurrentRoleId('');
   };
 
-  const buildTree = (perms: PermissionNode[]): PermissionNode[] => {
-    return perms.map((p) => ({
-      ...p,
-      key: p.id,
-      title: `${p.name} (${p.code})`,
-      children: p.children?.length ? buildTree(p.children) : undefined,
-    }));
-  };
-
-  const columns: ColumnsType<RoleRecord> = [
+  const columns: ColumnsType<RoleRecord> = useMemo(() => [
     { title: t('role.name'), dataIndex: 'name', width: 150 },
     { title: t('role.code'), dataIndex: 'code', width: 120,
       render: (v: string) => <Tag color="blue">{v}</Tag> },
@@ -131,7 +100,7 @@ export default function RolePage() {
         </Space>
       ),
     },
-  ];
+  ], [t]);
 
   return (
     <>
@@ -151,45 +120,22 @@ export default function RolePage() {
         />
       </div>
 
-      <Modal
-        title={editingRole ? t('role.editTitle') : t('role.addTitle')}
+      <RoleFormModal
         open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={handleSubmit}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-          <Form.Item name="name" label={t('role.name')} rules={[{ required: true, message: t('role.nameRequired') }]}>
-            <Input placeholder={t('role.namePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="code" label={t('role.code')} rules={[{ required: true, message: t('role.codeRequired') }]}>
-            <Input placeholder={t('role.codePlaceholder')} disabled={!!editingRole} />
-          </Form.Item>
-          <Form.Item name="description" label={t('role.description')}>
-            <Input.TextArea placeholder={t('role.descPlaceholder')} rows={3} />
-          </Form.Item>
-          <Form.Item name="sort" label={t('role.sort')}>
-            <InputNumber style={{ width: '100%' }} min={0} />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      <Modal
-        title={t('role.assignPerm')}
+        editingRole={editingRole}
+        onClose={handleModalClose}
+        onSuccess={fetchRoles}
+        api={roleApi}
+        t={t}
+      />
+      <RolePermModal
         open={permModalOpen}
-        onCancel={() => setPermModalOpen(false)}
-        onOk={handleAssignPerms}
-        width={520}
-      >
-        <Tree
-          checkable
-          defaultExpandAll
-          checkedKeys={checkedKeys}
-          onCheck={(keys) => setCheckedKeys(keys as string[])}
-          treeData={buildTree(permissions)}
-          style={{ marginTop: 16 }}
-        />
-      </Modal>
+        roleId={currentRoleId}
+        onClose={handlePermClose}
+        onSuccess={fetchRoles}
+        api={permApi}
+        t={t}
+      />
     </>
   );
 }

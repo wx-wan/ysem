@@ -30,10 +30,14 @@ interface CurrencyState {
 
   setCurrency: (code: string) => void;
   fetchRates: () => Promise<void>;
+  // 获取指定日期的汇率（从后端每日汇率缓存读取）
+  fetchRatesForDate: (date: string) => Promise<Record<string, number>>;
   // 转换金额
   convert: (amountCNY: number) => number;
   // 格式化金额
   format: (amountCNY: number) => string;
+  // 按历史日期格式化金额（订单成交日期）
+  formatWithDate: (amountCNY: number, date: string) => Promise<string>;
   // 获取当前币种兑 CNY 的汇率展示文本
   getRateToCNY: () => string | null;
 }
@@ -74,11 +78,14 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         params: { from: 'CNY' },
         timeout: 8000,
       });
+      const newRates = data.data?.rates || {};
       set({
-        rates: data.data?.rates || {},
+        rates: newRates,
         loading: false,
         lastUpdated: new Date().toISOString(),
       });
+      // 异步存到后端每日汇率表（不阻塞）
+      axios.post('/api/ext/exchange/daily', {}, { timeout: 5000 }).catch(() => {});
     } catch {
       // 降级：使用内置近似汇率
       set({
@@ -92,6 +99,18 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         loading: false,
         lastUpdated: null,
       });
+    }
+  },
+
+  fetchRatesForDate: async (date: string) => {
+    try {
+      const { data } = await axios.get('/api/ext/exchange/daily', {
+        params: { date },
+        timeout: 8000,
+      });
+      return data.data?.rates || { CNY: 1 };
+    } catch {
+      return { CNY: 1 };
     }
   },
 
@@ -109,6 +128,31 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
 
     if (currency.code === 'JPY' || currency.code === 'KRW') {
       // 日元/韩元无小数
+      return `${currency.symbol}${Math.round(converted).toLocaleString()}`;
+    }
+    return `${currency.symbol}${converted.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  },
+
+  formatWithDate: async (amountCNY: number, date: string) => {
+    const { currency } = get();
+    if (currency.code === 'CNY') {
+      return `¥${amountCNY.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+
+    // 查历史汇率
+    const historicalRates = await get().fetchRatesForDate(date);
+    const rate = historicalRates[currency.code] || get().rates[currency.code];
+
+    if (!rate) {
+      // 无汇率时直接用当前汇率
+      return get().format(amountCNY);
+    }
+
+    const converted = amountCNY * rate;
+    if (currency.code === 'JPY' || currency.code === 'KRW') {
       return `${currency.symbol}${Math.round(converted).toLocaleString()}`;
     }
     return `${currency.symbol}${converted.toLocaleString(undefined, {

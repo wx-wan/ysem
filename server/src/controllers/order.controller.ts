@@ -94,6 +94,7 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
 export const create = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
     const {
       customerId,
       orderNo,
@@ -109,6 +110,12 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return error(res, "客户不存在", 404);
+
+    // 只有客户归属人或管理员可以下单；公海客户需要先认领
+    if (!customer.ownerId) return error(res, "该客户尚未认领，请先认领后再下单", 400);
+    if (customer.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权为该客户下单，请先认领", 403);
+    }
 
     const order = await prisma.order.create({
       data: {

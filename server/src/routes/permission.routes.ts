@@ -6,9 +6,64 @@ const router = Router();
 
 router.use(authenticate);
 
+/**
+ * @swagger
+ * tags:
+ *   name: 权限管理
+ *   description: 权限树与 CRUD
+ */
+
+/**
+ * @swagger
+ * /api/permissions:
+ *   get:
+ *     tags: [权限管理]
+ *     summary: 获取权限列表
+ *     responses:
+ *       200:
+ *         description: 权限列表
+ */
 router.get('/', getPermissions);
+
+/**
+ * @swagger
+ * /api/permissions/tree:
+ *   get:
+ *     tags: [权限管理]
+ *     summary: 获取权限树
+ *     responses:
+ *       200:
+ *         description: 树形权限结构
+ */
 router.get('/tree', getPermissionTree);
+
+/**
+ * @swagger
+ * /api/permissions:
+ *   post:
+ *     tags: [权限管理]
+ *     summary: 创建权限
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, code]
+ *             properties:
+ *               name: { type: string }
+ *               code: { type: string }
+ *               type: { type: string, enum: [menu, api] }
+ *               parentId: { type: integer, nullable: true }
+ *               path: { type: string }
+ *               icon: { type: string }
+ *               sort: { type: integer, default: 0 }
+ *     responses:
+ *       200:
+ *         description: 创建成功
+ */
 router.post('/', authorize('admin'), createPermission);
+
 router.put('/:id', authorize('admin'), updatePermission);
 router.delete('/:id', authorize('admin'), deletePermission);
 

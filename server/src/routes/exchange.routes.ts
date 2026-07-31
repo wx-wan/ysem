@@ -1,8 +1,43 @@
 import { Router } from 'express';
+import { getDailyRates, ensureToday } from '../controllers/exchange.controller';
 
 const router = Router();
 
-// GET /api/ext/exchange?from=CNY
+/**
+ * @swagger
+ * tags:
+ *   name: 汇率
+ *   description: 多币种汇率查询
+ */
+
+/**
+ * @swagger
+ * /api/ext/exchange:
+ *   get:
+ *     tags: [汇率]
+ *     summary: 获取汇率数据
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: from
+ *         schema: { type: string, default: CNY }
+ *         description: 基准货币代码
+ *     responses:
+ *       200:
+ *         description: 汇率数据
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 code: { type: integer }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     base: { type: string }
+ *                     date: { type: string }
+ *                     rates: { type: object }
+ */
 router.get('/', async (_req, res) => {
   try {
     const from = (_req.query.from as string) || 'CNY';
@@ -36,5 +71,19 @@ router.get('/', async (_req, res) => {
     });
   }
 });
+
+// ===== 每日汇率（持久化） =====
+
+/**
+ * GET /api/exchange/daily?date=YYYY-MM-DD
+ * 获取指定日期的汇率（优先查DB，降级 Frankfurter 历史 API）
+ */
+router.get('/daily', getDailyRates);
+
+/**
+ * POST /api/exchange/daily
+ * 强制刷新当天汇率到数据库
+ */
+router.post('/daily', ensureToday);
 
 export default router;

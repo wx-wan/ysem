@@ -7,6 +7,8 @@ import SalesPage from './pages/Sales';
 import CustomersPage from './pages/Customers';
 import ReportsPage from './pages/Reports';
 import OrdersPage from './pages/Orders';
+import ProductionPage from './pages/Production';
+import ShipmentPage from './pages/Shipment';
 import UserPage from './pages/User';
 import RolePage from './pages/Role';
 import DeptPage from './pages/Dept';
@@ -42,9 +44,11 @@ function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales" element={<SalesPage />} />
+        <Route path="orders" element={<OrdersPage />} />
+        <Route path="production" element={<ProductionPage />} />
+        <Route path="shipment" element={<ShipmentPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="orders" element={<OrdersPage />} />
         <Route path="system/user" element={<AdminRoute><UserPage /></AdminRoute>} />
         <Route path="system/role" element={<AdminRoute><RolePage /></AdminRoute>} />
         <Route path="system/dept" element={<AdminRoute><DeptPage /></AdminRoute>} />
