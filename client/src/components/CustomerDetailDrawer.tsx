@@ -1,39 +1,35 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
-  Drawer, Space, Avatar, Tag, Button, Popconfirm, Typography,
-  Row, Col, Card, Descriptions, Table, Select, Input,
-  Spin, Tooltip, message,
+  Drawer, Space, Avatar, Tag, Button, Popconfirm, Popover, Typography,
+  Row, Col, Card, Descriptions, Table, Input, InputNumber,
+  Spin, theme, Modal, App, Select,
 } from 'antd';
 import {
   SwapOutlined, UserAddOutlined, ShoppingCartOutlined,
   GlobalOutlined, MailOutlined, PhoneOutlined, EnvironmentOutlined,
   UserOutlined, CalendarOutlined, FileTextOutlined,
-  EditOutlined, ClockCircleOutlined,
+  ClockCircleOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import CountryDisplay from './CountryDisplay';
 import CountrySelect from './CountrySelect';
-import FlagIcon from './FlagIcon';
 import KeyAccountStar from './KeyAccountStar';
 import TagSelector from './TagSelector';
-import { findCountry } from '../data/countries';
-import { getGrade, tagColorToHex, tagColorToBg, getCustomerTypeLabel, avatarColor } from './customer/utils';
-import { formatCurrency as formatCur } from '../stores/useCurrencyStore';
+import { getCustomerTypeLabel } from './customer/utils';
+import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { customerApi } from '../api/customers';
-import type { Customer, Order, CustomerActivity, User } from '../types';
+import { salesApi, SalesItem } from '../api/sales';
+import type { Customer, Order, CustomerActivity } from '../types';
 
 const { Text } = Typography;
 
-// 采购意向配置
+// 采购意向选项（直接存储中文标签）
 const INTENT_OPTIONS = [
-  { value: 'LOW', label: '低意向', tagColor: 'default' as const },
-  { value: 'MEDIUM', label: '中意向', tagColor: 'warning' as const },
-  { value: 'HIGH', label: '高意向', tagColor: 'orange' as const },
-  { value: 'READY', label: '准成交', tagColor: 'red' as const },
+  { label: '低意向', value: '低意向' },
+  { label: '中意向', value: '中意向' },
+  { label: '高意向', value: '高意向' },
+  { label: '准成交', value: '准成交' },
 ];
-
-const INTENT_MAP: Record<string, { label: string; tagColor: string }> = {};
-INTENT_OPTIONS.forEach((o) => (INTENT_MAP[o.value] = o));
 
 interface CustomerDetailDrawerProps {
   open: boolean;
@@ -42,12 +38,10 @@ interface CustomerDetailDrawerProps {
   customer: Customer | null;
   orders: Order[];
   user: any;
-  onRefresh: () => void;
-  onCustomerUpdated: (customer: Customer) => void;
-  onCustomerDeleted: () => void;
+  /** 统一刷新入口：所有内部操作（保存编辑、认领、释放、删除、下单、KeyAccountStar 切换）都调用此方法 */
+  onRefresh: (customerId: string) => void;
   onTransfer: (customerId: string) => void;
   openCreateOrder: (customerId: string) => void;
-  onOrderUpdated: (customer: Customer) => void;
 }
 
 const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
@@ -58,19 +52,108 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   orders,
   user,
   onRefresh,
-  onCustomerUpdated,
-  onCustomerDeleted,
   onTransfer,
   openCreateOrder,
-  onOrderUpdated,
 }: CustomerDetailDrawerProps) {
+  const { token } = theme.useToken();
+
   // 内部状态
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editValues, setEditValues] = useState<Record<string, any>>({});
   const [showAllActivities, setShowAllActivities] = useState(false);
+  const [pipelines, setPipelines] = useState<SalesItem[]>([]);
+  const [pipelineLoading, setPipelineLoading] = useState(false);
+  const formatCur = useCurrencyStore((state) => state.format);
+  const { message } = App.useApp();
+
+  // 商机记录 CRUD 状态
+  const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
+  const [pipelineForm, setPipelineForm] = useState({ name: '', estimatedAmount: undefined as number | undefined, probability: undefined as string | undefined, expectedCloseDate: '' });
+  const [pipelineSaving, setPipelineSaving] = useState(false);
+
+  // 加载商机记录
+  const loadPipelines = useCallback(async () => {
+    if (!customer) return;
+    setPipelineLoading(true);
+    try {
+      const res = await salesApi.listByCustomer(customer.id);
+      setPipelines(res.data.data);
+    } catch {} finally {
+      setPipelineLoading(false);
+    }
+  }, [customer?.id]);
+
+  useEffect(() => {
+    if (open && customer) loadPipelines();
+  }, [open, customer?.id, loadPipelines]);
+
+  // 新增商机
+  const openCreatePipeline = useCallback(() => {
+    setEditingPipeline(null);
+    setPipelineForm({ name: '', estimatedAmount: undefined, probability: undefined, expectedCloseDate: '' });
+    setPipelineModalOpen(true);
+  }, []);
+
+  // 编辑商机
+  const openEditPipeline = useCallback((item: SalesItem) => {
+    setEditingPipeline(item);
+    setPipelineForm({
+      name: item.title,
+      estimatedAmount: item.estimatedAmount ?? undefined,
+      probability: item.probability ?? undefined,
+      expectedCloseDate: item.estimatedCloseDate ? dayjs(item.estimatedCloseDate).format('YYYY-MM-DD') : '',
+    });
+    setPipelineModalOpen(true);
+  }, []);
+
+  // 保存商机
+  const handleSavePipeline = useCallback(async () => {
+    if (!pipelineForm.name || !customer) return;
+    setPipelineSaving(true);
+    try {
+      const payload = {
+        stage: 'OPPORTUNITY',
+        title: pipelineForm.name,
+        customerId: customer.id,
+        companyName: customer.companyName,
+        estimatedAmount: pipelineForm.estimatedAmount ?? 0,
+        probability: pipelineForm.probability,
+        estimatedCloseDate: pipelineForm.expectedCloseDate || undefined,
+      };
+      if (editingPipeline) {
+        await salesApi.update(editingPipeline.id, payload as any);
+        message.success('商机已更新');
+      } else {
+        await salesApi.create(payload as any);
+        message.success('商机已创建');
+      }
+      setPipelineModalOpen(false);
+      loadPipelines();
+      // 同步刷新列表（商机金额可能变化）
+      onRefresh(customer.id);
+    } catch {
+      message.error('操作失败');
+    } finally {
+      setPipelineSaving(false);
+    }
+  }, [pipelineForm, customer, editingPipeline, loadPipelines, onRefresh]);
+
+  // 删除商机
+  const handleDeletePipeline = useCallback(async (id: string) => {
+    try {
+      await salesApi.delete(id);
+      message.success('商机已删除');
+      loadPipelines();
+      onRefresh(customer?.id || '');
+    } catch {
+      message.error('删除失败');
+    }
+  }, [loadPipelines, onRefresh, customer?.id]);
 
   const isAdmin = user?.role?.code === 'admin';
+  const isPublic = customer ? (!customer.ownerId || customer.owner?.role?.code === 'admin') : true;
   const canOperate = customer ? (isAdmin || customer.ownerId === user?.id) : false;
 
   // 进入编辑
@@ -84,7 +167,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       country: customer.country || '',
       source: customer.source || '',
       isKeyAccount: customer.isKeyAccount || false,
-      intentLevel: customer.intentLevel || undefined,
       tags: customer.tags || '',
       notes: customer.notes || '',
     });
@@ -96,16 +178,16 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
     if (!customer) return;
     setSaving(true);
     try {
-      const updated = await customerApi.update(customer.id, editValues as any);
+      await customerApi.update(customer.id, editValues as any);
       message.success('保存成功');
-      onCustomerUpdated({ ...customer, ...editValues });
       setEditing(false);
+      onRefresh(customer.id);
     } catch {
       message.error('保存失败');
     } finally {
       setSaving(false);
     }
-  }, [customer, editValues, onCustomerUpdated]);
+  }, [customer, editValues, onRefresh]);
 
   // 认领
   const handleClaim = useCallback(async () => {
@@ -113,7 +195,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
     await customerApi.claim(customer.id);
     message.success('认领成功');
     onClose();
-    onRefresh();
+    onRefresh(customer.id);
   }, [customer, onClose, onRefresh]);
 
   // 释放
@@ -122,7 +204,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
     await customerApi.release(customer.id);
     message.success('已释放到公海');
     onClose();
-    onRefresh();
+    onRefresh(customer.id);
   }, [customer, onClose, onRefresh]);
 
   // 删除
@@ -131,8 +213,8 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
     await customerApi.remove(customer.id);
     message.success('已删除');
     onClose();
-    onCustomerDeleted();
-  }, [customer, onClose, onCustomerDeleted]);
+    onRefresh(customer.id);
+  }, [customer, onClose, onRefresh]);
 
   // 重置内部状态
   const handleClose = useCallback(() => {
@@ -153,23 +235,19 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
 
   if (!customer) return null;
 
-  // 使用 token（从 antd theme 获取颜色）
-  // 这里需要一个 token 源 — 从父组件传入或使用静态 fallback
-  const grade = getGrade(customer);
-
   return (
     <Drawer
       title={
         <Space>
-          {customer.owner ? (
-            <Popover content={`负责人：${customer.owner.realName || customer.owner.username}`}>
-              <Avatar size="small" style={{ backgroundColor: '#1677ff', cursor: 'default' }}>
-                {(customer.owner.realName || customer.owner.username)?.[0]}
-              </Avatar>
-            </Popover>
-          ) : (
-            <Tag color="default" bordered={false}>公海</Tag>
-          )}
+              {isPublic ? (
+                <Tag color="default" bordered={false}>公海</Tag>
+              ) : (
+                <Popover content={`负责人：${customer.owner?.realName || customer.owner?.username}`}>
+                  <Avatar size="small" style={{ backgroundColor: '#1677ff', cursor: 'default' }}>
+                    {(customer.owner?.realName || customer.owner?.username)?.[0]}
+                  </Avatar>
+                </Popover>
+              )}
           <span>{customer.companyName}</span>
         </Space>
       }
@@ -187,8 +265,11 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
             </>
           ) : (
             <>
-              {customer.ownerId ? (
-                canOperate ? (
+              {isPublic ? (
+                <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
+                  认领
+                </Button>
+              ) : canOperate ? (
                   <>
                     <Button icon={<SwapOutlined />} onClick={() => onTransfer(customer.id)}>转交</Button>
                     <Button type="primary" onClick={enterEdit}>编辑</Button>
@@ -201,12 +282,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   </>
                 ) : (
                   <Tag color="warning" bordered={false}>无操作权限</Tag>
-                )
-              ) : (
-                <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
-                  认领
-                </Button>
-              )}
+                )}
             </>
           )}
         </Space>
@@ -288,20 +364,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                     />
                   </div>
                 </Col>
-                <Col span={12}>
-                  <Text type="secondary">采购意向</Text>
-                  <Select
-                    value={editValues.intentLevel || undefined}
-                    onChange={(val) => setEditValues({ ...editValues, intentLevel: val })}
-                    placeholder="选择采购意向"
-                    allowClear
-                    style={{ marginTop: 4, width: '100%' }}
-                  >
-                    {INTENT_OPTIONS.map((opt) => (
-                      <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
-                    ))}
-                  </Select>
-                </Col>
                 <Col span={24}>
                   <Text type="secondary">备注</Text>
                   <Input.TextArea
@@ -317,7 +379,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
             <Card
               size="small"
               title={<span><UserOutlined /> 基本信息</span>}
-              extra={<Button size="small" icon={<EditOutlined />} onClick={enterEdit}>编辑</Button>}
               style={{ marginBottom: 16, borderRadius: 8 }}
             >
               <Descriptions column={2} size="small" colon={false}>
@@ -340,36 +401,34 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   {dayjs(customer.createdAt).format('YYYY-MM-DD')}
                 </Descriptions.Item>
               </Descriptions>
-              {/* 等级 & 意向 & 标签 */}
+              {/* 标签 */}
               <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                <Text type="secondary" style={{ minWidth: 50 }}>等级：</Text>
-                <Tag color={grade.tagColor} bordered={false}>{grade.grade}级</Tag>
                 {(() => {
                   const tl = getCustomerTypeLabel(customer);
                   if (tl) return <Tag bordered={false} color={tl.color}>{tl.label}</Tag>;
                   return null;
                 })()}
-                {INTENT_MAP[customer.intentLevel || ''] && (
-                  <Tag bordered={false} color={INTENT_MAP[customer.intentLevel!].tagColor}>
-                    意向: {INTENT_MAP[customer.intentLevel!].label}
-                  </Tag>
-                )}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <Text type="secondary">重点客户</Text>
                   <KeyAccountStar
                     isKeyAccount={customer.isKeyAccount || false}
                     customerId={customer.id}
-                    onToggle={() => onRefresh()}
+                    onToggle={() => onRefresh(customer.id)}
                   />
                 </div>
               </div>
-              {/* 标签列表 */}
+              {/* 标签列表：只展示自定义标签，过滤系统标签 */}
               {customer.tags && (
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {customer.tags.split(',').filter(Boolean).map((tagStr: string) => {
+                  {customer.tags.split(',').filter(Boolean).filter((tagStr: string) => {
                     const idx = tagStr.lastIndexOf('#');
                     const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
-                    const color = idx > 0 ? tagStr.slice(idx + 1) : undefined;
+                    const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
+                    return !SYSTEM_TAGS.includes(name);
+                  }).map((tagStr: string) => {
+                    const idx = tagStr.lastIndexOf('#');
+                    const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
+                    const color = idx > 0 ? `#${tagStr.slice(idx + 1)}` : undefined;
                     return <Tag key={name} bordered={false} color={color}>{name}</Tag>;
                   })}
                 </div>
@@ -382,17 +441,84 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
             </Card>
           )}
 
+          {/* ===== 商机记录 ===== */}
+          <Card
+            size="small"
+            title={<Space><DollarOutlined style={{ color: token.colorWarning }} />商机记录 ({pipelines.length})</Space>}
+            extra={!isPublic && canOperate ? <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>新增商机</Button> : null}
+            style={{ marginBottom: 16, borderRadius: 8 }}
+          >
+            {pipelineLoading ? (
+              <div style={{ textAlign: 'center', padding: 24 }}>
+                <Spin />
+              </div>
+            ) : pipelines.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 24, color: token.colorTextQuaternary }}>
+                暂无商机记录
+              </div>
+            ) : (
+              <Table
+                dataSource={pipelines}
+                rowKey="id"
+                pagination={false}
+                size="small"
+                columns={[
+                  {
+                    title: '商机名称',
+                    dataIndex: 'title',
+                    ellipsis: true,
+                  },
+                  {
+                    title: '预估金额',
+                    dataIndex: 'estimatedAmount',
+                    width: 120,
+                    align: 'right',
+                    render: (v: number) => (v != null ? formatCur(v) : '-'),
+                  },
+                  {
+                    title: '采购意向',
+                    dataIndex: 'probability',
+                    width: 90,
+                    align: 'center',
+                    render: (v: string) => v || '-',
+                  },
+                  {
+                    title: '预计成交日',
+                    dataIndex: 'estimatedCloseDate',
+                    width: 110,
+                    align: 'center',
+                    render: (d: string) => (d ? dayjs(d).format('YYYY-MM-DD') : '-'),
+                  },
+                  {
+                    title: '操作',
+                    key: 'action',
+                    width: 100,
+                    align: 'center',
+                    render: (_: any, record: SalesItem) => (
+                      <Space size={0}>
+                        <Button type="link" size="small" onClick={() => openEditPipeline(record)}>编辑</Button>
+                        <Popconfirm title="确定删除此商机？" onConfirm={() => handleDeletePipeline(record.id)}>
+                          <Button type="link" size="small" danger>删除</Button>
+                        </Popconfirm>
+                      </Space>
+                    ),
+                  },
+                ]}
+              />
+            )}
+          </Card>
+
           {/* ===== 订单记录 ===== */}
           <Card
             size="small"
             title={<span><ShoppingCartOutlined /> 订单记录 ({orders.length})</span>}
             style={{ marginBottom: 16, borderRadius: 8 }}
             extra={
-              canOperate ? (
+              !isPublic && canOperate ? (
                 <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
                   <ShoppingCartOutlined /> 下订单
                 </Button>
-              ) : customer.ownerId ? (
+              ) : !isPublic ? (
                 <Tag color="default" bordered={false}>无操作权限</Tag>
               ) : null
             }
@@ -443,6 +569,62 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           </Card>
         </div>
       )}
+
+      {/* 商机 新增/编辑 弹窗 */}
+      <Modal
+        title={editingPipeline ? '编辑商机' : '新增商机'}
+        open={pipelineModalOpen}
+        onCancel={() => setPipelineModalOpen(false)}
+        onOk={handleSavePipeline}
+        confirmLoading={pipelineSaving}
+        okText="保存"
+        cancelText="取消"
+        width={420}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 8 }}>
+          <div>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>商机名称 *</Text>
+            <Input
+              value={pipelineForm.name}
+              onChange={(e) => setPipelineForm({ ...pipelineForm, name: e.target.value })}
+              placeholder="请输入商机名称"
+            />
+          </div>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>预估金额</Text>
+              <InputNumber
+                value={pipelineForm.estimatedAmount}
+                onChange={(val) => setPipelineForm({ ...pipelineForm, estimatedAmount: val ?? undefined })}
+                placeholder="金额"
+                min={0}
+                precision={2}
+                style={{ width: '100%' }}
+                prefix="¥"
+              />
+            </Col>
+            <Col span={12}>
+              <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>采购意向</Text>
+              <Select
+                value={pipelineForm.probability}
+                onChange={(val) => setPipelineForm({ ...pipelineForm, probability: val })}
+                placeholder="选择意向"
+                allowClear
+                style={{ width: '100%' }}
+                options={[...INTENT_OPTIONS]}
+              />
+            </Col>
+          </Row>
+          <div>
+            <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>预计成交日期</Text>
+            <Input
+              type="date"
+              value={pipelineForm.expectedCloseDate}
+              onChange={(e) => setPipelineForm({ ...pipelineForm, expectedCloseDate: e.target.value })}
+            />
+          </div>
+        </div>
+      </Modal>
     </Drawer>
   );
 });

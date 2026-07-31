@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Table, Button, Input, Space, Tag, message, Popconfirm } from 'antd';
+import { Table, Button, Input, Space, Tag, App, Popconfirm } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +36,7 @@ const userApi = {
 
 export default function UserPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);

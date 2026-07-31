@@ -2,6 +2,7 @@ import axios from './request';
 
 export interface SalesItem {
   id: string;
+  pipelineNumber: string;
   stage: string;
   title: string;
   companyName: string;
@@ -14,7 +15,7 @@ export interface SalesItem {
   leadNotes?: string;
   estimatedAmount?: number;
   estimatedCloseDate?: string;
-  probability?: number;
+  probability?: string;
   opportunityNotes?: string;
   sampleType?: string;
   sampleQuantity?: number;
@@ -87,4 +88,8 @@ export const salesApi = {
   // 获取可分配用户
   getAssignUsers: () =>
     axios.get<{ data: { id: string; realName: string; username: string }[] }>('/sales/assign-users'),
+
+  // 按客户查询商机记录
+  listByCustomer: (customerId: string) =>
+    axios.get<{ data: SalesItem[] }>(`/sales/by-customer/${customerId}`),
 };

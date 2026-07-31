@@ -2,28 +2,16 @@ import { useState, useCallback } from 'react';
 import { Tag, Input, Button, Popover, theme } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 
-// 标签预设色（Ant Design 语义色名）
+// 标签预设色（12 个不重复的 hex 色值，不带 # 前缀）
 const TAG_PRESET_COLORS = [
-  'magenta', 'red', 'volcano', 'orange', 'gold', 'lime',
-  'green', 'cyan', 'blue', 'geekblue', 'purple',
+  'f5222d', 'fa541c', 'fa8c16', 'fadb14', 'a0d911',
+  '52c41a', '13c2c2', '1890ff', '2f4554', '722ed1',
+  'eb2f96', '595959',
 ];
 
-// tagColor → 深色主色 token
-function tagColorToHex(tagColor: string, token: any): string {
-  const map: Record<string, string> = {
-    red: token.colorError,
-    magenta: token.colorError,
-    volcano: token.colorError,
-    orange: token.colorWarning,
-    gold: token.colorWarning,
-    green: token.colorSuccess,
-    lime: token.colorSuccess,
-    cyan: token.colorInfo,
-    blue: token.colorInfo,
-    geekblue: token.colorInfo,
-    purple: token.colorPrimary,
-  };
-  return map[tagColor] || token.colorPrimary;
+function tagColorToHex(tagColor: string, _token: any): string {
+  if (!tagColor) return '#1890ff';
+  return tagColor.startsWith('#') ? tagColor : `#${tagColor}`;
 }
 
 function parseTag(tagStr: string): { name: string; color: string } {
@@ -31,7 +19,7 @@ function parseTag(tagStr: string): { name: string; color: string } {
   if (idx > 0) {
     return { name: tagStr.slice(0, idx), color: tagStr.slice(idx + 1) };
   }
-  return { name: tagStr, color: 'blue' };
+  return { name: tagStr, color: TAG_PRESET_COLORS[0] };
 }
 
 function tagsToArray(tags?: string): { name: string; color: string }[] {

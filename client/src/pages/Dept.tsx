@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Button, Space, Tag, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Tag, App, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +27,7 @@ const deptApi = {
 
 export default function DeptPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [depts, setDepts] = useState<DeptRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

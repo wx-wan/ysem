@@ -2,6 +2,7 @@ import React from 'react';
 import { Drawer, Descriptions, Tag, Space, Button, Popconfirm, Select, Card } from 'antd';
 import { EditOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
+import { getIntentLabel } from './SalesFormModal';
 
 const STAGES = [
   { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
@@ -74,7 +75,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       {detailItem.stage === 'OPPORTUNITY' && (
         <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
           <Descriptions.Item label="预估金额">{detailItem.estimatedAmount ? formatCurrency(detailItem.estimatedAmount) : '-'}</Descriptions.Item>
-          <Descriptions.Item label="成交概率">{detailItem.probability ? `${detailItem.probability}%` : '-'}</Descriptions.Item>
+          <Descriptions.Item label="采购意向">{getIntentLabel(detailItem.probability)}</Descriptions.Item>
           <Descriptions.Item label="预计成交日期">{detailItem.estimatedCloseDate || '-'}</Descriptions.Item>
         </Descriptions>
       )}

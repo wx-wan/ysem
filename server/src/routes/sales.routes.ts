@@ -3,7 +3,7 @@ import multer from 'multer';
 import {
   getPipelines, getKanban, getPipeline, createPipeline,
   updatePipeline, changeStage, deletePipeline, batchDelete,
-  importExcel, getAssignUsers,
+  importExcel, getAssignUsers, getByCustomer,
 } from '../controllers/sales.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -76,6 +76,8 @@ router.post('/import', upload.single('file'), importExcel);
  *         description: 销售记录列表
  */
 router.get('/', getPipelines);
+
+router.get('/by-customer/:customerId', getByCustomer);
 
 router.get('/:id', getPipeline);
 

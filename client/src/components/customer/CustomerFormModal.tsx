@@ -6,10 +6,10 @@ import TagSelector from '../TagSelector';
 import CountrySelect from '../CountrySelect';
 
 const INTENT_OPTIONS = [
-  { value: 'LOW', label: '低意向', tagColor: 'default' as const },
-  { value: 'MEDIUM', label: '中意向', tagColor: 'warning' as const },
-  { value: 'HIGH', label: '高意向', tagColor: 'orange' as const },
-  { value: 'READY', label: '准成交', tagColor: 'red' as const },
+  { value: '低意向', label: '低意向', tagColor: 'default' as const },
+  { value: '中意向', label: '中意向', tagColor: 'warning' as const },
+  { value: '高意向', label: '高意向', tagColor: 'orange' as const },
+  { value: '准成交', label: '准成交', tagColor: 'red' as const },
 ];
 
 interface Props {

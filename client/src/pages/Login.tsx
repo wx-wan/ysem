@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, message } from 'antd';
+import { Form, Input, Button, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { authApi } from '../api/auth';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 
 export default function LoginPage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);

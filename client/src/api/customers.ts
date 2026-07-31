@@ -16,16 +16,18 @@ export interface Customer {
   intentLevel?: string;
   tags?: string;     // 逗号分隔的标签
   firstOrderDate?: string;
+  estimatedAmount?: number;
   status?: string; // lead / prospect / sample / order
   createdAt: string;
   updatedAt: string;
-  owner?: { id: string; username: string; realName: string };
+  owner?: { id: string; username: string; realName: string; role?: { code: string } };
   _count?: { orders: number; pipelines: number };
   orders?: Order[];
   pipelines?: any[];
   activities?: CustomerActivity[];
   totalAmount?: number;
   lastOrderDate?: string | null;
+  pipelineAmount?: number;
 }
 
 export interface CustomerActivity {
@@ -46,12 +48,27 @@ export interface CustomerStats {
   intentBreakdown: { level: string; count: number }[];
 }
 
+export interface EstimatedBreakdownItem {
+  probability: string;
+  _count: number;
+  _sum: { estimatedAmount: number | null };
+}
+
+export interface ContractBreakdownItem {
+  type: string;
+  amount: number;
+}
+
 export interface CustomerListRes {
   list: Customer[];
   total: number;
   page: number;
   pageSize: number;
   stats?: CustomerStats;
+  estimatedAmount?: number;
+  totalContractAmount?: number;
+  estimatedBreakdown?: EstimatedBreakdownItem[];
+  contractBreakdown?: ContractBreakdownItem[];
 }
 
 export interface AllCustomersRes extends CustomerListRes {

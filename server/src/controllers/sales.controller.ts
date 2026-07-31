@@ -8,6 +8,7 @@ import { success, created, fail } from '../utils/response';
 // ============ 校验 ============
 
 const createPipelineSchema = z.object({
+  customerId: z.string().optional().nullable(),
   stage: z.enum(['LEAD', 'OPPORTUNITY', 'SAMPLE', 'ORDER']).default('LEAD'),
   title: z.string().min(1, '标题不能为空'),
   companyName: z.string().min(1, '公司名称不能为空'),
@@ -20,7 +21,7 @@ const createPipelineSchema = z.object({
   leadNotes: z.string().optional().nullable(),
   estimatedAmount: z.number().optional().nullable(),
   estimatedCloseDate: z.string().optional().nullable(),
-  probability: z.number().min(0).max(100).optional().nullable(),
+  probability: z.string().optional().nullable(),
   opportunityNotes: z.string().optional().nullable(),
   sampleType: z.string().optional().nullable(),
   sampleQuantity: z.number().int().optional().nullable(),
@@ -167,12 +168,23 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
   try {
     const data = createPipelineSchema.parse(req.body);
 
+    // 生成商机号: BO-YYYYMMDD-序号
+    const today = new Date();
+    const dateStr = today.getFullYear().toString()
+      + String(today.getMonth() + 1).padStart(2, '0')
+      + String(today.getDate()).padStart(2, '0');
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const todayCount = await prisma.salesPipeline.count({
+      where: { createdAt: { gte: todayStart } },
+    });
+    const pipelineNumber = `BO-${dateStr}-${String(todayCount + 1).padStart(3, '0')}`;
+
     const pipeline = await prisma.salesPipeline.create({
-      data,
+      data: { ...data, pipelineNumber },
       include: { assignee: { select: { id: true, realName: true, username: true } } },
     });
 
-    // 记录活动
+    // 记录销售活动
     await prisma.salesActivity.create({
       data: {
         pipelineId: pipeline.id,
@@ -181,6 +193,18 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
         createdBy: req.userId!,
       },
     });
+
+    // 如果关联了客户，同步记录到客户活动记录
+    if (data.customerId) {
+      await prisma.customerActivity.create({
+        data: {
+          customerId: data.customerId,
+          action: 'PIPELINE_CREATED',
+          detail: `创建了商机「${data.title}」`,
+          createdBy: req.username!,
+        },
+      });
+    }
 
     created(res, pipeline, '创建成功');
   } catch (err) {
@@ -309,7 +333,7 @@ const FIELD_MAP: Record<string, string> = {
   '线索备注': 'leadNotes',
   '预估金额': 'estimatedAmount',
   '预计成交日期': 'estimatedCloseDate',
-  '成交概率': 'probability',
+  '采购意向': 'probability',
   '商机备注': 'opportunityNotes',
   '样品类型': 'sampleType',
   '样品数量': 'sampleQuantity',
@@ -351,7 +375,7 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
       for (const [header, value] of Object.entries(row)) {
         const field = FIELD_MAP[header] || header;
         // 数字字段转换
-        if (['estimatedAmount', 'probability', 'sampleQuantity', 'orderAmount'].includes(field)) {
+        if (['estimatedAmount', 'sampleQuantity', 'orderAmount'].includes(field)) {
           data[field] = value ? Number(value) : undefined;
         } else if (field === 'stage') {
           data[field] = STAGE_MAP[value?.trim()] || 'LEAD';
@@ -381,7 +405,7 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
             leadNotes: data.leadNotes as string | undefined,
             estimatedAmount: data.estimatedAmount as number | undefined,
             estimatedCloseDate: data.estimatedCloseDate as string | undefined,
-            probability: data.probability as number | undefined,
+            probability: data.probability as string | undefined,
             opportunityNotes: data.opportunityNotes as string | undefined,
             sampleType: data.sampleType as string | undefined,
             sampleQuantity: data.sampleQuantity as number | undefined,
@@ -405,6 +429,20 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
     success(res, { successCount, failCount, total: rows.length, errors });
   } catch {
     fail(res, 500, '文件解析失败');
+  }
+};
+
+// ============ 按客户查询商机记录 ============
+
+export const getByCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const pipelines = await prisma.salesPipeline.findMany({
+      where: { customerId: req.params.customerId },
+      orderBy: { updatedAt: 'desc' },
+    });
+    success(res, pipelines);
+  } catch {
+    fail(res, 500, '服务器错误');
   }
 };
 

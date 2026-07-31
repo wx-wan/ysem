@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Table, Button, Space, Tag, message, Popconfirm } from 'antd';
+import { Table, Button, Space, Tag, App, Popconfirm } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +30,7 @@ const permApi = {
 
 export default function RolePage() {
   const { t } = useTranslation();
+  const { message } = App.useApp();
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);

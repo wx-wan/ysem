@@ -1,33 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Card, Button, Space, Input, Select, Table, Tag, Popconfirm, message, Upload, Tabs, Modal,
-  Statistic, Row, Col, Empty, Tooltip, Badge,
+  Card, Button, Space, Input, Select, Table, Tag, Popconfirm, App, Upload, Tabs, Modal,
+  Statistic, Row, Col,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
   AppstoreOutlined, UnorderedListOutlined, ImportOutlined,
-  InboxOutlined, RightOutlined, LeftOutlined, TeamOutlined, DollarOutlined, EditOutlined, EyeOutlined,
+  InboxOutlined, EditOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import { useTranslation } from 'react-i18next';
 import { salesApi, SalesItem } from '../api/sales';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
-
-const STAGES = [
-  { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'OPPORTUNITY', label: '商机', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'SAMPLE', label: '样品单', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'ORDER', label: '订单', color: '#10b981', bg: '#ecfdf5' },
-];
-
-const STAGE_LABELS: Record<string, string> = {
-  LEAD: '线索', OPPORTUNITY: '商机', SAMPLE: '样品单', ORDER: '订单',
-};
+import StageButtons, { STAGES } from '../components/sales/StageButtons';
+import KanbanView from '../components/sales/KanbanView';
 
 export default function Sales() {
-  const { t } = useTranslation();
+  const { message } = App.useApp();
   const { format: formatCurrency } = useCurrencyStore();
 
   // 视图模式
@@ -51,6 +41,7 @@ export default function Sales() {
   const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
   const [initialFormStage, setInitialFormStage] = useState<string>('LEAD');
   const [importOpen, setImportOpen] = useState(false);
+  const [importTab, setImportTab] = useState('excel');
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<SalesItem | null>(null);
   const [assignUsers, setAssignUsers] = useState<{ id: string; realName: string }[]>([]);
@@ -161,36 +152,6 @@ export default function Sales() {
     return false; // 阻止 Upload 默认上传
   };
 
-  // ============ 阶段前进/后退按钮 ============
-
-  const StageButtons = ({ item }: { item: SalesItem }) => {
-    const idx = STAGES.findIndex((s) => s.key === item.stage);
-    return (
-      <Space size={4}>
-        {idx > 0 && (
-          <Tooltip title={`退回到${STAGES[idx - 1].label}`}>
-            <Button
-              size="small"
-              type="text"
-              icon={<LeftOutlined />}
-              onClick={() => handleStageChange(item.id, STAGES[idx - 1].key)}
-            />
-          </Tooltip>
-        )}
-        {idx < STAGES.length - 1 && (
-          <Tooltip title={`推进到${STAGES[idx + 1].label}`}>
-            <Button
-              size="small"
-              type="text"
-              icon={<RightOutlined />}
-              onClick={() => handleStageChange(item.id, STAGES[idx + 1].key)}
-            />
-          </Tooltip>
-        )}
-      </Space>
-    );
-  };
-
   // ============ 表格列定义 ============
 
   const columns: ColumnsType<SalesItem> = useMemo(() => [
@@ -226,98 +187,14 @@ export default function Sales() {
         <Space size="small">
           <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handleViewDetail(r.id)}>详情</Button>
           <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>编辑</Button>
-          <StageButtons item={r} />
+          <StageButtons item={r} onStageChange={handleStageChange} />
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
             <Button size="small" type="link" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
     },
-  ], [formatCurrency, refresh]);
-
-  // ============ 看板卡片 ============
-
-  const KanbanCard = ({ item }: { item: SalesItem }) => (
-    <Card
-      hoverable
-      size="small"
-      style={{ marginBottom: 10, borderRadius: 8 }}
-      onClick={() => handleViewDetail(item.id)}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {item.title}
-          </div>
-          <div style={{ color: '#64748b', fontSize: 13, marginBottom: 4 }}>
-            <TeamOutlined style={{ marginRight: 4 }} />
-            {item.companyName}
-          </div>
-          {item.contactName && (
-            <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.contactName}</div>
-          )}
-        </div>
-        <div style={{ textAlign: 'right', flexShrink: 0 }}>
-          {(item.estimatedAmount || item.orderAmount) && (
-            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13, whiteSpace: 'nowrap' }}>
-              <DollarOutlined style={{ fontSize: 11 }} />{' '}
-              {formatCurrency(item.stage === 'ORDER' ? (item.orderAmount || 0) : (item.estimatedAmount || 0))}
-            </div>
-          )}
-          {item.probability && item.stage === 'OPPORTUNITY' && (
-            <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{item.probability}%</div>
-          )}
-        </div>
-      </div>
-      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-          {item.assignee?.realName || '未分配'}
-        </span>
-        <StageButtons item={item} />
-      </div>
-    </Card>
-  );
-
-  // ============ 看板视图 ============
-
-  const KanbanView = () => (
-    <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8 }}>
-      {STAGES.map((stage) => {
-        const col = kanbanData[stage.key] || { title: stage.label, items: [] };
-        return (
-          <div
-            key={stage.key}
-            style={{
-              flex: '1 1 0', minWidth: 280, maxWidth: 380,
-              backgroundColor: stage.bg,
-              borderRadius: 12, padding: 12,
-            }}
-          >
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              marginBottom: 12, padding: '0 4px',
-            }}>
-              <Space>
-                <Badge color={stage.color} />
-                <span style={{ fontWeight: 600, color: stage.color }}>{col.title}</span>
-                <span style={{ color: '#94a3b8', fontSize: 13 }}>({col.items.length})</span>
-              </Space>
-              <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => { setEditingItem(null); fetchAssignUsers(); setInitialFormStage(stage.key); setModalOpen(true); }}>
-                新增
-              </Button>
-            </div>
-            <div style={{ maxHeight: 'calc(100vh - 260px)', overflowY: 'auto', padding: '0 2px' }}>
-              {col.items.length === 0 ? (
-                <Empty description={`暂无${col.title}`} image={Empty.PRESENTED_IMAGE_SIMPLE} />
-              ) : (
-                col.items.map((item) => <KanbanCard key={item.id} item={item} />)
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  ], [formatCurrency]);
 
   // ============ 列表视图 ============
 
@@ -369,65 +246,6 @@ export default function Sales() {
       />
     </Card>
   );
-
-  // ============ 导入弹窗 ============
-
-  const ImportModal = () => {
-    const [importTab, setImportTab] = useState('excel');
-
-    return (
-      <Modal
-        title="导入数据"
-        open={importOpen}
-        onCancel={() => setImportOpen(false)}
-        footer={null}
-        width={600}
-      >
-        <Tabs activeKey={importTab} onChange={setImportTab} items={[
-          {
-            key: 'excel',
-            label: 'Excel 导入',
-            children: (
-              <div>
-                <Upload.Dragger
-                  accept=".xlsx,.xls,.csv"
-                  maxCount={1}
-                  beforeUpload={handleImport}
-                  showUploadList={false}
-                >
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p>点击或拖拽上传 Excel 文件</p>
-                  <p style={{ color: '#94a3b8', fontSize: 12 }}>
-                    支持 .xlsx / .xls / .csv 格式
-                  </p>
-                </Upload.Dragger>
-                <div style={{ marginTop: 16, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#64748b' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
-                  <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
-                  <div>预估金额、预计成交日期、成交概率、样品类型、样品数量、样品状态</div>
-                  <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
-                  <div style={{ marginTop: 6, color: '#f59e0b' }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
-                </div>
-              </div>
-            ),
-          },
-          {
-            key: 'xiaoman',
-            label: '小满 API',
-            children: (
-              <div style={{ textAlign: 'center', padding: 40 }}>
-                <InboxOutlined style={{ fontSize: 48, color: '#94a3b8', marginBottom: 16 }} />
-                <p style={{ color: '#64748b' }}>小满 API 对接功能开发中</p>
-                <p style={{ color: '#94a3b8', fontSize: 12 }}>
-                  后续将支持通过小满开放接口自动同步客户与商机数据
-                </p>
-              </div>
-            ),
-          },
-        ]} />
-      </Modal>
-    );
-  };
 
   // ============ 统计卡片 ============
 
@@ -491,7 +309,67 @@ export default function Sales() {
       </div>
 
       {/* 内容区 */}
-      {viewMode === 'kanban' ? <KanbanView /> : <ListView />}
+      {viewMode === 'kanban' ? (
+        <KanbanView
+          kanbanData={kanbanData}
+          formatCurrency={formatCurrency}
+          onViewDetail={handleViewDetail}
+          onStageChange={handleStageChange}
+          onAdd={(stage) => { setEditingItem(null); fetchAssignUsers(); setInitialFormStage(stage); setModalOpen(true); }}
+        />
+      ) : <ListView />}
+
+      {/* 导入弹窗 */}
+      <Modal
+        title="导入数据"
+        open={importOpen}
+        onCancel={() => setImportOpen(false)}
+        footer={null}
+        width={600}
+      >
+        <Tabs activeKey={importTab} onChange={setImportTab} items={[
+          {
+            key: 'excel',
+            label: 'Excel 导入',
+            children: (
+              <div>
+                <Upload.Dragger
+                  accept=".xlsx,.xls,.csv"
+                  maxCount={1}
+                  beforeUpload={handleImport}
+                  showUploadList={false}
+                >
+                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
+                  <p>点击或拖拽上传 Excel 文件</p>
+                  <p style={{ color: '#94a3b8', fontSize: 12 }}>
+                    支持 .xlsx / .xls / .csv 格式
+                  </p>
+                </Upload.Dragger>
+                <div style={{ marginTop: 16, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#64748b' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
+                  <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
+                  <div>预估金额、预计成交日期、成交概率、样品类型、样品数量、样品状态</div>
+                  <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
+                  <div style={{ marginTop: 6, color: '#f59e0b' }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
+                </div>
+              </div>
+            ),
+          },
+          {
+            key: 'xiaoman',
+            label: '小满 API',
+            children: (
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <InboxOutlined style={{ fontSize: 48, color: '#94a3b8', marginBottom: 16 }} />
+                <p style={{ color: '#64748b' }}>小满 API 对接功能开发中</p>
+                <p style={{ color: '#94a3b8', fontSize: 12 }}>
+                  后续将支持通过小满开放接口自动同步客户与商机数据
+                </p>
+              </div>
+            ),
+          },
+        ]} />
+      </Modal>
 
       {/* 弹窗 */}
       <SalesFormModal
@@ -503,7 +381,6 @@ export default function Sales() {
         onSuccess={refresh}
         api={{ create: salesApi.create, update: salesApi.update }}
       />
-      <ImportModal />
       <SalesDetailDrawer
         open={detailOpen}
         detailItem={detailItem}

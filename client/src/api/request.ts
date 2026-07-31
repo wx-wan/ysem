@@ -1,6 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { message } from 'antd';
 import i18n from '../i18n';
+import { getMessage } from './message-holder';
 
 export interface ApiResponse<T = unknown> {
   code: number;
@@ -52,7 +52,7 @@ request.interceptors.response.use(
       window.location.href = '/login';
     }
     const msg = error.response?.data?.message || i18n.t('error.networkError');
-    message.error(msg);
+    getMessage().error(msg);
     return Promise.reject(error);
   },
 );

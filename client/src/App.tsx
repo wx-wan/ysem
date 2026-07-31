@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { App as AntdApp } from 'antd';
 import { useAuthStore } from './stores/useAuthStore';
+import { setMessageHolder } from './api/message-holder';
 import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
@@ -30,6 +32,10 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const { message } = AntdApp.useApp();
+  // 注入 App.useApp() 的 message 实例，消除静态调用警告
+  setMessageHolder(message);
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />

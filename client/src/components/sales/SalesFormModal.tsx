@@ -15,6 +15,17 @@ const SOURCE_OPTIONS = [
   { label: '小满API', value: 'XIAOMAN' },
 ];
 
+export const INTENT_OPTIONS = [
+  { label: '低意向', value: '低意向' },
+  { label: '中意向', value: '中意向' },
+  { label: '高意向', value: '高意向' },
+  { label: '准成交', value: '准成交' },
+];
+
+export const getIntentLabel = (probability: string | null | undefined): string => {
+  return probability || '-';
+};
+
 interface Props {
   open: boolean;
   editingItem: SalesItem | null;
@@ -145,8 +156,12 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="probability" label="成交概率(%)">
-                <Input type="number" min={0} max={100} suffix="%" />
+              <Form.Item name="probability" label="采购意向">
+                <Select
+                  placeholder="选择意向"
+                  allowClear
+                  options={INTENT_OPTIONS}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>

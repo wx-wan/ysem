@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space,
-  Card, Statistic, Row, Col, message, Popconfirm,
+  Card, Statistic, Row, Col, Popconfirm, App,
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, ReloadOutlined,
+  PlusOutlined, ReloadOutlined,
   ShoppingCartOutlined, DeleteOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { orderApi, Order } from '../api/customers';
@@ -22,6 +22,7 @@ const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
 
 export default function OrdersPage() {
   const { format: formatCurrency, formatWithDate } = useCurrencyStore();
+  const { message } = App.useApp();
 
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Order[]>([]);

@@ -16,7 +16,7 @@ async function main() {
       country: "美国",
       tags: "战略客户,年框协议,亚马逊",
       isKeyAccount: true,
-      intentLevel: "READY" as const,
+      intentLevel: "准成交" as const,
       ownerId,
     },
     {
@@ -27,7 +27,7 @@ async function main() {
       country: "瑞典",
       tags: "战略客户,北欧市场",
       isKeyAccount: true,
-      intentLevel: "READY" as const,
+      intentLevel: "准成交" as const,
       ownerId,
     },
     {
@@ -38,7 +38,7 @@ async function main() {
       country: "法国",
       tags: "高端品牌,定制包装",
       isKeyAccount: false,
-      intentLevel: "HIGH" as const,
+      intentLevel: "高意向" as const,
       ownerId,
     },
     {
@@ -49,7 +49,7 @@ async function main() {
       country: "日本",
       tags: "品质严格,JIS标准",
       isKeyAccount: true,
-      intentLevel: "READY" as const,
+      intentLevel: "准成交" as const,
       ownerId,
     },
     {
@@ -60,7 +60,7 @@ async function main() {
       country: "意大利",
       tags: "设计风格,样品频繁",
       isKeyAccount: false,
-      intentLevel: "MEDIUM" as const,
+      intentLevel: "中意向" as const,
       ownerId,
     },
     {
@@ -71,7 +71,7 @@ async function main() {
       country: "法国",
       tags: "连锁超市,大批量",
       isKeyAccount: false,
-      intentLevel: "HIGH" as const,
+      intentLevel: "高意向" as const,
       ownerId,
     },
     {
@@ -82,7 +82,7 @@ async function main() {
       country: "澳大利亚",
       tags: "打样多,潜力客户",
       isKeyAccount: false,
-      intentLevel: "MEDIUM" as const,
+      intentLevel: "中意向" as const,
       ownerId,
     },
     {
@@ -93,7 +93,7 @@ async function main() {
       country: "日本",
       tags: "新客户,快消品",
       isKeyAccount: false,
-      intentLevel: "LOW" as const,
+      intentLevel: "低意向" as const,
       ownerId,
     },
   ];

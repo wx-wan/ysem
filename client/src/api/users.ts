@@ -1,4 +1,5 @@
 import request from './request';
+import type { ApiResponse } from './request';
 
 export interface User {
   id: string;
@@ -13,5 +14,5 @@ export interface User {
 
 export const userApi = {
   list: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
-    request.get<{ list: User[]; total: number }>('/users', { params }),
+    request.get<ApiResponse<{ list: User[]; total: number }>>('/users', { params }),
 };

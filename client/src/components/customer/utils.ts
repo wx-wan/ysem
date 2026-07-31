@@ -2,13 +2,13 @@ import type { Customer } from '../../api/customers';
 
 // ========== 客户等级（A/B/C/D 四级） ==========
 export function getGrade(customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; tagColor: string } {
-  if (customer.isKeyAccount && customer.intentLevel === 'HIGH') {
+  if (customer.isKeyAccount && customer.intentLevel === '高意向') {
     return { grade: 'A', tagColor: 'red' };
   }
-  if (customer.isKeyAccount || customer.intentLevel === 'HIGH') {
+  if (customer.isKeyAccount || customer.intentLevel === '高意向') {
     return { grade: 'B', tagColor: 'orange' };
   }
-  if (customer.intentLevel === 'MEDIUM') {
+  if (customer.intentLevel === '中意向') {
     return { grade: 'C', tagColor: 'gold' };
   }
   return { grade: 'D', tagColor: 'green' };
