@@ -3,7 +3,6 @@ import {
   App, Spin, theme, Row, Col, Pagination,
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
-import { orderApi, Order } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -12,7 +11,7 @@ import CustomerStats from '../components/customer/CustomerStats';
 import CustomerToolbar from '../components/customer/CustomerToolbar';
 import CustomerCard from '../components/customer/CustomerCard';
 import CustomerList from '../components/customer/CustomerList';
-import CustomerDetailDrawer from '../components/CustomerDetailDrawer';
+import CustomerDetailDrawer from '../components/customer/CustomerDetailDrawer';
 import CustomerFormModal from '../components/customer/CustomerFormModal';
 import TransferModal from '../components/customer/TransferModal';
 import ImportModal from '../components/customer/ImportModal';
@@ -46,7 +45,6 @@ export default function CustomersPage() {
   // 详情抽屉
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
-  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
 
   // 转交
@@ -174,6 +172,27 @@ export default function CustomersPage() {
     fetchData();
   }, [fetchData]);
 
+  // ========== 抽屉子操作回调 ==========
+  const handleDetailRefresh = useCallback((_customerId: string) => {
+    fetchData();
+  }, [fetchData]);
+
+  const openTransfer = useCallback((customerId: string) => {
+    const found = list.find((c) => c.id === customerId);
+    if (found) {
+      setTransferCustomer(found);
+      setTransferModalOpen(true);
+    }
+  }, [list]);
+
+  const openCreateOrder = useCallback((customerId: string) => {
+    const found = list.find((c) => c.id === customerId);
+    if (found) {
+      setOrderCustomer(found);
+      setOrderModalOpen(true);
+    }
+  }, [list]);
+
   // 加载用户列表（用于筛选和转交）
   useEffect(() => {
     userApi.list({ pageSize: 200 }).then((res) => {
@@ -183,17 +202,14 @@ export default function CustomersPage() {
 
   // ========== 打开详情 ==========
   const openDetail = useCallback(async (customer: Customer) => {
-    setDetailCustomer(null);
-    setCustomerOrders([]);
+    setDetailCustomer(customer);
     setDrawerOpen(true);
     setDetailLoading(true);
     try {
-      const [detail, orders] = await Promise.all([
-        customerApi.getById(customer.id),
-        orderApi.listByCustomer(customer.id),
-      ]);
-      setDetailCustomer(detail.data.data);
-      setCustomerOrders(orders.data.data);
+      const detail = await customerApi.getById(customer.id);
+      if (detail.data?.data) {
+        setDetailCustomer(detail.data.data);
+      }
     } catch {
       message.error('加载详情失败');
     } finally {
@@ -207,27 +223,11 @@ export default function CustomersPage() {
     setModalOpen(true);
   }, []);
 
-  // ========== 转交 ==========
-  const openTransfer = useCallback((customerId: string) => {
-    const customer = list.find(c => c.id === customerId) || detailCustomer;
-    setTransferCustomer(customer);
-    setTransferModalOpen(true);
-  }, [list, detailCustomer]);
-
-  // ========== 订单弹窗 ==========
-  const openCreateOrder = useCallback((customerId: string) => {
-    const customer = list.find(c => c.id === customerId) || null;
-    setOrderCustomer(customer);
-    setOrderModalOpen(true);
-  }, [list]);
-
   const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
     if (detailCustomer) {
       const fresh = await customerApi.getById(detailCustomer.id);
       setDetailCustomer(fresh.data.data);
-      const orders = await orderApi.listByCustomer(detailCustomer.id);
-      setCustomerOrders(orders.data.data);
     }
     fetchData();
   }, [detailCustomer, fetchData]);
@@ -264,18 +264,7 @@ export default function CustomersPage() {
     [userList]
   );
 
-  // 详情刷新回调
-  const handleDetailRefresh = useCallback(async (customerId: string) => {
-    fetchData();
-    if (detailCustomer?.id === customerId) {
-      const [detail, orders] = await Promise.all([
-        customerApi.getById(customerId),
-        orderApi.listByCustomer(customerId),
-      ]);
-      setDetailCustomer(detail.data.data);
-      setCustomerOrders(orders.data.data);
-    }
-  }, [fetchData, detailCustomer]);
+
 
   // ========== 分页器 ==========
   const renderPagination = useMemo(() => {
@@ -365,7 +354,7 @@ export default function CustomersPage() {
         onClose={() => setDrawerOpen(false)}
         loading={detailLoading}
         customer={detailCustomer}
-        orders={customerOrders}
+        orders={[]}
         user={user}
         onRefresh={handleDetailRefresh}
         onTransfer={openTransfer}

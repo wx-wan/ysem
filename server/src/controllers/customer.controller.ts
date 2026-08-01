@@ -911,6 +911,50 @@ export const getCountries = async (_req: Request, res: Response, next: NextFunct
 
 // ========== 报告统计 ==========
 
+// ========== 更新客户标签 ==========
+export const updateTags = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const username = (req as any).username;
+    const userId = (req as any).userId;
+    const roleCode = (req as any).roleCode;
+    const { tags } = req.body;
+
+    const existing = await prisma.customer.findUnique({ where: { id } });
+    if (!existing) return error(res, "客户不存在", 404);
+
+    if (existing.ownerId !== userId && roleCode !== 'admin') {
+      return error(res, "无权编辑该客户", 403);
+    }
+
+    const newTags = Array.isArray(tags) ? tags.join(',') : (tags || '');
+
+    const customer = await prisma.customer.update({
+      where: { id },
+      data: { tags: newTags },
+    });
+
+    if (newTags !== (existing.tags || '')) {
+      await activityLogger.log({
+        userId,
+        username,
+        action: "UPDATED",
+        module: "customer",
+        targetId: id,
+        target: existing.companyName,
+        detail: "更新客户标签",
+        customerId: id,
+      });
+    }
+
+    success(res, customer, "标签更新成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 报告统计 ==========
+
 export const getReportStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = (req as any).userId;

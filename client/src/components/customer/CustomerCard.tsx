@@ -1,5 +1,5 @@
 import { useMemo, memo } from 'react';
-import { Card, Avatar, Tag } from 'antd';
+import { Card, Avatar } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
@@ -7,24 +7,9 @@ import FlagIcon from '../FlagIcon';
 import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
 import { getGrade, tagColorToHex } from './utils';
+import CustomerTags from './CustomerTags';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
-
-// 解析单个标签字符串
-function parseTag(tagStr: string): { name: string; color?: string } {
-  const idx = tagStr.lastIndexOf('#');
-  if (idx > 0) {
-    return { name: tagStr.slice(0, idx), color: tagStr.slice(idx + 1) };
-  }
-  return { name: tagStr };
-}
-
-const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
-
-function filterCustomTags(tags?: string): { name: string; color?: string }[] {
-  if (!tags) return [];
-  return tags.split(',').filter(Boolean).map(parseTag).filter((t) => !SYSTEM_TAGS.includes(t.name));
-}
 
 interface CustomerCardProps {
   customer: Customer;
@@ -61,8 +46,6 @@ const CustomerCard = memo(function CustomerCard({
     const intentMap: Record<string, string> = { A: '准成交', B: '高意向', C: '中意向', D: '低意向' };
     return hasPipelines ? `未成交客户 · ${intentMap[grade.grade] || '低意向'}` : '未成交客户';
   }, [customer.firstOrderDate, hasPipelines, grade.grade]);
-
-  const customTags = useMemo(() => filterCustomTags(customer.tags), [customer.tags]);
 
   // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
   // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
@@ -313,18 +296,7 @@ const CustomerCard = memo(function CustomerCard({
 
         {/* 底部分隔线 + 标签 */}
         <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minWidth: 0, alignItems: 'center' }}>
-            {customTags.map((tag) => {
-              const c = tagColorToHex(tag.color, token);
-              return (
-                <Tag key={tag.name} bordered={false} style={{
-                  margin: 0, borderRadius: token.borderRadiusSM, fontSize: 11,
-                  padding: '1px 8px', backgroundColor: token.colorBgContainer,
-                  color: c, border: `1px solid ${c}`,
-                }}>{tag.name}</Tag>
-              );
-            })}
-          </div>
+          <CustomerTags tags={customer.tags} token={token} />
           <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', marginLeft: 8 }}>
             {dayjs(customer.createdAt).format('YYYY-MM-DD')}
           </div>

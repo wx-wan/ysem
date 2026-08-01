@@ -144,6 +144,10 @@ export const customerApi = {
     });
   },
 
+  // 专用的标签更新接口
+  updateTags: (id: string, tags: string) =>
+    request.patch<ApiResponse<Customer>>(`/customers/${id}/tags`, { tags }),
+
   report: () =>
     request.get<ApiResponse<{
       leadCount: number;

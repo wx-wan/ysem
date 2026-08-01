@@ -167,6 +167,34 @@ router.post("/:id/transfer", ctrl.transfer);
 
 /**
  * @swagger
+ * /api/customers/{id}/tags:
+ *   patch:
+ *     tags: [客户管理]
+ *     summary: 更新客户标签
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tags]
+ *             properties:
+ *               tags:
+ *                 type: string
+ *                 description: 标签字符串，格式 "name#color,name#color"
+ *     responses:
+ *       200:
+ *         description: 标签更新成功
+ */
+router.patch("/:id/tags", ctrl.updateTags);
+
+/**
+ * @swagger
  * /api/customers/{id}:
  *   get:
  *     tags: [客户管理]

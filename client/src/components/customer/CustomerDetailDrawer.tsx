@@ -11,26 +11,16 @@ import {
   ClockCircleOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import CountryDisplay from './CountryDisplay';
-import CountrySelect from './CountrySelect';
-import KeyAccountStar from './KeyAccountStar';
-import TagSelector from './TagSelector';
-import { getCustomerTypeLabel } from './customer/utils';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
-import { customerApi } from '../api/customers';
-import { salesApi, SalesItem } from '../api/sales';
-import { userApi, User } from '../api/users';
-import type { Customer, Order, CustomerActivity } from '../types';
+import CountryDisplay from '../CountryDisplay';
+import KeyAccountStar from '../KeyAccountStar';
+import { getCustomerTypeLabel } from './utils';
+import { useCurrencyStore } from '../../stores/useCurrencyStore';
+import { customerApi, Customer, Order, CustomerActivity } from '../../api/customers';
+import { salesApi, SalesItem } from '../../api/sales';
+import { userApi, User } from '../../api/users';
+import CustomerFormModal from './CustomerFormModal';
 
 const { Text } = Typography;
-
-// 采购意向选项（直接存储中文标签）
-const INTENT_OPTIONS = [
-  { label: '低意向', value: '低意向' },
-  { label: '中意向', value: '中意向' },
-  { label: '高意向', value: '高意向' },
-  { label: '准成交', value: '准成交' },
-];
 
 interface CustomerDetailDrawerProps {
   open: boolean;
@@ -59,9 +49,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   const { token } = theme.useToken();
 
   // 内部状态
-  const [editing, setEditing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editValues, setEditValues] = useState<Record<string, any>>({});
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [showAllActivities, setShowAllActivities] = useState(false);
   const [pipelines, setPipelines] = useState<SalesItem[]>([]);
   const [pipelineLoading, setPipelineLoading] = useState(false);
@@ -189,39 +177,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
     }
   }, [loadPipelines, onRefresh, customer?.id]);
 
-  // 进入编辑
-  const enterEdit = useCallback(() => {
-    if (!customer) return;
-    setEditValues({
-      companyName: customer.companyName || '',
-      contactName: customer.contactName || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
-      country: customer.country || '',
-      source: customer.source || '',
-      isKeyAccount: customer.isKeyAccount || false,
-      tags: customer.tags || '',
-      notes: customer.notes || '',
-    });
-    setEditing(true);
-  }, [customer]);
-
-  // 保存
-  const handleSave = useCallback(async () => {
-    if (!customer) return;
-    setSaving(true);
-    try {
-      await customerApi.update(customer.id, editValues as any);
-      message.success('保存成功');
-      setEditing(false);
-      onRefresh(customer.id);
-    } catch {
-      message.error('保存失败');
-    } finally {
-      setSaving(false);
-    }
-  }, [customer, editValues, onRefresh]);
-
   // 认领
   const handleClaim = useCallback(async () => {
     if (!customer) return;
@@ -251,7 +206,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
 
   // 重置内部状态
   const handleClose = useCallback(() => {
-    setEditing(false);
     setShowAllActivities(false);
     onClose();
   }, [onClose]);
@@ -291,56 +245,47 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       loading={loading}
       extra={
         <Space>
-          {editing ? (
+          {isPublic ? (
             <>
-              <Button onClick={() => setEditing(false)}>取消</Button>
-              <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
-            </>
-          ) : (
-            <>
-              {isPublic ? (
-                <>
-                  <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
-                    认领
+              <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
+                认领
+              </Button>
+              {isAdmin && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Select
+                    placeholder="选择业务员"
+                    value={assignUserId || undefined}
+                    onChange={(v) => setAssignUserId(v)}
+                    size="middle"
+                    style={{ minWidth: 140 }}
+                    showSearch
+                    filterOption={(input: string, option: any) =>
+                      option?.label?.toLowerCase().includes(input.toLowerCase())
+                    }
+                    options={userList
+                      .filter((u: User) => u.status === 'ACTIVE')
+                      .map((u: User) => ({ value: u.id, label: u.realName || u.username }))}
+                  />
+                  <Button loading={assigning} disabled={!assignUserId} onClick={handleAssign}>
+                    指派
                   </Button>
-                  {isAdmin && (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <Select
-                        placeholder="选择业务员"
-                        value={assignUserId || undefined}
-                        onChange={(v) => setAssignUserId(v)}
-                        size="middle"
-                        style={{ minWidth: 140 }}
-                        showSearch
-                        filterOption={(input: string, option: any) =>
-                          option?.label?.toLowerCase().includes(input.toLowerCase())
-                        }
-                        options={userList
-                          .filter((u: User) => u.status === 'ACTIVE')
-                          .map((u: User) => ({ value: u.id, label: u.realName || u.username }))}
-                      />
-                      <Button loading={assigning} disabled={!assignUserId} onClick={handleAssign}>
-                        指派
-                      </Button>
-                    </div>
-                  )}
-                </>
-              ) : canOperate ? (
-                  <>
-                    <Button icon={<SwapOutlined />} onClick={() => onTransfer(customer.id)}>转交</Button>
-                    <Button type="primary" onClick={enterEdit}>编辑</Button>
-                    <Popconfirm title="确认释放到公海？" onConfirm={handleRelease}>
-                      <Button>释放</Button>
-                    </Popconfirm>
-                    <Popconfirm title="确认删除？" onConfirm={handleDelete}>
-                      <Button danger>删除</Button>
-                    </Popconfirm>
-                  </>
-                ) : (
-                  <Tag color="warning" bordered={false}>无操作权限</Tag>
-                )}
+                </div>
+              )}
             </>
-          )}
+          ) : canOperate ? (
+              <>
+                <Button icon={<SwapOutlined />} onClick={() => onTransfer(customer.id)}>转交</Button>
+                <Button type="primary" onClick={() => setEditModalOpen(true)}>编辑</Button>
+                <Popconfirm title="确认释放到公海？" onConfirm={handleRelease}>
+                  <Button>释放</Button>
+                </Popconfirm>
+                <Popconfirm title="确认删除？" onConfirm={handleDelete}>
+                  <Button danger>删除</Button>
+                </Popconfirm>
+              </>
+            ) : (
+              <Tag color="warning" bordered={false}>无操作权限</Tag>
+            )}
         </Space>
       }
     >
@@ -351,151 +296,69 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       ) : (
         <div>
           {/* ===== 基本信息卡片 ===== */}
-          {editing ? (
-            <Card size="small" title="编辑客户信息" style={{ marginBottom: 16, borderRadius: 8 }}>
-              <Row gutter={[16, 12]}>
-                <Col span={12}>
-                  <Text type="secondary">公司名称</Text>
-                  <Input
-                    value={editValues.companyName}
-                    onChange={(e) => setEditValues({ ...editValues, companyName: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">联系人</Text>
-                  <Input
-                    value={editValues.contactName}
-                    onChange={(e) => setEditValues({ ...editValues, contactName: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">邮箱</Text>
-                  <Input
-                    value={editValues.email}
-                    onChange={(e) => setEditValues({ ...editValues, email: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">电话</Text>
-                  <Input
-                    value={editValues.phone}
-                    onChange={(e) => setEditValues({ ...editValues, phone: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">国家</Text>
-                  <CountrySelect
-                    value={editValues.country}
-                    onChange={(v) => setEditValues({ ...editValues, country: v })}
-                    style={{ marginTop: 4, width: '100%' }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">来源</Text>
-                  <Input
-                    value={editValues.source}
-                    onChange={(e) => setEditValues({ ...editValues, source: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">标签</Text>
-                  <TagSelector
-                    value={editValues.tags}
-                    onChange={(v: string) => setEditValues({ ...editValues, tags: v })}
-                    placeholder="输入标签"
-                  />
-                </Col>
-                <Col span={12}>
-                  <Text type="secondary">重点客户</Text>
-                  <div style={{ marginTop: 4 }}>
-                    <KeyAccountStar
-                      isKeyAccount={editValues.isKeyAccount || false}
-                      customerId={customer?.id}
-                      onToggle={() => setEditValues({ ...editValues, isKeyAccount: !editValues.isKeyAccount })}
-                    />
-                  </div>
-                </Col>
-                <Col span={24}>
-                  <Text type="secondary">备注</Text>
-                  <Input.TextArea
-                    rows={2}
-                    value={editValues.notes}
-                    onChange={(e) => setEditValues({ ...editValues, notes: e.target.value })}
-                    style={{ marginTop: 4 }}
-                  />
-                </Col>
-              </Row>
-            </Card>
-          ) : (
-            <Card
-              size="small"
-              title={<span><UserOutlined /> 基本信息</span>}
-              style={{ marginBottom: 16, borderRadius: 8 }}
-            >
-              <Descriptions column={2} size="small" colon={false}>
-                <Descriptions.Item label={<><EnvironmentOutlined /> 国家</>}>
-                  <CountryDisplay country={customer.country} />
-                </Descriptions.Item>
-                <Descriptions.Item label={<><GlobalOutlined /> 来源</>}>
-                  {customer.source || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label={<><UserOutlined /> 联系人</>}>
-                  {customer.contactName || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label={<><PhoneOutlined /> 电话</>}>
-                  {customer.phone || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label={<><MailOutlined /> 邮箱</>}>
-                  {customer.email || '-'}
-                </Descriptions.Item>
-                <Descriptions.Item label={<><CalendarOutlined /> 创建时间</>}>
-                  {dayjs(customer.createdAt).format('YYYY-MM-DD')}
-                </Descriptions.Item>
-              </Descriptions>
-              {/* 标签 */}
-              <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-                {(() => {
-                  const tl = getCustomerTypeLabel(customer);
-                  if (tl) return <Tag bordered={false} color={tl.color}>{tl.label}</Tag>;
-                  return null;
-                })()}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Text type="secondary">重点客户</Text>
-                  <KeyAccountStar
-                    isKeyAccount={customer.isKeyAccount || false}
-                    customerId={customer.id}
-                    onToggle={() => onRefresh(customer.id)}
-                  />
-                </div>
+          <Card
+            size="small"
+            title={<span><UserOutlined /> 基本信息</span>}
+            style={{ marginBottom: 16, borderRadius: 8 }}
+          >
+            <Descriptions column={2} size="small" colon={false}>
+              <Descriptions.Item label={<><EnvironmentOutlined /> 国家</>}>
+                <CountryDisplay country={customer.country} />
+              </Descriptions.Item>
+              <Descriptions.Item label={<><GlobalOutlined /> 来源</>}>
+                {customer.source || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={<><UserOutlined /> 联系人</>}>
+                {customer.contactName || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={<><PhoneOutlined /> 电话</>}>
+                {customer.phone || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={<><MailOutlined /> 邮箱</>}>
+                {customer.email || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item label={<><CalendarOutlined /> 创建时间</>}>
+                {dayjs(customer.createdAt).format('YYYY-MM-DD')}
+              </Descriptions.Item>
+            </Descriptions>
+            {/* 标签 */}
+            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              {(() => {
+                const tl = getCustomerTypeLabel(customer);
+                if (tl) return <Tag bordered={false} color={tl.color}>{tl.label}</Tag>;
+                return null;
+              })()}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Text type="secondary">重点客户</Text>
+                <KeyAccountStar
+                  isKeyAccount={customer.isKeyAccount || false}
+                  customerId={customer.id}
+                  onToggle={() => onRefresh(customer.id)}
+                />
               </div>
-              {/* 标签列表：只展示自定义标签，过滤系统标签 */}
-              {customer.tags && (
-                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                  {customer.tags.split(',').filter(Boolean).filter((tagStr: string) => {
-                    const idx = tagStr.lastIndexOf('#');
-                    const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
-                    const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
-                    return !SYSTEM_TAGS.includes(name);
-                  }).map((tagStr: string) => {
-                    const idx = tagStr.lastIndexOf('#');
-                    const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
-                    const color = idx > 0 ? `#${tagStr.slice(idx + 1)}` : undefined;
-                    return <Tag key={name} bordered={false} color={color}>{name}</Tag>;
-                  })}
-                </div>
-              )}
-              {customer.notes && (
-                <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: '#fafafa', borderRadius: 6, fontSize: 13 }}>
-                  <Text type="secondary"><FileTextOutlined /> 备注：</Text>{customer.notes}
-                </div>
-              )}
-            </Card>
-          )}
+            </div>
+            {/* 标签列表：只展示自定义标签，过滤系统标签 */}
+            {customer.tags && (
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                {customer.tags.split(',').filter(Boolean).filter((tagStr: string) => {
+                  const idx = tagStr.lastIndexOf('#');
+                  const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
+                  const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
+                  return !SYSTEM_TAGS.includes(name);
+                }).map((tagStr: string) => {
+                  const idx = tagStr.lastIndexOf('#');
+                  const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
+                  const color = idx > 0 ? `#${tagStr.slice(idx + 1)}` : undefined;
+                  return <Tag key={name} bordered={false} color={color}>{name}</Tag>;
+                })}
+              </div>
+            )}
+            {customer.notes && (
+              <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: '#fafafa', borderRadius: 6, fontSize: 13 }}>
+                <Text type="secondary"><FileTextOutlined /> 备注：</Text>{customer.notes}
+              </div>
+            )}
+          </Card>
 
           {/* ===== 商机记录 ===== */}
           <Card
@@ -567,7 +430,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           {/* ===== 订单记录 ===== */}
           <Card
             size="small"
-            title={<span><ShoppingCartOutlined /> 订单记录 ({orders.length})</span>}
+            title={<span><ShoppingCartOutlined /> 订单记录 ({orders?.length ?? 0})</span>}
             style={{ marginBottom: 16, borderRadius: 8 }}
             extra={
               !isPublic && canOperate ? (
@@ -579,7 +442,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
               ) : null
             }
           >
-            {orders.length === 0 ? (
+            {(!orders || orders.length === 0) ? (
               <Text type="secondary">暂无订单</Text>
             ) : (
               <Table
@@ -587,7 +450,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 columns={orderColumns}
                 rowKey="id"
                 size="small"
-                pagination={orders.length > 10 ? { pageSize: 10, size: 'small' } : false}
+                pagination={orders?.length > 10 ? { pageSize: 10, size: 'small' } : false}
               />
             )}
           </Card>
@@ -667,7 +530,12 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 placeholder="选择意向"
                 allowClear
                 style={{ width: '100%' }}
-                options={[...INTENT_OPTIONS]}
+                options={[
+                  { label: '低意向', value: '低意向' },
+                  { label: '中意向', value: '中意向' },
+                  { label: '高意向', value: '高意向' },
+                  { label: '准成交', value: '准成交' },
+                ]}
               />
             </Col>
           </Row>
@@ -681,6 +549,17 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           </div>
         </div>
       </Modal>
+
+      {/* 编辑客户弹窗 */}
+      <CustomerFormModal
+        open={editModalOpen}
+        editingCustomer={customer}
+        onClose={() => setEditModalOpen(false)}
+        onSuccess={() => {
+          setEditModalOpen(false);
+          onRefresh(customer.id);
+        }}
+      />
     </Drawer>
   );
 });

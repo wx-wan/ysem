@@ -183,6 +183,7 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 | 客户 | POST | /api/customers/import | 批量导入客户 |
 | 客户 | POST | /api/customers/:id/transfer | 转交客户 |
 | 客户 | GET | /api/customers/report | 获取报告统计数据 |
+| 客户 | PATCH | /api/customers/:id/tags | 单独更新客户标签 |
 | 订单 | GET | /api/orders | 订单列表 |
 | 订单 | POST | /api/orders | 创建订单 |
 | 订单 | PUT | /api/orders/:id | 更新订单 |
@@ -211,6 +212,18 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 - **客户卡片**：每页展示数量从 9 调整为 6
 - **数据库**：客户国家分布调整为 55% 美国、30% 中国、15% 欧洲各国随机分配
 - **依赖**：React Router 添加 v7 过渡标志 (startTransition / relativeSplatPath)
+
+### 2026-08-01 (续)
+
+- **标签组件统一**：卡片 (`CustomerCard`)、列表 (`CustomerList`) 与客户详情抽屉统一复用同一套标签组件
+  - 展示：`CustomerTags`（标签渲染，自动过滤系统标签：重点客户/未成交客户/本年度新客/往年老客）
+  - 编辑：`TagSelector`（新增/删除/选色，数据格式 `"name#color"`）
+  - 新增 `CustomerTags.tsx` 作为共享展示组件，抽离 `filterCustomTags` / `parseAllTags` 工具函数
+- **标签更新后端接口**：新增 `PATCH /api/customers/:id/tags`，仅更新标签字段并写入操作日志，前端对应 `customerApi.updateTags()`
+- **客户详情抽屉交互优化**：
+  - 移除抽屉内的内联编辑表单（展示/编辑两态切换），点击"编辑客户"改为弹出 `CustomerFormModal` 弹窗，编辑成功后自动刷新详情并停留在卡片所在页面
+  - 进入抽屉时自动拉取最新客户数据
+  - 文件位置从 `components/CustomerDetailDrawer.tsx` 移至 `components/customer/CustomerDetailDrawer.tsx`，与其他客户组件归类一致
 
 ### 历史更新
 

@@ -1,10 +1,11 @@
 import { useMemo, memo } from 'react';
-import { Table, Tag, Avatar, Space } from 'antd';
+import { Table, Avatar, Space } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
 import type { Customer } from '../../api/customers';
 import { getGrade, tagColorToHex } from './utils';
+import CustomerTags, { filterCustomTags } from './CustomerTags';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
 
@@ -96,23 +97,8 @@ const CustomerList = memo(function CustomerList({
       dataIndex: 'tags',
       key: 'tags',
       render: (tags: string) => {
-        if (!tags) return '-';
-        const tagList = tags.split(',').filter(Boolean);
-        return (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-            {tagList.map((tag) => {
-              const name = tag.includes('#') ? tag.slice(0, tag.lastIndexOf('#')) : tag;
-              const colorPart = tag.includes('#') ? tag.slice(tag.lastIndexOf('#') + 1) : undefined;
-              const c = tagColorToHex(colorPart, token);
-              return (
-                <Tag key={tag} bordered={false} style={{
-                  margin: 0, borderRadius: token.borderRadiusSM, fontSize: 11,
-                  padding: '1px 8px', color: c, border: `1px solid ${c}`,
-                }}>{name}</Tag>
-              );
-            })}
-          </div>
-        );
+        if (!tags || filterCustomTags(tags).length === 0) return '-';
+        return <CustomerTags tags={tags} token={token} />;
       },
     },
   ], [token, onListUpdate, formatCurrency]);
