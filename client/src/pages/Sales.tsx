@@ -9,16 +9,19 @@ import {
   InboxOutlined, EditOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { theme } from 'antd';
 import { salesApi, SalesItem } from '../api/sales';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 import StageButtons, { STAGES } from '../components/sales/StageButtons';
+import { getStage } from '../components/sales/stages';
 import KanbanView from '../components/sales/KanbanView';
 
 export default function Sales() {
   const { message } = App.useApp();
   const { format: formatCurrency } = useCurrencyStore();
+  const { token } = theme.useToken();
 
   // 视图模式
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
@@ -161,8 +164,8 @@ export default function Sales() {
     {
       title: '阶段', dataIndex: 'stage', width: 90,
       render: (s: string) => {
-        const st = STAGES.find((x) => x.key === s);
-        return <Tag color={st?.color}>{st?.label || s}</Tag>;
+        const st = getStage(s);
+        return <Tag color={st?.tagColor} bordered={false}>{st?.label || s}</Tag>;
       },
     },
     {
@@ -199,7 +202,7 @@ export default function Sales() {
   // ============ 列表视图 ============
 
   const ListView = () => (
-    <Card variant="borderless" style={{ borderRadius: 12 }}>
+    <Card variant="borderless" style={{ borderRadius: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap>
           <Select
@@ -269,13 +272,14 @@ export default function Sales() {
             <Card
               variant="borderless"
               size="small"
-              style={{ borderRadius: 12, cursor: 'pointer', background: stage.bg }}
+              style={{ borderRadius: 16, cursor: 'pointer', background: stage.bg, border: '1px solid transparent', transition: 'border-color .2s' }}
+              hoverable
               onClick={() => { setViewMode('list'); setFilterStage(stage.key); setPage(1); }}
             >
               <Statistic
                 title={<span style={{ color: stage.color, fontSize: 13 }}>{stage.label}</span>}
                 value={stats[stage.key] || 0}
-                valueStyle={{ color: stage.color, fontSize: 24 }}
+                valueStyle={{ color: stage.color, fontSize: 26, fontWeight: 700 }}
               />
             </Card>
           </Col>
@@ -341,16 +345,16 @@ export default function Sales() {
                 >
                   <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                   <p>点击或拖拽上传 Excel 文件</p>
-                  <p style={{ color: '#94a3b8', fontSize: 12 }}>
+                  <p style={{ color: token.colorTextTertiary, fontSize: 12 }}>
                     支持 .xlsx / .xls / .csv 格式
                   </p>
                 </Upload.Dragger>
-                <div style={{ marginTop: 16, padding: '12px 16px', background: '#f8fafc', borderRadius: 8, fontSize: 12, color: '#64748b' }}>
+                <div style={{ marginTop: 16, padding: '12px 16px', background: token.colorFillQuaternary, borderRadius: 12, fontSize: 12, color: token.colorTextSecondary }}>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
                   <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
                   <div>预估金额、预计成交日期、成交概率、样品类型、样品数量、样品状态</div>
                   <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
-                  <div style={{ marginTop: 6, color: '#f59e0b' }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
+                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
                 </div>
               </div>
             ),
@@ -360,9 +364,9 @@ export default function Sales() {
             label: '小满 API',
             children: (
               <div style={{ textAlign: 'center', padding: 40 }}>
-                <InboxOutlined style={{ fontSize: 48, color: '#94a3b8', marginBottom: 16 }} />
-                <p style={{ color: '#64748b' }}>小满 API 对接功能开发中</p>
-                <p style={{ color: '#94a3b8', fontSize: 12 }}>
+                <InboxOutlined style={{ fontSize: 48, color: token.colorTextTertiary, marginBottom: 16 }} />
+                <p style={{ color: token.colorTextSecondary }}>小满 API 对接功能开发中</p>
+                <p style={{ color: token.colorTextTertiary, fontSize: 12 }}>
                   后续将支持通过小满开放接口自动同步客户与商机数据
                 </p>
               </div>

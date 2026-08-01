@@ -1,17 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
-  Drawer, Space, Avatar, Tag, Button, Popconfirm, Popover, Typography,
-  Row, Col, Card, Descriptions, Table, Input, InputNumber,
-  Spin, theme, Modal, App, Select, DatePicker,
+  Drawer, Space, Tag, Button, Popconfirm, Typography,
+  Row, Col, Card, Table, Input, InputNumber,
+  Spin, theme, Modal, App, Select, DatePicker, Timeline, Empty,
 } from 'antd';
 import {
   UserAddOutlined, ShoppingCartOutlined,
-  GlobalOutlined, MailOutlined, PhoneOutlined, EnvironmentOutlined,
-  UserOutlined, CalendarOutlined, FileTextOutlined,
+  UserOutlined,
   ClockCircleOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import CountryDisplay from '../CountryDisplay';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { customerApi, Customer, Order, CustomerActivity } from '../../api/customers';
 import { salesApi, SalesItem } from '../../api/sales';
@@ -224,61 +222,17 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
 
   return (
     <Drawer
-      title={
-        <Space>
-              {isPublic ? (
-                <Tag color="default" bordered={false}>公海</Tag>
-              ) : (
-                <Popover content={`负责人：${customer.owner?.realName || customer.owner?.username}`}>
-                  <Avatar size="small" style={{ backgroundColor: '#1677ff', cursor: 'default' }}>
-                    {(customer.owner?.realName || customer.owner?.username)?.[0]}
-                  </Avatar>
-                </Popover>
-              )}
-          <span>{customer.companyName}</span>
-        </Space>
-      }
       open={open}
       onClose={handleClose}
-      width={680}
-      styles={{ wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
-      loading={loading}
-      extra={
-        <Space>
-          {isPublic ? (
-            <>
-              <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
-                认领
-              </Button>
-              {isAdmin && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <Select
-                    placeholder="选择业务员"
-                    value={assignUserId || undefined}
-                    onChange={(v) => setAssignUserId(v)}
-                    size="middle"
-                    style={{ minWidth: 140 }}
-                    showSearch
-                    filterOption={(input: string, option: any) =>
-                      option?.label?.toLowerCase().includes(input.toLowerCase())
-                    }
-                    options={userList
-                      .filter((u: User) => u.status === 'ACTIVE')
-                      .map((u: User) => ({ value: u.id, label: u.realName || u.username }))}
-                  />
-                  <Button loading={assigning} disabled={!assignUserId} onClick={handleAssign}>
-                    指派
-                  </Button>
-                </div>
-              )}
-            </>
-            ) : canOperate ? (
-              <Tag color="processing" bordered={false}>操作请见卡片右上角</Tag>
-            ) : (
-              <Tag color="warning" bordered={false}>无操作权限</Tag>
-            )}
+      title={
+        <Space size={8}>
+          <UserOutlined style={{ color: token.colorPrimary }} />
+          <span>{customer.companyName || '客户详情'}</span>
+          {isPublic && <Tag color="gold" style={{ marginInlineStart: 4 }}>公海</Tag>}
         </Space>
       }
+      styles={{ root: { width: 680 }, wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
+      loading={loading}
     >
       {loading ? (
         <div style={{ textAlign: 'center', padding: 80 }}>
@@ -286,6 +240,33 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
         </div>
       ) : (
         <div>
+          {/* ===== 公海操作（认领 / 指派） ===== */}
+          {isPublic && (
+            <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+              <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
+                认领
+              </Button>
+              {isAdmin && (
+                <>
+                  <Select
+                    placeholder="选择业务员"
+                    value={assignUserId || undefined}
+                    onChange={(v) => setAssignUserId(v)}
+                    size="middle"
+                    style={{ minWidth: 140 }}
+                    showSearch
+                    options={userList
+                      .filter((u: User) => u.status === 'ACTIVE')
+                      .map((u: User) => ({ value: u.id, label: u.realName || u.username }))}
+                  />
+                  <Button loading={assigning} disabled={!assignUserId} onClick={handleAssign}>
+                    指派
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
           {/* ===== 当前客户卡片视图（副本） ===== */}
           <div style={{ marginBottom: 16 }}>
               <CustomerCard
@@ -299,54 +280,29 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
               />
           </div>
 
-          {/* ===== 基本信息卡片 ===== */}
-          <Card
-            size="small"
-            title={<span><UserOutlined /> 基本信息</span>}
-            style={{ marginBottom: 16, borderRadius: 8 }}
-          >
-            <Descriptions column={2} size="small" colon={false}>
-              <Descriptions.Item label={<><EnvironmentOutlined /> 国家</>}>
-                <CountryDisplay country={customer.country} />
-              </Descriptions.Item>
-              <Descriptions.Item label={<><GlobalOutlined /> 来源</>}>
-                {customer.source || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><UserOutlined /> 联系人</>}>
-                {customer.contactName || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><PhoneOutlined /> 电话</>}>
-                {customer.phone || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><MailOutlined /> 邮箱</>}>
-                {customer.email || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label={<><CalendarOutlined /> 创建时间</>}>
-                {dayjs(customer.createdAt).format('YYYY-MM-DD')}
-              </Descriptions.Item>
-            </Descriptions>
-            {customer.notes && (
-              <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: '#fafafa', borderRadius: 6, fontSize: 13 }}>
-                <Text type="secondary"><FileTextOutlined /> 备注：</Text>{customer.notes}
-              </div>
-            )}
-          </Card>
-
           {/* ===== 商机记录 ===== */}
           <Card
             size="small"
-            title={<Space><DollarOutlined style={{ color: token.colorWarning }} />商机记录 ({pipelines.length})</Space>}
+            title={<Space><DollarOutlined style={{ color: token.colorTextSecondary }} />商机记录 ({pipelines.length})</Space>}
             extra={!isPublic && canOperate ? <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>新增商机</Button> : null}
-            style={{ marginBottom: 16, borderRadius: 8 }}
+            style={{ marginBottom: 16, borderRadius: 16 }}
           >
             {pipelineLoading ? (
               <div style={{ textAlign: 'center', padding: 24 }}>
                 <Spin />
               </div>
             ) : pipelines.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 24, color: token.colorTextQuaternary }}>
-                暂无商机记录
-              </div>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无商机记录</span>}
+                style={{ padding: '12px 0' }}
+              >
+                {!isPublic && canOperate && (
+                  <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>
+                    新增第一个商机
+                  </Button>
+                )}
+              </Empty>
             ) : (
               <Table
                 dataSource={pipelines}
@@ -402,20 +358,30 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           {/* ===== 订单记录 ===== */}
           <Card
             size="small"
-            title={<span><ShoppingCartOutlined /> 订单记录 ({orders?.length ?? 0})</span>}
-            style={{ marginBottom: 16, borderRadius: 8 }}
+            title={<Space><ShoppingCartOutlined style={{ color: token.colorTextSecondary }} />订单记录 ({orders?.length ?? 0})</Space>}
+            style={{ marginBottom: 16, borderRadius: 16 }}
             extra={
               !isPublic && canOperate ? (
                 <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
                   <ShoppingCartOutlined /> 下订单
                 </Button>
               ) : !isPublic ? (
-                <Tag color="default" bordered={false}>无操作权限</Tag>
+                <Tag color="default">无操作权限</Tag>
               ) : null
             }
           >
             {(!orders || orders.length === 0) ? (
-              <Text type="secondary">暂无订单</Text>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无订单</span>}
+                style={{ padding: '12px 0' }}
+              >
+                {!isPublic && canOperate && (
+                  <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
+                    <ShoppingCartOutlined /> 去下单
+                  </Button>
+                )}
+              </Empty>
             ) : (
               <Table
                 dataSource={orders}
@@ -427,37 +393,52 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
             )}
           </Card>
 
-          {/* ===== 活动记录 ===== */}
-          <Card
-            size="small"
-            title={<span><ClockCircleOutlined /> 活动记录</span>}
-            style={{ borderRadius: 8 }}
+          {/* ===== 活动记录（审计区：浅底弱化） ===== */}
+          <div
+            style={{
+              marginTop: 24,
+              padding: '12px 16px 8px',
+              background: token.colorFillQuaternary,
+              borderRadius: 12,
+            }}
           >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <ClockCircleOutlined style={{ color: token.colorTextSecondary, fontSize: 13 }} />
+              <Text style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>活动记录</Text>
+            </div>
             {customer.activities?.length === 0 ? (
-              <Text type="secondary">暂无记录</Text>
+              <div style={{ padding: '16px 0', textAlign: 'center' }}>
+                <Text type="secondary" style={{ fontSize: 13 }}>暂无跟进记录，添加后会显示在这里</Text>
+              </div>
             ) : (
-              <div>
-                {(customer.activities || [])
+              <Timeline
+                style={{ marginTop: 8, paddingLeft: 2 }}
+                items={(customer.activities || [])
                   .slice(0, showAllActivities ? undefined : 5)
-                  .map((a: CustomerActivity) => (
-                    <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #f0f0f0', display: 'flex', gap: 12 }}>
-                      <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 90 }}>
-                        {dayjs(a.createdAt).format('MM-DD HH:mm')}
-                      </Text>
-                      <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
-                      <Text type="secondary" style={{ fontSize: 12 }}>{a.createdBy}</Text>
-                    </div>
-                  ))}
-                {(customer.activities || []).length > 5 && (
-                  <div style={{ textAlign: 'center', marginTop: 8 }}>
-                    <Button type="link" size="small" onClick={() => setShowAllActivities(!showAllActivities)}>
-                      {showAllActivities ? '收起' : `展开全部 (${customer.activities?.length} 条)`}
-                    </Button>
-                  </div>
-                )}
+                  .map((a: CustomerActivity) => ({
+                    color: token.colorPrimary,
+                    children: (
+                      <div style={{ paddingBottom: 2 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                          <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{a.createdBy}</Text>
+                        </div>
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {dayjs(a.createdAt).format('MM-DD HH:mm')}
+                        </Text>
+                      </div>
+                    ),
+                  }))}
+              />
+            )}
+            {(customer.activities || []).length > 5 && (
+              <div style={{ textAlign: 'center', marginTop: 4, marginBottom: 4 }}>
+                <Button type="link" size="small" onClick={() => setShowAllActivities(!showAllActivities)}>
+                  {showAllActivities ? '收起' : `展开全部 (${customer.activities?.length} 条)`}
+                </Button>
               </div>
             )}
-          </Card>
+          </div>
         </div>
       )}
 
@@ -479,6 +460,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
               value={pipelineForm.name}
               onChange={(e) => setPipelineForm({ ...pipelineForm, name: e.target.value })}
               placeholder="请输入商机名称"
+              style={{ borderRadius: token.borderRadius }}
             />
           </div>
           <Row gutter={12}>
@@ -490,7 +472,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 placeholder="金额"
                 min={0}
                 precision={2}
-                style={{ width: '100%' }}
+                style={{ width: '100%', borderRadius: token.borderRadius }}
                 prefix="¥"
               />
             </Col>
@@ -501,7 +483,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 onChange={(val) => setPipelineForm({ ...pipelineForm, probability: val })}
                 placeholder="选择意向"
                 allowClear
-                style={{ width: '100%' }}
+                style={{ width: '100%', borderRadius: token.borderRadius }}
                 options={[
                   { label: '低意向', value: '低意向' },
                   { label: '中意向', value: '中意向' },
@@ -514,7 +496,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           <div>
             <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>预计成交日期</Text>
             <DatePicker
-              style={{ width: '100%' }}
+              style={{ width: '100%', borderRadius: token.borderRadius }}
               value={pipelineForm.expectedCloseDate ? dayjs(pipelineForm.expectedCloseDate) : null}
               onChange={(d) => setPipelineForm({ ...pipelineForm, expectedCloseDate: d ? d.format('YYYY-MM-DD') : '' })}
             />

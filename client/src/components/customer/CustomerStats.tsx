@@ -243,7 +243,7 @@ export default function CustomerStats({
                                 showInfo={false}
                                 strokeColor={colors[idx % colors.length]}
                                 trailColor="#f1f5f9"
-                                size={{ strokeWidth: 8 }}
+                                strokeWidth={8}
                               />
                             </div>
                             <span style={{ fontSize: 12, color: token.colorTextSecondary, minWidth: 36, textAlign: 'right' }}>
@@ -294,7 +294,7 @@ export default function CustomerStats({
                     <Cell fill="#7c3aed" />
                     <Cell fill="#f59e0b" />
                   </Pie>
-                  <ReTooltip formatter={(value: number) => formatCurrency(value)} />
+                  <ReTooltip formatter={(value) => formatCurrency(Number(value))} />
                   <foreignObject x="50%" y="50%" width="1" height="1">
                     <div
                       style={{

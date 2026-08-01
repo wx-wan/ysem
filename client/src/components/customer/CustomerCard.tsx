@@ -1,6 +1,6 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
-import { Card, Row, Col, Popconfirm, Avatar, Divider } from 'antd';
-import { GlobalOutlined, EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
+import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
+import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
@@ -140,7 +140,7 @@ const CustomerCard = memo(function CustomerCard({
       case 'B':
         return {
           customerTier: 'bottle',
-          tierHeaderBg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+          tierHeaderBg: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
         };
       case 'C':
         return {
@@ -163,7 +163,7 @@ const CustomerCard = memo(function CustomerCard({
       case 'chest': return token.purple;
       case 'void': return '#8a8f9a';
       case 'cheer': return '#f97316';
-      case 'bottle': return '#3b82f6';
+      case 'bottle': return '#1677ff';
       case 'hatch': return '#93c5fd';
       case 'dull': return '#bfdbfe';
       default: return token.colorPrimary;
@@ -315,34 +315,27 @@ const CustomerCard = memo(function CustomerCard({
           <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
             {customer.companyName || '-'}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 3, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-            <GlobalOutlined style={{ fontSize: 11 }} />
-            {findCountry(customer.country)?.zh || (customer.country || '未知')}
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+            {(() => {
+              const c = findCountry(customer.country);
+              const zh = c?.zh || (customer.country || '未知');
+              const en = c?.code || '';
+              return <>{zh}{en ? ` · ${en}` : ''}</>;
+            })()}
           </div>
-
-          {/* 基础联系人信息（嵌入橙色头部，每条信息独占一行占位展示） */}
-          <Divider
-            dashed
-            style={{ marginTop: 14, marginBottom: 12, borderColor: 'rgba(255,255,255,0.28)' }}
-          />
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            position: 'relative',
-            zIndex: 1,
-          }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: token.colorWhite, lineHeight: '20px' }}>
-              <UserOutlined style={{ fontSize: 12, opacity: 0.75 }} />
-              {customer.contactName || '-'}
+          {/* 联系人平铺在国家下方，按 gap 横排姓名/邮箱/电话 */}
+          <div style={{ marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.88)', lineHeight: 1.4 }}>
+              <UserOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.contactName || '-'}</span>
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.78)', lineHeight: '20px' }}>
-              <MailOutlined style={{ fontSize: 12, opacity: 0.7 }} />
-              {customer.email || '-'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
+              <MailOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.email || '-'}</span>
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.78)', lineHeight: '20px' }}>
-              <PhoneOutlined style={{ fontSize: 12, opacity: 0.7 }} />
-              {customer.phone || '-'}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
+              <PhoneOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.phone || '-'}</span>
             </span>
           </div>
 
@@ -413,13 +406,17 @@ const CustomerCard = memo(function CustomerCard({
               )}
             </div>
           )}
+
+          {/* 金色星光闪烁（仅新客卡片，限制在头部区域内） */}
+          {customerTier === 'shine' && <CustomerCardSparkle />}
         </div>
 
-        {/* 内容区（负责人 / 预计商机金额 / 成交订单金额，三等分） */}
+        {/* 内容区：头像+负责人为一个整体（左右布局），与两个金额块三等分 */}
         <div style={{ padding: '16px 20px' }}>
-          <Row gutter={12}>
-            <Col span={8} style={{ textAlign: 'left' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Row gutter={[16, 16]} align="top">
+            {/* 头像 + 负责人（整体左右布局，占一等分） */}
+            <Col span={8}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 68 }}>
                 <Avatar
                   size={36}
                   style={{
@@ -431,50 +428,55 @@ const CustomerCard = memo(function CustomerCard({
                 >
                   {isPublic ? '公' : ((customer.owner?.realName || customer.owner?.username || '?').charAt(0))}
                 </Avatar>
-                <div style={{ overflow: 'hidden', minWidth: 0, textAlign: 'left' }}>
-                  <div style={{ fontSize: 11, color: token.colorTextSecondary }}>负责人</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <div style={{ minWidth: 0, textAlign: 'left' }}>
+                  <div style={{ minHeight: 20, lineHeight: '20px', fontSize: 11, color: token.colorTextSecondary }}>负责人</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
                     {isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '-')}
                   </div>
-                  <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>
                     {isPublic ? '未分配' : (customer.owner?.username || '')}
                   </div>
                 </div>
               </div>
             </Col>
 
-            <Col span={8} style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>预计商机金额</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
-                {formatCurrency(displayPipelineAmount || 0)}
+            {/* 预计商机金额（占一等分） */}
+            <Col span={8}>
+              <div style={{ minHeight: 68, textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>预计商机金额</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
+                  {formatCurrency(displayPipelineAmount || 0)}
+                </div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.pipelines ?? (customer.pipelines || []).length} 商机</div>
               </div>
-              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.pipelines ?? (customer.pipelines || []).length} 商机</div>
             </Col>
 
-            <Col span={8} style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>成交订单金额</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
-                {formatCurrency(displayTotalAmount || 0)}
+            {/* 成交订单金额（占一等分） */}
+            <Col span={8}>
+              <div style={{ minHeight: 68, textAlign: 'right' }}>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>成交订单金额</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
+                  {formatCurrency(displayTotalAmount || 0)}
+                </div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.orders ?? (customer.orders || []).length} 单</div>
               </div>
-              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.orders ?? (customer.orders || []).length} 单</div>
             </Col>
           </Row>
         </div>
 
         {/* 底部分隔线 + 标签（左）与创建时间（右）左右分布 */}
-        <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+        <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '14px 20px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div
             onClick={(e) => { if (cardClickable) e.stopPropagation(); }}
             style={{ flex: '1 1 auto', minWidth: 0 }}
           >
-            <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" />
+            <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" color={avatarBg} />
           </div>
           <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', flex: '0 0 auto' }}>
             {dayjs(customer.createdAt).format('YYYY-MM-DD')}
           </div>
         </div>
       </Card>
-      {customerTier === 'shine' && <CustomerCardSparkle />}
       {customerTier === 'chest' && <div className="chest-shimmer" />}
       {customerTier === 'cheer' && <div className="cheer-pulse" />}
       {customerTier === 'bottle' && <div className="bottle-drift" />}

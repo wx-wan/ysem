@@ -239,7 +239,7 @@ export default function CustomerToolbar({
                   whiteSpace: 'nowrap',
                   transition: 'all 0.2s ease',
                   background: active ? '#e0e7ff' : 'transparent',
-                  color: active ? '#4338ca' : '#94a3b8',
+                  color: active ? '#1677ff' : '#94a3b8',
                 }}
               >
                 {opt.label}

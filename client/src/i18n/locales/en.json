@@ -65,7 +65,8 @@
     "minutes": "Minutes",
     "seconds": "Seconds",
     "overviewText": "An overview of customer insights, sales performance, and revenue analytics.",
-    "exportReport": "Export Report"
+    "exportReport": "Export Report",
+    "orderNo": "Order No."
   },
   "menu": {
     "dashboard": "Dashboard",

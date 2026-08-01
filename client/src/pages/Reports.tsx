@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Row, Col, Card, Statistic, Table, Tag, Spin, Typography } from 'antd';
+import { Row, Col, Card, Statistic, Table, Tag, Spin, Typography, theme, Space } from 'antd';
 import {
   TeamOutlined, ShoppingCartOutlined, FireOutlined, RiseOutlined,
   UserOutlined, AimOutlined, ExperimentOutlined,
@@ -28,6 +28,7 @@ interface ReportStats {
 
 export default function ReportsPage() {
   const { format: formatCurrency } = useCurrencyStore();
+  const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportStats | null>(null);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
@@ -77,27 +78,38 @@ export default function ReportsPage() {
   };
 
 
+  // 语义调色板：收敛 12 种随机 hex → 统一的语义分组色（配色锁）
+  const C = {
+    primary: token.colorPrimary,   // 线索
+    success: token.colorSuccess,   // 商机/订单
+    warning: token.colorWarning,   // 样品/转化率
+    error: token.colorError,       // 订单数强调
+    info: token.colorInfo,         // 新客户
+    purple: token.purple6,         // 新客户金额
+  };
+
   const cardStyle = (color: string): React.CSSProperties => ({
     borderTop: `3px solid ${color}`,
+    borderRadius: 16,
     height: '100%',
   });
 
   const statCards = [
     // 第一行
-    { title: '线索量', value: stats.leadCount, color: '#1677ff', icon: <UserOutlined /> },
-    { title: '商机量', value: stats.opportunityCount, color: '#52c41a', icon: <AimOutlined /> },
-    { title: '样品单数', value: stats.sampleCount, color: '#fa8c16', icon: <ExperimentOutlined /> },
-    { title: '订单数', value: stats.pipelineOrderCount, color: '#f5222d', icon: <FileDoneOutlined /> },
+    { title: '线索量', value: stats.leadCount, color: C.primary, icon: <UserOutlined /> },
+    { title: '商机量', value: stats.opportunityCount, color: C.success, icon: <AimOutlined /> },
+    { title: '样品单数', value: stats.sampleCount, color: C.warning, icon: <ExperimentOutlined /> },
+    { title: '订单数', value: stats.pipelineOrderCount, color: C.error, icon: <FileDoneOutlined /> },
     // 第二行
-    { title: '老客户数', value: stats.oldCustomerCount, color: '#13c2c2', icon: <TeamOutlined /> },
-    { title: '老客户订单金额', value: formatCurrency(stats.oldCustomerAmount), color: '#2f54eb', icon: <DollarOutlined /> },
-    { title: '新客户数', value: stats.newCustomerCount, color: '#722ed1', icon: <FireOutlined /> },
-    { title: '新客户成交金额', value: formatCurrency(stats.newCustomerAmount), color: '#eb2f96', icon: <DollarOutlined /> },
+    { title: '老客户数', value: stats.oldCustomerCount, color: C.info, icon: <TeamOutlined /> },
+    { title: '老客户订单金额', value: formatCurrency(stats.oldCustomerAmount), color: C.primary, icon: <DollarOutlined /> },
+    { title: '新客户数', value: stats.newCustomerCount, color: C.purple, icon: <FireOutlined /> },
+    { title: '新客户成交金额', value: formatCurrency(stats.newCustomerAmount), color: C.purple, icon: <DollarOutlined /> },
     // 第三行
-    { title: '线索→商机转化率', value: stats.leadToOpportunity, color: '#faad14', icon: <PercentageOutlined />, suffix: '%' },
-    { title: '商机→样品/订单转化率', value: stats.opportunityToNext, color: '#fa541c', icon: <RiseOutlined />, suffix: '%' },
-    { title: '样品→订单转化率', value: stats.sampleToOrder, color: '#a0d911', icon: <ShoppingCartOutlined />, suffix: '%' },
-    { title: '综合转化率（线索→订单）', value: stats.leadToOrder, color: '#1677ff', icon: <RiseOutlined />, suffix: '%' },
+    { title: '线索→商机转化率', value: stats.leadToOpportunity, color: C.warning, icon: <PercentageOutlined />, suffix: '%' },
+    { title: '商机→样品/订单转化率', value: stats.opportunityToNext, color: C.warning, icon: <RiseOutlined />, suffix: '%' },
+    { title: '样品→订单转化率', value: stats.sampleToOrder, color: C.success, icon: <ShoppingCartOutlined />, suffix: '%' },
+    { title: '综合转化率（线索→订单）', value: stats.leadToOrder, color: C.primary, icon: <RiseOutlined />, suffix: '%' },
   ];
 
   return (
@@ -111,21 +123,22 @@ export default function ReportsPage() {
               <Card size="small" style={cardStyle(item.color)}>
                 <Statistic
                   title={
-                    <span style={{ color: '#666', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ color: token.colorTextSecondary, fontSize: 13, display: 'flex', alignItems: 'center', gap: 4 }}>
                       <span style={{ color: item.color }}>{item.icon}</span>
                       {item.title}
                     </span>
                   }
                   value={item.value}
                   valueStyle={{
-                    fontSize: 24,
+                    fontSize: 26,
                     fontWeight: 700,
-                    color: '#1f2937',
+                    color: token.colorText,
+                    letterSpacing: '-0.3px',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                   }}
-                  suffix={item.suffix ? <span style={{ fontSize: 16, color: '#999' }}>{item.suffix}</span> : undefined}
+                  suffix={item.suffix ? <span style={{ fontSize: 16, color: token.colorTextTertiary }}>{item.suffix}</span> : undefined}
                 />
               </Card>
             </Col>
@@ -135,7 +148,7 @@ export default function ReportsPage() {
 
       <Row gutter={16}>
         <Col span={12}>
-          <Card size="small" title={<span><ShoppingCartOutlined /> 近期订单</span>}>
+          <Card size="small" title={<Space><ShoppingCartOutlined style={{ color: token.colorPrimary }} />近期订单</Space>}>
             <Table
               dataSource={recentOrders}
               rowKey="id"
@@ -148,13 +161,13 @@ export default function ReportsPage() {
                 { title: '金额', dataIndex: 'amountCNY', key: 'amountCNY', width: 110, align: 'right' as const,
                   render: (v: number) => v != null ? formatCurrency(v) : '-' },
                 { title: '日期', dataIndex: 'orderDate', key: 'orderDate', width: 100, render: (v: string) => v || '-' },
-                { title: '状态', dataIndex: 'status', key: 'status', width: 80, render: (v: string) => <Tag>{v || '-'}</Tag> },
+                { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Tag color={v === '已发货' ? 'success' : v === '处理中' ? 'processing' : 'default'} bordered={false}>{v || '-'}</Tag> },
               ]}
             />
           </Card>
         </Col>
         <Col span={12}>
-          <Card size="small" title={<span><RiseOutlined /> Top 下单客户</span>}>
+          <Card size="small" title={<Space><RiseOutlined style={{ color: token.colorSuccess }} />Top 下单客户</Space>}>
             <Table
               dataSource={topCustomers}
               rowKey="companyName"

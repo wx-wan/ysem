@@ -133,4 +133,39 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
     }
     return `1 ${currency.code} ≈ ${toCNY.toFixed(3)} CNY`;
   },
+
+  // 获取指定历史日期的相对 CNY 汇率表
+  fetchRatesForDate: async (date: string) => {
+    try {
+      const { data } = await axios.get('/api/ext/exchange', {
+        params: { from: 'CNY', date },
+        timeout: 8000,
+      });
+      return (data.data?.rates || {}) as Record<string, number>;
+    } catch {
+      return {};
+    }
+  },
+
+  // 按历史日期格式化金额（订单成交日期）
+  formatWithDate: async (amountCNY: number, date: string) => {
+    const { currency } = get();
+    if (currency.code === 'CNY') {
+      return `${currency.symbol}${amountCNY.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+    const rates = await get().fetchRatesForDate(date);
+    const rate = rates[currency.code];
+    if (!rate) return get().format(amountCNY);
+    const converted = amountCNY * rate;
+    if (currency.code === 'JPY' || currency.code === 'KRW') {
+      return `${currency.symbol}${Math.round(converted).toLocaleString()}`;
+    }
+    return `${currency.symbol}${converted.toLocaleString(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  },
 }));

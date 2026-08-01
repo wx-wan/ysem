@@ -1,17 +1,14 @@
 import { Button, Space, Tooltip } from 'antd';
 import { LeftOutlined, RightOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
+import { SALES_STAGES } from './stages';
 
-export const STAGES = [
-  { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'OPPORTUNITY', label: '商机', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'SAMPLE', label: '样品单', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'ORDER', label: '订单', color: '#10b981', bg: '#ecfdf5' },
-];
+export const STAGES = SALES_STAGES;
 
-export const STAGE_LABELS: Record<string, string> = {
-  LEAD: '线索', OPPORTUNITY: '商机', SAMPLE: '样品单', ORDER: '订单',
-};
+export const STAGE_LABELS: Record<string, string> = SALES_STAGES.reduce(
+  (acc, s) => ({ ...acc, [s.key]: s.label }),
+  {} as Record<string, string>,
+);
 
 interface StageButtonsProps {
   item: SalesItem;
@@ -19,26 +16,26 @@ interface StageButtonsProps {
 }
 
 export default function StageButtons({ item, onStageChange }: StageButtonsProps) {
-  const idx = STAGES.findIndex((s) => s.key === item.stage);
+  const idx = SALES_STAGES.findIndex((s) => s.key === item.stage);
   return (
     <Space size={4}>
       {idx > 0 && (
-        <Tooltip title={`退回到${STAGES[idx - 1].label}`}>
+        <Tooltip title={`退回到${SALES_STAGES[idx - 1].label}`}>
           <Button
             size="small"
             type="text"
             icon={<LeftOutlined />}
-            onClick={() => onStageChange(item.id, STAGES[idx - 1].key)}
+            onClick={() => onStageChange(item.id, SALES_STAGES[idx - 1].key)}
           />
         </Tooltip>
       )}
-      {idx < STAGES.length - 1 && (
-        <Tooltip title={`推进到${STAGES[idx + 1].label}`}>
+      {idx < SALES_STAGES.length - 1 && (
+        <Tooltip title={`推进到${SALES_STAGES[idx + 1].label}`}>
           <Button
             size="small"
             type="text"
             icon={<RightOutlined />}
-            onClick={() => onStageChange(item.id, STAGES[idx + 1].key)}
+            onClick={() => onStageChange(item.id, SALES_STAGES[idx + 1].key)}
           />
         </Tooltip>
       )}

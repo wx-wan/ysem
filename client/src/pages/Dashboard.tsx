@@ -8,6 +8,7 @@ import {
   Table,
   Typography,
   Space,
+  theme,
 } from "antd";
 import {
   DollarOutlined,
@@ -54,37 +55,48 @@ const recentOrders = [
 ];
 
 const statusColor: Record<string, string> = {
-  "已发货": "#10b981",
-  "处理中": "#f59e0b",
-  "已完成": "#3b82f6",
+  "已发货": "success",
+  "处理中": "warning",
+  "已完成": "processing",
 };
 
 const pieData = [
-  { name: "儿童玩具", value: 35, color: "#3b82f6" },
-  { name: "益智拼图", value: 25, color: "#8b5cf6" },
-  { name: "遥控赛车", value: 22, color: "#10b981" },
-  { name: "毛绒玩偶", value: 18, color: "#f59e0b" },
+  { name: "儿童玩具", value: 35, color: "primary" },
+  { name: "益智拼图", value: 25, color: "purple" },
+  { name: "遥控赛车", value: 22, color: "success" },
+  { name: "毛绒玩偶", value: 18, color: "warning" },
 ];
 
 const products = [
-  { icon: "🧸", name: "儿童玩具套装", percent: 35, earnings: "$15,900", color: "#3b82f6" },
-  { icon: "🧩", name: "益智拼图", percent: 25, earnings: "$11,400", color: "#8b5cf6" },
-  { icon: "🏎️", name: "遥控赛车", percent: 22, earnings: "$10,100", color: "#10b981" },
-  { icon: "🧸", name: "毛绒玩偶", percent: 18, earnings: "$8,290", color: "#f59e0b" },
+  { icon: "🧸", name: "儿童玩具套装", percent: 35, earnings: "$15,900", color: "primary" },
+  { icon: "🧩", name: "益智拼图", percent: 25, earnings: "$11,400", color: "purple" },
+  { icon: "🏎️", name: "遥控赛车", percent: 22, earnings: "$10,100", color: "success" },
+  { icon: "🧸", name: "毛绒玩偶", percent: 18, earnings: "$8,290", color: "warning" },
 ];
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
+  const { token } = theme.useToken();
+
+  // 配色锁：图表/品牌蓝统一用 token.colorPrimary，状态用语义色 token
+  const PALETTE: Record<string, string> = {
+    primary: token.colorPrimary,
+    purple: token.purple6,
+    success: token.colorSuccess,
+    warning: token.colorWarning,
+    error: token.colorError,
+  };
+  const resolveColor = (key: string) => PALETTE[key] || token.colorTextTertiary;
 
   /* ---- 列定义 ---- */
   const columns = [
     {
-      title: t("common.noData"),
+      title: t("dashboard.orderNo"),
       dataIndex: "orderNo",
       key: "orderNo",
       width: 140,
-      render: (v: string) => <span style={{ color: "#3b82f6", fontWeight: 500, fontSize: 13 }}>{v}</span>,
+      render: (v: string) => <span style={{ color: token.colorPrimary, fontWeight: 500, fontSize: 13 }}>{v}</span>,
     },
     {
       title: "客户",
@@ -116,10 +128,10 @@ const Dashboard: React.FC = () => {
               width: 6,
               height: 6,
               borderRadius: "50%",
-              background: statusColor[v] || "#94a3b8",
+              background: resolveColor(statusColor[v] ?? ""),
             }}
           />
-          <span style={{ fontSize: 12, color: statusColor[v] || "#94a3b8" }}>{v}</span>
+          <span style={{ fontSize: 12, color: resolveColor(statusColor[v] ?? "") }}>{v}</span>
         </Space>
       ),
     },
@@ -172,7 +184,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="stat-card-value">$45,690</div>
             <div className="stat-card-footer">
-              <ArrowUpOutlined style={{ color: "#10b981", fontSize: 12 }} />
+              <ArrowUpOutlined style={{ color: token.colorSuccess, fontSize: 12 }} />
               <span className="trend-up">+12.5%</span>
               <span className="trend-label">vs 上月</span>
             </div>
@@ -187,7 +199,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="stat-card-value">1,234</div>
             <div className="stat-card-footer">
-              <ArrowUpOutlined style={{ color: "#10b981", fontSize: 12 }} />
+              <ArrowUpOutlined style={{ color: token.colorSuccess, fontSize: 12 }} />
               <span className="trend-up">+8.2%</span>
               <span className="trend-label">vs 上月</span>
             </div>
@@ -202,7 +214,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="stat-card-value">856</div>
             <div className="stat-card-footer">
-              <ArrowUpOutlined style={{ color: "#10b981", fontSize: 12 }} />
+              <ArrowUpOutlined style={{ color: token.colorSuccess, fontSize: 12 }} />
               <span className="trend-up">+5.7%</span>
               <span className="trend-label">vs 上月</span>
             </div>
@@ -217,7 +229,7 @@ const Dashboard: React.FC = () => {
             </div>
             <div className="stat-card-value">23.1%</div>
             <div className="stat-card-footer">
-              <ArrowDownOutlined style={{ color: "#ef4444", fontSize: 12 }} />
+              <ArrowDownOutlined style={{ color: token.colorError, fontSize: 12 }} />
               <span className="trend-down">-2.4%</span>
               <span className="trend-label">vs 上月</span>
             </div>
@@ -234,7 +246,7 @@ const Dashboard: React.FC = () => {
             variant="borderless"
             title={<span className="card-title">收入趋势</span>}
             extra={
-              <div style={{ display: "flex", gap: 12, fontSize: 12, color: "#94a3b8" }}>
+              <div style={{ display: "flex", gap: 12, fontSize: 12, color: token.colorTextTertiary }}>
                 <span className="stat-card-value chart-inside" style={{ fontSize: 18, marginBottom: 0 }}>
                   $45,690
                 </span>
@@ -245,13 +257,13 @@ const Dashboard: React.FC = () => {
               <AreaChart data={revenueData}>
                 <defs>
                   <linearGradient id="revenueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.15} />
-                    <stop offset="100%" stopColor="#3b82f6" stopOpacity={0} />
+                    <stop offset="0%" stopColor={token.colorPrimary} stopOpacity={0.15} />
+                    <stop offset="100%" stopColor={token.colorPrimary} stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="month" tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} />
+                <XAxis dataKey="month" tick={{ fontSize: 12, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: token.colorTextTertiary }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
                     borderRadius: 12,
@@ -263,7 +275,7 @@ const Dashboard: React.FC = () => {
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#3b82f6"
+                  stroke={token.colorPrimary}
                   strokeWidth={2}
                   fill="url(#revenueGradient)"
                 />
@@ -284,7 +296,6 @@ const Dashboard: React.FC = () => {
               dataSource={recentOrders}
               pagination={false}
               size="small"
-              showHeader={false}
               scroll={{ y: 260 }}
             />
           </Card>
@@ -314,7 +325,7 @@ const Dashboard: React.FC = () => {
                       stroke="none"
                     >
                       {pieData.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
+                        <Cell key={i} fill={resolveColor(entry.color)} />
                       ))}
                     </Pie>
                     <Tooltip />
@@ -323,9 +334,9 @@ const Dashboard: React.FC = () => {
               </div>
 
               <div className="sales-legend" style={{ flex: 1, flexDirection: "column", gap: 10, margin: 0 }}>
-                {pieData.map((item) => (
+                  {pieData.map((item) => (
                   <div className="legend-item" key={item.name} style={{ justifyContent: "flex-start" }}>
-                    <span className="legend-dot" style={{ background: item.color }} />
+                    <span className="legend-dot" style={{ background: resolveColor(item.color) }} />
                     <span className="legend-name">{item.name}</span>
                     <span className="legend-value">{item.value}%</span>
                   </div>
@@ -354,7 +365,7 @@ const Dashboard: React.FC = () => {
                 </span>
                 <span className="product-percent">
                   <div className="percent-bar-bg">
-                    <div className="percent-bar-fill" style={{ width: `${p.percent}%`, background: p.color }} />
+                    <div className="percent-bar-fill" style={{ width: `${p.percent}%`, background: resolveColor(p.color) }} />
                   </div>
                   {p.percent}%
                 </span>

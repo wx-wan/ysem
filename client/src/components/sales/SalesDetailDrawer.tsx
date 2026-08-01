@@ -3,17 +3,9 @@ import { Drawer, Descriptions, Tag, Space, Button, Popconfirm, Select, Card } fr
 import { EditOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
+import { SALES_STAGES, STAGE_LABELS } from './stages';
 
-const STAGES = [
-  { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'OPPORTUNITY', label: '商机', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'SAMPLE', label: '样品单', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'ORDER', label: '订单', color: '#10b981', bg: '#ecfdf5' },
-];
-
-const STAGE_LABELS: Record<string, string> = {
-  LEAD: '线索', OPPORTUNITY: '商机', SAMPLE: '样品单', ORDER: '订单',
-};
+const STAGES = SALES_STAGES;
 
 interface Props {
   open: boolean;
@@ -55,7 +47,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       <Descriptions column={1} size="small" bordered>
         <Descriptions.Item label="标题">{detailItem.title}</Descriptions.Item>
         <Descriptions.Item label="阶段">
-          <Tag color={st?.color}>{st?.label || detailItem.stage}</Tag>
+          <Tag color={st?.tagColor} bordered={false}>{st?.label || detailItem.stage}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="公司名称">{detailItem.companyName}</Descriptions.Item>
         <Descriptions.Item label="联系人">{detailItem.contactName || '-'}</Descriptions.Item>

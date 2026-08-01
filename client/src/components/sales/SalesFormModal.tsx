@@ -1,13 +1,9 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Row, Col, App } from 'antd';
 import { SalesItem } from '../../api/sales';
+import { SALES_STAGES } from './stages';
 
-const STAGES = [
-  { key: 'LEAD', label: '线索', color: '#3b82f6', bg: '#eff6ff' },
-  { key: 'OPPORTUNITY', label: '商机', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'SAMPLE', label: '样品单', color: '#8b5cf6', bg: '#f5f3ff' },
-  { key: 'ORDER', label: '订单', color: '#10b981', bg: '#ecfdf5' },
-];
+const STAGES = SALES_STAGES;
 
 const SOURCE_OPTIONS = [
   { label: '手动录入', value: 'MANUAL' },

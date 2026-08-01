@@ -26,7 +26,7 @@ export default function CountrySelect({
       styles={{ popup: { root: { minWidth: 220 } } }}
       allowClear
       filterOption={(input, option) => {
-        const children = option?.children as string || '';
+        const children = (option?.children as unknown as string) || '';
         return children.toLowerCase().indexOf(input.toLowerCase()) >= 0;
       }}
       optionRender={({ value: optValue, label }) => {

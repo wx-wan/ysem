@@ -65,7 +65,8 @@
     "minutes": "分",
     "seconds": "秒",
     "overviewText": "客户洞察、销售表现和收入分析概览",
-    "exportReport": "导出报告"
+    "exportReport": "导出报告",
+    "orderNo": "订单号"
   },
   "menu": {
     "dashboard": "仪表盘",

@@ -61,8 +61,8 @@ export function useCustomerTier(customer: Customer, token: any) {
       };
       case 'B': return {
         tier: 'bottle' as const,
-        tierHeaderBg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-        tierAvatarBg: '#3b82f6',
+        tierHeaderBg: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
+        tierAvatarBg: '#1677ff',
         tierTypeBadge: `未成交客户 · ${intentMap.B}`,
       };
       case 'C': return {

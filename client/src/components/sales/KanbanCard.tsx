@@ -1,4 +1,4 @@
-import { Card } from 'antd';
+import { Card, theme } from 'antd';
 import { TeamOutlined, DollarOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
@@ -12,6 +12,8 @@ interface KanbanCardProps {
 }
 
 export default function KanbanCard({ item, formatCurrency, onViewDetail, onStageChange }: KanbanCardProps) {
+  const { token } = theme.useToken();
+  const amount = item.stage === 'ORDER' ? (item.orderAmount || 0) : (item.estimatedAmount || 0);
   return (
     <Card
       hoverable
@@ -21,31 +23,30 @@ export default function KanbanCard({ item, formatCurrency, onViewDetail, onStage
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <div style={{ fontWeight: 600, fontSize: 14, color: token.colorText, marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {item.title}
           </div>
-          <div style={{ color: '#64748b', fontSize: 13, marginBottom: 4 }}>
+          <div style={{ color: token.colorTextSecondary, fontSize: 12, marginBottom: 2 }}>
             <TeamOutlined style={{ marginRight: 4 }} />
             {item.companyName}
           </div>
           {item.contactName && (
-            <div style={{ color: '#94a3b8', fontSize: 12 }}>{item.contactName}</div>
+            <div style={{ color: token.colorTextTertiary, fontSize: 12 }}>{item.contactName}</div>
           )}
         </div>
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           {(item.estimatedAmount || item.orderAmount) && (
-            <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 13, whiteSpace: 'nowrap' }}>
-              <DollarOutlined style={{ fontSize: 11 }} />{' '}
-              {formatCurrency(item.stage === 'ORDER' ? (item.orderAmount || 0) : (item.estimatedAmount || 0))}
+            <div style={{ fontWeight: 700, color: token.colorText, fontSize: 15, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>
+              {formatCurrency(amount)}
             </div>
           )}
           {item.probability && item.stage === 'OPPORTUNITY' && (
-            <div style={{ fontSize: 11, color: '#f59e0b', marginTop: 2 }}>{getIntentLabel(item.probability)}</div>
+            <div style={{ fontSize: 11, color: token.colorWarning, marginTop: 4, fontWeight: 500 }}>{getIntentLabel(item.probability)}</div>
           )}
         </div>
       </div>
-      <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, color: '#94a3b8' }}>
+      <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${token.colorBorderSecondary}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
           {item.assignee?.realName || '未分配'}
         </span>
         <StageButtons item={item} onStageChange={onStageChange} />

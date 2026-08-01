@@ -32,8 +32,8 @@ request.interceptors.response.use(
     if (error.response?.status === 401) {
       // 尝试用 refreshToken 刷新
       const refreshToken = localStorage.getItem('refreshToken');
-      if (refreshToken && error.config && !(error.config as Record<string, unknown>)._retry) {
-        (error.config as Record<string, unknown>)._retry = true;
+      if (refreshToken && error.config && !(error.config as unknown as Record<string, unknown>)._retry) {
+        (error.config as unknown as Record<string, unknown>)._retry = true;
         try {
           const { data } = await axios.post('/api/auth/refresh', { refreshToken });
           localStorage.setItem('accessToken', data.data.accessToken);

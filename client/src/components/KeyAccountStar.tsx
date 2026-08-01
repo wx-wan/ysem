@@ -1,7 +1,7 @@
 import { Tooltip, App } from 'antd';
 import { StarFilled, StarOutlined } from '@ant-design/icons';
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
 import { customerApi } from '../api/customers';
 
 interface KeyAccountStarProps {
@@ -14,7 +14,7 @@ interface KeyAccountStarProps {
 }
 
 // 光晕脉冲动画
-const glowVariants = {
+const glowVariants: Variants = {
   active: {
     scale: [1, 1.35, 1],
     opacity: [0.35, 0.6, 0.35],
@@ -22,13 +22,13 @@ const glowVariants = {
       duration: 2.2,
       repeat: Infinity,
       ease: 'easeInOut',
-    },
+    } as const,
   },
   idle: { scale: 1, opacity: 0 },
 };
 
 // 粒子旋转动画
-const sparkleVariants = {
+const sparkleVariants: Variants = {
   animate: (i: number) => ({
     rotate: [i * 72, 360 + i * 72],
     opacity: [0, 0.8, 0],
@@ -38,24 +38,24 @@ const sparkleVariants = {
       repeat: Infinity,
       ease: 'easeInOut',
       delay: i * 0.3,
-    },
+    } as const,
   }),
 };
 
 // 星星主体动画
-const starButtonVariants = {
-  hover: { scale: 1.2, transition: { type: 'spring', stiffness: 400, damping: 10 } },
-  tap: { scale: 0.85, transition: { type: 'spring', stiffness: 600, damping: 12 } },
+const starButtonVariants: Variants = {
+  hover: { scale: 1.2, transition: { type: 'spring', stiffness: 400, damping: 10 } as const },
+  tap: { scale: 0.85, transition: { type: 'spring', stiffness: 600, damping: 12 } as const },
   idle: { scale: 1 },
 };
 
 // 激活时的弹跳入场
-const activeAppear = {
+const activeAppear: Variants = {
   initial: { scale: 0, rotate: -90 },
   animate: {
     scale: 1,
     rotate: 0,
-    transition: { type: 'spring', stiffness: 300, damping: 12, duration: 0.5 },
+    transition: { type: 'spring', stiffness: 300, damping: 12, duration: 0.5 } as const,
   },
   exit: { scale: 0, rotate: 90, transition: { duration: 0.2 } },
 };
