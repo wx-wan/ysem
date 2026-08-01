@@ -243,7 +243,7 @@ export default function CustomerStats({
                                 showInfo={false}
                                 strokeColor={colors[idx % colors.length]}
                                 trailColor="#f1f5f9"
-                                strokeWidth={8}
+                                size={{ strokeWidth: 8 }}
                               />
                             </div>
                             <span style={{ fontSize: 12, color: token.colorTextSecondary, minWidth: 36, textAlign: 'right' }}>

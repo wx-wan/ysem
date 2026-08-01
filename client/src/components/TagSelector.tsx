@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Tag, Input, Button, Popover, theme } from 'antd';
+import { Tag, Input, Button, Popover, Popconfirm, theme } from 'antd';
 import { PlusOutlined, CloseOutlined } from '@ant-design/icons';
 
 // 标签预设色（固定为 红 黄 蓝 绿 青蓝 紫 黑，不带 # 前缀）
@@ -48,6 +48,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [selectedColor, setSelectedColor] = useState('1890ff'); // 默认蓝色
+  const [pendingRemove, setPendingRemove] = useState<number | null>(null);
 
   const addTag = useCallback(() => {
     const name = inputValue.trim();
@@ -83,7 +84,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
       <Input
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
-        onPressEnter={addTag}
+        onPressEnter={(e) => { if ((e.nativeEvent as any).isComposing) return; addTag(); }}
         placeholder={placeholder}
         size="middle"
         style={{ marginBottom: 14 }}
@@ -140,31 +141,40 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
       {tags.map((tag, i) => {
         const color = tagColorToHex(tag.color, token);
         return (
-          <Tag
+          <Popconfirm
             key={tag.name}
-            bordered={false}
-            closable
-            closeIcon={
-              <CloseOutlined style={{ color, fontSize: 10, marginLeft: 4 }} />
-            }
-            onClose={() => removeTag(i)}
-            style={{
-              margin: 0,
-              height: 20,
-              boxSizing: 'border-box',
-              borderRadius: token.borderRadiusSM,
-              backgroundColor: token.colorBgContainer,
-              color,
-              border: `1px dashed ${color}`,
-              fontWeight: 500,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '0 8px',
-            }}
+            title="确认删除该标签？"
+            open={pendingRemove === i}
+            onConfirm={() => { removeTag(i); setPendingRemove(null); }}
+            onCancel={() => setPendingRemove(null)}
+            okText="删除"
+            cancelText="取消"
           >
-            {tag.name}
-          </Tag>
+            <Tag
+              bordered={false}
+              closable
+              closeIcon={
+                <CloseOutlined style={{ color, fontSize: 10, marginLeft: 4 }} />
+              }
+              onClose={(e) => { e.preventDefault(); setPendingRemove(i); }}
+              style={{
+                margin: 0,
+                height: 20,
+                boxSizing: 'border-box',
+                borderRadius: token.borderRadiusSM,
+                backgroundColor: token.colorBgContainer,
+                color,
+                border: `1px dashed ${color}`,
+                fontWeight: 500,
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0 8px',
+              }}
+            >
+              {tag.name}
+            </Tag>
+          </Popconfirm>
         );
       })}
       {showAddButton && (
@@ -187,7 +197,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
               alignItems: 'center',
               justifyContent: 'center',
               cursor: 'pointer',
-              color: token.colorTextSecondary,
+              color: token.colorBorder,
               transition: 'all 0.2s ease',
             }}
             onMouseEnter={(e) => {
@@ -196,7 +206,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.borderColor = token.colorBorder;
-              e.currentTarget.style.color = token.colorTextSecondary;
+              e.currentTarget.style.color = token.colorBorder;
             }}
           >
             <PlusOutlined style={{ fontSize: 12 }} />

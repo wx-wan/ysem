@@ -1,12 +1,12 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
-import { Card, Avatar } from 'antd';
-import { GlobalOutlined } from '@ant-design/icons';
+import { Card, Row, Col, Popconfirm, Avatar, Divider } from 'antd';
+import { GlobalOutlined, EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
 import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
-import { getGrade, tagColorToHex } from './utils';
+import { getGrade } from './utils';
 import TagSelector from '../TagSelector';
 import { customerApi } from '../../api/customers';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
@@ -16,8 +16,20 @@ import { message } from 'antd';
 interface CustomerCardProps {
   customer: Customer;
   token: any;
-  onOpenDetail: (customer: Customer) => void;
-  onListUpdate: (updater: (prev: Customer[]) => Customer[]) => void;
+  /** 点击卡片打开详情（列表视图传入，使整卡可点击；不传则不可点击） */
+  onOpenDetail?: (customer: Customer) => void;
+  /** 列表就地更新回调（可选，用于同步标签/重点星编辑） */
+  onListUpdate?: (updater: (prev: Customer[]) => Customer[]) => void;
+  /** 编辑客户回调（传入后头部右下角显示编辑图标） */
+  onEdit?: () => void;
+  /** 是否可操作（控制转交/释放/删除图标显示） */
+  canOperate?: boolean;
+  /** 转交客户回调（仅 canOperate 时显示图标） */
+  onTransfer?: () => void;
+  /** 释放到公海回调（仅 canOperate 时显示图标，带确认） */
+  onRelease?: () => void;
+  /** 删除客户回调（仅 canOperate 时显示图标，带确认） */
+  onDelete?: () => void;
 }
 
 const CustomerCard = memo(function CustomerCard({
@@ -25,16 +37,41 @@ const CustomerCard = memo(function CustomerCard({
   token,
   onOpenDetail,
   onListUpdate,
+  onEdit,
+  canOperate,
+  onTransfer,
+  onRelease,
+  onDelete,
 }: CustomerCardProps) {
   const isPublic = !customer.ownerId;
-  const ownerName = isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '');
-  const firstChar = isPublic
-    ? '公'
-    : (ownerName?.charAt(0) || customer.contactName?.charAt(0) || customer.companyName?.charAt(0) || '?');
+
+  // 头部操作图标按钮统一样式（半透明圆形）
+  const actionIconStyle: React.CSSProperties = {
+    width: 28,
+    height: 28,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    borderRadius: '50%',
+    cursor: 'pointer',
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    backdropFilter: 'blur(4px)',
+    color: token.colorWhite,
+    fontSize: 14,
+    lineHeight: 1,
+    transition: 'background-color 0.2s',
+    padding: 0,
+  };
 
   const grade = useMemo(() => getGrade(customer), [customer]);
-  const gradeColor = useMemo(() => tagColorToHex(grade.tagColor, token), [grade.tagColor, token]);
   const { format: formatCurrency } = useCurrencyStore();
+
+  // 兼容：详情接口可能不返回 pipelineAmount/totalAmount，从关联数组汇总 fallback
+  const displayPipelineAmount = customer.pipelineAmount
+    ?? (customer.pipelines || []).reduce((sum, p) => sum + (p.amount || p.estimatedAmount || 0), 0);
+  const displayTotalAmount = customer.totalAmount
+    ?? (customer.orders || []).reduce((sum, o) => sum + (o.amountCNY || 0), 0);
 
   // 本地标签状态（可编辑，直接调接口更新）
   const [localTags, setLocalTags] = useState(customer.tags || '');
@@ -50,7 +87,7 @@ const CustomerCard = memo(function CustomerCard({
     customerApi
       .updateTags(customer.id, next)
       .then(() => {
-        onListUpdate((prev) =>
+        onListUpdate && onListUpdate((prev) =>
           prev.map((c) => (c.id === customer.id ? { ...c, tags: next } : c))
         );
       })
@@ -71,8 +108,7 @@ const CustomerCard = memo(function CustomerCard({
   }, [customer.firstOrderDate, hasPipelines, grade.grade]);
 
   // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
-  // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
-  const { customerTier, tierHeaderBg, avatarBg } = useMemo(() => {
+  const { customerTier, tierHeaderBg } = useMemo(() => {
     const currentYear = new Date().getFullYear().toString();
     // 已成交客户
     if (customer.firstOrderDate) {
@@ -80,13 +116,11 @@ const CustomerCard = memo(function CustomerCard({
         return {
           customerTier: 'shine',
           tierHeaderBg: `linear-gradient(135deg, #ffd666 0%, ${token.colorWarning} 100%)`,
-          avatarBg: '#ffd666',
         };
       }
       return {
         customerTier: 'chest',
         tierHeaderBg: `linear-gradient(135deg, ${token.purple} 0%, ${token.purple} 100%)`,
-        avatarBg: token.purple,
       };
     }
     // 未成交客户：无商机记录 → 灰色 void
@@ -94,7 +128,6 @@ const CustomerCard = memo(function CustomerCard({
       return {
         customerTier: 'void',
         tierHeaderBg: 'linear-gradient(135deg, #8a8f9a 0%, #6b7280 100%)',
-        avatarBg: '#8a8f9a',
       };
     }
     // 未成交客户：有商机记录，按采购意向分级
@@ -103,33 +136,42 @@ const CustomerCard = memo(function CustomerCard({
         return {
           customerTier: 'cheer',
           tierHeaderBg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-          avatarBg: '#f97316',
         };
       case 'B':
         return {
           customerTier: 'bottle',
           tierHeaderBg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-          avatarBg: '#3b82f6',
         };
       case 'C':
         return {
           customerTier: 'hatch',
           tierHeaderBg: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
-          avatarBg: '#93c5fd',
         };
       case 'D':
       default:
         return {
           customerTier: 'dull',
           tierHeaderBg: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
-          avatarBg: '#bfdbfe',
         };
     }
   }, [customer.firstOrderDate, hasPipelines, grade.grade, token.colorWarning, token.purple]);
 
+  // 头像背景色与卡片头部色调保持一致
+  const avatarBg = useMemo(() => {
+    switch (customerTier) {
+      case 'shine': return '#ffd666';
+      case 'chest': return token.purple;
+      case 'void': return '#8a8f9a';
+      case 'cheer': return '#f97316';
+      case 'bottle': return '#3b82f6';
+      case 'hatch': return '#93c5fd';
+      case 'dull': return '#bfdbfe';
+      default: return token.colorPrimary;
+    }
+  }, [customerTier, token.purple]);
+
   // --- 海浪随机参数生成（基于客户ID做种子，保证每次渲染一致） ---
   const waveParams = useMemo(() => {
-    // Mulberry32 PRNG — 确定性伪随机
     const mulberry32 = (seed: number): (() => number) => {
       return () => {
         seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -138,7 +180,6 @@ const CustomerCard = memo(function CustomerCard({
         return ((t ^ t >>> 14) >>> 0) / 4294967296;
       };
     };
-    // 用 customer.id 的字符编码求和作为基础种子
     const baseSeed = String(customer.id || '0').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
     interface WaveParam {
       durationMult: number;
@@ -149,13 +190,16 @@ const CustomerCard = memo(function CustomerCard({
     for (let i = 0; i < 2; i++) {
       const rng = mulberry32(baseSeed + i * 7919);
       layers.push({
-        durationMult: 0.82 + rng() * 0.36,   // 0.82 ~ 1.18
-        delayS: Math.round(rng() * 45) / 100, // 0.00 ~ 0.45s
-        topOffset: Math.round(rng() * 4 - 2),  // -2 ~ +2px 微调
+        durationMult: 0.82 + rng() * 0.36,
+        delayS: Math.round(rng() * 45) / 100,
+        topOffset: Math.round(rng() * 4 - 2),
       });
     }
     return layers;
   }, [customer.id]);
+
+  // 整卡点击：仅列表视图（传入 onOpenDetail）时启用
+  const cardClickable = !!onOpenDetail;
 
   return (
     <div
@@ -163,12 +207,12 @@ const CustomerCard = memo(function CustomerCard({
       style={{ height: '100%', position: 'relative' }}
     >
       <Card
-        hoverable
-        onClick={() => onOpenDetail(customer)}
+        hoverable={cardClickable}
+        onClick={cardClickable ? () => onOpenDetail!(customer) : undefined}
         style={{
           borderRadius: token.borderRadiusLG,
           boxShadow: token.boxShadowSecondary,
-          cursor: 'pointer',
+          cursor: cardClickable ? 'pointer' : 'default',
           height: '100%',
           overflow: 'hidden',
         }}
@@ -217,7 +261,6 @@ const CustomerCard = memo(function CustomerCard({
           {/* 海浪线条动画（高意向 & 中意向 & 低意向） */}
           {(customerTier === 'bottle' || customerTier === 'hatch' || customerTier === 'dull') && (
             <div className="wave-line-container">
-              {/* 上层 — 涌浪（大尺度起伏） */}
               <svg className="wave-svg wave-bob1" viewBox="0 0 800 120" preserveAspectRatio="none"
                 style={{
                   top: 48 + waveParams[0].topOffset,
@@ -226,7 +269,6 @@ const CustomerCard = memo(function CustomerCard({
                 }}>
                 <path d="M0,28 C22,22 68,22 90,28 C112,34 158,34 180,28 C202,22 248,22 270,28 C292,34 338,34 360,28 C382,22 428,22 450,28 C472,34 518,34 540,28 C562,22 608,22 630,28 C652,34 698,34 720,28 C742,22 788,22 800,26 L800,120 L0,120 Z" fill="rgba(255,255,255,0.08)" />
               </svg>
-              {/* 下层 — 近岸波浪，偶然向上翻涌盖过上层 */}
               <svg className="wave-svg wave-bob2" viewBox="0 0 800 120" preserveAspectRatio="none"
                 style={{
                   top: 68 + waveParams[1].topOffset,
@@ -260,7 +302,7 @@ const CustomerCard = memo(function CustomerCard({
                 color="rgba(255,255,255,0.9)"
                 mutedColor="rgba(255,255,255,0.35)"
                 onToggle={() => {
-                  onListUpdate((prev) =>
+                  onListUpdate && onListUpdate((prev) =>
                     prev.map((c) =>
                       c.id === customer.id ? { ...c, isKeyAccount: !c.isKeyAccount } : c
                     )
@@ -270,57 +312,159 @@ const CustomerCard = memo(function CustomerCard({
               <FlagIcon country={customer.country} style={{ borderRadius: 2 }} />
             </div>
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 14, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
             {customer.companyName || '-'}
           </div>
-          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 3, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
             <GlobalOutlined style={{ fontSize: 11 }} />
             {findCountry(customer.country)?.zh || (customer.country || '未知')}
           </div>
-        </div>
 
-        {/* 内容区 */}
-        <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 1 auto', minWidth: 0 }}>
-            <Avatar size={40} style={{ backgroundColor: avatarBg, fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
-              {firstChar}
-            </Avatar>
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {customer.contactName || '-'}
-              </div>
-              <div style={{ fontSize: 12, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {customer.email || '-'}
-              </div>
-              {customer.phone ? (
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{customer.phone}</div>
-              ) : (
-                <div style={{ fontSize: 12, color: token.colorTextQuaternary }}>暂无联系方式</div>
+          {/* 基础联系人信息（嵌入橙色头部，每条信息独占一行占位展示） */}
+          <Divider
+            dashed
+            style={{ marginTop: 14, marginBottom: 12, borderColor: 'rgba(255,255,255,0.28)' }}
+          />
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            position: 'relative',
+            zIndex: 1,
+          }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: token.colorWhite, lineHeight: '20px' }}>
+              <UserOutlined style={{ fontSize: 12, opacity: 0.75 }} />
+              {customer.contactName || '-'}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.78)', lineHeight: '20px' }}>
+              <MailOutlined style={{ fontSize: 12, opacity: 0.7 }} />
+              {customer.email || '-'}
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'rgba(255,255,255,0.78)', lineHeight: '20px' }}>
+              <PhoneOutlined style={{ fontSize: 12, opacity: 0.7 }} />
+              {customer.phone || '-'}
+            </span>
+          </div>
+
+          {/* 操作图标组：头部右下角（编辑 / 转交 / 释放 / 删除） */}
+          {(onEdit || canOperate) && (
+            <div
+              style={{
+                position: 'absolute',
+                right: 12,
+                bottom: 12,
+                zIndex: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              {onEdit && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onEdit(); }}
+                  title="编辑客户"
+                  style={actionIconStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.38)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}
+                >
+                  <EditOutlined />
+                </button>
+              )}
+              {canOperate && onTransfer && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onTransfer(); }}
+                  title="转交"
+                  style={actionIconStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.38)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}
+                >
+                  <SwapOutlined />
+                </button>
+              )}
+              {canOperate && onRelease && (
+                <Popconfirm title="确认释放到公海？" onConfirm={() => { onRelease(); }} onPopupClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); }}
+                    title="释放"
+                    style={actionIconStyle}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.38)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}
+                  >
+                    <RollbackOutlined />
+                  </button>
+                </Popconfirm>
+              )}
+              {canOperate && onDelete && (
+                <Popconfirm title="确认删除？" onConfirm={() => { onDelete(); }} onPopupClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); }}
+                    title="删除"
+                    style={{ ...actionIconStyle, color: '#fff1f0' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,120,117,0.45)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}
+                  >
+                    <DeleteOutlined />
+                  </button>
+                </Popconfirm>
               )}
             </div>
-          </div>
+          )}
+        </div>
 
-          <div style={{ textAlign: 'right', flex: '0 0 auto', margin: '0 12px' }}>
-            <div style={{ fontSize: 11, color: token.colorTextSecondary }}>预计商机金额</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
-              {formatCurrency(customer.pipelineAmount || 0)}
-            </div>
-            <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.pipelines ?? 0} 商机</div>
-          </div>
+        {/* 内容区（负责人 / 预计商机金额 / 成交订单金额，三等分） */}
+        <div style={{ padding: '16px 20px' }}>
+          <Row gutter={12}>
+            <Col span={8} style={{ textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Avatar
+                  size={36}
+                  style={{
+                    backgroundColor: avatarBg,
+                    fontSize: 14,
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {isPublic ? '公' : ((customer.owner?.realName || customer.owner?.username || '?').charAt(0))}
+                </Avatar>
+                <div style={{ overflow: 'hidden', minWidth: 0, textAlign: 'left' }}>
+                  <div style={{ fontSize: 11, color: token.colorTextSecondary }}>负责人</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '-')}
+                  </div>
+                  <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {isPublic ? '未分配' : (customer.owner?.username || '')}
+                  </div>
+                </div>
+              </div>
+            </Col>
 
-          <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
-            <div style={{ fontSize: 11, color: token.colorTextSecondary }}>成交订单金额</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
-              {formatCurrency(customer.totalAmount || 0)}
-            </div>
-            <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.orders ?? 0} 单</div>
-          </div>
+            <Col span={8} style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>预计商机金额</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
+                {formatCurrency(displayPipelineAmount || 0)}
+              </div>
+              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.pipelines ?? (customer.pipelines || []).length} 商机</div>
+            </Col>
+
+            <Col span={8} style={{ textAlign: 'right' }}>
+              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>成交订单金额</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading }}>
+                {formatCurrency(displayTotalAmount || 0)}
+              </div>
+              <div style={{ fontSize: 11, color: token.colorTextSecondary }}>{customer._count?.orders ?? (customer.orders || []).length} 单</div>
+            </Col>
+          </Row>
         </div>
 
         {/* 底部分隔线 + 标签（左）与创建时间（右）左右分布 */}
         <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
           <div
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { if (cardClickable) e.stopPropagation(); }}
             style={{ flex: '1 1 auto', minWidth: 0 }}
           >
             <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" />

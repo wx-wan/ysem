@@ -354,7 +354,7 @@ export default function CustomersPage() {
         onClose={() => setDrawerOpen(false)}
         loading={detailLoading}
         customer={detailCustomer}
-        orders={[]}
+        orders={detailCustomer?.orders || []}
         user={user}
         onRefresh={handleDetailRefresh}
         onTransfer={openTransfer}

@@ -2,23 +2,22 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   Drawer, Space, Avatar, Tag, Button, Popconfirm, Popover, Typography,
   Row, Col, Card, Descriptions, Table, Input, InputNumber,
-  Spin, theme, Modal, App, Select,
+  Spin, theme, Modal, App, Select, DatePicker,
 } from 'antd';
 import {
-  SwapOutlined, UserAddOutlined, ShoppingCartOutlined,
+  UserAddOutlined, ShoppingCartOutlined,
   GlobalOutlined, MailOutlined, PhoneOutlined, EnvironmentOutlined,
   UserOutlined, CalendarOutlined, FileTextOutlined,
   ClockCircleOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import CountryDisplay from '../CountryDisplay';
-import KeyAccountStar from '../KeyAccountStar';
-import { getCustomerTypeLabel } from './utils';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { customerApi, Customer, Order, CustomerActivity } from '../../api/customers';
 import { salesApi, SalesItem } from '../../api/sales';
 import { userApi, User } from '../../api/users';
 import CustomerFormModal from './CustomerFormModal';
+import CustomerCard from './CustomerCard';
 
 const { Text } = Typography;
 
@@ -207,8 +206,9 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   // 重置内部状态
   const handleClose = useCallback(() => {
     setShowAllActivities(false);
+    onRefresh?.(customer?.id || '');
     onClose();
-  }, [onClose]);
+  }, [onRefresh, onClose]);
 
   // ========== 渲染函数 ==========
 
@@ -272,17 +272,8 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 </div>
               )}
             </>
-          ) : canOperate ? (
-              <>
-                <Button icon={<SwapOutlined />} onClick={() => onTransfer(customer.id)}>转交</Button>
-                <Button type="primary" onClick={() => setEditModalOpen(true)}>编辑</Button>
-                <Popconfirm title="确认释放到公海？" onConfirm={handleRelease}>
-                  <Button>释放</Button>
-                </Popconfirm>
-                <Popconfirm title="确认删除？" onConfirm={handleDelete}>
-                  <Button danger>删除</Button>
-                </Popconfirm>
-              </>
+            ) : canOperate ? (
+              <Tag color="processing" bordered={false}>操作请见卡片右上角</Tag>
             ) : (
               <Tag color="warning" bordered={false}>无操作权限</Tag>
             )}
@@ -295,6 +286,19 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
         </div>
       ) : (
         <div>
+          {/* ===== 当前客户卡片视图（副本） ===== */}
+          <div style={{ marginBottom: 16 }}>
+              <CustomerCard
+                customer={customer}
+                token={token}
+                onEdit={() => setEditModalOpen(true)}
+                canOperate={canOperate}
+                onTransfer={() => onTransfer(customer.id)}
+                onRelease={handleRelease}
+                onDelete={handleDelete}
+              />
+          </div>
+
           {/* ===== 基本信息卡片 ===== */}
           <Card
             size="small"
@@ -321,38 +325,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                 {dayjs(customer.createdAt).format('YYYY-MM-DD')}
               </Descriptions.Item>
             </Descriptions>
-            {/* 标签 */}
-            <div style={{ marginTop: 12, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-              {(() => {
-                const tl = getCustomerTypeLabel(customer);
-                if (tl) return <Tag bordered={false} color={tl.color}>{tl.label}</Tag>;
-                return null;
-              })()}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Text type="secondary">重点客户</Text>
-                <KeyAccountStar
-                  isKeyAccount={customer.isKeyAccount || false}
-                  customerId={customer.id}
-                  onToggle={() => onRefresh(customer.id)}
-                />
-              </div>
-            </div>
-            {/* 标签列表：只展示自定义标签，过滤系统标签 */}
-            {customer.tags && (
-              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                {customer.tags.split(',').filter(Boolean).filter((tagStr: string) => {
-                  const idx = tagStr.lastIndexOf('#');
-                  const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
-                  const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
-                  return !SYSTEM_TAGS.includes(name);
-                }).map((tagStr: string) => {
-                  const idx = tagStr.lastIndexOf('#');
-                  const name = idx > 0 ? tagStr.slice(0, idx) : tagStr;
-                  const color = idx > 0 ? `#${tagStr.slice(idx + 1)}` : undefined;
-                  return <Tag key={name} bordered={false} color={color}>{name}</Tag>;
-                })}
-              </div>
-            )}
             {customer.notes && (
               <div style={{ marginTop: 12, padding: '8px 12px', backgroundColor: '#fafafa', borderRadius: 6, fontSize: 13 }}>
                 <Text type="secondary"><FileTextOutlined /> 备注：</Text>{customer.notes}
@@ -541,10 +513,10 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           </Row>
           <div>
             <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>预计成交日期</Text>
-            <Input
-              type="date"
-              value={pipelineForm.expectedCloseDate}
-              onChange={(e) => setPipelineForm({ ...pipelineForm, expectedCloseDate: e.target.value })}
+            <DatePicker
+              style={{ width: '100%' }}
+              value={pipelineForm.expectedCloseDate ? dayjs(pipelineForm.expectedCloseDate) : null}
+              onChange={(d) => setPipelineForm({ ...pipelineForm, expectedCloseDate: d ? d.format('YYYY-MM-DD') : '' })}
             />
           </div>
         </div>
