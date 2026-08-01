@@ -231,7 +231,10 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           {isPublic && <Tag color="gold" style={{ marginInlineStart: 4 }}>公海</Tag>}
         </Space>
       }
-      styles={{ root: { width: 680 }, wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
+      width={880}
+      styles={{
+        wrapper: { width: 880, maxWidth: '92vw', borderRadius: '10px 0 0 10px', overflow: 'hidden' },
+      }}
       loading={loading}
     >
       {loading ? (
@@ -417,7 +420,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   .slice(0, showAllActivities ? undefined : 5)
                   .map((a: CustomerActivity) => ({
                     color: token.colorPrimary,
-                    children: (
+                    content: (
                       <div style={{ paddingBottom: 2 }}>
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                           <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
