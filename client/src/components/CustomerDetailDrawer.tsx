@@ -19,6 +19,7 @@ import { getCustomerTypeLabel } from './customer/utils';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { customerApi } from '../api/customers';
 import { salesApi, SalesItem } from '../api/sales';
+import { userApi, User } from '../api/users';
 import type { Customer, Order, CustomerActivity } from '../types';
 
 const { Text } = Typography;
@@ -67,11 +68,21 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   const formatCur = useCurrencyStore((state) => state.format);
   const { message } = App.useApp();
 
+  // 角色判断（必须在 useEffect 之前定义，否则会 TDZ 报错）
+  const isAdmin = user?.role?.code === 'admin';
+  const isPublic = customer ? !customer.ownerId : true;
+  const canOperate = customer ? (isAdmin || customer.ownerId === user?.id) : false;
+
   // 商机记录 CRUD 状态
   const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
   const [pipelineForm, setPipelineForm] = useState({ name: '', estimatedAmount: undefined as number | undefined, probability: undefined as string | undefined, expectedCloseDate: '' });
   const [pipelineSaving, setPipelineSaving] = useState(false);
+
+  // 指派相关状态
+  const [assignUserId, setAssignUserId] = useState<string>('');
+  const [userList, setUserList] = useState<User[]>([]);
+  const [assigning, setAssigning] = useState(false);
 
   // 加载商机记录
   const loadPipelines = useCallback(async () => {
@@ -88,6 +99,32 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   useEffect(() => {
     if (open && customer) loadPipelines();
   }, [open, customer?.id, loadPipelines]);
+
+  // 加载用户列表（管理员指派用）
+  useEffect(() => {
+    if (open && isAdmin) {
+      userApi.list({ pageSize: 999 }).then((res: any) => {
+        setUserList(res.data.data.list || []);
+      }).catch(() => {});
+    }
+  }, [open, isAdmin]);
+
+  // 指派客户到指定业务员
+  const handleAssign = useCallback(async () => {
+    if (!customer || !assignUserId) return;
+    setAssigning(true);
+    try {
+      await customerApi.transfer(customer.id, assignUserId);
+      message.success('指派成功');
+      setAssignUserId('');
+      onClose();
+      onRefresh(customer.id);
+    } catch {
+      message.error('指派失败');
+    } finally {
+      setAssigning(false);
+    }
+  }, [customer, assignUserId, onClose, onRefresh]);
 
   // 新增商机
   const openCreatePipeline = useCallback(() => {
@@ -151,10 +188,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       message.error('删除失败');
     }
   }, [loadPipelines, onRefresh, customer?.id]);
-
-  const isAdmin = user?.role?.code === 'admin';
-  const isPublic = customer ? (!customer.ownerId || customer.owner?.role?.code === 'admin') : true;
-  const canOperate = customer ? (isAdmin || customer.ownerId === user?.id) : false;
 
   // 进入编辑
   const enterEdit = useCallback(() => {
@@ -266,9 +299,32 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           ) : (
             <>
               {isPublic ? (
-                <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
-                  认领
-                </Button>
+                <>
+                  <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaim}>
+                    认领
+                  </Button>
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <Select
+                        placeholder="选择业务员"
+                        value={assignUserId || undefined}
+                        onChange={(v) => setAssignUserId(v)}
+                        size="middle"
+                        style={{ minWidth: 140 }}
+                        showSearch
+                        filterOption={(input: string, option: any) =>
+                          option?.label?.toLowerCase().includes(input.toLowerCase())
+                        }
+                        options={userList
+                          .filter((u: User) => u.status === 'ACTIVE')
+                          .map((u: User) => ({ value: u.id, label: u.realName || u.username }))}
+                      />
+                      <Button loading={assigning} disabled={!assignUserId} onClick={handleAssign}>
+                        指派
+                      </Button>
+                    </div>
+                  )}
+                </>
               ) : canOperate ? (
                   <>
                     <Button icon={<SwapOutlined />} onClick={() => onTransfer(customer.id)}>转交</Button>

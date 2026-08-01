@@ -109,6 +109,7 @@ model OperationLog {
   detail    String?
   ip        String?
   createdAt DateTime @default(now())
+  targetId  String?
 }
 
 model Customer {
@@ -192,8 +193,8 @@ model SalesPipeline {
   updatedAt          DateTime        @updatedAt
   pipelineNumber     String?         @unique
   activities         SalesActivity[]
-  assignee           User?           @relation(fields: [assignedTo], references: [id])
   customer           Customer?       @relation(fields: [customerId], references: [id])
+  assignee           User?           @relation(fields: [assignedTo], references: [id])
 }
 
 model SalesActivity {

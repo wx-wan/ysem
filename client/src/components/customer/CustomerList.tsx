@@ -1,27 +1,29 @@
+import { useMemo, memo } from 'react';
 import { Table, Tag, Avatar, Space } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
 import type { Customer } from '../../api/customers';
 import { getGrade, tagColorToHex } from './utils';
+import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
 
 interface CustomerListProps {
   list: Customer[];
   token: any;
-  formatCurrency: (value: number) => string;
   onOpenDetail: (customer: Customer) => void;
   onListUpdate: (updater: (prev: Customer[]) => Customer[]) => void;
 }
 
-export default function CustomerList({
+const CustomerList = memo(function CustomerList({
   list,
   token,
-  formatCurrency,
   onOpenDetail,
   onListUpdate,
 }: CustomerListProps) {
-  const columns = [
+  const { format: formatCurrency } = useCurrencyStore();
+
+  const columns = useMemo(() => [
     {
       title: '客户信息',
       dataIndex: 'companyName',
@@ -113,7 +115,7 @@ export default function CustomerList({
         );
       },
     },
-  ];
+  ], [token, onListUpdate, formatCurrency]);
 
   return (
     <Table
@@ -129,4 +131,6 @@ export default function CustomerList({
       style={{ borderRadius: token.borderRadiusLG, overflow: 'hidden' }}
     />
   );
-}
+});
+
+export default CustomerList;

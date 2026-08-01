@@ -1,18 +1,34 @@
-import { Input, Button } from 'antd';
+import { memo } from 'react';
+import { Input, Button, Select } from 'antd';
 import {
   SearchOutlined, AppstoreOutlined, UnorderedListOutlined,
-  UploadOutlined, ReloadOutlined, PlusOutlined,
+  UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../TagSelector';
+import type { User } from '../../api/users';
 
-const FILTER_OPTIONS: { key: 'all' | 'new' | 'old' | 'noOrder' | 'done' | 'key' | 'public'; label: string }[] = [
+type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
+
+const MAIN_FILTERS: { key: FilterType; label: string }[] = [
   { key: 'all', label: '我的客户' },
-  { key: 'new', label: '新客户' },
-  { key: 'old', label: '老客户' },
-  { key: 'noOrder', label: '未成交' },
-  { key: 'done', label: '已成交' },
   { key: 'key', label: '重点客户' },
   { key: 'public', label: '公海客户' },
+  { key: 'noOrder', label: '未成交' },
+  { key: 'done', label: '已成交' },
+];
+
+const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
+  { key: '', label: '全部' },
+  { key: 'A', label: '准成交' },
+  { key: 'B', label: '高意向' },
+  { key: 'C', label: '中意向' },
+  { key: 'D', label: '低意向' },
+];
+
+const DONE_SUB_FILTERS: { key: string; label: string }[] = [
+  { key: '', label: '全部' },
+  { key: 'new', label: '本年度新客' },
+  { key: 'old', label: '往年老客' },
 ];
 
 interface CustomerToolbarProps {
@@ -25,131 +41,216 @@ interface CustomerToolbarProps {
   setViewMode: (v: 'card' | 'list') => void;
   filterTags: string;
   setFilterTags: (v: string) => void;
-  filterType: 'all' | 'new' | 'old' | 'noOrder' | 'done' | 'key' | 'public';
-  setFilterType: (v: 'all' | 'new' | 'old' | 'noOrder' | 'done' | 'key' | 'public') => void;
+  filterType: FilterType;
+  setFilterType: (v: FilterType) => void;
+  subFilterType: string;
+  setSubFilterType: (v: string) => void;
   setImportOpen: (v: boolean) => void;
   openCreate: () => void;
+  isAdmin: boolean;
+  filterTypePublic: boolean;
+  selectedOwnerId: string;
+  setSelectedOwnerId: (v: string) => void;
+  userList: User[];
 }
 
-export default function CustomerToolbar({
+const CustomerToolbar = memo(function CustomerToolbar({
   token, keyword, setKeyword, fetchData, setPage,
   viewMode, setViewMode, filterTags, setFilterTags,
-  filterType, setFilterType,
+  filterType, setFilterType, subFilterType, setSubFilterType,
   setImportOpen, openCreate,
+  isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
 }: CustomerToolbarProps) {
+  const showNoOrderSub = filterType === 'noOrder';
+  const showDoneSub = filterType === 'done';
+
+  const handleFilterChange = (next: FilterType) => {
+    setFilterType(next);
+    setSubFilterType('');
+    setPage(1);
+  };
+
+  const handleSubFilterChange = (next: string) => {
+    setSubFilterType(next);
+    setPage(1);
+  };
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-      <Input
-        prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-        placeholder="搜索客户名、国家、联系人..."
-        style={{ width: 280, borderRadius: 8, height: 36 }}
-        value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
-        onPressEnter={() => { setPage(1); fetchData(); }}
-        allowClear
-      />
+    <div style={{ marginBottom: 16 }}>
+      {/* 主工具栏 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <Input
+          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+          placeholder="搜索客户名、国家、联系人..."
+          style={{ width: 280, borderRadius: 8, height: 36 }}
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          onPressEnter={() => { setPage(1); fetchData(); }}
+          allowClear
+        />
 
-      {/* 客户类型胶囊筛选 */}
-      <div
-        style={{
+        {/* 主筛选胶囊 */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            background: '#f1f5f9',
+            borderRadius: 24,
+            padding: '3px 4px',
+          }}
+        >
+          {MAIN_FILTERS.map((opt) => {
+            const active = filterType === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => handleFilterChange(opt.key)}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  padding: '5px 12px',
+                  borderRadius: 20,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.25s ease',
+                  background: active ? '#1677ff' : 'transparent',
+                  color: active ? '#fff' : '#64748b',
+                  boxShadow: active ? '0 2px 8px rgba(22,119,255,0.3)' : 'none',
+                }}
+              >
+                {opt.key === 'all' && isAdmin ? '团队客户' : opt.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <TagSelector
+          value={filterTags}
+          onChange={(v) => { setFilterTags(v); setPage(1); }}
+          placeholder="输入标签名称"
+          showAddButton={false}
+        />
+
+        {isAdmin && !filterTypePublic && (
+          <Select
+            placeholder="筛选业务员"
+            value={selectedOwnerId || undefined}
+            onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
+            allowClear
+            style={{ width: 160, borderRadius: 8 }}
+            showSearch
+            filterOption={(input: string, option: any) =>
+              option?.label?.toLowerCase().includes(input.toLowerCase())
+            }
+            options={userList
+              .filter((u: User) => u.status === 'ACTIVE')
+              .map((u: User) => ({
+                value: u.id,
+                label: u.realName || u.username,
+              }))}
+          />
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        {/* 视图切换 */}
+        <div style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: 2,
           background: '#f1f5f9',
-          borderRadius: 24,
-          padding: '3px 4px',
-        }}
-      >
-        {FILTER_OPTIONS.map((opt) => {
-          const active = filterType === opt.key;
-          return (
-            <button
-              key={opt.key}
-              onClick={() => { setFilterType(opt.key); setPage(1); }}
-              style={{
-                border: 'none',
-                outline: 'none',
-                cursor: 'pointer',
-                padding: '5px 12px',
-                borderRadius: 20,
-                fontSize: 13,
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                transition: 'all 0.25s ease',
-                background: active ? '#1677ff' : 'transparent',
-                color: active ? '#fff' : '#64748b',
-                boxShadow: active ? '0 2px 8px rgba(22,119,255,0.3)' : 'none',
-              }}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
+          borderRadius: 8,
+          padding: 2,
+        }}>
+          <button
+            onClick={() => setViewMode('card')}
+            title="卡片视图"
+            style={{
+              border: 'none',
+              cursor: 'pointer',
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: viewMode === 'card' ? '#fff' : 'transparent',
+              color: viewMode === 'card' ? token.colorPrimary : token.colorTextSecondary,
+              boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <AppstoreOutlined />
+          </button>
+          <button
+            onClick={() => setViewMode('list')}
+            title="列表视图"
+            style={{
+              border: 'none',
+              cursor: 'pointer',
+              padding: '6px 10px',
+              borderRadius: 6,
+              background: viewMode === 'list' ? '#fff' : 'transparent',
+              color: viewMode === 'list' ? token.colorPrimary : token.colorTextSecondary,
+              boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <UnorderedListOutlined />
+          </button>
+        </div>
+
+        <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
+          导入
+        </Button>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ borderRadius: 8 }}>
+          新增客户
+        </Button>
       </div>
 
-      <TagSelector
-        value={filterTags}
-        onChange={(v) => { setFilterTags(v); setPage(1); }}
-        placeholder="输入标签名称"
-        showAddButton={false}
-      />
-
-      <div style={{ flex: 1 }} />
-
-      {/* 视图切换 - 图标 */}
-      <div style={{
-        display: 'flex',
-        background: '#f1f5f9',
-        borderRadius: 8,
-        padding: 2,
-      }}>
-        <button
-          onClick={() => setViewMode('card')}
-          title="卡片视图"
+      {/* 子筛选栏 */}
+      {(showNoOrderSub || showDoneSub) && (
+        <div
           style={{
-            border: 'none',
-            cursor: 'pointer',
-            padding: '6px 10px',
-            borderRadius: 6,
-            background: viewMode === 'card' ? '#fff' : 'transparent',
-            color: viewMode === 'card' ? token.colorPrimary : token.colorTextSecondary,
-            boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.2s',
             display: 'flex',
             alignItems: 'center',
+            gap: 2,
+            marginTop: 10,
+            background: '#f8fafc',
+            borderRadius: 20,
+            padding: '3px 4px',
+            width: 'fit-content',
           }}
         >
-          <AppstoreOutlined />
-        </button>
-        <button
-          onClick={() => setViewMode('list')}
-          title="列表视图"
-          style={{
-            border: 'none',
-            cursor: 'pointer',
-            padding: '6px 10px',
-            borderRadius: 6,
-            background: viewMode === 'list' ? '#fff' : 'transparent',
-            color: viewMode === 'list' ? token.colorPrimary : token.colorTextSecondary,
-            boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          <UnorderedListOutlined />
-        </button>
-      </div>
-
-      <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
-        导入
-      </Button>
-      <Button icon={<ReloadOutlined />} onClick={fetchData} style={{ borderRadius: 8 }}>
-        刷新
-      </Button>
-      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ borderRadius: 8 }}>
-        新增客户
-      </Button>
+          {(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => {
+            const active = subFilterType === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => handleSubFilterChange(opt.key)}
+                style={{
+                  border: 'none',
+                  outline: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 10px',
+                  borderRadius: 16,
+                  fontSize: 12,
+                  fontWeight: active ? 600 : 500,
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease',
+                  background: active ? '#e0e7ff' : 'transparent',
+                  color: active ? '#4338ca' : '#94a3b8',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
-}
+});
+
+export default CustomerToolbar;

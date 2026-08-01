@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { activityLogger } from '../lib/activity-logger';
 
 // ============ 校验 ============
 
@@ -168,16 +169,24 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
   try {
     const data = createPipelineSchema.parse(req.body);
 
-    // 生成商机号: BO-YYYYMMDD-序号
+    // 生成商机号: BO-YYYYMMDD-序号（查询当天最大序号避免重复）
     const today = new Date();
     const dateStr = today.getFullYear().toString()
       + String(today.getMonth() + 1).padStart(2, '0')
       + String(today.getDate()).padStart(2, '0');
-    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const todayCount = await prisma.salesPipeline.count({
-      where: { createdAt: { gte: todayStart } },
+    const prefix = `BO-${dateStr}-`;
+    const existing = await prisma.salesPipeline.findMany({
+      where: { pipelineNumber: { startsWith: prefix } },
+      select: { pipelineNumber: true },
     });
-    const pipelineNumber = `BO-${dateStr}-${String(todayCount + 1).padStart(3, '0')}`;
+    let maxSeq = 0;
+    for (const item of existing) {
+      if (item.pipelineNumber) {
+        const seq = Number(item.pipelineNumber.slice(prefix.length));
+        if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    }
+    const pipelineNumber = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 
     const pipeline = await prisma.salesPipeline.create({
       data: { ...data, pipelineNumber },
@@ -196,13 +205,15 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
 
     // 如果关联了客户，同步记录到客户活动记录
     if (data.customerId) {
-      await prisma.customerActivity.create({
-        data: {
-          customerId: data.customerId,
-          action: 'PIPELINE_CREATED',
-          detail: `创建了商机「${data.title}」`,
-          createdBy: req.username!,
-        },
+      await activityLogger.log({
+        userId: req.userId!,
+        username: req.username!,
+        action: 'PIPELINE_CREATED',
+        module: 'sales',
+        targetId: pipeline.id,
+        target: data.title,
+        detail: `创建了商机「${data.title}」`,
+        customerId: data.customerId,
       });
     }
 
@@ -245,6 +256,27 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
       });
     }
 
+    // 如果关联了客户，同步记录到客户活动记录
+    if (existing.customerId) {
+      const changes: string[] = [];
+      if (data.title && data.title !== existing.title) changes.push('标题');
+      if (data.companyName && data.companyName !== existing.companyName) changes.push('公司名称');
+      if (data.estimatedAmount !== undefined && data.estimatedAmount !== existing.estimatedAmount) changes.push('预计金额');
+      if (data.stage && data.stage !== existing.stage) changes.push('阶段');
+      await activityLogger.log({
+        userId: req.userId!,
+        username: req.username!,
+        action: 'PIPELINE_UPDATED',
+        module: 'sales',
+        targetId: pipeline.id,
+        target: data.title || existing.title,
+        detail: changes.length > 0
+          ? `修改了商机「${data.title || existing.title}」的${changes.join('、')}`
+          : `修改了商机「${data.title || existing.title}」`,
+        customerId: existing.customerId,
+      });
+    }
+
     success(res, pipeline, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -281,6 +313,24 @@ export const changeStage = async (req: AuthRequest, res: Response): Promise<void
       },
     });
 
+    const STAGE_LABELS: Record<string, string> = {
+      LEAD: '线索', OPPORTUNITY: '商机', SAMPLE: '样品', ORDER: '订单',
+    };
+
+    // 如果关联了客户，同步记录到客户活动记录
+    if (existing.customerId) {
+      await activityLogger.log({
+        userId: req.userId!,
+        username: req.username!,
+        action: 'PIPELINE_STAGE_CHANGE',
+        module: 'sales',
+        targetId: pipeline.id,
+        target: existing.title,
+        detail: `将商机「${existing.title}」从「${STAGE_LABELS[existing.stage]}」推进到「${STAGE_LABELS[stage]}」`,
+        customerId: existing.customerId,
+      });
+    }
+
     success(res, pipeline, '阶段变更成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -295,7 +345,25 @@ export const changeStage = async (req: AuthRequest, res: Response): Promise<void
 
 export const deletePipeline = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const existing = await prisma.salesPipeline.findUnique({ where: { id: req.params.id } });
+    if (!existing) { fail(res, 404, '记录不存在'); return; }
+
     await prisma.salesPipeline.delete({ where: { id: req.params.id } });
+
+    // 如果关联了客户，同步记录到客户活动记录
+    if (existing.customerId) {
+      await activityLogger.log({
+        userId: req.userId!,
+        username: req.username!,
+        action: 'PIPELINE_DELETED',
+        module: 'sales',
+        targetId: existing.id,
+        target: existing.title,
+        detail: `删除了商机「${existing.title}」`,
+        customerId: existing.customerId,
+      });
+    }
+
     success(res, null, '删除成功');
   } catch {
     fail(res, 500, '服务器错误');

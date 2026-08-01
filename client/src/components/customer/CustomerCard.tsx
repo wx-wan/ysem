@@ -1,10 +1,13 @@
+import { useMemo, memo } from 'react';
 import { Card, Avatar, Tag } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
+import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
 import { getGrade, tagColorToHex } from './utils';
+import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
 
 // 解析单个标签字符串
@@ -26,37 +29,133 @@ function filterCustomTags(tags?: string): { name: string; color?: string }[] {
 interface CustomerCardProps {
   customer: Customer;
   token: any;
-  formatCurrency: (value: number) => string;
   onOpenDetail: (customer: Customer) => void;
   onListUpdate: (updater: (prev: Customer[]) => Customer[]) => void;
 }
 
-export default function CustomerCard({
+const CustomerCard = memo(function CustomerCard({
   customer,
   token,
-  formatCurrency,
   onOpenDetail,
   onListUpdate,
 }: CustomerCardProps) {
-  const grade = getGrade(customer);
-  const isPublic = !customer.ownerId || customer.owner?.role?.code === 'admin';
+  const isPublic = !customer.ownerId;
   const ownerName = isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '');
   const firstChar = isPublic
     ? '公'
     : (ownerName?.charAt(0) || customer.contactName?.charAt(0) || customer.companyName?.charAt(0) || '?');
-  const headerColor = tagColorToHex(grade.tagColor, token);
 
-  const getTypeLabel = () => {
+  const grade = useMemo(() => getGrade(customer), [customer]);
+  const gradeColor = useMemo(() => tagColorToHex(grade.tagColor, token), [grade.tagColor, token]);
+  const { format: formatCurrency } = useCurrencyStore();
+
+  // 是否有商机记录
+  const hasPipelines = (customer.pipelines || []).length > 0;
+
+  const typeLabel = useMemo(() => {
     const currentYear = new Date().getFullYear().toString();
     if (customer.firstOrderDate) {
       if (customer.firstOrderDate.startsWith(currentYear)) return '本年度新客';
       return '往年老客';
     }
-    return '未成交客户';
-  };
+    const intentMap: Record<string, string> = { A: '准成交', B: '高意向', C: '中意向', D: '低意向' };
+    return hasPipelines ? `未成交客户 · ${intentMap[grade.grade] || '低意向'}` : '未成交客户';
+  }, [customer.firstOrderDate, hasPipelines, grade.grade]);
+
+  const customTags = useMemo(() => filterCustomTags(customer.tags), [customer.tags]);
+
+  // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
+  // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
+  const { customerTier, tierHeaderBg, avatarBg } = useMemo(() => {
+    const currentYear = new Date().getFullYear().toString();
+    // 已成交客户
+    if (customer.firstOrderDate) {
+      if (customer.firstOrderDate.startsWith(currentYear)) {
+        return {
+          customerTier: 'shine',
+          tierHeaderBg: `linear-gradient(135deg, #ffd666 0%, ${token.colorWarning} 100%)`,
+          avatarBg: '#ffd666',
+        };
+      }
+      return {
+        customerTier: 'chest',
+        tierHeaderBg: `linear-gradient(135deg, ${token.purple} 0%, ${token.purple} 100%)`,
+        avatarBg: token.purple,
+      };
+    }
+    // 未成交客户：无商机记录 → 灰色 void
+    if (!hasPipelines) {
+      return {
+        customerTier: 'void',
+        tierHeaderBg: 'linear-gradient(135deg, #8a8f9a 0%, #6b7280 100%)',
+        avatarBg: '#8a8f9a',
+      };
+    }
+    // 未成交客户：有商机记录，按采购意向分级
+    switch (grade.grade) {
+      case 'A':
+        return {
+          customerTier: 'cheer',
+          tierHeaderBg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+          avatarBg: '#f97316',
+        };
+      case 'B':
+        return {
+          customerTier: 'bottle',
+          tierHeaderBg: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+          avatarBg: '#3b82f6',
+        };
+      case 'C':
+        return {
+          customerTier: 'hatch',
+          tierHeaderBg: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
+          avatarBg: '#93c5fd',
+        };
+      case 'D':
+      default:
+        return {
+          customerTier: 'dull',
+          tierHeaderBg: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
+          avatarBg: '#bfdbfe',
+        };
+    }
+  }, [customer.firstOrderDate, hasPipelines, grade.grade, token.colorWarning, token.purple]);
+
+  // --- 海浪随机参数生成（基于客户ID做种子，保证每次渲染一致） ---
+  const waveParams = useMemo(() => {
+    // Mulberry32 PRNG — 确定性伪随机
+    const mulberry32 = (seed: number): (() => number) => {
+      return () => {
+        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+        return ((t ^ t >>> 14) >>> 0) / 4294967296;
+      };
+    };
+    // 用 customer.id 的字符编码求和作为基础种子
+    const baseSeed = String(customer.id || '0').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    interface WaveParam {
+      durationMult: number;
+      delayS: number;
+      topOffset: number;
+    }
+    const layers: WaveParam[] = [];
+    for (let i = 0; i < 2; i++) {
+      const rng = mulberry32(baseSeed + i * 7919);
+      layers.push({
+        durationMult: 0.82 + rng() * 0.36,   // 0.82 ~ 1.18
+        delayS: Math.round(rng() * 45) / 100, // 0.00 ~ 0.45s
+        topOffset: Math.round(rng() * 4 - 2),  // -2 ~ +2px 微调
+      });
+    }
+    return layers;
+  }, [customer.id]);
 
   return (
-    <div style={{ height: '100%' }}>
+    <div
+      className={`customer-tier-${customerTier}`}
+      style={{ height: '100%', position: 'relative' }}
+    >
       <Card
         hoverable
         onClick={() => onOpenDetail(customer)}
@@ -71,8 +170,9 @@ export default function CustomerCard({
       >
         {/* 彩色头部区域 */}
         <div
+          className="customer-header-area"
           style={{
-            background: `linear-gradient(135deg, ${headerColor} 0%, ${headerColor}dd 100%)`,
+            background: tierHeaderBg,
             padding: '20px 20px 18px',
             position: 'relative',
             overflow: 'hidden',
@@ -89,19 +189,64 @@ export default function CustomerCard({
             backgroundColor: 'rgba(255,255,255,0.04)',
           }} />
 
+          {/* 金币掉落（仅新客卡片） */}
+          {customerTier === 'shine' && (
+            <div className="coin-rain-container">
+              {[4, 8, 14, 20, 28, 36, 44, 56].map((delay, i) => (
+                <div
+                  key={i}
+                  className="coin-particle"
+                  style={{
+                    left: `${10 + (i * 11) % 75}%`,
+                    animationDuration: `${2 + (i % 3) * 0.6}s`,
+                    animationDelay: `${delay * 0.15}s`,
+                    width: `${8 + (i % 4) * 2}px`,
+                    height: `${8 + (i % 4) * 2}px`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* 海浪线条动画（高意向 & 中意向 & 低意向） */}
+          {(customerTier === 'bottle' || customerTier === 'hatch' || customerTier === 'dull') && (
+            <div className="wave-line-container">
+              {/* 上层 — 涌浪（大尺度起伏） */}
+              <svg className="wave-svg wave-bob1" viewBox="0 0 800 120" preserveAspectRatio="none"
+                style={{
+                  top: 48 + waveParams[0].topOffset,
+                  animationDuration: `${(10.4 * waveParams[0].durationMult).toFixed(2)}s`,
+                  animationDelay: `${waveParams[0].delayS}s`,
+                }}>
+                <path d="M0,28 C22,22 68,22 90,28 C112,34 158,34 180,28 C202,22 248,22 270,28 C292,34 338,34 360,28 C382,22 428,22 450,28 C472,34 518,34 540,28 C562,22 608,22 630,28 C652,34 698,34 720,28 C742,22 788,22 800,26 L800,120 L0,120 Z" fill="rgba(255,255,255,0.08)" />
+              </svg>
+              {/* 下层 — 近岸波浪，偶然向上翻涌盖过上层 */}
+              <svg className="wave-svg wave-bob2" viewBox="0 0 800 120" preserveAspectRatio="none"
+                style={{
+                  top: 68 + waveParams[1].topOffset,
+                  animationDuration: `${(13.6 * waveParams[1].durationMult).toFixed(2)}s`,
+                  animationDelay: `${waveParams[1].delayS}s`,
+                }}>
+                <path d="M0,42 C30,24 100,24 130,42 C160,50 230,50 260,42 C290,24 360,24 390,42 C420,50 490,50 520,42 C550,24 620,24 650,42 C680,50 750,50 780,42 C800,40 800,40 800,42 L800,120 L0,120 Z" fill="rgba(255,255,255,0.07)" />
+              </svg>
+            </div>
+          )}
+
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
-            <span style={{
-              backgroundColor: 'rgba(255,255,255,0.2)',
-              backdropFilter: 'blur(4px)',
-              color: token.colorWhite,
-              fontSize: 11, fontWeight: 600,
-              padding: '3px 10px',
-              borderRadius: token.borderRadiusSM,
-              lineHeight: '18px',
-              letterSpacing: '0.3px',
-            }}>
-              {getTypeLabel()}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                backgroundColor: 'rgba(255,255,255,0.2)',
+                backdropFilter: 'blur(4px)',
+                color: token.colorWhite,
+                fontSize: 11, fontWeight: 600,
+                padding: '3px 10px',
+                borderRadius: token.borderRadiusSM,
+                lineHeight: '18px',
+                letterSpacing: '0.3px',
+              }}>
+                {typeLabel}
+              </span>
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <KeyAccountStar
                 isKeyAccount={customer.isKeyAccount || false}
@@ -131,7 +276,7 @@ export default function CustomerCard({
         {/* 内容区 */}
         <div style={{ padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '0 1 auto', minWidth: 0 }}>
-            <Avatar size={40} style={{ backgroundColor: headerColor, fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
+            <Avatar size={40} style={{ backgroundColor: avatarBg, fontSize: 15, fontWeight: 700, flexShrink: 0 }}>
               {firstChar}
             </Avatar>
             <div style={{ overflow: 'hidden' }}>
@@ -169,7 +314,7 @@ export default function CustomerCard({
         {/* 底部分隔线 + 标签 */}
         <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minWidth: 0, alignItems: 'center' }}>
-            {filterCustomTags(customer.tags).map((tag) => {
+            {customTags.map((tag) => {
               const c = tagColorToHex(tag.color, token);
               return (
                 <Tag key={tag.name} bordered={false} style={{
@@ -185,6 +330,14 @@ export default function CustomerCard({
           </div>
         </div>
       </Card>
+      {customerTier === 'shine' && <CustomerCardSparkle />}
+      {customerTier === 'chest' && <div className="chest-shimmer" />}
+      {customerTier === 'cheer' && <div className="cheer-pulse" />}
+      {customerTier === 'bottle' && <div className="bottle-drift" />}
+      {customerTier === 'hatch' && <div className="hatch-breathe" />}
+      {customerTier === 'dull' && <div className="dull-glimmer" />}
     </div>
   );
-}
+});
+
+export default CustomerCard;

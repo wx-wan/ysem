@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { PrismaClient } from "@prisma/client";
 import { success, error } from "../utils/response";
+import { activityLogger } from "../lib/activity-logger";
 
 const prisma = new PrismaClient();
 
@@ -111,12 +112,8 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return error(res, "客户不存在", 404);
 
-    // 只有客户归属人或管理员可以下单；公海客户需要先认领
-    const adminRole = await prisma.role.findFirst({ where: { code: "admin" } });
-    const adminUser = adminRole
-      ? await prisma.user.findFirst({ where: { roleId: adminRole.id }, select: { id: true } })
-      : null;
-    const isPublic = !customer.ownerId || customer.ownerId === adminUser?.id;
+    // 公海客户（ownerId 为 null）需要先认领
+    const isPublic = !customer.ownerId;
     if (isPublic) return error(res, "该客户尚未认领，请先认领后再下单", 400);
     if (customer.ownerId !== userId && roleCode !== 'admin') {
       return error(res, "无权为该客户下单，请先认领", 403);
@@ -150,14 +147,17 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
       }
     }
 
-    // 记录到客户活动日志
-    await prisma.customerActivity.create({
-      data: {
-        customerId,
-        action: "UPDATED",
-        detail: `新增订单${orderNo ? `：${orderNo}` : ""}，金额 ¥${(amountCNY || 0).toLocaleString()}`,
-        createdBy: (req as any).username,
-      },
+    // 记录到客户活动日志 & 全局操作日志
+    const username = (req as any).username;
+    await activityLogger.log({
+      userId,
+      username,
+      action: 'ORDER_CREATED',
+      module: 'order',
+      targetId: order.id,
+      target: orderNo || order.id,
+      detail: `新增订单${orderNo ? `：${orderNo}` : ''}，金额 ¥${(amountCNY || 0).toLocaleString()}`,
+      customerId,
     });
 
     success(res, order, "创建成功");
@@ -196,6 +196,26 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
       },
     });
 
+    // 记录变更
+    const changes: string[] = [];
+    if (orderNo && orderNo !== existing.orderNo) changes.push('订单号');
+    if (amountCNY !== undefined && Number(amountCNY) !== existing.amountCNY) changes.push('金额');
+    if (status && status !== existing.status) changes.push('状态');
+    if (changes.length > 0) {
+      const username = (req as any).username;
+      const userId = (req as any).userId;
+      await activityLogger.log({
+        userId,
+        username,
+        action: 'ORDER_UPDATED',
+        module: 'order',
+        targetId: id,
+        target: existing.orderNo || id,
+        detail: `修改了订单「${existing.orderNo}」的${changes.join('、')}`,
+        customerId: existing.customerId,
+      });
+    }
+
     // 如果订单日期变化，重新计算客户的 firstOrderDate
     if (orderDate && orderDate !== existing.orderDate) {
       const earliestOrder = await prisma.order.findFirst({
@@ -224,6 +244,20 @@ export const remove = async (req: Request, res: Response, next: NextFunction) =>
     if (!existing) return error(res, "订单不存在", 404);
 
     await prisma.order.delete({ where: { id } });
+
+    // 记录活动日志
+    const username = (req as any).username;
+    const userId = (req as any).userId;
+    await activityLogger.log({
+      userId,
+      username,
+      action: 'ORDER_DELETED',
+      module: 'order',
+      targetId: id,
+      target: existing.orderNo || id,
+      detail: `删除了订单「${existing.orderNo}」`,
+      customerId: existing.customerId,
+    });
 
     // 删除后重新计算客户的 firstOrderDate
     const earliestOrder = await prisma.order.findFirst({

@@ -37,8 +37,10 @@
 ├── client/                 # 前端项目
 │   ├── src/
 │   │   ├── api/           # API 接口封装
+│   │   ├── assets/
+│   │   │   └── fonts/     # 自定义字体 (Montserrat + SourceHanSansCN 子集化)
 │   │   ├── components/    # 公共组件 & 弹窗组件
-│   │   │   ├── customer/  # 客户相关组件 (表单/导入/转交/统计/工具栏/卡片/列表)
+│   │   │   ├── customer/  # 客户相关组件 (表单/导入/转交/统计/工具栏/卡片/列表/动效)
 │   │   │   ├── sales/     # 销售相关组件 (表单/导入/详情抽屉/看板卡片/看板视图/阶段按钮)
 │   │   │   ├── order/     # 订单相关组件 (表单/详情)
 │   │   │   ├── user/      # 用户表单组件
@@ -58,7 +60,7 @@
 │   │   ├── controllers/   # 控制器
 │   │   ├── middleware/     # 中间件 (认证/错误处理)
 │   │   ├── routes/        # 路由
-│   │   ├── lib/           # 工具库 (Prisma)
+│   │   ├── lib/           # 工具库 (Prisma / 活动日志)
 │   │   ├── scripts/       # 脚本 (种子数据等)
 │   │   └── utils/         # 工具函数
 │   ├── prisma/
@@ -197,13 +199,26 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ### 2026-08-01
 
+- **自定义字体**：引入 Montserrat（英文）+ 思源黑体 SourceHanSansCN（中文），字体子集化压缩至 ~368KB
+  - OTF 源文件 → WOFF2 转换（压缩率 ~25%）
+  - 字重精简：仅保留 400 / 700 字重，移除 Hairline/Light/ExtraLight
+  - 子集化：扫描项目源码提取实际用字，从 31MB 压缩至 ~368KB
+  - 全局覆盖：`html, body` + `[class*="ant-"]` 双保险，Ant Design 所有组件字体统一
+- **海浪动画优化**：
+  - 波浪层从 4 层精简为 2 层（涌浪 + 近岸波浪），下层可翻涌盖过上层，模拟真实海面
+  - 动画速度整体放缓，关键帧位移幅度降低
+  - Mulberry32 确定性伪随机 + useMemo 缓存波浪参数
+- **客户卡片**：每页展示数量从 9 调整为 6
+- **数据库**：客户国家分布调整为 55% 美国、30% 中国、15% 欧洲各国随机分配
+- **依赖**：React Router 添加 v7 过渡标志 (startTransition / relativeSplatPath)
+
+### 历史更新
+
 - **数据报告增强**：意向分布按"准成交 → 高意向 → 中意向 → 低意向"排序；累计成交金额卡片新增新老客户成交占比环形图
-- **组件重构**：抽取公共组件，精简页面代码
-  - 新增 `CustomerCard`、`CustomerList` 客户卡片/列表组件
-  - 新增 `StageButtons`、`KanbanCard`、`KanbanView` 销售看板组件
-  - 新增 `HeaderTools` 头部工具栏组件（语言/货币切换、用户菜单）
-  - `Customers.tsx` 精简 50%（680→344 行），`Sales.tsx` 精简 25%，`MainLayout.tsx` 精简 50%
-- **代码清理**：移除所有未使用的 import 和方法引用
+- **客户卡片视觉体系重构**：未成交客户按采购意向分级配色；已成交客户保持金/紫主题；粒子动画改为纯 CSS
+- **客户列表排序规则**：重点客户 → 意向等级(A→D) → 预计商机金额(降序) → 成交金额(降序) → 创建时间(倒序)
+- **性能优化**：React.memo / useMemo / useCallback / GPU 合成层
+- **组件重构**：抽取 CustomerCard/CustomerList/StageButtons/KanbanCard 等组件，Customers.tsx 精简 50%
 
 ## Git 提交规范
 

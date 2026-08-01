@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Button, Select, App, Typography, Spin, theme, Row, Col,
+  App, Spin, theme, Row, Col, Pagination,
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
 import { orderApi, Order } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
+import { getGrade } from '../components/customer/utils';
 import CustomerStats from '../components/customer/CustomerStats';
 import CustomerToolbar from '../components/customer/CustomerToolbar';
 import CustomerCard from '../components/customer/CustomerCard';
@@ -16,8 +17,6 @@ import CustomerFormModal from '../components/customer/CustomerFormModal';
 import TransferModal from '../components/customer/TransferModal';
 import ImportModal from '../components/customer/ImportModal';
 import OrderFormModal from '../components/customer/OrderFormModal';
-
-const { Text } = Typography;
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
@@ -37,7 +36,8 @@ export default function CustomersPage() {
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [filterTags, setFilterTags] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'new' | 'old' | 'noOrder' | 'done' | 'key' | 'public'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'noOrder' | 'done' | 'key' | 'public'>('all');
+  const [subFilterType, setSubFilterType] = useState<string>(''); // 未成交: 'A'|'B'|'C'|'D'，已成交: 'new'|'old'
 
   // 弹窗
   const [modalOpen, setModalOpen] = useState(false);
@@ -67,44 +67,108 @@ export default function CustomersPage() {
   // 当前详情客户是否可操作（归属人本人 或 管理员）
   // 注：此逻辑已移至 CustomerDetailDrawer 组件内部
 
-  const pageSize = 12;
+  const pageSize = 6;
+  const API_PAGE_SIZE = 1000; // 服务端全量拉取，客户端排序分页
+
+  // 客户端排序：重点客户优先 → 等级 A→B→C→D → 预计商机金额降序 → 新客优先 → 成交订单金额降序 → 创建时间倒序
+  const sortCustomers = useCallback((customers: Customer[]): Customer[] => {
+    const gradeOrder: Record<string, number> = { A: 1, B: 2, C: 3, D: 4 };
+    const currentYear = new Date().getFullYear().toString();
+    return [...customers].sort((a, b) => {
+      // 重点客户优先
+      if (a.isKeyAccount !== b.isKeyAccount) return a.isKeyAccount ? -1 : 1;
+      const ga = gradeOrder[getGrade(a).grade];
+      const gb = gradeOrder[getGrade(b).grade];
+      if (ga !== gb) return ga - gb;
+      // 预计商机金额从高到低
+      const amtA = a.pipelineAmount || 0;
+      const amtB = b.pipelineAmount || 0;
+      if (amtA !== amtB) return amtB - amtA;
+      // 新客户在老客户之前（无订单的排在最后）
+      const orderRank = (c: Customer) => {
+        if (!c.firstOrderDate) return 2;
+        return c.firstOrderDate.startsWith(currentYear) ? 0 : 1;
+      };
+      const ra = orderRank(a);
+      const rb = orderRank(b);
+      if (ra !== rb) return ra - rb;
+      // 成交订单金额从高到低
+      const totalA = a.totalAmount || 0;
+      const totalB = b.totalAmount || 0;
+      if (totalA !== totalB) return totalB - totalA;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+  }, []);
+
+  // 列表更新时自动重新排序（如切换关注状态会影响排序）
+  const handleListUpdate = useCallback((updater: (prev: Customer[]) => Customer[]) => {
+    setList((prev) => sortCustomers(updater(prev)));
+  }, [sortCustomers]);
+
+  // 当前页展示列表
+  const displayList = useMemo(() => {
+    return list.slice((page - 1) * pageSize, page * pageSize);
+  }, [list, page]);
 
   // ========== 加载数据 ==========
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params: any = { page, pageSize, keyword: keyword || undefined };
+      const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
+
+      let rawList: Customer[] = [];
+      let estAmount = 0;
+      let estBreakdown: any[] = [];
+      let cntBreakdown: any[] = [];
+      let cntTotal = 0;
 
       if (isAdmin) {
         if (selectedOwnerId && filterType !== 'public') params.ownerId = selectedOwnerId;
-        if (filterType !== 'all') params.type = filterType;
+
+        // 组合 filterType + subFilterType 为 API 参数
+        let apiType: string = filterType;
+        if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
+        else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
+        if (apiType !== 'all') (params as any).type = apiType;
+
         if (filterTags) params.tags = filterTags;
         const res = await customerApi.listAll(params);
         const d = res.data.data;
-        setList(d.list);
-        setTotal(d.total);
-        setEstimatedAmount(d.estimatedAmount || 0);
-        setTotalContractAmount(d.totalContractAmount || 0);
-        setEstimatedBreakdown(d.estimatedBreakdown || []);
-        setContractBreakdown(d.contractBreakdown || []);
+        rawList = d.list;
+        estAmount = d.estimatedAmount || 0;
+        cntTotal = d.totalContractAmount || 0;
+        estBreakdown = d.estimatedBreakdown || [];
+        cntBreakdown = d.contractBreakdown || [];
       } else {
-        if (filterType !== 'all') params.type = filterType;
+        let apiType: string = filterType;
+        if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
+        else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
+        if (apiType !== 'all') (params as any).type = apiType;
+
         if (filterTags) params.tags = filterTags;
         const res = await customerApi.listMy(params);
         const d = res.data.data;
-        setList(d.list);
-        setTotal(d.total);
-        setEstimatedAmount(d.estimatedAmount || 0);
-        setTotalContractAmount(d.totalContractAmount || 0);
-        setEstimatedBreakdown(d.estimatedBreakdown || []);
-        setContractBreakdown(d.contractBreakdown || []);
+        rawList = d.list;
+        estAmount = d.estimatedAmount || 0;
+        cntTotal = d.totalContractAmount || 0;
+        estBreakdown = d.estimatedBreakdown || [];
+        cntBreakdown = d.contractBreakdown || [];
       }
+
+      const sorted = sortCustomers(rawList);
+      setList(sorted);
+      setTotal(sorted.length);
+      setEstimatedAmount(estAmount);
+      setTotalContractAmount(cntTotal);
+      setEstimatedBreakdown(estBreakdown);
+      setContractBreakdown(cntBreakdown);
+      setPage(1);
     } catch (err: any) {
       message.error(err?.message || '加载失败');
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, isAdmin, selectedOwnerId, filterType, filterTags]);
+  }, [keyword, isAdmin, selectedOwnerId, filterType, subFilterType, filterTags, sortCustomers]);
 
   useEffect(() => {
     fetchData();
@@ -138,10 +202,10 @@ export default function CustomersPage() {
   }, []);
 
   // ========== 创建/编辑弹窗 ==========
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setEditingCustomer(null);
     setModalOpen(true);
-  };
+  }, []);
 
   // ========== 转交 ==========
   const openTransfer = useCallback((customerId: string) => {
@@ -151,13 +215,13 @@ export default function CustomersPage() {
   }, [list, detailCustomer]);
 
   // ========== 订单弹窗 ==========
-  const openCreateOrder = (customerId: string) => {
+  const openCreateOrder = useCallback((customerId: string) => {
     const customer = list.find(c => c.id === customerId) || null;
     setOrderCustomer(customer);
     setOrderModalOpen(true);
-  };
+  }, [list]);
 
-  const handleOrderSuccess = async () => {
+  const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
     if (detailCustomer) {
       const fresh = await customerApi.getById(detailCustomer.id);
@@ -166,87 +230,73 @@ export default function CustomersPage() {
       setCustomerOrders(orders.data.data);
     }
     fetchData();
-  };
+  }, [detailCustomer, fetchData]);
 
   // ========== 渲染卡片视图 ==========
   const renderCardView = useMemo(() => (
     <Row gutter={[16, 16]}>
-      {list.map((customer) => (
+      {displayList.map((customer) => (
         <Col key={customer.id} xs={24} sm={12} md={8} lg={8} xl={8}>
           <CustomerCard
             customer={customer}
             token={token}
-            formatCurrency={formatCurrency}
             onOpenDetail={openDetail}
-            onListUpdate={setList}
+            onListUpdate={handleListUpdate}
           />
         </Col>
       ))}
     </Row>
-  ), [list, token, formatCurrency, openDetail]);
+  ), [displayList, token, openDetail, handleListUpdate]);
 
   // ========== 渲染列表视图 ==========
   const renderListView = useMemo(() => (
     <CustomerList
-      list={list}
+      list={displayList}
       token={token}
-      formatCurrency={formatCurrency}
       onOpenDetail={openDetail}
-      onListUpdate={setList}
+      onListUpdate={handleListUpdate}
     />
-  ), [list, token, formatCurrency, openDetail]);
+  ), [displayList, token, openDetail, handleListUpdate]);
+
+  // 转交弹窗用户列表 memo
+  const transferUserList = useMemo(
+    () => userList.map(u => ({ id: u.id, realName: u.realName || u.username })),
+    [userList]
+  );
+
+  // 详情刷新回调
+  const handleDetailRefresh = useCallback(async (customerId: string) => {
+    fetchData();
+    if (detailCustomer?.id === customerId) {
+      const [detail, orders] = await Promise.all([
+        customerApi.getById(customerId),
+        orderApi.listByCustomer(customerId),
+      ]);
+      setDetailCustomer(detail.data.data);
+      setCustomerOrders(orders.data.data);
+    }
+  }, [fetchData, detailCustomer]);
 
   // ========== 分页器 ==========
   const renderPagination = useMemo(() => {
-    const totalPages = Math.ceil(total / pageSize);
-    if (totalPages <= 1) return null;
+    if (list.length <= pageSize) return null;
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 24, paddingBottom: 8 }}>
-        <Button
-          size="small"
-          disabled={page <= 1}
-          onClick={() => setPage(page - 1)}
-        >
-          上一页
-        </Button>
-        <Text style={{ fontSize: 13 }}>
-          第 {page} / {totalPages} 页，共 {total} 条
-        </Text>
-        <Button
-          size="small"
-          disabled={page >= totalPages}
-          onClick={() => setPage(page + 1)}
-        >
-          下一页
-        </Button>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+        <Pagination
+          current={page}
+          total={list.length}
+          pageSize={pageSize}
+          showSizeChanger={false}
+          showQuickJumper
+          showTotal={(t) => `共 ${t} 条`}
+          onChange={(p) => setPage(p)}
+        />
       </div>
     );
-  }, [total, page, pageSize]);
+  }, [list.length, page]);
 
   return (
     <div style={{ padding: '0 0 24px' }}>
-      {/* 统计卡片 */}
-      {isAdmin && filterType !== 'public' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          <Select
-            placeholder="筛选业务员"
-            value={selectedOwnerId || undefined}
-            onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
-            allowClear
-            style={{ width: 200, borderRadius: 8 }}
-            showSearch
-            filterOption={(input: string, option: any) =>
-              option?.label?.toLowerCase().includes(input.toLowerCase())
-            }
-            options={userList
-              .filter((u: User) => u.status === 'ACTIVE')
-              .map((u: User) => ({
-                value: u.id,
-                label: u.realName || u.username,
-              }))}
-          />
-        </div>
-      )}
       <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={filterType} formatCurrency={formatCurrency} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
 
       {/* 工具栏 */}
@@ -262,8 +312,15 @@ export default function CustomersPage() {
         setFilterTags={setFilterTags}
         filterType={filterType}
         setFilterType={setFilterType}
+        subFilterType={subFilterType}
+        setSubFilterType={setSubFilterType}
         setImportOpen={setImportOpen}
         openCreate={openCreate}
+        isAdmin={isAdmin}
+        filterTypePublic={filterType === 'public'}
+        selectedOwnerId={selectedOwnerId}
+        setSelectedOwnerId={setSelectedOwnerId}
+        userList={userList}
       />
 
       {/* 内容区 */}
@@ -292,7 +349,7 @@ export default function CustomersPage() {
       <TransferModal
         open={transferModalOpen}
         customer={transferCustomer}
-        userList={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
+        userList={transferUserList}
         onClose={() => { setTransferModalOpen(false); setTransferCustomer(null); }}
         onSuccess={() => {
           setTransferModalOpen(false);
@@ -310,18 +367,7 @@ export default function CustomersPage() {
         customer={detailCustomer}
         orders={customerOrders}
         user={user}
-        onRefresh={async (customerId) => {
-          fetchData();
-          // 详情还开着且是同一个客户时，重新拉取最新详情
-          if (detailCustomer?.id === customerId) {
-            const [detail, orders] = await Promise.all([
-              customerApi.getById(customerId),
-              orderApi.listByCustomer(customerId),
-            ]);
-            setDetailCustomer(detail.data.data);
-            setCustomerOrders(orders.data.data);
-          }
-        }}
+        onRefresh={handleDetailRefresh}
         onTransfer={openTransfer}
         openCreateOrder={openCreateOrder}
       />

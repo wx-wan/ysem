@@ -34,11 +34,12 @@ function Root() {
         token: {
           colorPrimary: '#1677ff',
           borderRadius: 12,
+          fontFamily: "'Montserrat', 'SourceHanSansCN', -apple-system, BlinkMacSystemFont, sans-serif",
         },
       }}
     >
       <AntdApp>
-        <BrowserRouter>
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <App />
         </BrowserRouter>
       </AntdApp>

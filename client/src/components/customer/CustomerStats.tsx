@@ -1,3 +1,4 @@
+import { useMemo, memo } from 'react';
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../api/customers';
@@ -9,10 +10,14 @@ import {
 
 const typeLabel: Record<string, string> = {
   all: '客户总数',
-  new: '新客户总数',
-  old: '老客户总数',
   noOrder: '未成交客户总数',
+  'noOrder-A': 'A 级未成交客户',
+  'noOrder-B': 'B 级未成交客户',
+  'noOrder-C': 'C 级未成交客户',
+  'noOrder-D': 'D 级未成交客户',
   done: '已成交客户总数',
+  'done-new': '本年度新客总数',
+  'done-old': '往年老客总数',
   key: '重点客户总数',
 };
 
@@ -33,7 +38,7 @@ const chartColorKeys = [
   'colorError', 'colorInfo', 'purple',
 ];
 
-export default function CustomerStats({
+const CustomerStats = memo(function CustomerStats({
   total,
   estimatedAmount = 0,
   totalContractAmount = 0,
@@ -44,7 +49,7 @@ export default function CustomerStats({
   estimatedBreakdown,
   contractBreakdown = [],
 }: CustomerStatsProps) {
-  const countryStats = (() => {
+  const countryStats = useMemo(() => {
     const map: Record<string, number> = {};
     list.forEach((c) => {
       if (!c.country) return;
@@ -58,14 +63,15 @@ export default function CustomerStats({
         pct: t ? Math.round((count / t) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
-  })();
+  }, [list]);
 
-  const chartColors = chartColorKeys.map(
-    (k) => (token as any)[k] || token.colorPrimary
+  const chartColors = useMemo(() =>
+    chartColorKeys.map((k) => (token as any)[k] || token.colorPrimary),
+    [token]
   );
 
   // 三种渐变配色（基于 antd token 主题色）
-  const gradients = [
+  const gradients = useMemo(() => [
     {
       from: token.colorPrimary,
       to: token.colorInfo,
@@ -84,9 +90,9 @@ export default function CustomerStats({
       accent: 'rgba(255,255,255,0.18)',
       icon: <BankOutlined style={{ fontSize: 48, opacity: 0.25, color: '#fff' }} />,
     },
-  ];
+  ], [token.colorPrimary, token.colorInfo, token.colorError, token.colorWarning, token.colorSuccess]);
 
-  const cards = [
+  const cards = useMemo(() => [
     {
       value: total,
       label: typeLabel[filterType] || '客户总数',
@@ -353,7 +359,7 @@ export default function CustomerStats({
       ),
       ...gradients[2],
     },
-  ];
+  ], [total, filterType, countryStats, chartColors, gradients, estimatedAmount, totalContractAmount, estimatedBreakdown, contractBreakdown, formatCurrency, token.colorTextHeading, token.colorTextSecondary, token.colorText]);
 
   return (
     <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -457,4 +463,6 @@ export default function CustomerStats({
       ))}
     </Row>
   );
-}
+});
+
+export default CustomerStats;
