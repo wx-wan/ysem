@@ -18,7 +18,7 @@ async function fetchRatesFromAPI(date: string): Promise<Record<string, number>> 
   
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Frankfurter API error: ${res.status}`);
-  const data = (await res.json()) as { rates?: Record<string, number> };
+  const data = await res.json();
   return data.rates || {};
 }
 
@@ -63,16 +63,13 @@ export const getDailyRates = async (req: Request, res: Response, next: NextFunct
       .map(([code, rate]) => ({ date, currencyCode: code, ratePerCNY: rate }));
 
     if (entries.length > 0) {
-      for (const entry of entries) {
-        try {
-          await prisma.dailyExchangeRate.upsert({
-            where: { daily_rate_unique: { date: entry.date, currencyCode: entry.currencyCode } },
-            create: entry,
-            update: { ratePerCNY: entry.ratePerCNY },
-          });
-        } catch {
-          // Ignore individual insert errors
-        }
+      try {
+        await prisma.dailyExchangeRate.createMany({
+          data: entries,
+          skipDuplicates: true,
+        });
+      } catch {
+        // Ignore duplicate errors
       }
     }
 

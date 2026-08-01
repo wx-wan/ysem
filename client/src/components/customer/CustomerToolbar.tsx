@@ -1,4 +1,3 @@
-import { memo } from 'react';
 import { Input, Button, Select } from 'antd';
 import {
   SearchOutlined, AppstoreOutlined, UnorderedListOutlined,
@@ -19,10 +18,10 @@ const MAIN_FILTERS: { key: FilterType; label: string }[] = [
 
 const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
   { key: '', label: '全部' },
-  { key: 'A', label: '准成交' },
-  { key: 'B', label: '高意向' },
-  { key: 'C', label: '中意向' },
-  { key: 'D', label: '低意向' },
+  { key: 'A', label: 'A 级' },
+  { key: 'B', label: 'B 级' },
+  { key: 'C', label: 'C 级' },
+  { key: 'D', label: 'D 级' },
 ];
 
 const DONE_SUB_FILTERS: { key: string; label: string }[] = [
@@ -54,7 +53,7 @@ interface CustomerToolbarProps {
   userList: User[];
 }
 
-const CustomerToolbar = memo(function CustomerToolbar({
+export default function CustomerToolbar({
   token, keyword, setKeyword, fetchData, setPage,
   viewMode, setViewMode, filterTags, setFilterTags,
   filterType, setFilterType, subFilterType, setSubFilterType,
@@ -251,6 +250,4 @@ const CustomerToolbar = memo(function CustomerToolbar({
       )}
     </div>
   );
-});
-
-export default CustomerToolbar;
+}

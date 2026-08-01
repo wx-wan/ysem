@@ -1,4 +1,3 @@
-import { useMemo, memo } from 'react';
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../api/customers';
@@ -38,7 +37,7 @@ const chartColorKeys = [
   'colorError', 'colorInfo', 'purple',
 ];
 
-const CustomerStats = memo(function CustomerStats({
+export default function CustomerStats({
   total,
   estimatedAmount = 0,
   totalContractAmount = 0,
@@ -49,7 +48,7 @@ const CustomerStats = memo(function CustomerStats({
   estimatedBreakdown,
   contractBreakdown = [],
 }: CustomerStatsProps) {
-  const countryStats = useMemo(() => {
+  const countryStats = (() => {
     const map: Record<string, number> = {};
     list.forEach((c) => {
       if (!c.country) return;
@@ -63,15 +62,14 @@ const CustomerStats = memo(function CustomerStats({
         pct: t ? Math.round((count / t) * 100) : 0,
       }))
       .sort((a, b) => b.count - a.count);
-  }, [list]);
+  })();
 
-  const chartColors = useMemo(() =>
-    chartColorKeys.map((k) => (token as any)[k] || token.colorPrimary),
-    [token]
+  const chartColors = chartColorKeys.map(
+    (k) => (token as any)[k] || token.colorPrimary
   );
 
   // 三种渐变配色（基于 antd token 主题色）
-  const gradients = useMemo(() => [
+  const gradients = [
     {
       from: token.colorPrimary,
       to: token.colorInfo,
@@ -90,9 +88,9 @@ const CustomerStats = memo(function CustomerStats({
       accent: 'rgba(255,255,255,0.18)',
       icon: <BankOutlined style={{ fontSize: 48, opacity: 0.25, color: '#fff' }} />,
     },
-  ], [token.colorPrimary, token.colorInfo, token.colorError, token.colorWarning, token.colorSuccess]);
+  ];
 
-  const cards = useMemo(() => [
+  const cards = [
     {
       value: total,
       label: typeLabel[filterType] || '客户总数',
@@ -359,7 +357,7 @@ const CustomerStats = memo(function CustomerStats({
       ),
       ...gradients[2],
     },
-  ], [total, filterType, countryStats, chartColors, gradients, estimatedAmount, totalContractAmount, estimatedBreakdown, contractBreakdown, formatCurrency, token.colorTextHeading, token.colorTextSecondary, token.colorText]);
+  ];
 
   return (
     <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -463,6 +461,4 @@ const CustomerStats = memo(function CustomerStats({
       ))}
     </Row>
   );
-});
-
-export default CustomerStats;
+}

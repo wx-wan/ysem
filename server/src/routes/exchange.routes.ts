@@ -72,18 +72,4 @@ router.get('/', async (_req, res) => {
   }
 });
 
-// ===== 每日汇率（持久化） =====
-
-/**
- * GET /api/exchange/daily?date=YYYY-MM-DD
- * 获取指定日期的汇率（优先查DB，降级 Frankfurter 历史 API）
- */
-router.get('/daily', getDailyRates);
-
-/**
- * POST /api/exchange/daily
- * 强制刷新当天汇率到数据库
- */
-router.post('/daily', ensureToday);
-
 export default router;
