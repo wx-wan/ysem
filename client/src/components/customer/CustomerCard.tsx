@@ -1,4 +1,4 @@
-import { useMemo, memo } from 'react';
+import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import { Card, Avatar } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -7,9 +7,11 @@ import FlagIcon from '../FlagIcon';
 import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
 import { getGrade, tagColorToHex } from './utils';
-import CustomerTags from './CustomerTags';
+import TagSelector from '../TagSelector';
+import { customerApi } from '../../api/customers';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
+import { message } from 'antd';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -34,8 +36,29 @@ const CustomerCard = memo(function CustomerCard({
   const gradeColor = useMemo(() => tagColorToHex(grade.tagColor, token), [grade.tagColor, token]);
   const { format: formatCurrency } = useCurrencyStore();
 
+  // 本地标签状态（可编辑，直接调接口更新）
+  const [localTags, setLocalTags] = useState(customer.tags || '');
+
   // 是否有商机记录
   const hasPipelines = (customer.pipelines || []).length > 0;
+
+  // 客户切换时同步本地标签
+  useEffect(() => { setLocalTags(customer.tags || ''); }, [customer.id, customer.tags]);
+
+  const handleTagsChange = useCallback((next: string) => {
+    setLocalTags(next);
+    customerApi
+      .updateTags(customer.id, next)
+      .then(() => {
+        onListUpdate((prev) =>
+          prev.map((c) => (c.id === customer.id ? { ...c, tags: next } : c))
+        );
+      })
+      .catch(() => {
+        message.error('标签更新失败');
+        setLocalTags(customer.tags || '');
+      });
+  }, [customer.id, customer.tags, onListUpdate]);
 
   const typeLabel = useMemo(() => {
     const currentYear = new Date().getFullYear().toString();
@@ -294,10 +317,15 @@ const CustomerCard = memo(function CustomerCard({
           </div>
         </div>
 
-        {/* 底部分隔线 + 标签 */}
-        <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <CustomerTags tags={customer.tags} token={token} />
-          <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', marginLeft: 8 }}>
+        {/* 底部分隔线 + 标签（左）与创建时间（右）左右分布 */}
+        <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, padding: '10px 20px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ flex: '1 1 auto', minWidth: 0 }}
+          >
+            <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" />
+          </div>
+          <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', flex: '0 0 auto' }}>
             {dayjs(customer.createdAt).format('YYYY-MM-DD')}
           </div>
         </div>
