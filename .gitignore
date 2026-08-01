@@ -45,3 +45,14 @@ coverage/
 .cache/
 tmp/
 temp/
+
+# Tool / skill intermediate files
+.codex/
+.impeccable/
+client/.impeccable/
+DESIGN.md
+PRODUCT.md
+design.json
+hooks.json
+config.json
+run-live.sh
