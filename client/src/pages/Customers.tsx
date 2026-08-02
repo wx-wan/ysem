@@ -11,7 +11,7 @@ import CustomerStats from '../components/customer/CustomerStats';
 import CustomerToolbar from '../components/customer/CustomerToolbar';
 import CustomerCard from '../components/customer/CustomerCard';
 import CustomerList from '../components/customer/CustomerList';
-import CustomerDetailDrawer from '../components/customer/CustomerDetailDrawer';
+import CustomerDetailModal from '../components/customer/CustomerDetailModal';
 import CustomerFormModal from '../components/customer/CustomerFormModal';
 import TransferModal from '../components/customer/TransferModal';
 import ImportModal from '../components/customer/ImportModal';
@@ -42,10 +42,9 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
 
-  // 详情抽屉
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 详情弹窗（居中大弹窗，替代抽屉）
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
-  const [detailLoading, setDetailLoading] = useState(false);
 
   // 转交
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -172,11 +171,6 @@ export default function CustomersPage() {
     fetchData();
   }, [fetchData]);
 
-  // ========== 抽屉子操作回调 ==========
-  const handleDetailRefresh = useCallback((_customerId: string) => {
-    fetchData();
-  }, [fetchData]);
-
   const openTransfer = useCallback((customerId: string) => {
     const found = list.find((c) => c.id === customerId);
     if (found) {
@@ -184,6 +178,37 @@ export default function CustomersPage() {
       setTransferModalOpen(true);
     }
   }, [list]);
+
+  // ===== 详情弹窗回调占位（业务逻辑后续接入） =====
+  const handleEditFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    setEditingCustomer(c); // 暂存，后续接入编辑弹窗：setModalOpen(true)
+    // TODO: 打开客户编辑弹窗
+    message.info('编辑客户（待接入）');
+  }, [message]);
+
+  const handleTransferFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    openTransfer(c.id);
+  }, [openTransfer]);
+
+  const handleReleaseFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    // TODO: 释放到公海
+    message.info(`释放客户 ${c.companyName}（待接入）`);
+  }, [message]);
+
+  const handleDeleteFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    // TODO: 删除客户
+    message.info(`删除客户 ${c.companyName}（待接入）`);
+  }, [message]);
+
+  const openCreatePipeline = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    // TODO: 新增商机（待接入）
+    message.info(`新增商机 ${c.companyName}（待接入）`);
+  }, [message]);
 
   const openCreateOrder = useCallback((customerId: string) => {
     const found = list.find((c) => c.id === customerId);
@@ -203,8 +228,7 @@ export default function CustomersPage() {
   // ========== 打开详情 ==========
   const openDetail = useCallback(async (customer: Customer) => {
     setDetailCustomer(customer);
-    setDrawerOpen(true);
-    setDetailLoading(true);
+    setDetailModalOpen(true);
     try {
       const detail = await customerApi.getById(customer.id);
       if (detail.data?.data) {
@@ -212,8 +236,6 @@ export default function CustomersPage() {
       }
     } catch {
       message.error('加载详情失败');
-    } finally {
-      setDetailLoading(false);
     }
   }, []);
 
@@ -343,22 +365,22 @@ export default function CustomersPage() {
         onSuccess={() => {
           setTransferModalOpen(false);
           setTransferCustomer(null);
-          if (drawerOpen) setDrawerOpen(false);
+          if (detailModalOpen) setDetailModalOpen(false);
           fetchData();
         }}
       />
 
-      {/* ===== 详情抽屉 ===== */}
-      <CustomerDetailDrawer
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        loading={detailLoading}
+      {/* ===== 详情弹窗（居中大弹窗，替代抽屉） ===== */}
+      <CustomerDetailModal
+        open={detailModalOpen}
         customer={detailCustomer}
-        orders={detailCustomer?.orders || []}
-        user={user}
-        onRefresh={handleDetailRefresh}
-        onTransfer={openTransfer}
-        openCreateOrder={openCreateOrder}
+        onClose={() => setDetailModalOpen(false)}
+        onEdit={handleEditFromModal}
+        onTransfer={handleTransferFromModal}
+        onRelease={handleReleaseFromModal}
+        onDelete={handleDeleteFromModal}
+        onAddPipeline={(c) => openCreatePipeline(c)}
+        onCreateOrder={(c) => openCreateOrder(c.id)}
       />
 
       {/* ===== 导入弹窗 ===== */}
