@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   Drawer, Space, Tag, Button, Popconfirm, Typography,
-  Row, Col, Card, Table, Input, InputNumber,
-  Spin, theme, Modal, App, Select, DatePicker, Timeline, Empty,
+  Row, Col, Table, Input, InputNumber,
+  Spin, theme, Modal, App, Select, DatePicker, Timeline, Empty, Badge,
 } from 'antd';
 import {
   UserAddOutlined, ShoppingCartOutlined,
@@ -48,6 +48,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   // 内部状态
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [showAllActivities, setShowAllActivities] = useState(false);
+  const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [pipelines, setPipelines] = useState<SalesItem[]>([]);
   const [pipelineLoading, setPipelineLoading] = useState(false);
   const formatCur = useCurrencyStore((state) => state.format);
@@ -283,165 +284,228 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
               />
           </div>
 
-          {/* ===== 商机记录 ===== */}
-          <Card
-            size="small"
-            title={<Space><DollarOutlined style={{ color: token.colorTextSecondary }} />商机记录 ({pipelines.length})</Space>}
-            extra={!isPublic && canOperate ? <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>新增商机</Button> : null}
-            style={{ marginBottom: 16, borderRadius: 16 }}
-          >
-            {pipelineLoading ? (
-              <div style={{ textAlign: 'center', padding: 24 }}>
-                <Spin />
-              </div>
-            ) : pipelines.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无商机记录</span>}
-                style={{ padding: '12px 0' }}
-              >
-                {!isPublic && canOperate && (
-                  <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>
-                    新增第一个商机
-                  </Button>
-                )}
-              </Empty>
-            ) : (
-              <Table
-                dataSource={pipelines}
-                rowKey="id"
-                pagination={false}
-                size="small"
-                columns={[
-                  {
-                    title: '商机名称',
-                    dataIndex: 'title',
-                    ellipsis: true,
-                  },
-                  {
-                    title: '预估金额',
-                    dataIndex: 'estimatedAmount',
-                    width: 120,
-                    align: 'right',
-                    render: (v: number) => (v != null ? formatCur(v) : '-'),
-                  },
-                  {
-                    title: '采购意向',
-                    dataIndex: 'probability',
-                    width: 90,
-                    align: 'center',
-                    render: (v: string) => v || '-',
-                  },
-                  {
-                    title: '预计成交日',
-                    dataIndex: 'estimatedCloseDate',
-                    width: 110,
-                    align: 'center',
-                    render: (d: string) => (d ? dayjs(d).format('YYYY-MM-DD') : '-'),
-                  },
-                  {
-                    title: '操作',
-                    key: 'action',
-                    width: 100,
-                    align: 'center',
-                    render: (_: any, record: SalesItem) => (
-                      <Space size={0}>
-                        <Button type="link" size="small" onClick={() => openEditPipeline(record)}>编辑</Button>
-                        <Popconfirm title="确定删除此商机？" onConfirm={() => handleDeletePipeline(record.id)}>
-                          <Button type="link" size="small" danger>删除</Button>
-                        </Popconfirm>
-                      </Space>
-                    ),
-                  },
-                ]}
-              />
-            )}
-          </Card>
-
-          {/* ===== 订单记录 ===== */}
-          <Card
-            size="small"
-            title={<Space><ShoppingCartOutlined style={{ color: token.colorTextSecondary }} />订单记录 ({orders?.length ?? 0})</Space>}
-            style={{ marginBottom: 16, borderRadius: 16 }}
-            extra={
-              !isPublic && canOperate ? (
-                <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
-                  <ShoppingCartOutlined /> 下订单
-                </Button>
-              ) : !isPublic ? (
-                <Tag color="default">无操作权限</Tag>
-              ) : null
-            }
-          >
-            {(!orders || orders.length === 0) ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无订单</span>}
-                style={{ padding: '12px 0' }}
-              >
-                {!isPublic && canOperate && (
-                  <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
-                    <ShoppingCartOutlined /> 去下单
-                  </Button>
-                )}
-              </Empty>
-            ) : (
-              <Table
-                dataSource={orders}
-                columns={orderColumns}
-                rowKey="id"
-                size="small"
-                pagination={orders?.length > 10 ? { pageSize: 10, size: 'small' } : false}
-              />
-            )}
-          </Card>
-
-          {/* ===== 活动记录（审计区：浅底弱化） ===== */}
+          {/* ===== 商机 / 订单 / 活动记录 切换 + 常驻操作 ===== */}
           <div
             style={{
-              marginTop: 24,
-              padding: '12px 16px 8px',
-              background: token.colorFillQuaternary,
-              borderRadius: 12,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 16,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <ClockCircleOutlined style={{ color: token.colorTextSecondary, fontSize: 13 }} />
-              <Text style={{ fontSize: 13, fontWeight: 600, color: token.colorText }}>活动记录</Text>
+            {/* 左：pill 切换器（配色与卡片视图主筛选栏一致：实心主蓝） */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
+                background: '#f8fafc',
+                borderRadius: 20,
+                padding: '3px 4px',
+                width: 'fit-content',
+              }}
+            >
+              {[
+                { key: 'pipeline' as const, label: '商机记录', count: pipelines.length, icon: <DollarOutlined /> },
+                { key: 'orders' as const, label: '订单记录', count: orders?.length ?? 0, icon: <ShoppingCartOutlined /> },
+                { key: 'activities' as const, label: '活动记录', count: customer.activities?.length ?? 0, icon: <ClockCircleOutlined /> },
+              ].map((opt) => {
+                const active = activeTab === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    onClick={() => setActiveTab(opt.key)}
+                    style={{
+                      border: 'none',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      padding: '4px 12px',
+                      borderRadius: 16,
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 500,
+                      whiteSpace: 'nowrap',
+                      transition: 'all 0.2s ease',
+                      background: active ? '#1677ff' : 'transparent',
+                      color: active ? '#fff' : '#94a3b8',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                    }}
+                  >
+                    {opt.icon}
+                    {opt.label}
+                    {opt.count > 0 && (
+                      <Badge
+                        count={opt.count}
+                        style={{
+                          fontSize: 10,
+                          lineHeight: 16,
+                          height: 16,
+                          minWidth: 16,
+                          padding: '0 5px',
+                          boxShadow: 'none',
+                          background: active ? 'rgba(255,255,255,0.9)' : token.colorFillSecondary,
+                          color: active ? '#1677ff' : token.colorTextSecondary,
+                        }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            {customer.activities?.length === 0 ? (
-              <div style={{ padding: '16px 0', textAlign: 'center' }}>
-                <Text type="secondary" style={{ fontSize: 13 }}>暂无跟进记录，添加后会显示在这里</Text>
-              </div>
-            ) : (
-              <Timeline
-                style={{ marginTop: 8, paddingLeft: 2 }}
-                items={(customer.activities || [])
-                  .slice(0, showAllActivities ? undefined : 5)
-                  .map((a: CustomerActivity) => ({
-                    color: token.colorPrimary,
-                    content: (
-                      <div style={{ paddingBottom: 2 }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                          <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
-                          <Text type="secondary" style={{ fontSize: 12 }}>{a.createdBy}</Text>
-                        </div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {dayjs(a.createdAt).format('MM-DD HH:mm')}
-                        </Text>
-                      </div>
-                    ),
-                  }))}
-              />
+
+            {/* 右：当前 tab 的常驻操作 */}
+            {activeTab === 'pipeline' && !isPublic && canOperate && (
+              <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>
+                新增商机
+              </Button>
             )}
-            {(customer.activities || []).length > 5 && (
-              <div style={{ textAlign: 'center', marginTop: 4, marginBottom: 4 }}>
-                <Button type="link" size="small" onClick={() => setShowAllActivities(!showAllActivities)}>
-                  {showAllActivities ? '收起' : `展开全部 (${customer.activities?.length} 条)`}
-                </Button>
-              </div>
+            {activeTab === 'orders' && !isPublic && canOperate && (
+              <Button type="primary" size="small" icon={<ShoppingCartOutlined />} onClick={() => openCreateOrder(customer.id)}>
+                下订单
+              </Button>
+            )}
+            {activeTab === 'orders' && !isPublic && !canOperate && (
+              <Tag color="default">无操作权限</Tag>
             )}
           </div>
+
+          {/* 商机记录 */}
+          {activeTab === 'pipeline' && (
+            <div>
+              {pipelineLoading ? (
+                <div style={{ textAlign: 'center', padding: 24 }}><Spin /></div>
+              ) : pipelines.length === 0 ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无商机记录</span>}
+                  style={{ padding: '12px 0' }}
+                >
+                  {!isPublic && canOperate && (
+                    <Button type="primary" size="small" icon={<DollarOutlined />} onClick={openCreatePipeline}>
+                      新增第一个商机
+                    </Button>
+                  )}
+                </Empty>
+              ) : (
+                <Table
+                  dataSource={pipelines}
+                  rowKey="id"
+                  pagination={false}
+                  size="small"
+                  columns={[
+                    {
+                      title: '商机名称',
+                      dataIndex: 'title',
+                      ellipsis: true,
+                    },
+                    {
+                      title: '预估金额',
+                      dataIndex: 'estimatedAmount',
+                      width: 120,
+                      align: 'right',
+                      render: (v: number) => (v != null ? formatCur(v) : '-'),
+                    },
+                    {
+                      title: '采购意向',
+                      dataIndex: 'probability',
+                      width: 90,
+                      align: 'center',
+                      render: (v: string) => v || '-',
+                    },
+                    {
+                      title: '预计成交日',
+                      dataIndex: 'estimatedCloseDate',
+                      width: 110,
+                      align: 'center',
+                      render: (d: string) => (d ? dayjs(d).format('YYYY-MM-DD') : '-'),
+                    },
+                    {
+                      title: '操作',
+                      key: 'action',
+                      width: 100,
+                      align: 'center',
+                      render: (_: any, record: SalesItem) => (
+                        <Space size={0}>
+                          <Button type="link" size="small" onClick={() => openEditPipeline(record)}>编辑</Button>
+                          <Popconfirm title="确定删除此商机？" onConfirm={() => handleDeletePipeline(record.id)}>
+                            <Button type="link" size="small" danger>删除</Button>
+                          </Popconfirm>
+                        </Space>
+                      ),
+                    },
+                  ]}
+                />
+              )}
+            </div>
+          )}
+
+          {/* 订单记录 */}
+          {activeTab === 'orders' && (
+            <div>
+              {(!orders || orders.length === 0) ? (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<span style={{ color: token.colorTextSecondary, fontSize: 13 }}>暂无订单</span>}
+                  style={{ padding: '12px 0' }}
+                >
+                  {!isPublic && canOperate && (
+                    <Button size="small" type="primary" onClick={() => openCreateOrder(customer.id)}>
+                      <ShoppingCartOutlined /> 去下单
+                    </Button>
+                  )}
+                </Empty>
+              ) : (
+                <Table
+                  dataSource={orders}
+                  columns={orderColumns}
+                  rowKey="id"
+                  size="small"
+                  pagination={orders?.length > 10 ? { pageSize: 10, size: 'small' } : false}
+                />
+              )}
+            </div>
+          )}
+
+          {/* 活动记录 */}
+          {activeTab === 'activities' && (
+            <div>
+              {customer.activities?.length === 0 ? (
+                <div style={{ padding: '16px 0', textAlign: 'center' }}>
+                  <Text type="secondary" style={{ fontSize: 13 }}>暂无跟进记录，添加后会显示在这里</Text>
+                </div>
+              ) : (
+                <>
+                  <Timeline
+                    items={(customer.activities || [])
+                      .slice(0, showAllActivities ? undefined : 5)
+                      .map((a: CustomerActivity) => ({
+                        color: token.colorPrimary,
+                        content: (
+                          <div style={{ paddingBottom: 2 }}>
+                            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                              <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
+                              <Text type="secondary" style={{ fontSize: 12 }}>{a.createdBy}</Text>
+                            </div>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              {dayjs(a.createdAt).format('MM-DD HH:mm')}
+                            </Text>
+                          </div>
+                        ),
+                      }))}
+                  />
+                  {(customer.activities || []).length > 5 && (
+                    <div style={{ textAlign: 'center', marginTop: 8 }}>
+                      <Button type="link" size="small" onClick={() => setShowAllActivities(!showAllActivities)}>
+                        {showAllActivities ? '收起' : `展开全部 (${customer.activities?.length} 条)`}
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

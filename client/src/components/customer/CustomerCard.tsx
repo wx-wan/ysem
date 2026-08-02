@@ -315,28 +315,33 @@ const CustomerCard = memo(function CustomerCard({
           <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
             {customer.companyName || '-'}
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: 4 }}>
-            {(() => {
-              const c = findCountry(customer.country);
-              const zh = c?.zh || (customer.country || '未知');
-              const en = c?.code || '';
-              return <>{zh}{en ? ` · ${en}` : ''}</>;
-            })()}
-          </div>
-          {/* 联系人平铺在国家下方，按 gap 横排姓名/邮箱/电话 */}
-          <div style={{ marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px' }}>
+          {/* 国家 + 联系人名称 同一行 */}
+          <div style={{ marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 14px' }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
+              {(() => {
+                const c = findCountry(customer.country);
+                const zh = c?.zh || (customer.country || '未知');
+                const en = c?.code || '';
+                return <>{zh}{en ? ` · ${en}` : ''}</>;
+              })()}
+            </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.88)', lineHeight: 1.4 }}>
               <UserOutlined style={{ fontSize: 11, flexShrink: 0 }} />
               <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.contactName || '-'}</span>
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
-              <MailOutlined style={{ fontSize: 11, flexShrink: 0 }} />
-              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.email || '-'}</span>
-            </span>
+          </div>
+          {/* 下方：联系方式（电话） */}
+          <div style={{ marginTop: 4, position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
               <PhoneOutlined style={{ fontSize: 11, flexShrink: 0 }} />
               <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.phone || '-'}</span>
             </span>
+            {customer.email && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
+                <MailOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.email}</span>
+              </span>
+            )}
           </div>
 
           {/* 操作图标组：头部右下角（编辑 / 转交 / 释放 / 删除） */}

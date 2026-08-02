@@ -18,10 +18,10 @@ const MAIN_FILTERS: { key: FilterType; label: string }[] = [
 
 const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
   { key: '', label: '全部' },
-  { key: 'A', label: 'A 级' },
-  { key: 'B', label: 'B 级' },
-  { key: 'C', label: 'C 级' },
-  { key: 'D', label: 'D 级' },
+  { key: 'A', label: '准成交' },
+  { key: 'B', label: '高意向' },
+  { key: 'C', label: '中意向' },
+  { key: 'D', label: '低意向' },
 ];
 
 const DONE_SUB_FILTERS: { key: string; label: string }[] = [
