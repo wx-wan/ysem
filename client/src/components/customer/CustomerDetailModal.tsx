@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
-import { Modal, Badge, Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme } from 'antd';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Badge, Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, App } from 'antd';
+import AppModal from '../AppModal';
 import {
   UserOutlined,
   PhoneOutlined,
@@ -8,18 +9,21 @@ import {
   ShoppingCartOutlined,
   ClockCircleOutlined,
   EditOutlined,
+  CheckOutlined,
   SwapOutlined,
   RollbackOutlined,
   DeleteOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer } from '../../api/customers';
+import { Customer, customerApi } from '../../api/customers';
 import { getGrade } from './utils';
 import { getCustomerTier } from './customerTier';
 import { findCountry } from '../../data/countries';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
+import CountrySelect from '../CountrySelect';
+import InlineEditInput from './InlineEditInput';
 
 const { Text } = Typography;
 
@@ -27,7 +31,6 @@ interface CustomerDetailModalProps {
   open: boolean;
   customer: Customer | null;
   onClose: () => void;
-  onEdit?: (customer: Customer) => void;
   onTransfer?: (customer: Customer) => void;
   onRelease?: (customer: Customer) => void;
   onDelete?: (customer: Customer) => void;
@@ -35,6 +38,8 @@ interface CustomerDetailModalProps {
   onCreateOrder?: (customer: Customer) => void;
   /** 切换重点客户成功后由父级刷新数据 */
   onToggleKeyAccount?: (customer: Customer) => void;
+  /** 就地编辑保存成功后由父级同步数据 */
+  onUpdated?: (customer: Customer) => void;
 }
 
 /** 模拟商机数据（后续替换为真实 API 数据） */
@@ -89,14 +94,115 @@ function useMockPipelines(customer: Customer | null): MockPipelineItem[] {
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, onClose, onEdit, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount,
+  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onUpdated,
 }) => {
   const { token } = theme.useToken();
+  const { message: msg } = App.useApp();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 3;
 
+  // 就地编辑状态：editing 控制是否进入编辑态，draft 暂存编辑中的字段值
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Partial<Customer>>({});
+  const [saving, setSaving] = useState(false);
+
+    // 可就地编辑的字段，startEdit 与保存比对均以此为准
+  const EDITABLE_FIELDS: (keyof Customer)[] = ['companyName', 'contactName', 'phone', 'email', 'country'];
+
+  // 进入编辑态时初始化 draft；退出/保存时清空
+  const startEdit = () => {
+    const init: Partial<Customer> = {};
+    EDITABLE_FIELDS.forEach((f) => {
+      (init as Record<string, string | undefined>)[f as string] = customer?.[f] as string | undefined;
+    });
+    setDraft(init);
+    setEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!customer) return;
+    // 与编辑前的原始数据比对，无任何字段变化则不触发后端更新
+    const changed = EDITABLE_FIELDS.some((f) => (draft[f] ?? '') !== (customer[f] ?? ''));
+    if (!changed) {
+      setEditing(false);
+      setDraft({});
+      msg.info('未做修改');
+      return;
+    }
+    setSaving(true);
+    try {
+    const { data } = await customerApi.update(customer.id, draft);
+    // update 接口只返回基础字段，不含 pipelines，需重新拉取完整详情
+    // 否则采购意向（由 pipelines 计算）会丢失、等级错乱
+    const detail = await customerApi.getById(customer.id);
+    const updated = detail.data?.data ?? data.data;
+    onUpdated?.(updated);
+    msg.success('客户信息已更新');
+    setEditing(false);
+    setDraft({});
+    } catch (e) {
+      msg.error('保存失败，请重试');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const ct = getCustomerTier(customer);
+
+  // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
+  // 放在 Modal 内部 effect，使父组件的点击处理保持同步、零 async 阻塞，点击即弹窗。
+  useEffect(() => {
+    if (!customer?.id) return;
+    let cancelled = false;
+    customerApi.getById(customer.id).then((res) => {
+      if (!cancelled && res.data?.data) {
+        onUpdated?.(res.data.data);
+      }
+    }).catch(() => { /* 忽略，保留列表项数据渲染 */ });
+    return () => { cancelled = true; };
+    // 仅在 customer.id 变化时触发（打开新客户时）
+  }, [customer?.id]);
+
+  /**
+   * 就地编辑字段：非编辑态显示文本；编辑态显示输入框并自动同步到 draft。
+   * field 对应 Customer 字段名；icon 为左侧图标；textColor 为非编辑态文字色。
+   */
+  const InlineField: React.FC<{
+    field: keyof Customer;
+    value: string | undefined;
+    icon?: React.ReactNode;
+    placeholder?: string;
+    textColor?: string;
+    fontSize?: number;
+    asBlock?: boolean;
+  }> = ({ field, value, icon, placeholder, textColor = headerTextSub, fontSize = 13, asBlock }) => {
+    if (editing) {
+      // 编辑态图标统一白色，匹配头部渐变风格
+      const editIcon = icon
+        ? React.cloneElement(icon as React.ReactElement, { style: { ...(icon as React.ReactElement).props.style, color: 'rgba(255,255,255,0.85)' } })
+        : null;
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {editIcon}
+          <InlineEditInput
+            size="small"
+            value={(draft[field] as string) ?? value ?? ''}
+            placeholder={placeholder}
+            onChange={(e) => setDraft((d) => ({ ...d, [field]: e.target.value }))}
+            autoFocus
+            style={{ fontSize, width: asBlock ? '100%' : 160 }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: textColor }}>
+        {icon}
+        <span style={{ fontSize, wordBreak: 'break-word' }}>{value || '-'}</span>
+      </div>
+    );
+  };
   const isPublic = !customer?.ownerId;
 
   // 左侧头部文字色：浅色渐变用深色文字，深色渐变用白色
@@ -239,14 +345,16 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   // 渲染
   // ============================================================
   return (
-    <Modal
+    <AppModal
       open={open}
-      onCancel={onClose}
-      footer={null}
+      onClose={onClose}
       width={980}
       centered
       closable={false}
-      styles={{ root: { borderRadius: 20 }, body: { padding: 0, overflow: 'hidden', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 } }}
+      maskClosable
+      bodyPadding={0}
+      style={{ borderRadius: 20 }}
+      bodyStyle={{ overflow: 'hidden', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }}
     >
       {customer && (
         <div style={{ display: 'flex', minHeight: 520, background: token.colorBgContainer }}>
@@ -275,44 +383,57 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
             </div>
 
             {/* 星标 + 公司名 */}
-            <div style={{ marginTop: 16, position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: headerText, lineHeight: 1.3, wordBreak: 'break-word' }}>
-                {customer.companyName || '-'}
-              </h2>
+            <div style={{ marginTop: 16, position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+              {editing ? (
+                <InlineEditInput
+                  size="small"
+                  value={draft.companyName ?? customer.companyName ?? ''}
+                  onChange={(e) => setDraft((d) => ({ ...d, companyName: e.target.value }))}
+                  placeholder="公司名称"
+                  autoFocus
+                  style={{ fontSize: 18, fontWeight: 800, padding: '4px 8px', width: '100%' }}
+                />
+              ) : (
+                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: headerText, lineHeight: 1.3, wordBreak: 'break-word' }}>
+                  {customer.companyName || '-'}
+                </h2>
+              )}
               <KeyAccountStar isKeyAccount={customer.isKeyAccount || false} customerId={customer.id} color={ct.headerTextDark ? '#7c3aed' : 'rgba(255,255,255,0.95)'} mutedColor={ct.headerTextDark ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.35)'} onToggle={() => onToggleKeyAccount?.(customer)} />
             </div>
 
-            {/* 国家 + 联系人 + 电话 */}
+            {/* 国家 + 联系人 + 电话 + 邮箱 */}
             <div style={{ marginTop: 18, position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <FlagIcon country={customer.country} style={{ borderRadius: 3 }} />
-                <span style={{ fontSize: 13, color: headerTextSub, fontWeight: 500 }}>
-                  {(() => { const c = findCountry(customer.country); const zh = c?.zh || (customer.country || '未知'); const en = c?.code || ''; return <>{zh}{en ? ` · ${en}` : ''}</>; })()}
-                </span>
+                {editing ? (
+                  <CountrySelect
+                    value={(draft.country ?? customer.country) as string}
+                    onChange={(v) => setDraft((d) => ({ ...d, country: (v as string) ?? '' }))}
+                    placeholder="选择国家"
+                    style={{ color: 'rgba(255,255,255,0.95)', border: '1px solid rgba(255,255,255,0.55)', borderRadius: 8, background: 'transparent', boxShadow: '0 1px 2px rgba(0,0,0,0.25)', width: 200 }}
+                  />
+                ) : (
+                  <>
+                    <FlagIcon country={customer.country} style={{ borderRadius: 3 }} />
+                    <span style={{ fontSize: 13, color: headerTextSub, fontWeight: 500 }}>
+                      {(() => { const c = findCountry(customer.country); const zh = c?.zh || (customer.country || '未知'); const en = c?.code || ''; return <>{zh}{en ? ` · ${en}` : ''}</>; })()}
+                    </span>
+                  </>
+                )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: headerTextSub }}>
-                <UserOutlined style={{ fontSize: 13 }} /><span style={{ fontSize: 13 }}>{customer.contactName || '-'}</span>
-              </div>
-              {customer.email && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: headerTextFaint }}>
-                  <MailOutlined style={{ fontSize: 13 }} /><span style={{ fontSize: 13 }}>{customer.email}</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: headerTextFaint }}>
-                <PhoneOutlined style={{ fontSize: 13 }} /><span style={{ fontSize: 13 }}>{customer.phone || '-'}</span>
-              </div>
+              <InlineField field="contactName" value={customer.contactName} icon={<UserOutlined style={{ fontSize: 13 }} />} placeholder="联系人" />
+              <InlineField field="email" value={customer.email} icon={<MailOutlined style={{ fontSize: 13 }} />} placeholder="邮箱" textColor={headerTextFaint} />
+              <InlineField field="phone" value={customer.phone} icon={<PhoneOutlined style={{ fontSize: 13 }} />} placeholder="电话" textColor={headerTextFaint} />
             </div>
 
             {/* 操作按钮组 */}
             <div style={{ marginTop: 'auto', paddingTop: 20, position: 'relative', zIndex: 1, display: 'flex', gap: 10 }}>
-              {onEdit && (
-                <button type="button" onClick={() => onEdit(customer)} title="编辑"
-                  style={circleBtnStyle('rgba(255,255,255,0.22)')}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.38)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}>
-                  <EditOutlined />
-                </button>
-              )}
+              <button type="button" onClick={editing ? handleSave : startEdit} title={editing ? '完成' : '编辑'}
+                disabled={saving}
+                style={circleBtnStyle(editing ? ct.primary : 'rgba(255,255,255,0.22)')}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = editing ? ct.primary : 'rgba(255,255,255,0.38)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = editing ? ct.primary : 'rgba(255,255,255,0.22)'; }}>
+                {editing ? <CheckOutlined /> : <EditOutlined />}
+              </button>
               {onDelete && (
                 <button type="button" onClick={() => onDelete(customer)} title="删除"
                   style={circleBtnStyle('rgba(255,120,117,0.35)')}
@@ -363,8 +484,25 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 })}
               </div>
 
-              {/* 右：操作图标 + 负责人 */}
+              {/* 右：负责人 + 操作图标 */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                {/* 负责人信息 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Avatar size={36} style={{ backgroundColor: ct.primary, fontSize: 15, fontWeight: 700 }}>
+                    {isPublic ? '公' : ((customer.owner?.realName || customer.owner?.username || '?').charAt(0))}
+                  </Avatar>
+                  <div>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>负责人</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: token.colorTextHeading, lineHeight: 1.3 }}>
+                      {isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '-')}
+                    </div>
+                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
+                      {customer.owner?.role?.code || 'business'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 操作图标 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   {onTransfer && (
                     <button type="button" onClick={() => onTransfer(customer)} title="转交"
@@ -388,21 +526,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = token.colorFillQuaternary; }}>
                     <CloseOutlined style={{ color: token.colorTextSecondary }} />
                   </button>
-                </div>
-                {/* 负责人信息 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 12, borderLeft: `1px solid ${token.colorBorder}` }}>
-                  <Avatar size={36} style={{ backgroundColor: ct.primary, fontSize: 15, fontWeight: 700 }}>
-                    {isPublic ? '公' : ((customer.owner?.realName || customer.owner?.username || '?').charAt(0))}
-                  </Avatar>
-                  <div>
-                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>负责人</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: token.colorTextHeading, lineHeight: 1.3 }}>
-                      {isPublic ? '公海' : (customer.owner?.realName || customer.owner?.username || '-')}
-                    </div>
-                    <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                      {customer.owner?.role?.code || 'business'}
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -452,7 +575,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           </div>
         </div>
       )}
-    </Modal>
+    </AppModal>
   );
 };
 

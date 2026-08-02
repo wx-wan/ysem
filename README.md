@@ -24,7 +24,7 @@
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | React 18 + TypeScript + Vite + Ant Design 5 + Zustand + React Router 6 + i18next |
+| 前端 | React 18 + TypeScript + Vite + Ant Design 6 + Zustand + React Router 6 + i18next |
 | 后端 | Node.js + Express + TypeScript + Prisma ORM |
 | 数据库 | SQLite (开发) / PostgreSQL (生产) |
 | 认证 | JWT (Access Token + Refresh Token) |
@@ -224,6 +224,18 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
   - 移除抽屉内的内联编辑表单（展示/编辑两态切换），点击"编辑客户"改为弹出 `CustomerFormModal` 弹窗，编辑成功后自动刷新详情并停留在卡片所在页面
   - 进入抽屉时自动拉取最新客户数据
   - 文件位置从 `components/CustomerDetailDrawer.tsx` 移至 `components/customer/CustomerDetailDrawer.tsx`，与其他客户组件归类一致
+
+### 2026-08-02
+
+- **客户详情弹窗 (`CustomerDetailModal`)**：
+  - 新建手写弹窗组件 `AppModal`（原生 div + Portal），统一系统弹窗样式逻辑，脱离 antd Modal 默认样式限制
+  - 头部右侧操作栏：交换「负责人」与「操作图标」模块的顺序（负责人在前、操作图标在后）
+  - 移除负责人与操作图标之间的 `Divider` 竖线
+  - 国家字段支持下拉选择（编辑态复用 `CountrySelect`，`value` 绑定 `draft.country` 修复选中不生效问题）
+  - 新建 `InlineEditInput` 组件替代 antd Input，提供边框下沉样式，编辑态文字与图标遵循卡片白色渐变风格
+  - 保存时按 `EDITABLE_FIELDS` 比对，无变化则不触发后端更新
+  - 打开详情改为同步触发，详情数据通过 `getById` 异步补全，消除点击卡顿
+- **重点客户星标 (`KeyAccountStar`)**：点击星标切换重点客户时不再弹出确认/提示框（移除 Tooltip 与 message 提示），仅通过星标状态静默反馈
 
 ### 历史更新
 

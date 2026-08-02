@@ -1,4 +1,3 @@
-import { Tooltip, App } from 'antd';
 import { StarFilled, StarOutlined } from '@ant-design/icons';
 import { useState } from 'react';
 import { motion, AnimatePresence, type Variants } from 'framer-motion';
@@ -68,13 +67,10 @@ export default function KeyAccountStar({
   color = '#faad14',
   mutedColor = '#bfbfbf',
 }: KeyAccountStarProps) {
-  const { message } = App.useApp();
   const [loading, setLoading] = useState(false);
-  const [tooltipOpen, setTooltipOpen] = useState(false);
 
   const handleToggle = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setTooltipOpen(false);
     if (loading) return;
     if (!customerId) {
       onToggle?.();
@@ -83,10 +79,9 @@ export default function KeyAccountStar({
     setLoading(true);
     try {
       await customerApi.update(customerId, { isKeyAccount: !isKeyAccount } as any);
-      message.success(isKeyAccount ? '已取消重点客户' : '已设为重点客户');
       onToggle?.();
     } catch {
-      message.error('操作失败');
+      // 静默失败，不弹提示框
     } finally {
       setLoading(false);
     }
@@ -97,11 +92,6 @@ export default function KeyAccountStar({
   const sparkleCount = 5;
 
   return (
-    <Tooltip
-      title={isKeyAccount ? '取消重点客户' : '设为重点客户'}
-      open={tooltipOpen}
-      onOpenChange={setTooltipOpen}
-    >
       <motion.span
         onClick={handleToggle}
         style={{
@@ -195,6 +185,5 @@ export default function KeyAccountStar({
           )}
         </AnimatePresence>
       </motion.span>
-    </Tooltip>
   );
 }

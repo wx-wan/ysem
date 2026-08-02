@@ -179,13 +179,13 @@ export default function CustomersPage() {
     }
   }, [list]);
 
-  // ===== 详情弹窗回调占位（业务逻辑后续接入） =====
-  const handleEditFromModal = useCallback((c: Customer) => {
-    setDetailModalOpen(false);
-    setEditingCustomer(c); // 暂存，后续接入编辑弹窗：setModalOpen(true)
-    // TODO: 打开客户编辑弹窗
-    message.info('编辑客户（待接入）');
-  }, [message]);
+  // ===== 详情弹窗：就地编辑保存成功后同步 UI 状态 =====
+  const handleDetailUpdated = useCallback((updated: Customer) => {
+    setDetailCustomer((prev) => (prev?.id === updated.id ? updated : prev));
+    handleListUpdate((prev) =>
+      prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+    );
+  }, [handleListUpdate]);
 
   const handleTransferFromModal = useCallback((c: Customer) => {
     setDetailModalOpen(false);
@@ -226,17 +226,11 @@ export default function CustomersPage() {
   }, []);
 
   // ========== 打开详情 ==========
-  const openDetail = useCallback(async (customer: Customer) => {
+  // 同步打开：仅设置本地数据与显示弹窗，完整详情（owner/pipelines）由 Modal 内部
+  // 通过 getById 异步补充。这样点击卡片时父组件零 async 阻塞，弹窗即时出现。
+  const openDetail = useCallback((customer: Customer) => {
     setDetailCustomer(customer);
     setDetailModalOpen(true);
-    try {
-      const detail = await customerApi.getById(customer.id);
-      if (detail.data?.data) {
-        setDetailCustomer(detail.data.data);
-      }
-    } catch {
-      message.error('加载详情失败');
-    }
   }, []);
 
   // ========== 创建/编辑弹窗 ==========
@@ -375,7 +369,7 @@ export default function CustomersPage() {
         open={detailModalOpen}
         customer={detailCustomer}
         onClose={() => setDetailModalOpen(false)}
-        onEdit={handleEditFromModal}
+        onUpdated={handleDetailUpdated}
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}
