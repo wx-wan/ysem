@@ -381,6 +381,14 @@ export default function CustomersPage() {
         onDelete={handleDeleteFromModal}
         onAddPipeline={(c) => openCreatePipeline(c)}
         onCreateOrder={(c) => openCreateOrder(c.id)}
+        onToggleKeyAccount={(c) => {
+          // 仅局部同步 UI 状态：弹窗 + 列表中对应项，避免整页 fetchData 造成的卡顿/闪烁
+          const next = { ...c, isKeyAccount: !c.isKeyAccount };
+          setDetailCustomer((prev) => (prev?.id === c.id ? next : prev));
+          handleListUpdate((prev) =>
+            prev.map((item) => (item.id === c.id ? { ...item, isKeyAccount: !c.isKeyAccount } : item))
+          );
+        }}
       />
 
       {/* ===== 导入弹窗 ===== */}

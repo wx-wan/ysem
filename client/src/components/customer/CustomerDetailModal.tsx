@@ -16,6 +16,7 @@ import {
 import dayjs from 'dayjs';
 import { Customer } from '../../api/customers';
 import { getGrade } from './utils';
+import { getCustomerTier } from './customerTier';
 import { findCountry } from '../../data/countries';
 import KeyAccountStar from '../KeyAccountStar';
 import FlagIcon from '../FlagIcon';
@@ -32,73 +33,8 @@ interface CustomerDetailModalProps {
   onDelete?: (customer: Customer) => void;
   onAddPipeline?: (customer: Customer) => void;
   onCreateOrder?: (customer: Customer) => void;
-}
-
-/** ====== 统一主题色体系（跟随卡片等级/类型） ====== */
-function useTheme(customer: Customer | null) {
-  // headerTextDark=true 时头部文字用深色（浅色渐变背景需要），否则白色
-  if (!customer)
-    return {
-      primary: '#1677ff',
-      primaryLight: '#e6f0ff',
-      primaryBg: 'rgba(22,119,255,0.08)',
-      headerGradient: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
-      headerTextDark: false,
-    };
-  const grade = getGrade(customer);
-  const currentYear = new Date().getFullYear().toString();
-  if (customer.firstOrderDate) {
-    if (customer.firstOrderDate.startsWith(currentYear))
-      return {
-        primary: '#f59e0b',
-        primaryLight: '#fef3c7',
-        primaryBg: 'rgba(245,158,11,0.08)',
-        headerGradient: 'linear-gradient(135deg, #ffd666 0%, #f59e0b 100%)',
-        headerTextDark: false,
-      };
-    return {
-      primary: '#7c3aed',
-      primaryLight: '#ede9fe',
-      primaryBg: 'rgba(124,58,237,0.08)',
-      headerGradient: 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)',
-      headerTextDark: false,
-    };
-  }
-  switch (grade.grade) {
-    case 'A':
-      return {
-        primary: '#f97316',
-        primaryLight: '#ffedd5',
-        primaryBg: 'rgba(249,115,22,0.08)',
-        headerGradient: 'linear-gradient(135deg, #fb923c 0%, #f97316 100%)',
-        headerTextDark: false,
-      };
-    case 'B':
-      return {
-        primary: '#1677ff',
-        primaryLight: '#e6f0ff',
-        primaryBg: 'rgba(22,119,255,0.08)',
-        headerGradient: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
-        headerTextDark: false,
-      };
-    case 'C':
-      return {
-        primary: '#60a5fa',
-        primaryLight: '#dbeafe',
-        primaryBg: 'rgba(96,162,250,0.1)',
-        headerGradient: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
-        headerTextDark: true,
-      };
-    case 'D':
-    default:
-      return {
-        primary: '#93c5fd',
-        primaryLight: '#eff6ff',
-        primaryBg: 'rgba(147,197,253,0.12)',
-        headerGradient: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
-        headerTextDark: true,
-      };
-  }
+  /** 切换重点客户成功后由父级刷新数据 */
+  onToggleKeyAccount?: (customer: Customer) => void;
 }
 
 /** 模拟商机数据（后续替换为真实 API 数据） */
@@ -153,14 +89,14 @@ function useMockPipelines(customer: Customer | null): MockPipelineItem[] {
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, onClose, onEdit, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder,
+  open, customer, onClose, onEdit, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount,
 }) => {
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 3;
 
-  const ct = useTheme(customer);
+  const ct = getCustomerTier(customer);
   const isPublic = !customer?.ownerId;
 
   // 左侧头部文字色：浅色渐变用深色文字，深色渐变用白色
@@ -343,7 +279,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: headerText, lineHeight: 1.3, wordBreak: 'break-word' }}>
                 {customer.companyName || '-'}
               </h2>
-              <KeyAccountStar isKeyAccount={customer.isKeyAccount || false} customerId={customer.id} color={ct.headerTextDark ? '#7c3aed' : 'rgba(255,255,255,0.95)'} mutedColor={ct.headerTextDark ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.35)'} />
+              <KeyAccountStar isKeyAccount={customer.isKeyAccount || false} customerId={customer.id} color={ct.headerTextDark ? '#7c3aed' : 'rgba(255,255,255,0.95)'} mutedColor={ct.headerTextDark ? 'rgba(124,58,237,0.3)' : 'rgba(255,255,255,0.35)'} onToggle={() => onToggleKeyAccount?.(customer)} />
             </div>
 
             {/* 国家 + 联系人 + 电话 */}

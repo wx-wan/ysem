@@ -7,6 +7,7 @@ import FlagIcon from '../FlagIcon';
 import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
 import { getGrade } from './utils';
+import { getCustomerTier, getAvatarColor } from './customerTier';
 import TagSelector from '../TagSelector';
 import { customerApi } from '../../api/customers';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
@@ -107,68 +108,14 @@ const CustomerCard = memo(function CustomerCard({
     return hasPipelines ? `未成交客户 · ${intentMap[grade.grade] || '低意向'}` : '未成交客户';
   }, [customer.firstOrderDate, hasPipelines, grade.grade]);
 
-  // 荣誉层级：根据客户类型 + 采购意向决定卡片视觉主题
-  const { customerTier, tierHeaderBg } = useMemo(() => {
-    const currentYear = new Date().getFullYear().toString();
-    // 已成交客户
-    if (customer.firstOrderDate) {
-      if (customer.firstOrderDate.startsWith(currentYear)) {
-        return {
-          customerTier: 'shine',
-          tierHeaderBg: `linear-gradient(135deg, #ffd666 0%, ${token.colorWarning} 100%)`,
-        };
-      }
-      return {
-        customerTier: 'chest',
-        tierHeaderBg: `linear-gradient(135deg, ${token.purple} 0%, ${token.purple} 100%)`,
-      };
-    }
-    // 未成交客户：无商机记录 → 灰色 void
-    if (!hasPipelines) {
-      return {
-        customerTier: 'void',
-        tierHeaderBg: 'linear-gradient(135deg, #8a8f9a 0%, #6b7280 100%)',
-      };
-    }
-    // 未成交客户：有商机记录，按采购意向分级
-    switch (grade.grade) {
-      case 'A':
-        return {
-          customerTier: 'cheer',
-          tierHeaderBg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
-        };
-      case 'B':
-        return {
-          customerTier: 'bottle',
-          tierHeaderBg: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
-        };
-      case 'C':
-        return {
-          customerTier: 'hatch',
-          tierHeaderBg: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
-        };
-      case 'D':
-      default:
-        return {
-          customerTier: 'dull',
-          tierHeaderBg: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
-        };
-    }
-  }, [customer.firstOrderDate, hasPipelines, grade.grade, token.colorWarning, token.purple]);
+  // 荣誉层级：复用与 CustomerDetailModal 一致的共享主题（含渐变背景与层次色）
+  const { tier: customerTier, headerGradient: tierHeaderBg } = useMemo(
+    () => getCustomerTier(customer),
+    [customer]
+  );
 
   // 头像背景色与卡片头部色调保持一致
-  const avatarBg = useMemo(() => {
-    switch (customerTier) {
-      case 'shine': return '#ffd666';
-      case 'chest': return token.purple;
-      case 'void': return '#8a8f9a';
-      case 'cheer': return '#f97316';
-      case 'bottle': return '#1677ff';
-      case 'hatch': return '#93c5fd';
-      case 'dull': return '#bfdbfe';
-      default: return token.colorPrimary;
-    }
-  }, [customerTier, token.purple]);
+  const avatarBg = useMemo(() => getAvatarColor(customerTier, token), [customerTier, token]);
 
   // --- 海浪随机参数生成（基于客户ID做种子，保证每次渲染一致） ---
   const waveParams = useMemo(() => {
