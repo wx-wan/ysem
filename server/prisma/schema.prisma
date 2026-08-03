@@ -218,7 +218,7 @@ model SalesPipeline {
   // 商机阶段
   estimatedAmount    Float?  // 预估金额(CNY)
   estimatedCloseDate String? // 预计成交日期
-  probability        Int?    // 成交概率(%)
+  probability        String? // 采购意向：准成交 / 高意向 / 中意向 / 低意向（直接存储文案，不再存数字）
   opportunityNotes   String?
 
   // 样品阶段

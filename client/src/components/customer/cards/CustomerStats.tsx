@@ -1,7 +1,7 @@
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../../api/customers';
-import { INTENT_ORDER, INTENT_LABEL, gradeFromProbability } from '../shared/intentLevel';
+import { INTENT_ORDER } from '../shared/intentLevel';
 import Price from '../../common/Price';
 import {
   GlobalOutlined,
@@ -208,8 +208,7 @@ export default function CustomerStats({
                   );
                   const data = Object.values(
                     estimatedBreakdown.reduce((acc, item) => {
-                      const grade = gradeFromProbability(item.probability);
-                      const name = INTENT_LABEL[grade];
+                      const name = item.probability || '低意向';
                       const amount = item._sum.estimatedAmount || 0;
                       if (!acc[name]) acc[name] = { name, count: 0, amount: 0, percent: 0 };
                       acc[name].count += item._count;

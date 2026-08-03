@@ -22,7 +22,6 @@ import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCach
 import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
-import { INTENT_LABEL, gradeFromProbability } from '../shared/intentLevel';
 import { findCountry } from '../../../data/countries';
 import FlagIcon from '../../FlagIcon';
 import TagSelector from '../../TagSelector';
@@ -218,7 +217,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           </Tag>
           {item.probability != null && (
             <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
-              {INTENT_LABEL[gradeFromProbability(item.probability)]}
+              {item.probability || '低意向'}
             </div>
           )}
         </div>
