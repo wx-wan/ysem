@@ -248,7 +248,10 @@ export default function CustomersPage() {
   }, [list]);
 
   // 加载用户列表（用于筛选和转交）
+  const usersFetched = useRef(false);
   useEffect(() => {
+    if (usersFetched.current) return;
+    usersFetched.current = true;
     userApi.list({ pageSize: 200 }).then((res) => {
       setUserList(res.data.data?.list || []);
     }).catch(() => {});
