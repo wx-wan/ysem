@@ -185,7 +185,7 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
         where,
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
           _count: { select: { orders: true, pipelines: true } },
@@ -296,7 +296,7 @@ export const listPublic = async (req: Request, res: Response, next: NextFunction
         where,
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
           _count: { select: { orders: true } },
@@ -386,7 +386,7 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
         where,
         skip,
         take,
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
           _count: { select: { orders: true, pipelines: true } },
@@ -541,11 +541,11 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
         orders: { orderBy: { createdAt: "desc" } },
         pipelines: {
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
           include: { assignee: { select: { id: true, username: true, realName: true } } },
         },
         activities: {
-          orderBy: { createdAt: "desc" },
+          orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
           take: 50,
         },
       },

@@ -6,7 +6,7 @@ import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { getGrade } from '../components/customer/shared/utils';
+import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
 import {
   listCacheKey, getListCache, setListCache, invalidateAll, fetchCustomerDetail, installCacheLifecycle,
@@ -71,34 +71,10 @@ export default function CustomersPage() {
   const pageSize = 6;
   const API_PAGE_SIZE = 1000; // 服务端全量拉取，客户端排序分页
 
-  // 客户端排序：重点客户优先 → 等级 A→B→C→D → 预计商机金额降序 → 新客优先 → 成交订单金额降序 → 创建时间倒序
+  // 客户端排序：采购意向 A→B→C→D → 商机金额降序 → 新客优先 → 成交金额降序 → 创建时间倒序
+  // 排序规则统一收口到 shared/utils 的 compareCustomers（标签与排序逻辑一致，已不含重点/公海）
   const sortCustomers = useCallback((customers: Customer[]): Customer[] => {
-    const gradeOrder: Record<string, number> = { A: 1, B: 2, C: 3, D: 4 };
-    const currentYear = new Date().getFullYear().toString();
-    return [...customers].sort((a, b) => {
-      // 重点客户优先
-      if (a.isKeyAccount !== b.isKeyAccount) return a.isKeyAccount ? -1 : 1;
-      const ga = gradeOrder[getGrade(a).grade];
-      const gb = gradeOrder[getGrade(b).grade];
-      if (ga !== gb) return ga - gb;
-      // 预计商机金额从高到低
-      const amtA = a.pipelineAmount || 0;
-      const amtB = b.pipelineAmount || 0;
-      if (amtA !== amtB) return amtB - amtA;
-      // 新客户在老客户之前（无订单的排在最后）
-      const orderRank = (c: Customer) => {
-        if (!c.firstOrderDate) return 2;
-        return c.firstOrderDate.startsWith(currentYear) ? 0 : 1;
-      };
-      const ra = orderRank(a);
-      const rb = orderRank(b);
-      if (ra !== rb) return ra - rb;
-      // 成交订单金额从高到低
-      const totalA = a.totalAmount || 0;
-      const totalB = b.totalAmount || 0;
-      if (totalA !== totalB) return totalB - totalA;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
+    return [...customers].sort(compareCustomers);
   }, []);
 
   // 列表更新时自动重新排序（如切换关注状态会影响排序）

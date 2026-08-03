@@ -99,7 +99,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     return `CUS-${datePart}-${seq}`;
   }, [customer?.id, customer?.createdAt, customerList]);
 
-  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel（未成交客户/本年度新客/往年老客/公海/重点）
+  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel（成交→本年度新客/往年老客；未成交→未成交客户·最高意向）
   const logicTag = useMemo(() => (customer ? getCustomerLogicLabel(customer) : ''), [customer]);
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。

@@ -43,15 +43,14 @@ export function tagColorToBg(tagColor: string, token: any): string {
   return m[tagColor] || token.colorFillSecondary;
 }
 
-// ========== 客户逻辑类型标签（未成交/新客/老客/公海/重点，全站统一收口） ==========
+// ========== 客户逻辑类型标签（成交/未成交 + 商机最高采购意向，全站统一收口） ==========
 const INTENT_LABEL: Record<'A' | 'B' | 'C' | 'D', string> = {
   A: '准成交', B: '高意向', C: '中意向', D: '低意向',
 };
 
 // 渲染用纯文字标签（卡片视图与详情弹窗共用，保证一致）
+// 规则：已成交客户按首单年份 → 本年度新客/往年老客；未成交客户按商机最高意向 → 未成交客户·意向
 export function getCustomerLogicLabel(customer: Customer): string {
-  if (customer.isKeyAccount) return '重点客户';
-  if (!customer.ownerId) return '公海客户';
   const cy = new Date().getFullYear().toString();
   if (customer.firstOrderDate) {
     return customer.firstOrderDate.startsWith(cy) ? '本年度新客' : '往年老客';
@@ -65,14 +64,47 @@ export function getCustomerLogicLabel(customer: Customer): string {
 export function getCustomerTypeLabel(customer: Customer): { label: string; color: string } | null {
   const label = getCustomerLogicLabel(customer);
   const color: Record<string, string> = {
-    '重点客户': 'red',
-    '公海客户': 'default',
     '本年度新客': 'green',
     '往年老客': 'blue',
     '未成交客户': 'default',
   };
   if (label.startsWith('未成交客户 ·')) return { label, color: 'orange' };
   return { label, color: color[label] || 'default' };
+}
+
+// ========== 客户排序（纯函数，全站唯一来源：各组件/列表/详情共用） ==========
+// 排序规则：采购意向 A→B→C→D → 预计商机金额降序 → 新客优先(未成交排最后) → 成交订单金额降序 → 创建时间倒序
+// 已移除重点客户优先（标签不再含重点/公海逻辑，排序与标签保持一致）。
+const GRADE_ORDER: Record<string, number> = { A: 1, B: 2, C: 3, D: 4 };
+
+export function compareCustomers(a: Customer, b: Customer): number {
+  // 采购意向等级（A 最高优先）
+  const ga = GRADE_ORDER[getGrade(a).grade] ?? 9;
+  const gb = GRADE_ORDER[getGrade(b).grade] ?? 9;
+  if (ga !== gb) return ga - gb;
+
+  // 预计商机金额从高到低
+  const amtA = a.pipelineAmount || 0;
+  const amtB = b.pipelineAmount || 0;
+  if (amtA !== amtB) return amtB - amtA;
+
+  // 新客户优先，未成交（无首单）排最后
+  const currentYear = new Date().getFullYear().toString();
+  const orderRank = (c: Customer): number => {
+    if (!c.firstOrderDate) return 2;
+    return c.firstOrderDate.startsWith(currentYear) ? 0 : 1;
+  };
+  const ra = orderRank(a);
+  const rb = orderRank(b);
+  if (ra !== rb) return ra - rb;
+
+  // 成交订单金额从高到低
+  const totalA = a.totalAmount || 0;
+  const totalB = b.totalAmount || 0;
+  if (totalA !== totalB) return totalB - totalA;
+
+  // 创建时间倒序
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
 }
 
 // ========== 头像颜色 ==========
