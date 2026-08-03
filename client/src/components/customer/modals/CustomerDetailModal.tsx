@@ -531,8 +531,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 {paginatedData.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {activeTab === 'pipeline' && paginatedData.map((it) => renderPipelineItem(it as RealPipeline))}
-                    {activeTab === 'orders' && paginatedData.map(renderOrderItem)}
-                    {activeTab === 'activities' && paginatedData.map(renderActivityItem)}
+                    {activeTab === 'orders' && paginatedData.map((it) => <React.Fragment key={it.id}>{renderOrderItem(it as Order)}</React.Fragment>)}
+                    {activeTab === 'activities' && paginatedData.map((it) => <React.Fragment key={it.id}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
                   </div>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={
