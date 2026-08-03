@@ -19,7 +19,7 @@ import {
 import dayjs from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
-import { getGrade } from '../shared/utils';
+import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
 import { findCountry } from '../../../data/countries';
 import FlagIcon from '../../FlagIcon';
@@ -132,17 +132,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     return `CUS-${datePart}-${seq}`;
   }, [customer?.id, customer?.createdAt, customerList]);
 
-  // 逻辑标签：未成交客户 / 已成交客户 / 本年度新客 / 往年老客
-  const logicTag = useMemo(() => {
-    if (!customer) return '';
-    const hasOrder = Boolean(customer.firstOrderDate);
-    const createdYear = customer.createdAt ? dayjs(customer.createdAt).year() : 0;
-    const thisYear = dayjs().year();
-    if (hasOrder) return '已成交客户';
-    if (createdYear === thisYear) return '本年度新客';
-    if (createdYear > 0 && createdYear < thisYear) return '往年老客';
-    return '未成交客户';
-  }, [customer]);
+  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel（未成交客户/本年度新客/往年老客/公海/重点）
+  const logicTag = useMemo(() => (customer ? getCustomerLogicLabel(customer) : ''), [customer]);
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
   // 放在 Modal 内部 effect，使父组件的点击处理保持同步、零 async 阻塞，点击即弹窗。
@@ -225,22 +216,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   ];
 
   // ---- 类型标签文字 ----
-  const typeLabel = (() => {
-    if (!customer) return '';
-    const grade = getGrade(customer);
-    const cy = new Date().getFullYear().toString();
-    if (!customer.ownerId) return '公海客户';
-    if (customer.firstOrderDate)
-      return customer.firstOrderDate.startsWith(cy) ? '未成交客户 · 准成交' : '未成交客户 · 高意向';
-    switch (grade.grade) {
-      case 'A': return '未成交客户 · 准成交';
-      case 'B': return '未成交客户 · 高意向';
-      case 'C': return '未成交客户 · 中意向';
-      case 'D': return '未成交客户 · 低意向';
-      default: return '未成交客户';
-    }
-  })();
-
   // ---- 列表项卡片渲染 ----
   const renderListItem = (item: MockPipelineItem) => (
     <div

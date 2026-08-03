@@ -43,13 +43,36 @@ export function tagColorToBg(tagColor: string, token: any): string {
   return m[tagColor] || token.colorFillSecondary;
 }
 
-// ========== 客户类型标签 ==========
+// ========== 客户逻辑类型标签（未成交/新客/老客/公海/重点，全站统一收口） ==========
+const INTENT_LABEL: Record<'A' | 'B' | 'C' | 'D', string> = {
+  A: '准成交', B: '高意向', C: '中意向', D: '低意向',
+};
+
+// 渲染用纯文字标签（卡片视图与详情弹窗共用，保证一致）
+export function getCustomerLogicLabel(customer: Customer): string {
+  if (customer.isKeyAccount) return '重点客户';
+  if (!customer.ownerId) return '公海客户';
+  const cy = new Date().getFullYear().toString();
+  if (customer.firstOrderDate) {
+    return customer.firstOrderDate.startsWith(cy) ? '本年度新客' : '往年老客';
+  }
+  const { grade } = getGrade(customer);
+  const hasPipelines = (customer.pipelines || []).length > 0;
+  return hasPipelines ? `未成交客户 · ${INTENT_LABEL[grade] || '低意向'}` : '未成交客户';
+}
+
+// 带颜色的类型标签（兼容旧调用方）
 export function getCustomerTypeLabel(customer: Customer): { label: string; color: string } | null {
-  if (customer.isKeyAccount) return { label: '重点客户', color: 'red' };
-  if (!customer.firstOrderDate) return { label: '未成交客户', color: 'default' };
-  const currentYear = new Date().getFullYear().toString();
-  if (customer.firstOrderDate.startsWith(currentYear)) return { label: '本年度新客', color: 'green' };
-  return { label: '往年老客', color: 'blue' };
+  const label = getCustomerLogicLabel(customer);
+  const color: Record<string, string> = {
+    '重点客户': 'red',
+    '公海客户': 'default',
+    '本年度新客': 'green',
+    '往年老客': 'blue',
+    '未成交客户': 'default',
+  };
+  if (label.startsWith('未成交客户 ·')) return { label, color: 'orange' };
+  return { label, color: color[label] || 'default' };
 }
 
 // ========== 头像颜色 ==========

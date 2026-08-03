@@ -4,7 +4,7 @@ import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, 
 import dayjs from 'dayjs';
 import KeyAccountStar from '../../KeyAccountStar';
 import type { Customer } from '../../../api/customers';
-import { getGrade } from '../shared/utils';
+import { getGrade, getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
 import { useDs } from '../shared/ds';
 import TagSelector from '../../TagSelector';
@@ -77,9 +77,6 @@ const CustomerCard = memo(function CustomerCard({
   // 本地标签状态（可编辑，直接调接口更新）
   const [localTags, setLocalTags] = useState(customer.tags || '');
 
-  // 是否有商机记录
-  const hasPipelines = (customer.pipelines || []).length > 0;
-
   // 客户切换时同步本地标签
   useEffect(() => { setLocalTags(customer.tags || ''); }, [customer.id, customer.tags]);
 
@@ -98,15 +95,7 @@ const CustomerCard = memo(function CustomerCard({
       });
   }, [customer.id, customer.tags, onListUpdate]);
 
-  const typeLabel = useMemo(() => {
-    const currentYear = new Date().getFullYear().toString();
-    if (customer.firstOrderDate) {
-      if (customer.firstOrderDate.startsWith(currentYear)) return '本年度新客';
-      return '往年老客';
-    }
-    const intentMap: Record<string, string> = { A: '准成交', B: '高意向', C: '中意向', D: '低意向' };
-    return hasPipelines ? `未成交客户 · ${intentMap[grade.grade] || '低意向'}` : '未成交客户';
-  }, [customer.firstOrderDate, hasPipelines, grade.grade]);
+  const typeLabel = useMemo(() => getCustomerLogicLabel(customer), [customer]);
 
   // 荣誉层级：复用与 CustomerDetailModal 一致的共享主题（含渐变背景与层次色）
   const { tier: customerTier, headerGradient: tierHeaderBg } = useMemo(
