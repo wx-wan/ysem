@@ -150,19 +150,19 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       andConditions.push({ country: String(country) });
     }
 
-    // 类型筛选
+    // 类型筛选（probability 为 Int 字段，用数值范围匹配意向等级：A≥90 B≥60 C≥30 D<30）
     if (type === "key") {
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
       andConditions.push({ orders: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
+      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: { gte: 90 } } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: { gte: 60 } } } }, { pipelines: { none: { probability: { gte: 90 } } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: { gte: 30 } } } }, { pipelines: { none: { probability: { gte: 90 } } } }, { pipelines: { none: { probability: { gte: 60 } } } }] });
     } else if (type === "noOrder-D") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: { gte: 90 } } } }, { pipelines: { none: { probability: { gte: 60 } } } }, { pipelines: { none: { probability: { gte: 30 } } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
@@ -350,18 +350,19 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       andConditions.push({ ownerId: { not: null } });
     }
 
+    // 类型筛选（probability 为 Int 字段，用数值范围匹配意向等级：A≥90 B≥60 C≥30 D<30）
     if (type === "key") {
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
       andConditions.push({ orders: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
+      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: { gte: 90 } } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: { gte: 60 } } } }, { pipelines: { none: { probability: { gte: 90 } } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: { gte: 30 } } } }, { pipelines: { none: { probability: { gte: 90 } } } }, { pipelines: { none: { probability: { gte: 60 } } } }] });
     } else if (type === "noOrder-D") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: { gte: 90 } } } }, { pipelines: { none: { probability: { gte: 60 } } } }, { pipelines: { none: { probability: { gte: 30 } } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
