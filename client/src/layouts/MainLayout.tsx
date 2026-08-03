@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, theme } from 'antd';
+import { Layout, Spin, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
@@ -14,7 +14,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
-  const { fetchRates } = useCurrencyStore();
+  const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token: { colorBgContainer } } = theme.useToken();
 
   // 获取用户信息
@@ -74,6 +74,27 @@ export default function MainLayout() {
 
   return (
     <Layout className="main-layout horizontal">
+      {ratesLoading && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2000,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 16,
+            background: 'rgba(255, 255, 255, 0.65)',
+            backdropFilter: 'blur(2px)',
+          }}
+        >
+          <Spin size="large" />
+          <span style={{ color: 'rgba(0,0,0,0.65)', fontSize: 14 }}>
+            {t('common.loadingRates')}
+          </span>
+        </div>
+      )}
       <Header className="top-header" style={{ background: colorBgContainer }}>
         {/* 左侧品牌 */}
         <div className="header-brand" onClick={() => navigate('/')}>
