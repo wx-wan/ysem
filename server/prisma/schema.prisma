@@ -125,6 +125,7 @@ model OperationLog {
 // ========== 客户表 ==========
 model Customer {
   id          String   @id @default(uuid())
+  customerCode String? @unique // 客户编号：CUS-YYMMDD-序号
   companyName String
   contactName String?
   englishName String?  // 英文名

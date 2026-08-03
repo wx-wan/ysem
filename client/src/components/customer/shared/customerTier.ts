@@ -1,5 +1,6 @@
 import type { Customer } from '../../../api/customers';
 import { getGrade } from './utils';
+import { getPurchaseStatus } from './purchaseStatus';
 
 /** 客户荣誉层级（与 global.css .customer-tier-* 对应） */
 export type CustomerTier =
@@ -42,19 +43,20 @@ export function getCustomerTier(customer: Customer | null): CustomerTierResult {
 
   const grade = getGrade(customer);
   const hasPipelines = (customer.pipelines || []).length > 0 || (customer._count?.pipelines ?? 0) > 0;
-  const currentYear = new Date().getFullYear().toString();
+  const status = getPurchaseStatus(customer);
 
   // 已成交客户
-  if (customer.firstOrderDate) {
-    if (customer.firstOrderDate.startsWith(currentYear))
-      return {
-        tier: 'shine',
-        headerGradient: 'linear-gradient(135deg, #ffd666 0%, #f59e0b 100%)',
-        headerTextDark: false,
-        primary: '#f59e0b',
-        primaryLight: '#fef3c7',
-        primaryBg: 'rgba(245,158,11,0.08)',
-      };
+  if (status === 'new') {
+    return {
+      tier: 'shine',
+      headerGradient: 'linear-gradient(135deg, #ffd666 0%, #f59e0b 100%)',
+      headerTextDark: false,
+      primary: '#f59e0b',
+      primaryLight: '#fef3c7',
+      primaryBg: 'rgba(245,158,11,0.08)',
+    };
+  }
+  if (status === 'old') {
     return {
       tier: 'chest',
       headerGradient: 'linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%)',

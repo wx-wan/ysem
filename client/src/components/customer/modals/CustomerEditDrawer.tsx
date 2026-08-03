@@ -3,7 +3,6 @@ import { Input, DatePicker, App, theme } from 'antd';
 import { CloseOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
-import TagSelector from '../../TagSelector';
 import CountrySelect from '../../CountrySelect';
 import { Z_INDEX, createPopupContainer } from '../../../zIndex';
 import { useDs } from '../shared/ds';
@@ -17,13 +16,13 @@ interface CustomerEditDrawerProps {
   onSaved?: (customer: Customer) => void;
 }
 
-/** 表单字段标签样式 */
-function FieldLabel({ children }: { children: React.ReactNode }) {
+/** 表单字段标签样式；仅 required 为 true 时显示红色星号 */
+function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
   const { token } = theme.useToken();
   return (
-    <span style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4, display: 'block', lineHeight: 1.5 }}>
+    <span style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 6, display: 'block', lineHeight: 1.5 }}>
       {children}
-      <span style={{ color: '#ff4d4f', marginLeft: 2 }}>*</span>
+      {required && <span style={{ color: '#ff4d4f', marginLeft: 2 }}>*</span>}
     </span>
   );
 }
@@ -79,8 +78,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
   /** 保存 */
   const handleSave = async () => {
     if (!customer) return;
-    if (!form.companyName?.trim()) {
-      msg.warning('请输入公司名称');
+    if (!form.contactName?.trim()) {
+      msg.warning('请输入姓名');
       return;
     }
 
@@ -150,7 +149,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         >
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: token.colorTextHeading }}>编辑客户资料</div>
-            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>CIS-{customer.id.slice(0, 6)}</div>
+            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>{customer.customerCode || '-'}</div>
           </div>
           <button
             onClick={onClose}
@@ -170,9 +169,9 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
 
         {/* 表单内容区（可滚动） */}
         <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-          {/* 姓名/联系人 */}
+          {/* 姓名/联系人 — 唯一必填项 */}
           <div style={{ marginBottom: 16 }}>
-            <FieldLabel>姓名</FieldLabel>
+            <FieldLabel required>姓名</FieldLabel>
             <Input
               size="large"
               placeholder="请输入联系人姓名"
@@ -220,7 +219,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
 
           {/* 联系方式 — 邮箱 */}
           <div style={{ marginBottom: 16 }}>
-            <span style={{ fontSize: 12, color: token.colorTextSecondary, marginBottom: 4, display: 'block', lineHeight: 1.5 }}>联系方式</span>
+            <FieldLabel>联系方式</FieldLabel>
             <Input
               size="large"
               placeholder="请输入邮箱地址"
@@ -265,18 +264,6 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
               value={form.firstOrderDate ? dayjs(form.firstOrderDate) : null}
               onChange={(date) => updateField('firstOrderDate', date ? date.format('YYYY-MM-DD') : undefined)}
               getPopupContainer={createPopupContainer(contentRef)}
-            />
-          </div>
-
-          {/* 标签 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel>标签</FieldLabel>
-            <TagSelector
-              value={form.tags}
-              onChange={(v) => updateField('tags', v)}
-              placeholder="输入标签后回车添加"
-              showAddButton
-              style={{ minHeight: ds.control, padding: '4px 11px', borderRadius: ds.radius, border: `1px solid ${token.colorBorder}`, background: token.colorBgContainer }}
             />
           </div>
 

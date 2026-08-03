@@ -35,7 +35,6 @@ const CustomerList = memo(function CustomerList({
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <KeyAccountStar
                 isKeyAccount={record.isKeyAccount || false}
-                customerId={record.id}
                 color={token.colorWarning}
                 mutedColor={token.colorTextQuaternary}
                 onToggle={() => {

@@ -24,6 +24,7 @@ const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
   { key: 'B', label: INTENT_LABEL.B },
   { key: 'C', label: INTENT_LABEL.C },
   { key: 'D', label: INTENT_LABEL.D },
+  { key: 'none', label: '待开发' },
 ];
 
 const DONE_SUB_FILTERS: { key: string; label: string }[] = [
@@ -53,6 +54,8 @@ interface CustomerToolbarProps {
   selectedOwnerId: string;
   setSelectedOwnerId: (v: string) => void;
   userList: User[];
+  noOrderBreakdown?: Record<string, number>;
+  doneBreakdown?: Record<string, number>;
 }
 
 export default function CustomerToolbar({
@@ -61,6 +64,7 @@ export default function CustomerToolbar({
   filterType, setFilterType, subFilterType, setSubFilterType,
   setImportOpen, openCreate,
   isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
+  noOrderBreakdown, doneBreakdown,
 }: CustomerToolbarProps) {
   const ds = useDs();
   const showNoOrderSub = filterType === 'noOrder';
@@ -227,6 +231,9 @@ export default function CustomerToolbar({
         >
           {(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => {
             const active = subFilterType === opt.key;
+            const count = showNoOrderSub
+              ? (noOrderBreakdown?.[opt.key] ?? 0)
+              : (doneBreakdown?.[opt.key] ?? 0);
             return (
               <button
                 key={opt.key}
@@ -246,6 +253,20 @@ export default function CustomerToolbar({
                 }}
               >
                 {opt.label}
+                <span
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: '1px 6px',
+                    borderRadius: 10,
+                    background: active ? ds.primary : ds.surface,
+                    color: active ? token.colorWhite : ds.textFaint,
+                    lineHeight: '16px',
+                  }}
+                >
+                  {count}
+                </span>
               </button>
             );
           })}

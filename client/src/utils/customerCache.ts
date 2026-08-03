@@ -26,9 +26,12 @@ export interface ListCacheEntry {
 const listCache = new Map<string, ListCacheEntry>();
 const detailCache = new Map<string, Customer>();
 
+/** 缓存版本号：数据结构变更时递增，使旧缓存自动失效 */
+const CACHE_VERSION = 'v2';
+
 /** 把查询参数序列化为稳定签名（过滤 undefined / 排序键名） */
 export function listCacheKey(params: Record<string, any>): string {
-  return Object.keys(params)
+  return CACHE_VERSION + '|' + Object.keys(params)
     .sort()
     .map((k) => `${k}=${params[k]}`)
     .join('&');
@@ -81,10 +84,13 @@ export function installCacheLifecycle(): void {
 /**
  * 拉取单个客户详情：优先命中缓存，未命中再请求。
  * 同时用 setDetailCache 回填缓存，供后续编辑回显复用。
+ * @param force 为 true 时跳过缓存、强制回源（如详情弹窗「刷新」按钮）
  */
-export async function fetchCustomerDetail(id: string): Promise<Customer> {
-  const cached = getDetailCache(id);
-  if (cached) return cached;
+export async function fetchCustomerDetail(id: string, force = false): Promise<Customer> {
+  if (!force) {
+    const cached = getDetailCache(id);
+    if (cached) return cached;
+  }
   const res = await customerApi.getById(id);
   const data = res.data.data;
   setDetailCache(data);

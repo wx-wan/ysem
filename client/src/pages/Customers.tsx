@@ -8,7 +8,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
 import {
-  listCacheKey, getListCache, setListCache, invalidateAll, fetchCustomerDetail, installCacheLifecycle,
+  listCacheKey, getListCache, setListCache, invalidateAll, invalidateDetail, fetchCustomerDetail, installCacheLifecycle,
 } from '../utils/customerCache';
 import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
@@ -32,6 +32,8 @@ export default function CustomersPage() {
   const [estimatedBreakdown, setEstimatedBreakdown] = useState<any[]>([]);
   const [contractBreakdown, setContractBreakdown] = useState<any[]>([]);
   const [totalContractAmount, setTotalContractAmount] = useState(0);
+  const [noOrderBreakdown, setNoOrderBreakdown] = useState<Record<string, number>>({});
+  const [doneBreakdown, setDoneBreakdown] = useState<Record<string, number>>({});
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
@@ -121,6 +123,8 @@ export default function CustomersPage() {
       setTotalContractAmount(cached.totalContractAmount);
       setEstimatedBreakdown(cached.estimatedBreakdown);
       setContractBreakdown(cached.contractBreakdown);
+      setNoOrderBreakdown(cached.noOrderBreakdown || {});
+      setDoneBreakdown(cached.doneBreakdown || {});
       return;
     }
 
@@ -136,6 +140,8 @@ export default function CustomersPage() {
       const cntTotal = d.totalContractAmount || 0;
       const estBreakdown = d.estimatedBreakdown || [];
       const cntBreakdown = d.contractBreakdown || [];
+      const noOrderBd = d.noOrderBreakdown || {};
+      const doneBd = d.doneBreakdown || {};
 
       const sorted = sortCustomers(rawList);
       setListCache(cacheKey, {
@@ -145,6 +151,8 @@ export default function CustomersPage() {
         totalContractAmount: cntTotal,
         estimatedBreakdown: estBreakdown,
         contractBreakdown: cntBreakdown,
+        noOrderBreakdown: noOrderBd,
+        doneBreakdown: doneBd,
       });
       const { mergedList } = diffList(currentList, sorted);
       setList(sortCustomers(mergedList));
@@ -153,6 +161,8 @@ export default function CustomersPage() {
       setTotalContractAmount(cntTotal);
       setEstimatedBreakdown(estBreakdown);
       setContractBreakdown(cntBreakdown);
+      setNoOrderBreakdown(noOrderBd);
+      setDoneBreakdown(doneBd);
       setPage(1);
     } catch (err: any) {
       message.error(err?.message || '加载失败');
@@ -205,7 +215,7 @@ export default function CustomersPage() {
     setList((prev) =>
       prev.map((item) => (item.id === updated.id ? mergeKeepAgg(item, updated) : item))
     );
-    invalidateAll(); // 列表/详情缓存已过期，下次拉取回源
+    invalidateDetail(updated.id); // 该客户详情缓存已过期，下次打开回源；列表缓存保留
   }, [mergeKeepAgg]);
 
   // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
@@ -227,11 +237,17 @@ export default function CustomersPage() {
     message.info(`释放客户 ${c.companyName}（待接入）`);
   }, [message]);
 
-  const handleDeleteFromModal = useCallback((c: Customer) => {
+  const handleDeleteFromModal = useCallback(async (c: Customer) => {
     setDetailModalOpen(false);
-    // TODO: 删除客户
-    message.info(`删除客户 ${c.companyName}（待接入）`);
-  }, [message]);
+    try {
+      await customerApi.remove(c.id);
+      message.success(`已删除客户 ${c.companyName || c.contactName || ''}`);
+      invalidateAll();
+      fetchData();
+    } catch {
+      message.error('删除客户失败');
+    }
+  }, [message, fetchData]);
 
   const openCreatePipeline = useCallback((c: Customer) => {
     setDetailModalOpen(false);
@@ -274,10 +290,10 @@ export default function CustomersPage() {
   const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
     if (detailCustomer) {
-      const fresh = await fetchCustomerDetail(detailCustomer.id);
+      const fresh = await fetchCustomerDetail(detailCustomer.id, true); // 强制回源，确保订单后数据最新
       setDetailCustomer(fresh);
     }
-    invalidateAll();
+    invalidateDetail(detailCustomer?.id || '');
     fetchData();
   }, [detailCustomer, fetchData]);
 
@@ -359,6 +375,8 @@ export default function CustomersPage() {
         selectedOwnerId={selectedOwnerId}
         setSelectedOwnerId={setSelectedOwnerId}
         userList={userList}
+        noOrderBreakdown={noOrderBreakdown}
+        doneBreakdown={doneBreakdown}
       />
 
       {/* 内容区 */}
@@ -402,7 +420,6 @@ export default function CustomersPage() {
       <CustomerDetailModal
         open={detailModalOpen}
         customer={detailCustomer}
-        customerList={list}
         onClose={() => setDetailModalOpen(false)}
         onDetailLoaded={handleDetailLoaded}
         onSaved={handleDetailUpdated}

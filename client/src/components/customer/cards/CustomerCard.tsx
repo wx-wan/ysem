@@ -1,10 +1,10 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
 import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import KeyAccountStar from '../../KeyAccountStar';
 import type { Customer } from '../../../api/customers';
 import { getGrade, getCustomerLogicLabel } from '../shared/utils';
+import PurchaseIntentTag from '../shared/PurchaseIntentTag';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
 import { useDs } from '../shared/ds';
 import TagSelector from '../../TagSelector';
@@ -66,6 +66,7 @@ const CustomerCard = memo(function CustomerCard({
   };
 
   const grade = useMemo(() => getGrade(customer), [customer]);
+  const intentLabel = useMemo(() => getCustomerLogicLabel(customer), [customer]);
 
   // 兼容：详情接口可能不返回 pipelineAmount/totalAmount，从关联数组汇总 fallback
   const displayPipelineAmount = customer.pipelineAmount
@@ -93,8 +94,6 @@ const CustomerCard = memo(function CustomerCard({
         setLocalTags(customer.tags || '');
       });
   }, [customer.id, customer.tags, onListUpdate]);
-
-  const typeLabel = useMemo(() => getCustomerLogicLabel(customer), [customer]);
 
   // 荣誉层级：复用与 CustomerDetailModal 一致的共享主题（含渐变背景与层次色）
   const { tier: customerTier, headerGradient: tierHeaderBg } = useMemo(
@@ -137,30 +136,34 @@ const CustomerCard = memo(function CustomerCard({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
+              <PurchaseIntentTag label={intentLabel} size="small" style={{
                 backgroundColor: 'rgba(255,255,255,0.2)',
                 color: token.colorWhite,
-                fontSize: 11, fontWeight: 600,
-                padding: '3px 10px',
-                borderRadius: token.borderRadiusSM,
-                lineHeight: '18px',
-                letterSpacing: '0.3px',
-              }}>
-                {typeLabel}
-              </span>
+              }} />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <KeyAccountStar
                 isKeyAccount={customer.isKeyAccount || false}
-                customerId={customer.id}
                 color="rgba(255,255,255,0.9)"
                 mutedColor="rgba(255,255,255,0.35)"
                 onToggle={() => {
+                  const nextKey = !customer.isKeyAccount;
+                  // 本地乐观更新
                   onListUpdate && onListUpdate((prev) =>
                     prev.map((c) =>
-                      c.id === customer.id ? { ...c, isKeyAccount: !c.isKeyAccount } : c
+                      c.id === customer.id ? { ...c, isKeyAccount: nextKey } : c
                     )
                   );
+                  // 同步后端持久化
+                  customerApi.update(customer.id, { isKeyAccount: nextKey } as any).catch(() => {
+                    // 失败回滚：恢复原值
+                    onListUpdate && onListUpdate((prev) =>
+                      prev.map((c) =>
+                        c.id === customer.id ? { ...c, isKeyAccount: !nextKey } : c
+                      )
+                    );
+                    message.error('重点客户状态更新失败');
+                  });
                 }}
               />
             </div>
@@ -324,7 +327,7 @@ const CustomerCard = memo(function CustomerCard({
             <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" color={avatarBg} />
           </div>
           <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', flex: '0 0 auto' }}>
-            {dayjs(customer.createdAt).format('YYYY-MM-DD')}
+            {customer.customerCode || '-'}
           </div>
         </div>
       </Card>

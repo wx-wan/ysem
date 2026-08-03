@@ -6,6 +6,16 @@ import * as XLSX from "xlsx";
 
 const prisma = new PrismaClient();
 
+// 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
+const generateCustomerCode = async (): Promise<string> => {
+  const d = new Date();
+  const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const count = await prisma.customer.count({
+    where: { customerCode: { startsWith: `CUS-${datePart}-` } },
+  });
+  return `CUS-${datePart}-${count + 1}`;
+};
+
 // 辅助：获取客户订单聚合数据
 type OrderAgg = { totalAmount: number; lastOrderDate: string | null };
 const getOrderAggregates = async (customerIds: string[]): Promise<Record<string, OrderAgg>> => {
@@ -114,6 +124,26 @@ const getCustomerStats = async (ownerId?: string) => {
   };
 };
 
+// 辅助：计算未成交 / 已成交各子筛选的客户数量（基于给定 scope，如 ownerId）
+const getSubFilterCounts = async (baseWhere: any) => {
+  const currentYear = new Date().getFullYear().toString();
+  const noOrderWhere = { ...baseWhere, orders: { none: {} } };
+  const doneWhere = { ...baseWhere, orders: { some: {} } };
+  const [A, B, C, D, none, newC, oldC] = await Promise.all([
+    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { some: { probability: "准成交" } } } }),
+    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { none: {} } } }),
+    prisma.customer.count({ where: { ...doneWhere, firstOrderDate: { startsWith: currentYear } } }),
+    prisma.customer.count({ where: { ...doneWhere, AND: [{ firstOrderDate: { not: null } }, { firstOrderDate: { not: "" } }, { firstOrderDate: { not: { startsWith: currentYear } } }] } }),
+  ]);
+  return {
+    noOrderBreakdown: { '': A + B + C + D + none, A, B, C, D, none },
+    doneBreakdown: { '': newC + oldC, new: newC, old: oldC },
+  };
+};
+
 // ========== 获取我的私海客户 ==========
 export const listMy = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -155,6 +185,9 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
       andConditions.push({ orders: { none: {} } });
+    } else if (type === "noOrder-none") {
+      // 待开发：未成交且无商机记录
+      andConditions.push({ orders: { none: {} }, pipelines: { none: {} } });
     } else if (type === "noOrder-A") {
       andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
     } else if (type === "noOrder-B") {
@@ -162,7 +195,8 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
     } else if (type === "noOrder-C") {
       andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
     } else if (type === "noOrder-D") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
+      andConditions.push({ orders: { none: {} }, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
@@ -180,7 +214,7 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
 
     const where: any = { AND: andConditions };
 
-    const [list, total, stats] = await Promise.all([
+    const [list, total, stats, subFilterCounts] = await Promise.all([
       prisma.customer.findMany({
         where,
         skip,
@@ -194,6 +228,7 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       }),
       prisma.customer.count({ where }),
       getCustomerStats(userId),
+      getSubFilterCounts({ ownerId: userId }),
     ]);
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
@@ -258,7 +293,7 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
       pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
     }));
 
-    success(res, { list: enriched, total, page: Number(page), pageSize: take, stats, estimatedAmount: estimatedAgg._sum.estimatedAmount || 0, totalContractAmount: totalAmountAgg._sum.amountCNY || 0, estimatedBreakdown, contractBreakdown });
+    success(res, { list: enriched, total, page: Number(page), pageSize: take, stats, ...subFilterCounts, estimatedAmount: estimatedAgg._sum.estimatedAmount || 0, totalContractAmount: totalAmountAgg._sum.amountCNY || 0, estimatedBreakdown, contractBreakdown });
   } catch (err) {
     next(err);
   }
@@ -355,6 +390,9 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
       andConditions.push({ orders: { none: {} } });
+    } else if (type === "noOrder-none") {
+      // 待开发：未成交且无商机记录
+      andConditions.push({ orders: { none: {} }, pipelines: { none: {} } });
     } else if (type === "noOrder-A") {
       andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
     } else if (type === "noOrder-B") {
@@ -362,7 +400,8 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
     } else if (type === "noOrder-C") {
       andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
     } else if (type === "noOrder-D") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
+      andConditions.push({ orders: { none: {} }, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
@@ -382,7 +421,8 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       where.AND = andConditions;
     }
 
-    const [list, total, assignees] = await Promise.all([
+    const listAllScope = ownerId ? { ownerId: String(ownerId) } : { ownerId: { not: null } };
+    const [list, total, assignees, subFilterCounts] = await Promise.all([
       prisma.customer.findMany({
         where,
         skip,
@@ -412,6 +452,7 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
           },
         },
       }),
+      getSubFilterCounts(listAllScope),
     ]);
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
@@ -522,6 +563,7 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
       pageSize: take,
       ownerStats,
       publicCount,
+      ...subFilterCounts,
       stats: { total: totalAll, newCount: newAll, oldCount: oldAll, keyCount: keyAll },
       estimatedAmount: estimatedAgg._sum.estimatedAmount || 0,
       totalContractAmount: totalAmountAgg._sum.amountCNY || 0,
@@ -542,11 +584,11 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
         orders: { orderBy: { createdAt: "desc" } },
         pipelines: {
-          orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
+          orderBy: { createdAt: "desc" },
           include: { assignee: { select: { id: true, username: true, realName: true } } },
         },
         activities: {
-          orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
+          orderBy: { createdAt: "asc" },
           take: 50,
         },
       },
@@ -576,6 +618,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 
     const customer = await prisma.customer.create({
       data: {
+        customerCode: await generateCustomerCode(),
         companyName,
         contactName,
         email,
@@ -887,6 +930,7 @@ export const importExcel = async (req: Request, res: Response, next: NextFunctio
       }
 
       try {
+        data.customerCode = await generateCustomerCode();
         await prisma.customer.create({ data });
         created++;
       } catch {

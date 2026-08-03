@@ -1,5 +1,7 @@
 import type { Customer } from '../../../api/customers';
 import { getIntentGrade, INTENT_LABEL } from './intentLevel';
+import { getPurchaseStatus, PURCHASE_STATUS_LABEL } from './purchaseStatus';
+
 
 // ========== 客户等级（A/B/C/D 四级，仅由商机中最高采购意向决定，不受重点客户影响） ==========
 export function getGrade(customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; tagColor: string } {
@@ -45,14 +47,22 @@ export function tagColorToBg(tagColor: string, token: any): string {
 
 // ========== 客户采购意向标签（全站统一收口，全局只有 准成交/高意向/中意向/低意向 四种表述） ==========
 // 采购意向等级由商机中最高概率派生（逻辑统一收口在 intentLevel.ts）。
-// 成交客户与未成交客户共用同一套展示逻辑，不再区分「本年度新客/往年老客/未成交客户」。
+// 标签格式：成交状态前缀 + 采购意向，如「未成交客户·准成交」「本年度新客·准成交」「往年老客·高意向」
+// 成交状态（未成交/本年度新客/往年老客）统一由 shared/purchaseStatus.ts 的 getPurchaseStatus 计算。
 export function getCustomerIntentLabel(customer: Customer): string {
   const { grade } = getGrade(customer);
   return INTENT_LABEL[grade] || '低意向';
 }
 
-// 兼容旧名：逻辑标签即采购意向标签
-export const getCustomerLogicLabel = getCustomerIntentLabel;
+// 兼容旧名：逻辑标签 = 成交状态前缀 + 后半段
+// 有商机：后半段为采购意向（准成交/高意向/中意向/低意向）
+// 无商机：后半段固定为「待开发」
+export function getCustomerLogicLabel(customer: Customer): string {
+  const hasPipelines = (customer.pipelines || []).length > 0;
+  const intent = hasPipelines ? (INTENT_LABEL[getGrade(customer).grade] || '低意向') : '待开发';
+  const status = getPurchaseStatus(customer);
+  return `${PURCHASE_STATUS_LABEL[status]}·${intent}`;
+}
 
 // 带颜色的类型标签（兼容旧调用方）
 export function getCustomerTypeLabel(customer: Customer): { label: string; color: string } | null {
@@ -73,6 +83,11 @@ export function getCustomerTypeLabel(customer: Customer): { label: string; color
 const GRADE_ORDER: Record<string, number> = { A: 1, B: 2, C: 3, D: 4 };
 
 export function compareCustomers(a: Customer, b: Customer): number {
+  // 重点客户（星标）优先排到最前面
+  const keyA = a.isKeyAccount ? 1 : 0;
+  const keyB = b.isKeyAccount ? 1 : 0;
+  if (keyA !== keyB) return keyB - keyA;
+
   // 采购意向等级（A 最高优先）
   const ga = GRADE_ORDER[getGrade(a).grade] ?? 9;
   const gb = GRADE_ORDER[getGrade(b).grade] ?? 9;
@@ -83,14 +98,13 @@ export function compareCustomers(a: Customer, b: Customer): number {
   const amtB = b.pipelineAmount || 0;
   if (amtA !== amtB) return amtB - amtA;
 
-  // 新客户优先，未成交（无首单）排最后
-  const currentYear = new Date().getFullYear().toString();
-  const orderRank = (c: Customer): number => {
-    if (!c.firstOrderDate) return 2;
-    return c.firstOrderDate.startsWith(currentYear) ? 0 : 1;
+  // 新客户优先，未成交（无首单）排最后（状态：new=0, old=1, prospect=2）
+  const statusRank = (c: Customer): number => {
+    const s = getPurchaseStatus(c);
+    return s === 'new' ? 0 : s === 'old' ? 1 : 2;
   };
-  const ra = orderRank(a);
-  const rb = orderRank(b);
+  const ra = statusRank(a);
+  const rb = statusRank(b);
   if (ra !== rb) return ra - rb;
 
   // 成交订单金额从高到低

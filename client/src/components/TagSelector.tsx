@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { Tag, Input, theme } from 'antd';
+import { Tag, theme } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 
 function parseTag(tagStr: string): { name: string } {
@@ -36,6 +36,8 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
   const [inputVisible, setInputVisible] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const composingRef = useRef(false);
+  // 记录「组合输入期间按下过 Enter」，待 compositionEnd 后再提交，解决中文输入法选词后回车添加不进的问题
+  const enterDuringComposeRef = useRef(false);
 
   const addTag = useCallback(() => {
     const name = inputValue.trim();
@@ -93,25 +95,45 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
         </Tag>
       ))}
       {showAddButton && inputVisible ? (
-        <Input
+        <input
           autoFocus
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onCompositionStart={() => { composingRef.current = true; }}
-          onCompositionEnd={() => { composingRef.current = false; }}
-          onPressEnter={() => { if (composingRef.current) return; addTag(); }}
-          onBlur={() => { if (composingRef.current) return; addTag(); }}
+          onCompositionEnd={() => {
+            composingRef.current = false;
+            // 组合期间按过 Enter（中文输入法选词确认），组合结束后再提交
+            if (enterDuringComposeRef.current) {
+              enterDuringComposeRef.current = false;
+              addTag();
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (composingRef.current) {
+                // 组合输入中（如中文选词），延迟到 compositionEnd 再提交
+                enterDuringComposeRef.current = true;
+                return;
+              }
+              addTag();
+            }
+          }}
+          onBlur={() => { addTag(); }}
           placeholder={placeholder}
-          size="small"
-          variant="borderless"
+          className="tag-selector-input"
           style={{
             width: 100,
             height: 22,
             fontSize: 12,
-            padding: '0 4px',
+            padding: '0 10px',
             background: `${themeColor}14`,
             borderRadius: token.borderRadiusSM,
-            border: `1px dashed ${themeColor}66`,
+            border: `1px dashed ${themeColor}99`,
+            color: token.colorText,
+            outline: 'none',
+            ['--tag-selector-color' as any]: themeColor,
+            boxSizing: 'border-box',
           }}
         />
       ) : (

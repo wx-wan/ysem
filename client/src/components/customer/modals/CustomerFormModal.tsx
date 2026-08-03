@@ -108,7 +108,6 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
             <Form.Item label="重点客户">
               <KeyAccountStar
                 isKeyAccount={getFieldValue('isKeyAccount') || false}
-                customerId={editingCustomer?.id}
                 onToggle={() => setFieldsValue({ isKeyAccount: !getFieldValue('isKeyAccount') })}
               />
             </Form.Item>

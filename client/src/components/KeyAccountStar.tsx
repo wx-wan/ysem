@@ -1,10 +1,8 @@
 import { StarFilled, StarOutlined } from '@ant-design/icons';
-import { useRef, useState } from 'react';
-import { customerApi } from '../api/customers';
+import { useRef } from 'react';
 
 interface KeyAccountStarProps {
   isKeyAccount: boolean;
-  customerId?: string;
   onToggle?: () => void;
   size?: number;
   color?: string;
@@ -14,38 +12,25 @@ interface KeyAccountStarProps {
 // 两次点击最小间隔（毫秒），低于此间隔的请求将被忽略，防止频繁触发
 const DEBOUNCE_MS = 800;
 
-// 静态星标：无持续动画 / 无光晕闪烁，仅保留点击反馈（loading 透明度）
+// 静态星标：无持续动画 / 无光晕闪烁，无 loading 态。
+// 点击后由父组件乐观更新 isKeyAccount prop，星标图标即时切换（实心↔空心），反馈零延迟。
 export default function KeyAccountStar({
   isKeyAccount,
-  customerId,
   onToggle,
   size = 20,
   color = '#faad14',
   mutedColor = '#bfbfbf',
 }: KeyAccountStarProps) {
-  const [loading, setLoading] = useState(false);
   const lastTriggerRef = useRef<number>(0);
 
-  const handleToggle = async (e: React.MouseEvent) => {
+  const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
     const now = Date.now();
     // 防抖：间隔过短直接忽略，避免频繁触发
     if (now - lastTriggerRef.current < DEBOUNCE_MS) return;
     lastTriggerRef.current = now;
 
-    if (!customerId) {
-      onToggle?.();
-      return;
-    }
-    setLoading(true);
-    try {
-      await customerApi.update(customerId, { isKeyAccount: !isKeyAccount } as any);
-      onToggle?.();
-    } catch {
-      // 静默失败，不弹提示框
-    } finally {
-      setLoading(false);
-    }
+    onToggle?.();
   };
 
   return (
@@ -55,7 +40,6 @@ export default function KeyAccountStar({
         cursor: 'pointer',
         fontSize: size,
         lineHeight: 1,
-        opacity: loading ? 0.5 : 1,
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',

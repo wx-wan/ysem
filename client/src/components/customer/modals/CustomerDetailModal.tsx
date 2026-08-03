@@ -1,19 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, message } from 'antd';
+import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, message, Modal, Skeleton } from 'antd';
 import AppModal from '../../AppModal';
 import {
   DollarOutlined,
   ShoppingCartOutlined,
   ClockCircleOutlined,
   EditOutlined,
+  DeleteOutlined,
   SwapOutlined,
   RollbackOutlined,
   CloseOutlined,
   MailOutlined,
   PhoneOutlined,
   WechatOutlined,
-  EnvironmentOutlined,
   UserOutlined,
+  IdcardOutlined,
   NumberOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -21,19 +22,20 @@ import { Customer, Order, CustomerActivity, customerApi } from '../../../api/cus
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
-import { getCustomerTier } from '../shared/customerTier';
-import { findCountry } from '../../../data/countries';
-import FlagIcon from '../../FlagIcon';
+import PurchaseIntentTag from '../shared/PurchaseIntentTag';
+import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
+import CountrySelect from '../../CountrySelect';
 import TagSelector from '../../TagSelector';
 import CustomerEditDrawer from './CustomerEditDrawer';
+import KeyAccountStar from '../../KeyAccountStar';
+import SegmentedTabBar from '../../common/SegmentedTabBar';
+import CustomerOverview from './CustomerOverview';
 
 const { Text } = Typography;
 
 interface CustomerDetailModalProps {
   open: boolean;
   customer: Customer | null;
-  /** 完整客户列表，用于计算「当天序号」生成客户编码 */
-  customerList?: Customer[];
   onClose: () => void;
   onTransfer?: (customer: Customer) => void;
   onRelease?: (customer: Customer) => void;
@@ -69,17 +71,24 @@ interface RealPipeline {
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, customerList = [], onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
+  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
 }) => {
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 3;
+  // 概览 tab 不分页；销售记录每页 7 条；跟进动态每页 9 条（均匹配弹窗右侧高度，超出则分页）
+  const pageSize = activeTab === 'pipeline' ? 3 : activeTab === 'activities' ? 9 : 7;
 
   // 抽屉编辑状态
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
+  // 详情异步加载状态（open 时由 getById 补充完整数据）
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const ct = getCustomerTier(customer);
+
+  // 头像/标签主题色：与卡片视图（CustomerCard）保持一致
+  const avatarBg = getAvatarColor(ct.tier, token);
 
   // 标签本地自治：内部维护状态并自行调用 API，避免依赖外部对象重建
   const [localTags, setLocalTags] = useState<string>(typeof customer?.tags === 'string' ? customer.tags : '');
@@ -88,42 +97,45 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   }, [customer?.id, customer?.tags]);
 
   // 客户编码：CUS-{创建日期 YYMMDD}-{当天序号}
-  const customerCode = useMemo(() => {
-    if (!customer?.createdAt) return `CUS-${String(customer?.id ?? 0).padStart(4, '0')}`;
-    const created = dayjs(customer.createdAt);
-    const datePart = created.format('YYMMDD');
-    // 当天序号：同一创建日期的客户按 createdAt 升序的排名
-    const sameDay = customerList
-      .filter((c) => c.createdAt && dayjs(c.createdAt).format('YYMMDD') === datePart)
-      .sort((a, b) => dayjs(a.createdAt!).valueOf() - dayjs(b.createdAt!).valueOf());
-    const seq = sameDay.findIndex((c) => c.id === customer.id) + 1;
-    return `CUS-${datePart}-${seq}`;
-  }, [customer?.id, customer?.createdAt, customerList]);
+  const customerCode = customer?.customerCode || '-';
 
-  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel —— 成交与未成交客户共用采购意向标签（准成交/高意向/中意向/低意向）
+  // 逻辑标签：统一复用 PurchaseIntentTag 组件（含成交状态前缀 + 采购意向），卡片视图与详情视图共用同一套逻辑
   const logicTag = useMemo(() => (customer ? getCustomerLogicLabel(customer) : ''), [customer]);
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
   // 放在 Modal 内部 effect，使父组件的点击处理保持同步、零 async 阻塞，点击即弹窗。
   // 经前端缓存 fetchCustomerDetail：命中则直接复用，避免重复请求。
   useEffect(() => {
-    if (!customer?.id) return;
+    // 仅在弹窗打开且客户存在时拉取；依赖加入 open，
+    // 保证「同一客户二次打开」也会重新补充完整数据（列表项不含 orders/activities）
+    if (!open || !customer?.id) return;
     let cancelled = false;
+    setDetailLoading(true);
     fetchCustomerDetail(customer.id).then((data) => {
       if (!cancelled && data) {
         onDetailLoaded?.(data);
       }
-    }).catch(() => { /* 忽略，保留列表项数据渲染 */ });
+    }).catch(() => { /* 忽略，保留列表项数据渲染 */ })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
     return () => { cancelled = true; };
-    // 仅在 customer.id 变化时触发（打开新客户时）
-  }, [customer?.id]);
+    // 依赖 open：每次打开（含同一客户二次打开）都重新补充详情，避免数据丢失
+  }, [open, customer?.id]);
 
-  /** 取公司名/联系人首字母作为头像文字 */
-  const getInitials = (name: string) => {
-    const cleaned = name.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '');
-    if (!cleaned) return '?';
-    if (/[\u4e00-\u9fa5]/.test(cleaned)) return cleaned.charAt(0);
-    return cleaned.slice(0, 2).toUpperCase();
+  /** 删除客户：二次确认后交由父级执行 */
+  const handleDelete = () => {
+    if (!customer) return;
+    Modal.confirm({
+      title: '删除客户',
+      content: `确定要删除客户「${customer.companyName || customer.contactName || '-'}」吗？删除后不可恢复。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      centered: true,
+      onOk: () => {
+        onDelete?.(customer);
+        onClose();
+      },
+    });
   };
 
   const isPublic = !customer?.ownerId;
@@ -133,14 +145,39 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const headerTextSub = ct.headerTextDark ? token.colorTextSecondary : 'rgba(255,255,255,0.85)';
   const headerTextFaint = ct.headerTextDark ? token.colorTextTertiary : 'rgba(255,255,255,0.7)';
 
+  /** 信息面板操作按钮（彩色区块内的半透明按钮）：补 default/hover/active/focus 标准态 */
+  const panelBtnStyle: React.CSSProperties = {
+    width: 32, height: 32, borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.35)',
+    background: 'rgba(255,255,255,0.18)',
+    color: headerText, cursor: 'pointer',
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: 14, transition: 'background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease',
+    outline: 'none',
+  };
+
+  /** 模块小标题：主色竖条 + 文案（去除中文 uppercase 死样式） */
+  const SectionTitle: React.FC<{ children: React.ReactNode; color?: string }> = ({ children, color }) => (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        marginBottom: 12,
+        fontSize: 13, fontWeight: 700, letterSpacing: '0.01em',
+        color: token.colorTextSecondary,
+      }}
+    >
+      <span style={{ width: 3, height: 13, borderRadius: 2, background: color || avatarBg, display: 'inline-block' }} />
+      {children}
+    </div>
+  );
+
   /** 信息行：icon + 文字 左对齐（适配彩色背景） */
-  const InfoRow: React.FC<{ icon: React.ReactNode; value: string | undefined; prefixIcon?: React.ReactNode }> = ({ icon, value, prefixIcon }) => {
+  const InfoRow: React.FC<{ icon: React.ReactNode; value: string | undefined }> = ({ icon, value }) => {
     if (!value) return null;
     return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 22 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 22 }}>
       <span style={{ fontSize: 13, color: headerTextFaint, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: headerTextSub, wordBreak: 'break-all' }}>
-        {prefixIcon}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: headerTextSub, wordBreak: 'break-all', letterSpacing: '0.01em' }}>
         {value}
       </span>
     </div>
@@ -177,9 +214,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // ---- tab 配置 ----
   const tabOptions = [
-    { key: 'pipeline' as const, label: '商机记录', count: realPipelines.length },
-    { key: 'orders' as const, label: '订单记录', count: customer?.orders?.length ?? 0 },
-    { key: 'activities' as const, label: '活动记录', count: customer?.activities?.length ?? 0 },
+    { key: 'pipeline' as const, label: '概览', count: realPipelines.length },
+    { key: 'orders' as const, label: '销售记录', count: customer?.orders?.length ?? 0 },
+    { key: 'activities' as const, label: '跟进动态', count: customer?.activities?.length ?? 0 },
   ];
 
   // ---- 类型标签文字 ----
@@ -191,24 +228,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     return (
       <div
         key={item.id}
-        style={{
-          background: token.colorBgContainer,
-          border: `1px solid ${token.colorBorderSecondary}`,
-          borderRadius: 14, padding: '16px 20px',
-          display: 'flex', alignItems: 'center', gap: 16,
-          transition: 'all 0.22s ease', cursor: 'default',
-          position: 'relative', overflow: 'hidden',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.boxShadow = `0 4px 16px ${ct.primary}18`;
-          e.currentTarget.style.borderColor = ct.primary + '40';
-          e.currentTarget.style.transform = 'translateY(-1px)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.boxShadow = 'none';
-          e.currentTarget.style.borderColor = token.colorBorderSecondary;
-          e.currentTarget.style.transform = 'translateY(0)';
-        }}
+        style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16, cursor: 'default', position: 'relative', overflow: 'hidden' }}
+        onMouseEnter={listCardHover}
+        onMouseLeave={listCardLeave}
       >
         {/* 左侧：阶段标签 */}
         <div style={{ flexShrink: 0, minWidth: 80 }}>
@@ -251,16 +273,31 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     );
   };
 
+  // ---- 列表项卡片基础样式（统一圆角 16 与 hover/focus 标准态） ----
+  const listCardBase: React.CSSProperties = {
+    background: token.colorBgContainer,
+    border: `1px solid ${token.colorBorderSecondary}`,
+    borderRadius: 16, padding: '16px 20px',
+    transition: 'all 0.2s ease',
+  };
+  const listCardHover = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.currentTarget.style.boxShadow = `0 6px 20px ${ct.primary}14`;
+    e.currentTarget.style.borderColor = ct.primary + '40';
+    e.currentTarget.style.transform = 'translateY(-1px)';
+  };
+  const listCardLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    e.currentTarget.style.boxShadow = 'none';
+    e.currentTarget.style.borderColor = token.colorBorderSecondary;
+    e.currentTarget.style.transform = 'translateY(0)';
+  };
+
   // ---- 订单记录项渲染（真实数据） ----
   const renderOrderItem = (item: Order) => (
     <div
       key={item.id}
-      style={{
-        background: token.colorBgContainer,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: 14, padding: '16px 20px',
-        display: 'flex', alignItems: 'center', gap: 16,
-      }}
+      style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16 }}
+      onMouseEnter={listCardHover}
+      onMouseLeave={listCardLeave}
     >
       <div style={{ flexShrink: 0, minWidth: 110 }}>
         <Tag color="#16a34a" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
@@ -292,12 +329,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const renderActivityItem = (item: CustomerActivity) => (
     <div
       key={item.id}
-      style={{
-        background: token.colorBgContainer,
-        border: `1px solid ${token.colorBorderSecondary}`,
-        borderRadius: 14, padding: '14px 20px',
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}
+      style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 12 }}
+      onMouseEnter={listCardHover}
+      onMouseLeave={listCardLeave}
     >
       <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
         {ACTIVITY_ACTION[item.action] || item.action}
@@ -319,7 +353,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       <AppModal
         open={open}
         onClose={onClose}
-        width={980}
+        width={1000}
         centered
         closable={false}
         maskClosable={!editDrawerOpen}
@@ -328,82 +362,106 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         bodyStyle={{ overflow: 'hidden', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }}
       >
         {customer && (
-          <div style={{ display: 'flex', minHeight: 520, background: token.colorBgContainer }}>
+          <div style={{ display: 'flex', minHeight: 750, background: token.colorBgContainer }}>
             {/* ==================== 左侧：上半彩色 + 下半白色标签区 ==================== */}
             <div
               style={{
-                width: 280, minWidth: 280,
-                display: 'flex', flexDirection: 'column', gap: 8,
-                padding: 12, borderRadius: '20px 0 0 20px', overflow: 'hidden',
+                width: 296, minWidth: 296,
+                display: 'flex', flexDirection: 'column', gap: 14,
+                padding: 16, borderRadius: '20px 0 0 20px', overflow: 'hidden',
                 background: token.colorBgContainer,
               }}
             >
-              {/* 上半：彩色基础信息（四角圆角） */}
+              {/* 上半：彩色基础信息（四角圆角，撑满剩余父组件高度，标签模块自然排于下方） */}
               <div
                 style={{
-                  background: ct.headerGradient, padding: '20px 20px',
+                  background: ct.headerGradient, padding: '22px 22px 20px',
                   display: 'flex', flexDirection: 'column',
-                  position: 'relative', overflow: 'hidden',
-                  flex: 1, borderRadius: 16,
+                  position: 'relative',
+                  flex: 1, minHeight: 0,
+                  borderRadius: 16,
                 }}
               >
-                {/* 头像（客户名称首字母） */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  <div style={{
-                    width: 72, height: 72, borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.22)', color: headerText, fontSize: 26, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-                  }}>
-                    {getInitials(customer.companyName || customer.contactName || '-')}
-                  </div>
-
-                  {/* 职位 */}
-                  {customer.position && (
-                    <p style={{ margin: '10px 0 0', fontSize: 13, color: headerTextSub, lineHeight: 1.4 }}>
-                      {customer.position}
-                    </p>
-                  )}
-
-                  {/* 公司名 */}
-                  <h2 style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 800, color: headerText, lineHeight: 1.3 }}>
-                    {customer.companyName || '-'}
-                  </h2>
-
-                  {/* 逻辑标签 */}
-                  {logicTag && (
-                    <span style={{
-                      marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5,
-                      border: `1px solid rgba(255,255,255,0.35)`, color: headerText,
-                      fontSize: 12, fontWeight: 600, padding: '4px 14px', borderRadius: 8,
-                      background: 'rgba(255,255,255,0.13)',
-                    }}>
-                      {logicTag}
-                    </span>
-                  )}
+                {/* 顶部：采购意向标签（左） + 重点客户星标（右） */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  {customer ? (
+                    <PurchaseIntentTag label={logicTag} size="default" style={{
+                      backgroundColor: 'rgba(255,255,255,0.2)',
+                      color: token.colorWhite,
+                    }} />
+                  ) : <span />}
+                  <KeyAccountStar
+                    isKeyAccount={customer.isKeyAccount || false}
+                    color="rgba(255,255,255,0.95)"
+                    mutedColor="rgba(255,255,255,0.4)"
+                    onToggle={() => onToggleKeyAccount?.(customer)}
+                  />
                 </div>
 
-                {/* 信息列表：联系人 + 邮箱 / 电话 / 微信 / 地区（带国旗） */}
-                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {/* 公司名 */}
+                <h2 style={{ margin: '16px 0 0', fontSize: 21, fontWeight: 800, color: headerText, lineHeight: 1.32, wordBreak: 'break-word', letterSpacing: '0.01em' }}>
+                  {customer.companyName || '-'}
+                </h2>
+
+                {/* 国家（与卡片视图一致：旗帜 + 名称·缩写）+ 右：编辑/删除 左右分布 */}
+                {customer.country && (
+                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <span style={{ fontSize: 13, color: headerTextSub, letterSpacing: '0.01em' }}>
+                      <CountrySelect readOnly value={customer.country} style={{ color: 'inherit' }} />
+                    </span>
+                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        title="编辑"
+                        onClick={() => setEditDrawerOpen(true)}
+                        style={panelBtnStyle}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.34)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
+                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
+                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                      >
+                        <EditOutlined />
+                      </button>
+                      <button
+                        type="button"
+                        title="删除"
+                        onClick={handleDelete}
+                        style={panelBtnStyle}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,99,102,0.9)'; e.currentTarget.style.borderColor = 'rgba(255,99,102,0.9)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
+                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,99,102,0.45)'; }}
+                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                      >
+                        <DeleteOutlined />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* 联系人信息：联系人 / 职位 / 邮箱 / 电话 / 微信（带 icon） */}
+                <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.16)', display: 'flex', flexDirection: 'column', gap: 9 }}>
                   <InfoRow icon={<UserOutlined style={{ fontSize: 14 }} />} value={customer.contactName} />
+                  <InfoRow icon={<IdcardOutlined style={{ fontSize: 14 }} />} value={customer.position} />
                   <InfoRow icon={<MailOutlined style={{ fontSize: 14 }} />} value={customer.email} />
                   <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
                   <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
-                  <InfoRow
-                    icon={<EnvironmentOutlined style={{ fontSize: 14 }} />}
-                    value={customer.country ? (findCountry(customer.country)?.zh ?? customer.country) : ''}
-                    prefixIcon={customer.country ? <FlagIcon country={customer.country} style={{ width: 20, height: 14, borderRadius: 2 }} /> : undefined}
-                  />
                 </div>
               </div>
 
-              {/* 下半：白色标签区（四角圆角，无额外内距，仅随外圈留白） */}
+              {/* 下半：客户标签 + 客户备注 整体模块（与信息栏同级，自然流位于下方） */}
               <div
                 style={{
                   background: token.colorBgContainer,
                   borderRadius: 16,
+                  border: `1px solid ${token.colorBorderSecondary}`,
+                  padding: '18px 18px 20px',
                 }}
               >
+                <SectionTitle>客户标签</SectionTitle>
                 <TagSelector
                   value={localTags}
                   onChange={(v) => {
@@ -425,59 +483,30 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                         message.error('标签更新失败');
                       });
                   }}
-                  color={ct.primary || token.colorPrimary}
+                  color={avatarBg}
                   placeholder="添加标签"
                 />
+
+                <div style={{ borderTop: `1px dashed ${token.colorBorderSecondary}`, margin: '18px 0 16px' }} />
+                <SectionTitle>客户备注</SectionTitle>
+                <div style={{ fontSize: 14, lineHeight: 1.7, color: token.colorText, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                  {customer.notes?.trim() ? customer.notes : <span style={{ color: token.colorTextTertiary }}>暂无备注</span>}
+                </div>
               </div>
             </div>
 
             {/* ==================== 右侧：内容区 ==================== */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-              {/* 右上操作栏：tab + 图标 + 负责人 */}
-              <div style={{ padding: '20px 24px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                {/* 左：标题 + 编辑按钮 */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: token.colorTextHeading }}>
-                      {customer.companyName}
-                    </h2>
-                    {customer.contactName && (
-                      <p style={{ margin: '4px 0 0', fontSize: 13, color: token.colorTextSecondary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        联系人：{customer.contactName}
-                      </p>
-                    )}
-                  </div>
-                  {/* 编辑按钮 → 打开右侧抽屉 */}
-                  <button
-                    type="button"
-                    onClick={() => setEditDrawerOpen(true)}
-                    style={{
-                      height: 32,
-                      padding: '0 14px',
-                      border: `1px solid ${token.colorBorder}`,
-                      borderRadius: 8,
-                      background: 'transparent',
-                      color: token.colorTextSecondary,
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      fontSize: 13,
-                      transition: 'all 0.22s ease',
-                      flexShrink: 0,
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = ct.primary;
-                      e.currentTarget.style.color = ct.primary;
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = token.colorBorder;
-                      e.currentTarget.style.color = token.colorTextSecondary;
-                    }}
-                  >
-                    <EditOutlined /> 编辑
-                  </button>
-                </div>
+              {/* 右上操作栏：tab 框 + 负责人 + 图标 */}
+              <div style={{ padding: '20px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+                {/* 左：tab 框（商机/订单/活动记录切换） */}
+                <SegmentedTabBar
+                  value={activeTab}
+                  onChange={(v) => { setActiveTab(v as typeof activeTab); setCurrentPage(1); }}
+                  options={tabOptions}
+                  activeColor={ct.primary}
+                  showCount={false}
+                />
 
                 {/* 右：负责人 + 操作图标 */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
@@ -502,23 +531,29 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     {onTransfer && (
                       <button type="button" onClick={() => onTransfer(customer)} title="转交"
                         style={circleBtnStyle(ct.primaryLight)}
-                        onMouseEnter={(e) => { (e.target as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
-                        onMouseLeave={(e) => { (e.target as HTMLElement).style.boxShadow = 'none'; }}>
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                        onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
+                        onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}>
                         <SwapOutlined style={{ color: ct.primary }} />
                       </button>
                     )}
                     {onRelease && (
                       <button type="button" onClick={() => onRelease(customer)} title="释放"
                         style={circleBtnStyle(ct.primaryLight)}
-                        onMouseEnter={(e) => { (e.target as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
-                        onMouseLeave={(e) => { (e.target as HTMLElement).style.boxShadow = 'none'; }}>
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+                        onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
+                        onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}>
                         <RollbackOutlined style={{ color: ct.primary }} />
                       </button>
                     )}
                     <button type="button" onClick={onClose} title="关闭"
                       style={circleBtnStyle(token.colorFillQuaternary)}
-                      onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = token.colorFillSecondary; }}
-                      onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = token.colorFillQuaternary; }}>
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = token.colorFillSecondary; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = token.colorFillQuaternary; }}
+                      onFocus={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${token.colorFillSecondary}`; }}
+                      onBlur={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}>
                       <CloseOutlined style={{ color: token.colorTextSecondary }} />
                     </button>
                   </div>
@@ -526,26 +561,55 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               </div>
 
               {/* 卡片列表区域 */}
-              <div style={{ flex: 1, padding: '20px 24px 0', overflow: 'auto', minHeight: 280 }}>
-                {paginatedData.length > 0 ? (
+              <div style={{ flex: 1, padding: '20px 16px 0', overflow: 'auto', minHeight: 520 }}>
+                {activeTab === 'pipeline' && customer ? (
+                  <div style={{ background: token.colorFillQuaternary, borderRadius: 16, padding: '4px 4px 8px', marginBottom: 8 }}>
+                    <CustomerOverview customer={customer} />
+                  </div>
+                ) : detailLoading ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeTab === 'pipeline' && paginatedData.map((it) => renderPipelineItem(it as RealPipeline))}
-                    {activeTab === 'orders' && paginatedData.map((it) => <React.Fragment key={it.id}>{renderOrderItem(it as Order)}</React.Fragment>)}
-                    {activeTab === 'activities' && paginatedData.map((it) => <React.Fragment key={it.id}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <div key={i} style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 16, padding: '16px 20px' }}>
+                        <Skeleton active paragraph={{ rows: 1 }} title={false} />
+                      </div>
+                    ))}
+                  </div>
+                ) : paginatedData.length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {activeTab === 'orders' && paginatedData.map((it, index) => <React.Fragment key={`orders-${it.id ?? 'x'}-${index}`}>{renderOrderItem(it as Order)}</React.Fragment>)}
+                    {activeTab === 'activities' && paginatedData.map((it, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
                   </div>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={
-                    <span style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-                      {activeTab === 'pipeline' && '暂无商机记录'}
+                    <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>
                       {activeTab === 'orders' && '暂无订单记录'}
                       {activeTab === 'activities' && '暂无活动记录'}
-                    </span>
-                  } style={{ padding: '60px 0' }} />
+                    </div>
+                  } style={{ padding: '52px 0' }}>
+                    {activeTab === 'orders' && onCreateOrder && (
+                      <button
+                        type="button"
+                        onClick={() => onCreateOrder(customer)}
+                        style={{
+                          marginTop: 8, padding: '6px 16px', borderRadius: 8, cursor: 'pointer',
+                          border: `1px solid ${ct.primary}`, color: ct.primary, background: 'transparent',
+                          fontSize: 13, fontWeight: 600, transition: 'all 0.18s ease', outline: 'none',
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = ct.primaryBg; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                        onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
+                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                      >
+                        新建订单
+                      </button>
+                    )}
+                  </Empty>
                 )}
               </div>
 
-              {/* 底部：分页器 + 日期 */}
-              <div style={{ padding: '16px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: token.colorBgContainer }}>
+              {/* 底部：分页器 + 客户编码（概览 tab 不显示；单页能放下时不显示分页） */}
+              {activeTab !== 'pipeline' && totalCount > pageSize && (
+              <div style={{ padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: token.colorBgContainer }}>
                 <ConfigProvider
                   theme={{
                     token: { colorPrimary: ct.primary },
@@ -568,10 +632,10 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   />
                 </ConfigProvider>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>{dayjs().format('YYYY-MM-DD')}</Text>
                   <span style={{ fontSize: 12, color: token.colorTextTertiary, whiteSpace: 'nowrap' }}>{customerCode}</span>
                 </div>
               </div>
+              )}
             </div>
           </div>
         )}
