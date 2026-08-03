@@ -2,15 +2,15 @@ import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
 import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import KeyAccountStar from '../KeyAccountStar';
-import type { Customer } from '../../api/customers';
-import { getGrade } from './utils';
-import { getCustomerTier, getAvatarColor } from './customerTier';
-import { useDs } from './ds';
-import TagSelector from '../TagSelector';
-import CountrySelect from '../CountrySelect';
-import { customerApi } from '../../api/customers';
-import { useCurrencyStore } from '../../stores/useCurrencyStore';
+import KeyAccountStar from '../../KeyAccountStar';
+import type { Customer } from '../../../api/customers';
+import { getGrade } from '../shared/utils';
+import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
+import { useDs } from '../shared/ds';
+import TagSelector from '../../TagSelector';
+import CountrySelect from '../../CountrySelect';
+import { customerApi } from '../../../api/customers';
+import { useCurrencyStore } from '../../../stores/useCurrencyStore';
 import { message } from 'antd';
 
 interface CustomerCardProps {

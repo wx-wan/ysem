@@ -3,10 +3,10 @@ import {
   SearchOutlined, AppstoreOutlined, UnorderedListOutlined,
   UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
-import TagSelector from '../TagSelector';
-import { INTENT_LABEL } from './intentLevel';
-import { useDs } from './ds';
-import type { User } from '../../api/users';
+import TagSelector from '../../TagSelector';
+import { INTENT_LABEL } from '../shared/intentLevel';
+import { useDs } from '../shared/ds';
+import type { User } from '../../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
 

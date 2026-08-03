@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Space, App } from 'antd';
-import { orderApi, Customer } from '../../api/customers';
+import { orderApi, Customer } from '../../../api/customers';
 
 interface Props {
   open: boolean;

@@ -237,6 +237,18 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
   - 打开详情改为同步触发，详情数据通过 `getById` 异步补全，消除点击卡顿
 - **重点客户星标 (`KeyAccountStar`)**：点击星标切换重点客户时不再弹出确认/提示框（移除 Tooltip 与 message 提示），仅通过星标状态静默反馈
 
+### 2026-08-03
+
+- **前端样式降噪与架构优化**：
+  - 新增设计 token `ds.ts`，统一卡片圆角、高度、间距、文字层级，消除硬编码色偏离主题问题
+  - `CountrySelect` 支持双形态：卡片内只读展示（`readOnly`）、编辑页下拉选择
+  - 前端缓存机制：列表 (`listCache`) 与客户详情 (`detailCache`) 缓存于内存，新增 `customerCache.ts`；差异更新 `pickChanged` / `diffList`（`diff.ts`），仅合并变化字段以保持引用稳定
+  - 缓存失效策略改为「视图离开即失效」：切换标签 / 页面隐藏 / 关闭页面时通过 `visibilitychange` / `pagehide` / `beforeunload` 触发 `invalidateAll()`
+  - 移除闪烁及装饰性特效：卡片星光动画、浮点圆、海浪 SVG、`backdropFilter` 模糊、`AppModal` 入场动画；删除 `CustomerCardSparkle.tsx`
+  - 移除卡片右上角国旗与金色星光点缀，重点客户星标位置保留
+  - 统一中意向 (C) / 低意向 (D) 卡片文字与星标样式，与高意向 (B) / 准成交 (A) 视觉一致
+  - 修复缓存命中后列表排序失效（缓存存未排序列表 + 字段变更不重排）及 React 无限循环（`Maximum update depth exceeded`）问题
+
 ### 历史更新
 
 - **数据报告增强**：意向分布按"准成交 → 高意向 → 中意向 → 低意向"排序；累计成交金额卡片新增新老客户成交占比环形图

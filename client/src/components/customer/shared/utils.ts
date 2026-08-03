@@ -1,4 +1,4 @@
-import type { Customer } from '../../api/customers';
+import type { Customer } from '../../../api/customers';
 import { getIntentGrade } from './intentLevel';
 
 // ========== 客户等级（A/B/C/D 四级，仅由商机中最高采购意向决定，不受重点客户影响） ==========

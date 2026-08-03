@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Input, DatePicker, App, theme } from 'antd';
 import { CloseOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer, customerApi } from '../../api/customers';
-import TagSelector from '../TagSelector';
-import CountrySelect from '../CountrySelect';
-import { Z_INDEX, createPopupContainer } from '../../zIndex';
-import { useDs } from './ds';
+import { Customer, customerApi } from '../../../api/customers';
+import TagSelector from '../../TagSelector';
+import CountrySelect from '../../CountrySelect';
+import { Z_INDEX, createPopupContainer } from '../../../zIndex';
+import { useDs } from '../shared/ds';
 
 const { TextArea } = Input;
 

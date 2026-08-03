@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Upload, Button, Alert, App } from 'antd';
 import { UploadOutlined, DownloadOutlined } from '@ant-design/icons';
-import { customerApi } from '../../api/customers';
+import { customerApi } from '../../../api/customers';
 
 interface Props {
   open: boolean;

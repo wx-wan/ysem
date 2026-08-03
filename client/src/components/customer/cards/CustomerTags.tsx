@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Tag } from 'antd';
-import { tagColorToHex } from './utils';
+import { tagColorToHex } from '../shared/utils';
 
 // ── 解析 & 过滤工具 ──
 function parseTag(tagStr: string): { name: string; color?: string } {

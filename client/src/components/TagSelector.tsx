@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Tag, Input, theme } from 'antd';
 import { CloseOutlined } from '@ant-design/icons';
 
@@ -25,18 +25,26 @@ export interface TagSelectorProps {
   color?: string;
   /** 透传外层容器样式（仅在需要时传入，避免影响默认卡片样式） */
   style?: React.CSSProperties;
+  /** 最多可添加的标签数量，默认 5；达到上限后禁用添加按钮 */
+  maxCount?: number;
 }
 
-export default function TagSelector({ value, onChange, placeholder = '输入标签名称', showAddButton = true, color, style }: TagSelectorProps) {
+export default function TagSelector({ value, onChange, placeholder = '输入标签名称', showAddButton = true, color, style, maxCount = 5 }: TagSelectorProps) {
   const { token } = theme.useToken();
   const themeColor = color || token.colorPrimary;
   const tags = tagsToArray(value);
   const [inputVisible, setInputVisible] = useState(false);
   const [inputValue, setInputValue] = useState('');
+  const composingRef = useRef(false);
 
   const addTag = useCallback(() => {
     const name = inputValue.trim();
     if (!name) {
+      setInputVisible(false);
+      return;
+    }
+    if (tags.length >= maxCount) {
+      setInputValue('');
       setInputVisible(false);
       return;
     }
@@ -46,7 +54,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
     }
     setInputValue('');
     setInputVisible(false);
-  }, [inputValue, tags, onChange]);
+  }, [inputValue, tags, onChange, maxCount]);
 
   const removeTag = useCallback(
     (index: number) => {
@@ -89,8 +97,10 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
           autoFocus
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          onPressEnter={(e) => { if ((e.nativeEvent as any).isComposing) return; addTag(); }}
-          onBlur={addTag}
+          onCompositionStart={() => { composingRef.current = true; }}
+          onCompositionEnd={() => { composingRef.current = false; }}
+          onPressEnter={() => { if (composingRef.current) return; addTag(); }}
+          onBlur={() => { if (composingRef.current) return; addTag(); }}
           placeholder={placeholder}
           size="small"
           variant="borderless"
@@ -105,7 +115,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
           }}
         />
       ) : (
-        showAddButton && (
+        showAddButton && tags.length < maxCount && (
           <Tag
             onClick={() => setInputVisible(true)}
             style={{
@@ -128,6 +138,9 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
             + {placeholder}
           </Tag>
         )
+      )}
+      {showAddButton && tags.length >= maxCount && (
+        <span style={{ fontSize: 12, color: token.colorTextQuaternary }}>最多添加 {maxCount} 个标签</span>
       )}
     </div>
   );

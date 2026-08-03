@@ -1,4 +1,4 @@
-import type { Customer } from '../../api/customers';
+import type { Customer } from '../../../api/customers';
 import { getGrade } from './utils';
 
 /** 客户荣誉层级（与 global.css .customer-tier-* 对应） */

@@ -1,7 +1,7 @@
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
-import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../api/customers';
-import { INTENT_ORDER } from './intentLevel';
+import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../../api/customers';
+import { INTENT_ORDER } from '../shared/intentLevel';
 import {
   GlobalOutlined,
   DollarOutlined,

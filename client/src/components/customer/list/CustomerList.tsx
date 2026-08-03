@@ -1,13 +1,13 @@
 import { useMemo, memo } from 'react';
 import { Table, Avatar, Space } from 'antd';
 import { GlobalOutlined } from '@ant-design/icons';
-import KeyAccountStar from '../KeyAccountStar';
-import FlagIcon from '../FlagIcon';
-import type { Customer } from '../../api/customers';
-import { getGrade, tagColorToHex } from './utils';
-import CustomerTags, { filterCustomTags } from './CustomerTags';
-import { useCurrencyStore } from '../../stores/useCurrencyStore';
-import { findCountry } from '../../data/countries';
+import KeyAccountStar from '../../KeyAccountStar';
+import FlagIcon from '../../FlagIcon';
+import type { Customer } from '../../../api/customers';
+import { getGrade, tagColorToHex } from '../shared/utils';
+import CustomerTags, { filterCustomTags } from '../cards/CustomerTags';
+import { useCurrencyStore } from '../../../stores/useCurrencyStore';
+import { findCountry } from '../../../data/countries';
 
 interface CustomerListProps {
   list: Customer[];

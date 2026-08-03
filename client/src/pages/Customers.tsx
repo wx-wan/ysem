@@ -6,20 +6,20 @@ import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
-import { getGrade } from '../components/customer/utils';
+import { getGrade } from '../components/customer/shared/utils';
 import { diffList, pickChanged } from '../utils/diff';
 import {
   listCacheKey, getListCache, setListCache, invalidateAll, fetchCustomerDetail, installCacheLifecycle,
 } from '../utils/customerCache';
-import CustomerStats from '../components/customer/CustomerStats';
-import CustomerToolbar from '../components/customer/CustomerToolbar';
-import CustomerCard from '../components/customer/CustomerCard';
-import CustomerList from '../components/customer/CustomerList';
-import CustomerDetailModal from '../components/customer/CustomerDetailModal';
-import CustomerFormModal from '../components/customer/CustomerFormModal';
-import TransferModal from '../components/customer/TransferModal';
-import ImportModal from '../components/customer/ImportModal';
-import OrderFormModal from '../components/customer/OrderFormModal';
+import CustomerStats from '../components/customer/cards/CustomerStats';
+import CustomerToolbar from '../components/customer/list/CustomerToolbar';
+import CustomerCard from '../components/customer/cards/CustomerCard';
+import CustomerList from '../components/customer/list/CustomerList';
+import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
+import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
+import TransferModal from '../components/customer/modals/TransferModal';
+import ImportModal from '../components/customer/modals/ImportModal';
+import OrderFormModal from '../components/customer/modals/OrderFormModal';
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
@@ -211,6 +211,14 @@ export default function CustomersPage() {
     invalidateAll(); // 列表/详情缓存已过期，下次拉取回源
   }, []);
 
+  // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
+  const handleTagsChanged = useCallback((id: string, tags: string) => {
+    setDetailCustomer((prev) => (prev && prev.id === id ? { ...prev, tags } : prev));
+    setList((prev) =>
+      sortCustomers(prev.map((item) => (item.id === id ? { ...item, tags } : item)))
+    );
+  }, [sortCustomers]);
+
   const handleTransferFromModal = useCallback((c: Customer) => {
     setDetailModalOpen(false);
     openTransfer(c.id);
@@ -394,8 +402,10 @@ export default function CustomersPage() {
       <CustomerDetailModal
         open={detailModalOpen}
         customer={detailCustomer}
+        customerList={list}
         onClose={() => setDetailModalOpen(false)}
         onSaved={handleDetailUpdated}
+        onTagsChanged={handleTagsChanged}
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}

@@ -1,9 +1,9 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Tag, Row, Col, App } from 'antd';
-import { customerApi, Customer } from '../../api/customers';
-import KeyAccountStar from '../KeyAccountStar';
-import TagSelector from '../TagSelector';
-import CountrySelect from '../CountrySelect';
+import { customerApi, Customer } from '../../../api/customers';
+import KeyAccountStar from '../../KeyAccountStar';
+import TagSelector from '../../TagSelector';
+import CountrySelect from '../../CountrySelect';
 
 const INTENT_OPTIONS = [
   { value: '低意向', label: '低意向', tagColor: 'default' as const },

@@ -1,26 +1,29 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Badge, Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, App } from 'antd';
-import AppModal from '../AppModal';
+import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, message } from 'antd';
+import AppModal from '../../AppModal';
 import {
-  UserOutlined,
-  PhoneOutlined,
-  MailOutlined,
   DollarOutlined,
   ShoppingCartOutlined,
   ClockCircleOutlined,
   EditOutlined,
   SwapOutlined,
   RollbackOutlined,
-  DeleteOutlined,
   CloseOutlined,
+  MailOutlined,
+  PhoneOutlined,
+  WechatOutlined,
+  EnvironmentOutlined,
+  UserOutlined,
+  NumberOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer } from '../../api/customers';
-import { fetchCustomerDetail } from '../../utils/customerCache';
-import { getGrade } from './utils';
-import { getCustomerTier } from './customerTier';
-import KeyAccountStar from '../KeyAccountStar';
-import CountrySelect from '../CountrySelect';
+import { Customer, customerApi } from '../../../api/customers';
+import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
+import { getGrade } from '../shared/utils';
+import { getCustomerTier } from '../shared/customerTier';
+import { findCountry } from '../../../data/countries';
+import FlagIcon from '../../FlagIcon';
+import TagSelector from '../../TagSelector';
 import CustomerEditDrawer from './CustomerEditDrawer';
 
 const { Text } = Typography;
@@ -28,6 +31,8 @@ const { Text } = Typography;
 interface CustomerDetailModalProps {
   open: boolean;
   customer: Customer | null;
+  /** 完整客户列表，用于计算「当天序号」生成客户编码 */
+  customerList?: Customer[];
   onClose: () => void;
   onTransfer?: (customer: Customer) => void;
   onRelease?: (customer: Customer) => void;
@@ -38,6 +43,8 @@ interface CustomerDetailModalProps {
   onToggleKeyAccount?: (customer: Customer) => void;
   /** 抽屉编辑保存成功后由父级同步数据 */
   onSaved?: (customer: Customer) => void;
+  /** 标签变更：仅传入客户 id 与最新的标签字符串，由父级做最小化同步 */
+  onTagsChanged?: (id: string, tags: string) => void;
 }
 
 /** 模拟商机数据（后续替换为真实 API 数据） */
@@ -92,10 +99,9 @@ function useMockPipelines(customer: Customer | null): MockPipelineItem[] {
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved,
+  open, customer, customerList = [], onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged,
 }) => {
   const { token } = theme.useToken();
-  const { message: msg } = App.useApp();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 3;
@@ -104,6 +110,37 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   const ct = getCustomerTier(customer);
+
+  // 标签本地自治：内部维护状态并自行调用 API，避免依赖外部对象重建
+  const [localTags, setLocalTags] = useState<string>(typeof customer?.tags === 'string' ? customer.tags : '');
+  useEffect(() => {
+    setLocalTags(typeof customer?.tags === 'string' ? customer.tags : '');
+  }, [customer?.id, customer?.tags]);
+
+  // 客户编码：CUS-{创建日期 YYMMDD}-{当天序号}
+  const customerCode = useMemo(() => {
+    if (!customer?.createdAt) return `CUS-${String(customer?.id ?? 0).padStart(4, '0')}`;
+    const created = dayjs(customer.createdAt);
+    const datePart = created.format('YYMMDD');
+    // 当天序号：同一创建日期的客户按 createdAt 升序的排名
+    const sameDay = customerList
+      .filter((c) => c.createdAt && dayjs(c.createdAt).format('YYMMDD') === datePart)
+      .sort((a, b) => dayjs(a.createdAt!).valueOf() - dayjs(b.createdAt!).valueOf());
+    const seq = sameDay.findIndex((c) => c.id === customer.id) + 1;
+    return `CUS-${datePart}-${seq}`;
+  }, [customer?.id, customer?.createdAt, customerList]);
+
+  // 逻辑标签：未成交客户 / 已成交客户 / 本年度新客 / 往年老客
+  const logicTag = useMemo(() => {
+    if (!customer) return '';
+    const hasOrder = Boolean(customer.firstOrderDate);
+    const createdYear = customer.createdAt ? dayjs(customer.createdAt).year() : 0;
+    const thisYear = dayjs().year();
+    if (hasOrder) return '已成交客户';
+    if (createdYear === thisYear) return '本年度新客';
+    if (createdYear > 0 && createdYear < thisYear) return '往年老客';
+    return '未成交客户';
+  }, [customer]);
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
   // 放在 Modal 内部 effect，使父组件的点击处理保持同步、零 async 阻塞，点击即弹窗。
@@ -120,37 +157,13 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     // 仅在 customer.id 变化时触发（打开新客户时）
   }, [customer?.id]);
 
-  /** 只读字段展示组件 */
-  const FieldDisplay: React.FC<{
-    value: string | undefined;
-    icon?: React.ReactNode;
-    textColor?: string;
-    fontSize?: number;
-    /** 是否呈现为与编辑输入框一致的卡片外壳（统一高度） */
-    boxed?: boolean;
-  }> = ({ value, icon, textColor, fontSize = 13, boxed = false }) => (
-    <div
-      style={
-        boxed
-          ? {
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              color: textColor,
-              minHeight: 40,
-              padding: '4px 11px',
-              borderRadius: 8,
-              border: `1px solid ${token.colorBorder}`,
-              background: token.colorFillQuaternary,
-              width: '100%',
-            }
-          : { display: 'flex', alignItems: 'center', gap: 6, color: textColor }
-      }
-    >
-      {icon}
-      <span style={{ fontSize, wordBreak: 'break-word' }}>{value || '-'}</span>
-    </div>
-  );
+  /** 取公司名/联系人首字母作为头像文字 */
+  const getInitials = (name: string) => {
+    const cleaned = name.replace(/[^a-zA-Z\u4e00-\u9fa5]/g, '');
+    if (!cleaned) return '?';
+    if (/[\u4e00-\u9fa5]/.test(cleaned)) return cleaned.charAt(0);
+    return cleaned.slice(0, 2).toUpperCase();
+  };
 
   const isPublic = !customer?.ownerId;
 
@@ -158,6 +171,20 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const headerText = ct.headerTextDark ? token.colorTextHeading : token.colorWhite;
   const headerTextSub = ct.headerTextDark ? token.colorTextSecondary : 'rgba(255,255,255,0.85)';
   const headerTextFaint = ct.headerTextDark ? token.colorTextTertiary : 'rgba(255,255,255,0.7)';
+
+  /** 信息行：icon + 文字 左对齐（适配彩色背景） */
+  const InfoRow: React.FC<{ icon: React.ReactNode; value: string | undefined; prefixIcon?: React.ReactNode }> = ({ icon, value, prefixIcon }) => {
+    if (!value) return null;
+    return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minHeight: 22 }}>
+      <span style={{ fontSize: 13, color: headerTextFaint, flexShrink: 0, display: 'inline-flex', alignItems: 'center' }}>{icon}</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: headerTextSub, wordBreak: 'break-all' }}>
+        {prefixIcon}
+        {value}
+      </span>
+    </div>
+    );
+  };
 
   const mockPipelines = useMockPipelines(customer);
 
@@ -308,85 +335,105 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       >
         {customer && (
           <div style={{ display: 'flex', minHeight: 520, background: token.colorBgContainer }}>
-            {/* ==================== 左侧：彩色信息卡片 ==================== */}
+            {/* ==================== 左侧：上半彩色 + 下半白色标签区 ==================== */}
             <div
               style={{
                 width: 280, minWidth: 280,
-                background: ct.headerGradient, padding: 28,
-                display: 'flex', flexDirection: 'column',
-                position: 'relative', overflow: 'hidden',
-                borderRadius: '20px 0 0 20px',
+                display: 'flex', flexDirection: 'column', gap: 8,
+                padding: 12, borderRadius: '20px 0 0 20px', overflow: 'hidden',
+                background: token.colorBgContainer,
               }}
             >
-              {/* 类型标签 */}
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <span style={{
-                  display: 'inline-block', background: 'rgba(255,255,255,0.22)',
-                  color: token.colorWhite, fontSize: 11, fontWeight: 600, padding: '4px 12px', borderRadius: 20, letterSpacing: 0.3,
-                }}>
-                  {typeLabel}
-                </span>
-              </div>
+              {/* 上半：彩色基础信息（四角圆角） */}
+              <div
+                style={{
+                  background: ct.headerGradient, padding: '20px 20px',
+                  display: 'flex', flexDirection: 'column',
+                  position: 'relative', overflow: 'hidden',
+                  flex: 1, borderRadius: 16,
+                }}
+              >
+                {/* 头像（客户名称首字母） */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{
+                    width: 72, height: 72, borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.22)', color: headerText, fontSize: 26, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                  }}>
+                    {getInitials(customer.companyName || customer.contactName || '-')}
+                  </div>
 
-              {/* 星标 + 公司名 */}
-              <div style={{ marginTop: 16, position: 'relative', zIndex: 1, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                <h2 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: headerText, lineHeight: 1.3, wordBreak: 'break-word' }}>
-                  {customer.companyName || '-'}
-                </h2>
-                <KeyAccountStar isKeyAccount={customer.isKeyAccount || false} customerId={customer.id} color="rgba(255,255,255,0.95)" mutedColor="rgba(255,255,255,0.35)" onToggle={() => onToggleKeyAccount?.(customer)} />
-              </div>
+                  {/* 职位 */}
+                  {customer.position && (
+                    <p style={{ margin: '10px 0 0', fontSize: 13, color: headerTextSub, lineHeight: 1.4 }}>
+                      {customer.position}
+                    </p>
+                  )}
 
-              {/* 国家 + 联系人 + 电话 + 邮箱 — 全部只读展示 */}
-              <div style={{ marginTop: 18, position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 6,
-                    color: headerTextSub,
-                    minHeight: 40,
-                    padding: '4px 11px',
-                    borderRadius: 8,
-                    border: `1px solid ${token.colorBorder}`,
-                    background: token.colorFillQuaternary,
-                    width: '100%',
-                  }}
-                >
-                  <CountrySelect readOnly value={customer.country} style={{ color: 'inherit', fontSize: 13 }} />
+                  {/* 公司名 */}
+                  <h2 style={{ margin: '4px 0 0', fontSize: 20, fontWeight: 800, color: headerText, lineHeight: 1.3 }}>
+                    {customer.companyName || '-'}
+                  </h2>
+
+                  {/* 逻辑标签 */}
+                  {logicTag && (
+                    <span style={{
+                      marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 5,
+                      border: `1px solid rgba(255,255,255,0.35)`, color: headerText,
+                      fontSize: 12, fontWeight: 600, padding: '4px 14px', borderRadius: 8,
+                      background: 'rgba(255,255,255,0.13)',
+                    }}>
+                      {logicTag}
+                    </span>
+                  )}
                 </div>
-                <FieldDisplay boxed value={customer.contactName} icon={<UserOutlined style={{ fontSize: 13 }} />} textColor={headerTextSub} />
-                <FieldDisplay boxed value={customer.email} icon={<MailOutlined style={{ fontSize: 13 }} />} textColor={headerTextFaint} />
-                <FieldDisplay boxed value={customer.phone} icon={<PhoneOutlined style={{ fontSize: 13 }} />} textColor={headerTextFaint} />
+
+                {/* 信息列表：联系人 + 邮箱 / 电话 / 微信 / 地区（带国旗） */}
+                <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <InfoRow icon={<UserOutlined style={{ fontSize: 14 }} />} value={customer.contactName} />
+                  <InfoRow icon={<MailOutlined style={{ fontSize: 14 }} />} value={customer.email} />
+                  <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
+                  <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
+                  <InfoRow
+                    icon={<EnvironmentOutlined style={{ fontSize: 14 }} />}
+                    value={customer.country ? (findCountry(customer.country)?.zh ?? customer.country) : ''}
+                    prefixIcon={customer.country ? <FlagIcon country={customer.country} style={{ width: 20, height: 14, borderRadius: 2 }} /> : undefined}
+                  />
+                </div>
               </div>
 
-              {/* 操作按钮组 */}
-              <div style={{ marginTop: 'auto', paddingTop: 20, position: 'relative', zIndex: 1, display: 'flex', gap: 10 }}>
-                <button type="button" onClick={() => setEditDrawerOpen(true)} title="编辑"
-                  style={circleBtnStyle('rgba(255,255,255,0.22)')}
-                  onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.38)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.22)'; }}>
-                  <EditOutlined />
-                </button>
-                {onDelete && (
-                  <button type="button" onClick={() => onDelete(customer)} title="删除"
-                    style={circleBtnStyle('rgba(255,120,117,0.35)')}
-                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,120,117,0.55)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(255,120,117,0.35)'; }}>
-                    <DeleteOutlined />
-                  </button>
-                )}
-              </div>
-
-              {/* 底部标签 */}
-              <div style={{ marginTop: 16, position: 'relative', zIndex: 1, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {(typeof customer.tags === 'string' ? customer.tags.split(',').filter(Boolean) : []).slice(0, 3).map((tag: string) => (
-                  <span key={tag} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: ct.headerTextDark ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.18)', color: headerText, fontSize: 11, fontWeight: 500, padding: '3px 10px', borderRadius: 14 }}>
-                    {tag}<span style={{ cursor: 'pointer', opacity: 0.7, fontSize: 10 }} title="移除">×</span>
-                  </span>
-                ))}
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, border: `1px dashed ${ct.headerTextDark ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.35)'}`, color: headerTextFaint, fontSize: 11, padding: '3px 10px', borderRadius: 14, cursor: 'pointer' }}>
-                  ＋添加标签
-                </span>
+              {/* 下半：白色标签区（四角圆角，无额外内距，仅随外圈留白） */}
+              <div
+                style={{
+                  background: token.colorBgContainer,
+                  borderRadius: 16,
+                }}
+              >
+                <TagSelector
+                  value={localTags}
+                  onChange={(v) => {
+                    if (!customer?.id) return;
+                    const id = customer.id;
+                    // 先本地更新显示，再写后端，组件自治
+                    setLocalTags(v);
+                    customerApi
+                      .updateTags(id, v)
+                      .then((res: any) => {
+                        const updated = res?.data?.data;
+                        if (!updated) return;
+                        setDetailCache({ ...customer, id, tags: updated.tags });
+                        onTagsChanged?.(id, updated.tags);
+                      })
+                      .catch(() => {
+                        // 失败回滚本地显示
+                        setLocalTags(typeof customer.tags === 'string' ? customer.tags : '');
+                        message.error('标签更新失败');
+                      });
+                  }}
+                  color={ct.primary || token.colorPrimary}
+                  placeholder="添加标签"
+                />
               </div>
             </div>
 
@@ -524,7 +571,10 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     styles={{ item: { borderRadius: 8 } }}
                   />
                 </ConfigProvider>
-                <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>{dayjs().format('YYYY-MM-DD')}</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <Text style={{ fontSize: 12, color: token.colorTextTertiary }}>{dayjs().format('YYYY-MM-DD')}</Text>
+                  <span style={{ fontSize: 12, color: token.colorTextTertiary, whiteSpace: 'nowrap' }}>{customerCode}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -537,7 +587,10 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         customer={customer}
         onClose={() => setEditDrawerOpen(false)}
         onSaved={(updated) => {
-          onSaved?.(updated);
+          // 用当前 customer 兜底补全所有字段，仅更新 updated 实际包含的字段，避免关联信息丢失
+          const merged = { ...customer, ...updated };
+          setDetailCache(merged);
+          onSaved?.(merged);
           setEditDrawerOpen(false);
         }}
       />
