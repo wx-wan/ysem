@@ -44,6 +44,40 @@ interface CurrencyState {
 
 const STORAGE_KEY = 'ysem_currency';
 
+// 汇率缓存：后端汇率为「每日」更新（一天出一次），取半个更新周期作为有效期，
+// 既能避免每次刷新都请求，又能及时拿到新一天的汇率。
+const RATES_CACHE_KEY = 'ysem_exchange_rates';
+const RATES_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 小时
+
+interface CachedRates {
+  rates: Record<string, number>;
+  lastUpdated: string;
+}
+
+function loadCachedRates(): CachedRates | null {
+  try {
+    const raw = localStorage.getItem(RATES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedRates;
+    if (!parsed?.rates || typeof parsed.lastUpdated !== 'string') return null;
+    if (Date.now() - new Date(parsed.lastUpdated).getTime() > RATES_CACHE_TTL) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveCachedRates(rates: Record<string, number>) {
+  try {
+    localStorage.setItem(
+      RATES_CACHE_KEY,
+      JSON.stringify({ rates, lastUpdated: new Date().toISOString() })
+    );
+  } catch {
+    /* 忽略存储异常 */
+  }
+}
+
 // 从 localStorage 恢复或默认 CNY
 function loadSavedCurrency(): CurrencyInfo {
   try {
@@ -71,6 +105,13 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   fetchRates: async () => {
+    // 命中有效缓存则直接复用，避免每次刷新都请求汇率接口
+    const cached = loadCachedRates();
+    if (cached) {
+      set({ rates: cached.rates, loading: false, lastUpdated: cached.lastUpdated });
+      return;
+    }
+
     set({ loading: true });
     try {
       // 通过后端代理请求 Frankfurter，避免 CORS 问题
@@ -78,11 +119,10 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         params: { from: 'CNY' },
         timeout: 8000,
       });
-      set({
-        rates: data.data?.rates || {},
-        loading: false,
-        lastUpdated: new Date().toISOString(),
-      });
+      const rates = data.data?.rates || {};
+      const lastUpdated = new Date().toISOString();
+      saveCachedRates(rates);
+      set({ rates, loading: false, lastUpdated });
     } catch {
       // 降级：使用内置近似汇率
       set({
