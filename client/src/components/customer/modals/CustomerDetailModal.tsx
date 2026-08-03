@@ -17,7 +17,7 @@ import {
   NumberOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer, customerApi } from '../../../api/customers';
+import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
@@ -49,52 +49,19 @@ interface CustomerDetailModalProps {
   onTagsChanged?: (id: string, tags: string) => void;
 }
 
-/** 模拟商机数据（后续替换为真实 API 数据） */
-interface MockPipelineItem {
+/** 真实商机记录（来自 getById 的 pipelines，非模拟数据） */
+interface RealPipeline {
   id: string;
-  code: string;
-  inqCode: string;
-  name: string;
-  spec: string;
-  amount: number;
-  currency: string;
-  pcs: number;
-  unitPrice: string;
-  status: string;
-  statusColor: string;
-  ownerName: string;
-  validUntil: string;
-}
-
-function useMockPipelines(customer: Customer | null): MockPipelineItem[] {
-  return useMemo(() => {
-    if (!customer) return [];
-    const base: MockPipelineItem[] = [
-      {
-        id: '1', code: 'QT-2024-0528', inqCode: 'INQ-2024-0336',
-        name: customer.companyName || '-', spec: '工具收纳墙挂板（SKU：TWP-660）',
-        amount: 38000, currency: 'EUR', pcs: 10000, unitPrice: 'EUR 3.8',
-        status: '编辑', statusColor: (customer.pipelineAmount ?? 0) > 20000 ? '#7c3aed' : '#1677ff',
-        ownerName: customer.owner?.realName || '陈伟', validUntil: '2024-09-19',
-      },
-      {
-        id: '2', code: 'QT-2024-0528', inqCode: 'INQ-2024-0336',
-        name: customer.companyName || '-', spec: '工具收纳墙挂板（SKU：TWP-660）',
-        amount: 38000, currency: 'EUR', pcs: 10000, unitPrice: 'EUR 3.8',
-        status: '编辑', statusColor: '#7c3aed',
-        ownerName: customer.owner?.realName || '陈伟', validUntil: '2024-09-19',
-      },
-      {
-        id: '3', code: 'QT-2024-0528', inqCode: 'INQ-2024-0336',
-        name: customer.companyName || '-',
-        spec: '工具收纳墙挂板（SKU：TWP-660）含CE认证费用，FOB深圳',
-        amount: 38000, currency: 'EUR', pcs: 10000, unitPrice: 'EUR 3.8',
-        status: '编辑', statusColor: '#7c3aed',
-        ownerName: customer.owner?.realName || '陈伟', validUntil: '2024-09-19',
-      },
-    ];
-    return base;
-  }, [customer]);
+  title?: string;
+  companyName?: string;
+  estimatedAmount?: number | null;
+  probability?: number | null;
+  orderStatus?: string | null;
+  sampleStatus?: string | null;
+  estimatedCloseDate?: string | null;
+  assignee?: { id: string; realName?: string } | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ============================================================
@@ -179,21 +146,24 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     );
   };
 
-  const mockPipelines = useMockPipelines(customer);
+  const realPipelines = (customer?.pipelines || []) as RealPipeline[];
 
   // 分页切片
   const paginatedData = useMemo(() => {
     let data: any[] = [];
     switch (activeTab) {
-      case 'pipeline': data = mockPipelines; break;
-      case 'orders': data = []; break;
-      case 'activities': data = []; break;
+      case 'pipeline': data = realPipelines; break;
+      case 'orders': data = customer?.orders || []; break;
+      case 'activities': data = customer?.activities || []; break;
     }
     const start = (currentPage - 1) * pageSize;
     return data.slice(start, start + pageSize);
-  }, [activeTab, currentPage, mockPipelines]);
+  }, [activeTab, currentPage, realPipelines, customer?.orders, customer?.activities]);
 
-  const totalCount = activeTab === 'pipeline' ? mockPipelines.length : 0;
+  const totalCount =
+    activeTab === 'pipeline' ? realPipelines.length :
+    activeTab === 'orders' ? (customer?.orders?.length ?? 0) :
+    activeTab === 'activities' ? (customer?.activities?.length ?? 0) : 0;
 
   // ---- 圆形操作按钮样式工厂 ----
   const circleBtnStyle = (bg: string): React.CSSProperties => ({
@@ -204,20 +174,88 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     fontSize: 15, lineHeight: 1, transition: 'all 0.22s ease', padding: 0, flexShrink: 0,
   });
 
-  // ---- 格式化金额 ----
-  const fmtAmt = (v: number, cur = 'EUR') =>
-    `${cur} ${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  // ---- 格式化金额（预估/订单金额均为 CNY） ----
+  const fmtCNY = (v?: number | null) =>
+    `CNY ${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
 
   // ---- tab 配置 ----
   const tabOptions = [
-    { key: 'pipeline' as const, label: '商机记录', count: mockPipelines.length },
+    { key: 'pipeline' as const, label: '商机记录', count: realPipelines.length },
     { key: 'orders' as const, label: '订单记录', count: customer?.orders?.length ?? 0 },
     { key: 'activities' as const, label: '活动记录', count: customer?.activities?.length ?? 0 },
   ];
 
   // ---- 类型标签文字 ----
-  // ---- 列表项卡片渲染 ----
-  const renderListItem = (item: MockPipelineItem) => (
+  // ---- 商机记录项渲染（真实数据） ----
+  const renderPipelineItem = (item: RealPipeline) => {
+    const ownerName = item.assignee?.realName || customer?.owner?.realName || '未分配';
+    const stage = item.orderStatus || item.sampleStatus || '商机';
+    const stageColor = item.orderStatus ? '#16a34a' : item.sampleStatus ? '#d97706' : ct.primary;
+    return (
+      <div
+        key={item.id}
+        style={{
+          background: token.colorBgContainer,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          borderRadius: 14, padding: '16px 20px',
+          display: 'flex', alignItems: 'center', gap: 16,
+          transition: 'all 0.22s ease', cursor: 'default',
+          position: 'relative', overflow: 'hidden',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.boxShadow = `0 4px 16px ${ct.primary}18`;
+          e.currentTarget.style.borderColor = ct.primary + '40';
+          e.currentTarget.style.transform = 'translateY(-1px)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.boxShadow = 'none';
+          e.currentTarget.style.borderColor = token.colorBorderSecondary;
+          e.currentTarget.style.transform = 'translateY(0)';
+        }}
+      >
+        {/* 左侧：阶段标签 */}
+        <div style={{ flexShrink: 0, minWidth: 80 }}>
+          <Tag color={stageColor} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
+            {stage}
+          </Tag>
+          {item.probability != null && (
+            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
+              成交概率 {item.probability}%
+            </div>
+          )}
+        </div>
+
+        {/* 中间：标题 */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.title || item.companyName || '-'}</Text>
+          {item.estimatedCloseDate && (
+            <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
+              预计成交 {item.estimatedCloseDate}
+            </Text>
+          )}
+        </div>
+
+        {/* 右侧：预估金额 */}
+        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>预估金额</div>
+          <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}>{fmtCNY(item.estimatedAmount)}</Text>
+        </div>
+
+        {/* 最右：负责人 */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Avatar size={26} style={{ backgroundColor: stageColor, fontSize: 12, fontWeight: 700 }}>
+              {ownerName.charAt(0)}
+            </Avatar>
+            <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{ownerName}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ---- 订单记录项渲染（真实数据） ----
+  const renderOrderItem = (item: Order) => (
     <div
       key={item.id}
       style={{
@@ -225,72 +263,54 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         border: `1px solid ${token.colorBorderSecondary}`,
         borderRadius: 14, padding: '16px 20px',
         display: 'flex', alignItems: 'center', gap: 16,
-        transition: 'all 0.22s ease', cursor: 'pointer',
-        position: 'relative', overflow: 'hidden',
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 4px 16px ${ct.primary}18`;
-        e.currentTarget.style.borderColor = ct.primary + '40';
-        e.currentTarget.style.transform = 'translateY(-1px)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = 'none';
-        e.currentTarget.style.borderColor = token.colorBorderSecondary;
-        e.currentTarget.style.transform = 'translateY(0)';
       }}
     >
-      {/* 左侧：编号 + 审核标签 */}
-      <div style={{ flexShrink: 0, minWidth: 160 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Text strong style={{ fontSize: 13, color: ct.primary }}>{item.code}</Text>
-          <span style={{ fontSize: 12, color: token.colorTextTertiary }}>→</span>
-          <Text style={{ fontSize: 12, color: token.colorTextSecondary }}>{item.inqCode}</Text>
-        </div>
-        <div style={{ marginTop: 4 }}>
-          <Tag color={ct.primary} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-            客户审核
-          </Tag>
-        </div>
+      <div style={{ flexShrink: 0, minWidth: 110 }}>
+        <Tag color="#16a34a" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
+          {item.status || '订单'}
+        </Tag>
+        {item.orderNo && (
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>{item.orderNo}</div>
+        )}
       </div>
-
-      {/* 中间：名称 + 规格 */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: token.colorTextHeading }}>🏢</span>
-          <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.name}</Text>
-        </div>
-        <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
-          {item.spec}
-        </Text>
+        <Text strong style={{ fontSize: 13, color: token.colorTextHeading }}>订单记录</Text>
+        {item.orderDate && (
+          <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
+            下单日期 {item.orderDate}
+          </Text>
+        )}
       </div>
-
-      {/* 右侧：报价金额 */}
       <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
-        <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>报价金额</div>
-        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}>{fmtAmt(item.amount, item.currency)}</Text>
-        <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>
-          {item.pcs.toLocaleString()} PCS × {item.unitPrice}
-        </div>
+        <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>订单金额</div>
+        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}>{fmtCNY(item.amountCNY)}</Text>
       </div>
+    </div>
+  );
 
-      {/* 最右：状态 + 负责人 + 日期 */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <Avatar size={26} style={{ backgroundColor: item.statusColor, fontSize: 12, fontWeight: 700 }}>
-            {item.ownerName.charAt(0)}
-          </Avatar>
-          <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{item.ownerName}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', justifyContent: 'flex-end' }}>
-          <Tag color={item.statusColor} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-            {item.status}
-          </Tag>
-          <Text style={{ fontSize: 11, color: token.colorTextTertiary }}>发送</Text>
-        </div>
-        <Text style={{ fontSize: 11, color: token.colorTextTertiary, alignSelf: 'flex-end' }}>
-          有效至 {item.validUntil}
-        </Text>
+  // ---- 活动记录项渲染（真实数据） ----
+  const ACTIVITY_ACTION: Record<string, string> = {
+    CLAIM: '认领', RELEASE: '释放到公海', CREATED: '创建', UPDATED: '更新', KEY_TOGGLE: '重点客户切换', INTENT_CHANGE: '意向变更',
+  };
+  const renderActivityItem = (item: CustomerActivity) => (
+    <div
+      key={item.id}
+      style={{
+        background: token.colorBgContainer,
+        border: `1px solid ${token.colorBorderSecondary}`,
+        borderRadius: 14, padding: '14px 20px',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}
+    >
+      <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
+        {ACTIVITY_ACTION[item.action] || item.action}
+      </Tag>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 13, color: token.colorTextHeading }}>{item.detail || '-'}</Text>
       </div>
+      <Text style={{ fontSize: 11, color: token.colorTextTertiary, flexShrink: 0 }}>
+        {item.createdAt ? dayjs(item.createdAt).format('YYYY-MM-DD HH:mm') : ''} · {item.createdBy}
+      </Text>
     </div>
   );
 
@@ -512,7 +532,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               <div style={{ flex: 1, padding: '20px 24px 0', overflow: 'auto', minHeight: 280 }}>
                 {paginatedData.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {paginatedData.map(renderListItem)}
+                    {activeTab === 'pipeline' && paginatedData.map((it) => renderPipelineItem(it as RealPipeline))}
+                    {activeTab === 'orders' && paginatedData.map(renderOrderItem)}
+                    {activeTab === 'activities' && paginatedData.map(renderActivityItem)}
                   </div>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={
