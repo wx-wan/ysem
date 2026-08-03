@@ -112,6 +112,9 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
       return;
     }
 
+    // 防止 StrictMode 双重挂载导致重复请求：若已有进行中的请求则跳过
+    if (get().loading) return;
+
     set({ loading: true });
     try {
       // 通过后端代理请求 Frankfurter，避免 CORS 问题

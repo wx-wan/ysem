@@ -91,7 +91,13 @@ export default function CustomersPage() {
   const listRef = useRef(list);
   listRef.current = list;
 
+  // 防止 StrictMode 双重挂载 / useEffect 双次触发导致重复请求
+  const fetchingRef = useRef(false);
+
   const fetchData = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+
     const currentList = listRef.current;
     const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
 
@@ -107,6 +113,7 @@ export default function CustomersPage() {
     // 1) 命中前端缓存：直接复用，跳过网络请求
     const cached = getListCache(cacheKey);
     if (cached) {
+      fetchingRef.current = false;
       const { mergedList } = diffList(currentList, cached.list);
       setList(sortCustomers(mergedList));
       setTotal(cached.total);
@@ -151,6 +158,7 @@ export default function CustomersPage() {
       message.error(err?.message || '加载失败');
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
   }, [keyword, isAdmin, selectedOwnerId, filterType, subFilterType, filterTags, sortCustomers]);
 
