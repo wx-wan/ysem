@@ -23,9 +23,11 @@ export interface TagSelectorProps {
   showAddButton?: boolean;
   /** 主题色（十六进制，如 #1677ff），标签实色背景；不传回退主蓝 */
   color?: string;
+  /** 透传外层容器样式（仅在需要时传入，避免影响默认卡片样式） */
+  style?: React.CSSProperties;
 }
 
-export default function TagSelector({ value, onChange, placeholder = '输入标签名称', showAddButton = true, color }: TagSelectorProps) {
+export default function TagSelector({ value, onChange, placeholder = '输入标签名称', showAddButton = true, color, style }: TagSelectorProps) {
   const { token } = theme.useToken();
   const themeColor = color || token.colorPrimary;
   const tags = tagsToArray(value);
@@ -55,7 +57,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
   );
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', ...style }}>
       {tags.map((tag, i) => (
         <Tag
           key={tag.name}

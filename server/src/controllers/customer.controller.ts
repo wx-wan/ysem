@@ -614,7 +614,7 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
     const username = (req as any).username;
     const userId = (req as any).userId;
     const roleCode = (req as any).roleCode;
-    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
+    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
       req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
@@ -643,9 +643,14 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
       data: {
         companyName: companyName ?? existing.companyName,
         contactName: contactName !== undefined ? contactName : existing.contactName,
+        englishName: englishName !== undefined ? englishName : existing.englishName,
+        position: position !== undefined ? position : existing.position,
         email: email !== undefined ? email : existing.email,
         phone: phone !== undefined ? phone : existing.phone,
+        wechat: wechat !== undefined ? wechat : existing.wechat,
         country: country !== undefined ? country : existing.country,
+        region: region !== undefined ? region : existing.region,
+        customerLevel: customerLevel !== undefined ? customerLevel : existing.customerLevel,
         source: source ?? existing.source,
         notes: notes !== undefined ? notes : existing.notes,
         ownerId: ownerId !== undefined ? ownerId : existing.ownerId,

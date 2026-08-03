@@ -36,7 +36,6 @@ class ActivityLogger {
           username: entry.username,
           action: entry.action,
           module: entry.module,
-          targetId: entry.targetId,
           target: entry.target || entry.targetId,
           detail: entry.detail,
           ip: entry.ip,

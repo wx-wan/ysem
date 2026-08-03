@@ -1,6 +1,7 @@
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../api/customers';
+import { INTENT_ORDER } from './intentLevel';
 import {
   GlobalOutlined,
   DollarOutlined,
@@ -206,7 +207,6 @@ export default function CustomerStats({
                     (sum, item) => sum + (item._sum.estimatedAmount || 0),
                     0
                   );
-                  const intentOrder = ['准成交', '高意向', '中意向', '低意向'];
                   const data = estimatedBreakdown
                     .map((item) => ({
                       name: item.probability,
@@ -214,7 +214,7 @@ export default function CustomerStats({
                       amount: item._sum.estimatedAmount || 0,
                       percent: total > 0 ? ((item._sum.estimatedAmount || 0) / total) * 100 : 0,
                     }))
-                    .sort((a, b) => intentOrder.indexOf(a.name) - intentOrder.indexOf(b.name));
+                    .sort((a, b) => INTENT_ORDER.indexOf(a.name) - INTENT_ORDER.indexOf(b.name));
                   const colors = ['#7c3aed', '#6366f1', '#06b6d4', '#10b981'];
                   return (
                     <>

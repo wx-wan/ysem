@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   App, Spin, theme, Row, Col, Pagination,
 } from 'antd';
@@ -7,6 +7,10 @@ import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { getGrade } from '../components/customer/utils';
+import { diffList, pickChanged } from '../utils/diff';
+import {
+  listCacheKey, getListCache, setListCache, invalidateAll, fetchCustomerDetail, installCacheLifecycle,
+} from '../utils/customerCache';
 import CustomerStats from '../components/customer/CustomerStats';
 import CustomerToolbar from '../components/customer/CustomerToolbar';
 import CustomerCard from '../components/customer/CustomerCard';
@@ -108,52 +112,61 @@ export default function CustomersPage() {
   }, [list, page]);
 
   // ========== 加载数据 ==========
+  // 用 ref 读取最新 list 值，避免将 list 加入 useCallback 依赖导致无限循环：
+  //   fetchData → setList → list 变化 → useCallback 重创建 → useEffect 触发 → fetchData ...
+  const listRef = useRef(list);
+  listRef.current = list;
+
   const fetchData = useCallback(async () => {
+    const currentList = listRef.current;
+    const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
+
+    let apiType: string = filterType;
+    if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
+    else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
+    if (apiType !== 'all') params.type = apiType;
+    if (isAdmin && selectedOwnerId && filterType !== 'public') params.ownerId = selectedOwnerId;
+    if (filterTags) params.tags = filterTags;
+
+    const cacheKey = listCacheKey(params);
+
+    // 1) 命中前端缓存：直接复用，跳过网络请求
+    const cached = getListCache(cacheKey);
+    if (cached) {
+      const { mergedList } = diffList(currentList, cached.list);
+      setList(sortCustomers(mergedList));
+      setTotal(cached.total);
+      setEstimatedAmount(cached.estimatedAmount);
+      setTotalContractAmount(cached.totalContractAmount);
+      setEstimatedBreakdown(cached.estimatedBreakdown);
+      setContractBreakdown(cached.contractBreakdown);
+      return;
+    }
+
     setLoading(true);
     try {
-      const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
+      const res = isAdmin
+        ? await customerApi.listAll(params)
+        : await customerApi.listMy(params);
+      const d = res.data.data;
 
-      let rawList: Customer[] = [];
-      let estAmount = 0;
-      let estBreakdown: any[] = [];
-      let cntBreakdown: any[] = [];
-      let cntTotal = 0;
-
-      if (isAdmin) {
-        if (selectedOwnerId && filterType !== 'public') params.ownerId = selectedOwnerId;
-
-        // 组合 filterType + subFilterType 为 API 参数
-        let apiType: string = filterType;
-        if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
-        else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
-        if (apiType !== 'all') (params as any).type = apiType;
-
-        if (filterTags) params.tags = filterTags;
-        const res = await customerApi.listAll(params);
-        const d = res.data.data;
-        rawList = d.list;
-        estAmount = d.estimatedAmount || 0;
-        cntTotal = d.totalContractAmount || 0;
-        estBreakdown = d.estimatedBreakdown || [];
-        cntBreakdown = d.contractBreakdown || [];
-      } else {
-        let apiType: string = filterType;
-        if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
-        else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
-        if (apiType !== 'all') (params as any).type = apiType;
-
-        if (filterTags) params.tags = filterTags;
-        const res = await customerApi.listMy(params);
-        const d = res.data.data;
-        rawList = d.list;
-        estAmount = d.estimatedAmount || 0;
-        cntTotal = d.totalContractAmount || 0;
-        estBreakdown = d.estimatedBreakdown || [];
-        cntBreakdown = d.contractBreakdown || [];
-      }
+      const rawList: Customer[] = d.list;
+      const estAmount = d.estimatedAmount || 0;
+      const cntTotal = d.totalContractAmount || 0;
+      const estBreakdown = d.estimatedBreakdown || [];
+      const cntBreakdown = d.contractBreakdown || [];
 
       const sorted = sortCustomers(rawList);
-      setList(sorted);
+      setListCache(cacheKey, {
+        list: sorted,
+        total: sorted.length,
+        estimatedAmount: estAmount,
+        totalContractAmount: cntTotal,
+        estimatedBreakdown: estBreakdown,
+        contractBreakdown: cntBreakdown,
+      });
+      const { mergedList } = diffList(currentList, sorted);
+      setList(sortCustomers(mergedList));
       setTotal(sorted.length);
       setEstimatedAmount(estAmount);
       setTotalContractAmount(cntTotal);
@@ -168,6 +181,7 @@ export default function CustomersPage() {
   }, [keyword, isAdmin, selectedOwnerId, filterType, subFilterType, filterTags, sortCustomers]);
 
   useEffect(() => {
+    installCacheLifecycle(); // 注册「离开视图即失效」缓存生命周期（幂等）
     fetchData();
   }, [fetchData]);
 
@@ -179,13 +193,23 @@ export default function CustomersPage() {
     }
   }, [list]);
 
-  // ===== 详情弹窗：就地编辑保存成功后同步 UI 状态 =====
+  // ===== 详情弹窗：保存成功后同步 UI 状态（仅更新对应项，不整页重排） =====
   const handleDetailUpdated = useCallback((updated: Customer) => {
-    setDetailCustomer((prev) => (prev?.id === updated.id ? updated : prev));
-    handleListUpdate((prev) =>
-      prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+    // 用差异对比，只把变化的字段合并进现有对象，保持引用稳定
+    setDetailCustomer((prev) => {
+      if (!prev || prev.id !== updated.id) return prev;
+      const delta = pickChanged(prev, updated);
+      return delta ? { ...prev, ...delta } : prev;
+    });
+    setList((prev) =>
+      prev.map((item) => {
+        if (item.id !== updated.id) return item;
+        const delta = pickChanged(item, updated);
+        return delta ? { ...item, ...delta } : item;
+      })
     );
-  }, [handleListUpdate]);
+    invalidateAll(); // 列表/详情缓存已过期，下次拉取回源
+  }, []);
 
   const handleTransferFromModal = useCallback((c: Customer) => {
     setDetailModalOpen(false);
@@ -242,9 +266,10 @@ export default function CustomersPage() {
   const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
     if (detailCustomer) {
-      const fresh = await customerApi.getById(detailCustomer.id);
-      setDetailCustomer(fresh.data.data);
+      const fresh = await fetchCustomerDetail(detailCustomer.id);
+      setDetailCustomer(fresh);
     }
+    invalidateAll();
     fetchData();
   }, [detailCustomer, fetchData]);
 
@@ -347,7 +372,7 @@ export default function CustomersPage() {
         open={modalOpen}
         editingCustomer={editingCustomer}
         onClose={() => { setModalOpen(false); setEditingCustomer(null); }}
-        onSuccess={fetchData}
+        onSuccess={() => { invalidateAll(); fetchData(); }}
       />
 
       {/* ===== 转交弹窗 ===== */}
@@ -360,6 +385,7 @@ export default function CustomersPage() {
           setTransferModalOpen(false);
           setTransferCustomer(null);
           if (detailModalOpen) setDetailModalOpen(false);
+          invalidateAll();
           fetchData();
         }}
       />
@@ -369,18 +395,25 @@ export default function CustomersPage() {
         open={detailModalOpen}
         customer={detailCustomer}
         onClose={() => setDetailModalOpen(false)}
-        onUpdated={handleDetailUpdated}
+        onSaved={handleDetailUpdated}
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}
         onAddPipeline={(c) => openCreatePipeline(c)}
         onCreateOrder={(c) => openCreateOrder(c.id)}
         onToggleKeyAccount={(c) => {
-          // 仅局部同步 UI 状态：弹窗 + 列表中对应项，避免整页 fetchData 造成的卡顿/闪烁
+          // 局部同步 UI：用差异合并更新字段（未变化项保持引用，避免重渲染），
+          // 再用 sortCustomers 重排（重点客户优先等规则生效，排序开销可忽略）
           const next = { ...c, isKeyAccount: !c.isKeyAccount };
           setDetailCustomer((prev) => (prev?.id === c.id ? next : prev));
-          handleListUpdate((prev) =>
-            prev.map((item) => (item.id === c.id ? { ...item, isKeyAccount: !c.isKeyAccount } : item))
+          setList((prev) =>
+            sortCustomers(
+              prev.map((item) => {
+                if (item.id !== c.id) return item;
+                const delta = pickChanged(item, next);
+                return delta ? { ...item, ...delta } : item;
+              })
+            )
           );
         }}
       />
@@ -389,7 +422,7 @@ export default function CustomersPage() {
       <ImportModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        onSuccess={() => { setImportOpen(false); fetchData(); }}
+        onSuccess={() => { setImportOpen(false); invalidateAll(); fetchData(); }}
       />
 
       {/* ===== 订单弹窗 ===== */}

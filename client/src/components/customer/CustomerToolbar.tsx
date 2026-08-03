@@ -4,6 +4,8 @@ import {
   UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../TagSelector';
+import { INTENT_LABEL } from './intentLevel';
+import { useDs } from './ds';
 import type { User } from '../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
@@ -18,10 +20,10 @@ const MAIN_FILTERS: { key: FilterType; label: string }[] = [
 
 const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
   { key: '', label: '全部' },
-  { key: 'A', label: '准成交' },
-  { key: 'B', label: '高意向' },
-  { key: 'C', label: '中意向' },
-  { key: 'D', label: '低意向' },
+  { key: 'A', label: INTENT_LABEL.A },
+  { key: 'B', label: INTENT_LABEL.B },
+  { key: 'C', label: INTENT_LABEL.C },
+  { key: 'D', label: INTENT_LABEL.D },
 ];
 
 const DONE_SUB_FILTERS: { key: string; label: string }[] = [
@@ -60,6 +62,7 @@ export default function CustomerToolbar({
   setImportOpen, openCreate,
   isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
 }: CustomerToolbarProps) {
+  const ds = useDs();
   const showNoOrderSub = filterType === 'noOrder';
   const showDoneSub = filterType === 'done';
 
@@ -94,8 +97,8 @@ export default function CustomerToolbar({
             display: 'flex',
             alignItems: 'center',
             gap: 2,
-            background: '#f1f5f9',
-            borderRadius: 24,
+            background: ds.surface,
+            borderRadius: ds.radiusPill,
             padding: '3px 4px',
           }}
         >
@@ -110,14 +113,14 @@ export default function CustomerToolbar({
                   outline: 'none',
                   cursor: 'pointer',
                   padding: '5px 12px',
-                  borderRadius: 20,
+                  borderRadius: ds.radiusPill,
                   fontSize: 13,
                   fontWeight: 600,
                   whiteSpace: 'nowrap',
                   transition: 'all 0.25s ease',
-                  background: active ? '#1677ff' : 'transparent',
-                  color: active ? '#fff' : '#64748b',
-                  boxShadow: active ? '0 2px 8px rgba(22,119,255,0.3)' : 'none',
+                  background: active ? ds.primary : 'transparent',
+                  color: active ? '#fff' : ds.textMuted,
+                  boxShadow: active ? `0 2px 8px ${ds.primaryBg}` : 'none',
                 }}
               >
                 {opt.key === 'all' && isAdmin ? '团队客户' : opt.label}
@@ -158,8 +161,8 @@ export default function CustomerToolbar({
         {/* 视图切换 */}
         <div style={{
           display: 'flex',
-          background: '#f1f5f9',
-          borderRadius: 8,
+          background: ds.surface,
+          borderRadius: ds.radius,
           padding: 2,
         }}>
           <button
@@ -170,8 +173,8 @@ export default function CustomerToolbar({
               cursor: 'pointer',
               padding: '6px 10px',
               borderRadius: 6,
-              background: viewMode === 'card' ? '#fff' : 'transparent',
-              color: viewMode === 'card' ? token.colorPrimary : token.colorTextSecondary,
+              background: viewMode === 'card' ? ds.primaryBg : 'transparent',
+              color: viewMode === 'card' ? ds.primary : ds.textMuted,
               boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               transition: 'all 0.2s',
               display: 'flex',
@@ -188,8 +191,8 @@ export default function CustomerToolbar({
               cursor: 'pointer',
               padding: '6px 10px',
               borderRadius: 6,
-              background: viewMode === 'list' ? '#fff' : 'transparent',
-              color: viewMode === 'list' ? token.colorPrimary : token.colorTextSecondary,
+              background: viewMode === 'list' ? ds.primaryBg : 'transparent',
+              color: viewMode === 'list' ? ds.primary : ds.textMuted,
               boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
               transition: 'all 0.2s',
               display: 'flex',
@@ -216,8 +219,8 @@ export default function CustomerToolbar({
             alignItems: 'center',
             gap: 2,
             marginTop: 10,
-            background: '#f8fafc',
-            borderRadius: 20,
+            background: ds.surfaceSub,
+            borderRadius: ds.radiusPill,
             padding: '3px 4px',
             width: 'fit-content',
           }}
@@ -233,13 +236,13 @@ export default function CustomerToolbar({
                   outline: 'none',
                   cursor: 'pointer',
                   padding: '4px 10px',
-                  borderRadius: 16,
+                  borderRadius: ds.radius,
                   fontSize: 12,
                   fontWeight: active ? 600 : 500,
                   whiteSpace: 'nowrap',
                   transition: 'all 0.2s ease',
-                  background: active ? '#e0e7ff' : 'transparent',
-                  color: active ? '#1677ff' : '#94a3b8',
+                  background: active ? ds.primaryBg : 'transparent',
+                  color: active ? ds.primary : ds.textFaint,
                 }}
               >
                 {opt.label}

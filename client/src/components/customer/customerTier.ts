@@ -100,21 +100,21 @@ export function getCustomerTier(customer: Customer | null): CustomerTierResult {
     case 'C':
       return {
         tier: 'hatch',
-        headerGradient: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
-        headerTextDark: true,
-        primary: '#60a5fa',
+        headerGradient: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+        headerTextDark: false,
+        primary: '#3b82f6',
         primaryLight: '#dbeafe',
-        primaryBg: 'rgba(96,162,250,0.1)',
+        primaryBg: 'rgba(59,130,246,0.1)',
       };
     case 'D':
     default:
       return {
         tier: 'dull',
-        headerGradient: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
-        headerTextDark: true,
-        primary: '#93c5fd',
+        headerGradient: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
+        headerTextDark: false,
+        primary: '#60a5fa',
         primaryLight: '#eff6ff',
-        primaryBg: 'rgba(147,197,253,0.12)',
+        primaryBg: 'rgba(96,162,250,0.12)',
       };
   }
 }
@@ -127,8 +127,8 @@ export function getAvatarColor(tier: CustomerTier, token: any): string {
     case 'void': return '#8a8f9a';
     case 'cheer': return '#f97316';
     case 'bottle': return '#1677ff';
-    case 'hatch': return '#93c5fd';
-    case 'dull': return '#bfdbfe';
+    case 'hatch': return '#3b82f6';
+    case 'dull': return '#60a5fa';
     default: return token.colorPrimary;
   }
 }

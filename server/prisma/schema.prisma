@@ -127,9 +127,14 @@ model Customer {
   id          String   @id @default(uuid())
   companyName String
   contactName String?
+  englishName String?  // 英文名
+  position    String?  // 职位
   email       String?
   phone       String?
+  wechat      String?  // 微信
   country     String?
+  region      String?  // 所在地区（省市区，如 "广东省·广州市"）
+  customerLevel String? @default("普通客户") // 客户等级：钻石客户/战略客户/优质客户/普通客户/潜在客户
   source      String?  // MANUAL / EXCEL / XIAOMAN
   notes       String?
 

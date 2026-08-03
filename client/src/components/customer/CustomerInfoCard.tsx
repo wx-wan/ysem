@@ -3,9 +3,9 @@ import { Row, Col, Typography } from 'antd';
 import { GlobalOutlined, UserOutlined, EditOutlined, AimOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
-import FlagIcon from '../FlagIcon';
 import type { Customer } from '../../api/customers';
 import { getGrade } from './utils';
+import { INTENT_LABEL } from './intentLevel';
 import CustomerTags from './CustomerTags';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { findCountry } from '../../data/countries';
@@ -51,62 +51,38 @@ export function useCustomerTier(customer: Customer, token: any) {
         tierTypeBadge: '未成交客户',
       };
     }
-    const intentMap: Record<string, string> = { A: '准成交', B: '高意向', C: '中意向', D: '低意向' };
-    switch (grade.grade) {
+    const { grade: g } = grade;
+    switch (g) {
       case 'A': return {
         tier: 'cheer' as const,
         tierHeaderBg: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
         tierAvatarBg: '#f97316',
-        tierTypeBadge: `未成交客户 · ${intentMap.A}`,
+        tierTypeBadge: `未成交客户 · ${INTENT_LABEL.A}`,
       };
       case 'B': return {
         tier: 'bottle' as const,
         tierHeaderBg: 'linear-gradient(135deg, #1677ff 0%, #0958d9 100%)',
         tierAvatarBg: '#1677ff',
-        tierTypeBadge: `未成交客户 · ${intentMap.B}`,
+        tierTypeBadge: `未成交客户 · ${INTENT_LABEL.B}`,
       };
       case 'C': return {
         tier: 'hatch' as const,
-        tierHeaderBg: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
-        tierAvatarBg: '#93c5fd',
-        tierTypeBadge: `未成交客户 · ${intentMap.C}`,
+        tierHeaderBg: 'linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%)',
+        tierAvatarBg: '#3b82f6',
+        tierTypeBadge: `未成交客户 · ${INTENT_LABEL.C}`,
       };
       case 'D':
       default: return {
         tier: 'dull' as const,
-        tierHeaderBg: 'linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%)',
-        tierAvatarBg: '#bfdbfe',
-        tierTypeBadge: `未成交客户 · ${intentMap.D}`,
+        tierHeaderBg: 'linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%)',
+        tierAvatarBg: '#60a5fa',
+        tierTypeBadge: `未成交客户 · ${INTENT_LABEL.D}`,
       };
     }
   }, [customer, token.colorWarning, token.purple]);
 }
 
-/* ========== 海浪随机参数（基于客户ID确定性伪随机） ========== */
-function useWaveParams(customerId: string) {
-  return useMemo(() => {
-    const mulberry32 = (seed: number): (() => number) => {
-      return () => {
-        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-      };
-    };
-    const baseSeed = String(customerId || '0').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    const layers: { durationMult: number; delayS: number; topOffset: number }[] = [];
-    for (let i = 0; i < 2; i++) {
-      const rng = mulberry32(baseSeed + i * 7919);
-      layers.push({
-        durationMult: 0.82 + rng() * 0.36,
-        delayS: Math.round(rng() * 45) / 100,
-        topOffset: Math.round(rng() * 4 - 2),
-      });
-    }
-    return layers;
-  }, [customerId]);
-}
-
+/* ========== 详情卡片属性 ========== */
 interface CustomerInfoCardProps {
   customer: Customer;
   token: any;
@@ -152,7 +128,6 @@ export default function CustomerInfoCard({
 }: CustomerInfoCardProps) {
   const { format: formatCurrency } = useCurrencyStore();
   const { tier, tierHeaderBg, tierTypeBadge } = useCustomerTier(customer, token);
-  const waveParams = useWaveParams(customer.id || '');
 
   return (
     <div style={{ position: 'relative' }}>
@@ -167,56 +142,10 @@ export default function CustomerInfoCard({
           overflow: 'hidden',
         }}
       >
-        {/* 装饰圆形 */}
-        <div style={{ position: 'absolute', top: -36, right: -24, width: 120, height: 120, borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.08)' }} />
-        <div style={{ position: 'absolute', bottom: -48, right: 60, width: 88, height: 88, borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.04)' }} />
-
-        {/* 金币掉落（仅新客） */}
-        {tier === 'shine' && (
-          <div className="coin-rain-container">
-            {[4, 8, 14, 20, 28, 36, 44, 56].map((delay, i) => (
-              <div
-                key={i}
-                className="coin-particle"
-                style={{
-                  left: `${10 + (i * 11) % 75}%`,
-                  animationDuration: `${2 + (i % 3) * 0.6}s`,
-                  animationDelay: `${delay * 0.15}s`,
-                  width: `${8 + (i % 4) * 2}px`,
-                  height: `${8 + (i % 4) * 2}px`,
-                }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* 海浪线条动画（高意向 & 中意向 & 低意向） */}
-        {(tier === 'bottle' || tier === 'hatch' || tier === 'dull') && (
-          <div className="wave-line-container">
-            <svg className="wave-svg wave-bob1" viewBox="0 0 800 120" preserveAspectRatio="none"
-              style={{
-                top: 48 + waveParams[0].topOffset,
-                animationDuration: `${(10.4 * waveParams[0].durationMult).toFixed(2)}s`,
-                animationDelay: `${waveParams[0].delayS}s`,
-              }}>
-              <path d="M0,28 C22,22 68,22 90,28 C112,34 158,34 180,28 C202,22 248,22 270,28 C292,34 338,34 360,28 C382,22 428,22 450,28 C472,34 518,34 540,28 C562,22 608,22 630,28 C652,34 698,34 720,28 C742,22 788,22 800,26 L800,120 L0,120 Z" fill="rgba(255,255,255,0.08)" />
-            </svg>
-            <svg className="wave-svg wave-bob2" viewBox="0 0 800 120" preserveAspectRatio="none"
-              style={{
-                top: 68 + waveParams[1].topOffset,
-                animationDuration: `${(13.6 * waveParams[1].durationMult).toFixed(2)}s`,
-                animationDelay: `${waveParams[1].delayS}s`,
-              }}>
-              <path d="M0,42 C30,24 100,24 130,42 C160,50 230,50 260,42 C290,24 360,24 390,42 C420,50 490,50 520,42 C550,24 620,24 650,42 C680,50 750,50 780,42 C800,40 800,40 800,42 L800,120 L0,120 Z" fill="rgba(255,255,255,0.07)" />
-            </svg>
-          </div>
-        )}
-
         {/* 顶行：类型标签 + 操作图标 */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
           <span style={{
             backgroundColor: 'rgba(255,255,255,0.2)',
-            backdropFilter: 'blur(4px)',
             color: token.colorWhite,
             fontSize: 11, fontWeight: 600,
             padding: '3px 10px',
@@ -233,7 +162,6 @@ export default function CustomerInfoCard({
               mutedColor="rgba(255,255,255,0.35)"
               onToggle={onKeyAccountToggle ? () => onKeyAccountToggle(!customer.isKeyAccount) : undefined}
             />
-            <FlagIcon country={customer.country} style={{ borderRadius: 2 }} />
           </div>
         </div>
 
@@ -306,7 +234,6 @@ export default function CustomerInfoCard({
               height: 32,
               borderRadius: '50%',
               background: 'rgba(255,255,255,0.18)',
-              backdropFilter: 'blur(6px)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -324,14 +251,6 @@ export default function CustomerInfoCard({
         {/* 头部额外内容 */}
         {headerExtra}
       </div>
-
-      {/* 外层特效 */}
-      {tier === 'shine' && <div className="sparkle-container"><div className="sparkle-particle" /></div>}
-      {tier === 'chest' && <div className="chest-shimmer" />}
-      {tier === 'cheer' && <div className="cheer-pulse" />}
-      {tier === 'bottle' && <div className="bottle-drift" />}
-      {tier === 'hatch' && <div className="hatch-breathe" />}
-      {tier === 'dull' && <div className="dull-glimmer" />}
 
       {/* ========== 统计卡片 ========== */}
       {showStats && (

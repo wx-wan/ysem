@@ -7,6 +7,9 @@ interface CountrySelectProps<T = string> {
   onChange?: (value: T) => void;
   placeholder?: string;
   style?: React.CSSProperties;
+  getPopupContainer?: (triggerNode: HTMLElement) => HTMLElement;
+  /** 只读形态：渲染静态「国旗 + 文字」，无下拉、不可交互（用于卡片/详情展示） */
+  readOnly?: boolean;
 }
 
 // 国家选择器（带搜索）
@@ -15,14 +18,42 @@ export default function CountrySelect({
   onChange,
   placeholder = '选择国家',
   style,
+  getPopupContainer,
+  readOnly,
 }: CountrySelectProps) {
+  // 只读形态：静态展示，不渲染下拉
+  if (readOnly) {
+    const info = findCountry(value as string);
+    const zh = info?.zh || (value as string) || '未知';
+    const code = info?.code || '';
+    return (
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 5,
+          minHeight: 40,
+          lineHeight: 1.4,
+          ...style,
+        }}
+      >
+        <FlagIcon country={value as string} style={{ borderRadius: 2 }} />
+        <span>
+          {zh}
+          {code ? ` · ${code}` : ''}
+        </span>
+      </span>
+    );
+  }
+
   return (
     <Select
       value={value}
       onChange={onChange}
       placeholder={placeholder}
+      getPopupContainer={getPopupContainer}
       showSearch
-      style={{ width: '100%', ...style }}
+      style={{ width: '100%', minHeight: 40, borderRadius: 8, ...style }}
       styles={{ popup: { root: { minWidth: 220 } } }}
       allowClear
       filterOption={(input, option) => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { Z_INDEX } from '../zIndex';
 
 export interface AppModalProps {
   open: boolean;
@@ -34,31 +35,12 @@ export interface AppModalProps {
 const overlayBase: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 1000,
+  zIndex: Z_INDEX.modalMask,
   display: 'flex',
   background: 'rgba(15, 23, 42, 0.45)',
-  backdropFilter: 'blur(2px)',
   padding: 24,
   boxSizing: 'border-box',
 };
-
-// 注入一次全局动画与滚动锁定样式
-const STYLE_ID = 'app-modal-style';
-if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
-  const el = document.createElement('style');
-  el.id = STYLE_ID;
-  el.textContent = `
-    @keyframes app-modal-in {
-      from { opacity: 0; transform: translateY(8px) scale(0.98); }
-      to { opacity: 1; transform: translateY(0) scale(1); }
-    }
-    @keyframes app-modal-mask-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-  `;
-  document.head.appendChild(el);
-}
 
 const AppModal: React.FC<AppModalProps> = ({
   open,
@@ -118,7 +100,6 @@ const AppModal: React.FC<AppModalProps> = ({
     borderRadius: 16,
     boxShadow: '0 24px 60px rgba(0,0,0,0.25)',
     overflow: 'hidden',
-    animation: 'app-modal-in 0.18s ease-out',
     ...style,
   };
 

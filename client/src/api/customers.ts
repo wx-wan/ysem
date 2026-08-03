@@ -6,9 +6,14 @@ export interface Customer {
   id: string;
   companyName: string;
   contactName?: string;
+  englishName?: string;   // 英文名
+  position?: string;      // 职位
   email?: string;
   phone?: string;
+  wechat?: string;        // 微信
   country?: string;
+  region?: string;        // 所在地区（省市区）
+  customerLevel?: string; // 客户等级
   source?: string;
   notes?: string;
   ownerId?: string;

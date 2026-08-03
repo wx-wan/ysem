@@ -824,26 +824,6 @@ html, body {
   transform: translateY(-1px);
 }
 
-/* 极淡微光：潜在一丝机会 */
-.dull-glimmer {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 50%,
-    rgba(191, 219, 254, 0.07) 0%,
-    transparent 60%);
-  animation: dullFlicker 5s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 2;
-  border-radius: inherit;
-  overflow: hidden;
-  transform: translateZ(0);
-  will-change: opacity;
-}
-@keyframes dullFlicker {
-  0%, 100% { opacity: 0.1; }
-  50% { opacity: 0.45; }
-}
-
 /* --- 无商机客户(void)：灰色 --- */
 .customer-tier-void .ant-card {
   filter: grayscale(30%) brightness(0.94);
@@ -866,26 +846,6 @@ html, body {
   transform: translateY(-2px);
 }
 
-/* 橙色助威脉冲：临门一脚的跃动感 */
-.cheer-pulse {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(circle at 50% 50%, 
-    rgba(249, 115, 22, 0.14) 0%, 
-    transparent 55%);
-  animation: cheerBeat 1.6s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 2;
-  border-radius: inherit;
-  overflow: hidden;
-  transform: translateZ(0);
-  will-change: transform, opacity;
-}
-@keyframes cheerBeat {
-  0%, 100% { opacity: 0.3; transform: scale(0.94); }
-  50% { opacity: 0.8; transform: scale(1.04); }
-}
-
 /* --- 未成交-高意向(B)：蓝色漂流瓶 --- */
 .customer-tier-bottle .ant-card {
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.22),
@@ -896,30 +856,6 @@ html, body {
   box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.4),
               0 8px 28px rgba(37, 99, 235, 0.2) !important;
   transform: translateY(-2px);
-}
-
-/* 漂流瓶光影：波浪般上下漂浮 */
-.bottle-drift {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    180deg,
-    transparent 32%,
-    rgba(59, 130, 246, 0.07),
-    transparent 68%
-  );
-  background-size: 100% 200%;
-  animation: bottleFloat 4s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 2;
-  border-radius: inherit;
-  overflow: hidden;
-  transform: translateZ(0);
-  will-change: background-position;
-}
-@keyframes bottleFloat {
-  0%, 100% { background-position-y: 0%; }
-  50% { background-position-y: 100%; }
 }
 
 /* --- 未成交-中意向(C)：淡蓝色孵化 --- */
@@ -934,26 +870,6 @@ html, body {
   transform: translateY(-1px);
 }
 
-/* 孵化呼吸光：潜力孕育中 */
-.hatch-breathe {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 50%, 
-    rgba(147, 197, 253, 0.12) 0%, 
-    transparent 60%);
-  animation: hatchGlow 3.2s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 2;
-  border-radius: inherit;
-  overflow: hidden;
-  transform: translateZ(0);
-  will-change: transform, opacity;
-}
-@keyframes hatchGlow {
-  0%, 100% { opacity: 0.15; transform: scale(0.92); }
-  50% { opacity: 0.6; transform: scale(1.08); }
-}
-
 /* --- 往年老客：神秘宝箱 --- */
 .customer-tier-chest .ant-card {
   box-shadow: 0 0 0 1px rgba(130, 100, 210, 0.18),
@@ -963,33 +879,6 @@ html, body {
 .customer-tier-chest .ant-card:hover {
   box-shadow: 0 0 0 2px rgba(150, 120, 230, 0.35),
               0 8px 28px rgba(60, 30, 100, 0.2) !important;
-}
-
-/* 宝箱微光扫过 */
-.chest-shimmer {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    105deg,
-    transparent 35%,
-    rgba(160, 120, 240, 0.07),
-    transparent 45%
-  );
-  background-size: 200% 100%;
-  animation: chestShimmer 4.5s ease-in-out infinite;
-  pointer-events: none;
-  z-index: 2;
-  border-radius: inherit;
-  overflow: hidden;
-}
-
-@keyframes chestShimmer {
-  0% {
-    background-position-x: 200%;
-  }
-  100% {
-    background-position-x: -200%;
-  }
 }
 
 /* --- 本年度新客：金色闪耀 --- */
@@ -1003,7 +892,7 @@ html, body {
               0 12px 32px rgba(200, 130, 20, 0.25) !important;
 }
 
-/* 金色光晕扫过 */
+/* 金色静态光晕（克制，不闪动） */
 .customer-tier-shine .customer-header-area::before {
   content: '';
   position: absolute;
@@ -1011,139 +900,10 @@ html, body {
   background: linear-gradient(
     105deg,
     transparent 30%,
-    rgba(255, 255, 255, 0.12),
+    rgba(255, 255, 255, 0.1),
     transparent 50%
   );
   background-size: 200% 100%;
-  animation: shineSweep 3s ease-in-out infinite;
   z-index: 0;
   pointer-events: none;
-}
-
-@keyframes shineSweep {
-  0% {
-    background-position-x: 200%;
-  }
-  100% {
-    background-position-x: -200%;
-  }
-}
-
-/* --- 星光粒子容器 --- */
-.sparkle-container {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 3;
-}
-
-/* --- 单个星光粒子：纯 CSS GPU 加速，零 JS 开销 --- */
-.sparkle-particle {
-  position: absolute;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fff 0%, #ffd700 30%, transparent 70%);
-  will-change: transform, opacity;
-  animation: sparklePop linear infinite;
-  transform: scale(0);
-  opacity: 0;
-}
-
-@keyframes sparklePop {
-  0%   { transform: scale(0); opacity: 0; }
-  15%  { transform: scale(1.4); opacity: 1; }
-  30%  { transform: scale(0.6); opacity: 0.7; }
-  50%  { transform: scale(0); opacity: 0; }
-  100% { transform: scale(0); opacity: 0; }
-}
-
-/* --- 金币掉落容器 --- */
-.coin-rain-container {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* --- 金币粒子 --- */
-.coin-particle {
-  position: absolute;
-  top: -18px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ffeaa7 0%, #ffd666 30%, #e6a510 80%, #b8860b 100%);
-  box-shadow: 0 0 6px rgba(255, 214, 102, 0.5);
-  will-change: transform, opacity;
-  animation: coinDrop linear infinite;
-  opacity: 0;
-}
-
-@keyframes coinDrop {
-  0% {
-    transform: translateY(0) rotate(0deg) scale(0.6);
-    opacity: 0;
-  }
-  5% {
-    opacity: 0.9;
-  }
-  15% {
-    transform: translateY(30px) rotate(120deg) scale(0.9);
-    opacity: 0.85;
-  }
-  50% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translateY(110px) rotate(540deg) scale(0.3);
-    opacity: 0;
-  }
-}
-
-/* --- 海浪线条动画容器 --- */
-.wave-line-container {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* SVG 波浪线条 */
-.wave-svg {
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  will-change: transform;
-}
-.wave-svg path {
-  stroke-linecap: round;
-}
-
-.wave-bob1 { animation: waveBob1 ease-in-out infinite; }
-.wave-bob2 { animation: waveBob2 ease-in-out infinite; }
-
-@keyframes waveBob1 {
-  0%   { transform: translate(0%, 0.5%); }
-  10%  { transform: translate(0.8%, -1.2%); }
-  24%  { transform: translate(-0.4%, 1.5%); }
-  38%  { transform: translate(1%, -0.6%); }
-  52%  { transform: translate(-0.6%, 1.8%); }
-  66%  { transform: translate(0.3%, -1.5%); }
-  78%  { transform: translate(-0.9%, 0.3%); }
-  90%  { transform: translate(0.5%, -0.8%); }
-  100% { transform: translate(0%, 0.5%); }
-}
-/* 下层波浪：大幅上下起伏，偶然向上翻涌盖过上层，模拟真实海面层叠 */
-@keyframes waveBob2 {
-  0%   { transform: translate(-0.5%, 1%); }
-  13%  { transform: translate(1.2%, -4.5%); }
-  28%  { transform: translate(-1%, 3%); }
-  42%  { transform: translate(0.6%, -5.5%); }
-  57%  { transform: translate(-1.2%, 2.5%); }
-  70%  { transform: translate(0.8%, -3%); }
-  84%  { transform: translate(-0.6%, 4%); }
-  100% { transform: translate(-0.5%, 1%); }
 }

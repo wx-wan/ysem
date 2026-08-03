@@ -3,15 +3,14 @@ import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
 import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import KeyAccountStar from '../KeyAccountStar';
-import FlagIcon from '../FlagIcon';
-import CustomerCardSparkle from './CustomerCardSparkle';
 import type { Customer } from '../../api/customers';
 import { getGrade } from './utils';
 import { getCustomerTier, getAvatarColor } from './customerTier';
+import { useDs } from './ds';
 import TagSelector from '../TagSelector';
+import CountrySelect from '../CountrySelect';
 import { customerApi } from '../../api/customers';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
-import { findCountry } from '../../data/countries';
 import { message } from 'antd';
 
 interface CustomerCardProps {
@@ -45,6 +44,8 @@ const CustomerCard = memo(function CustomerCard({
   onDelete,
 }: CustomerCardProps) {
   const isPublic = !customer.ownerId;
+  const ds = useDs();
+  const token2 = token; // 兼容既有 token 引用
 
   // 头部操作图标按钮统一样式（半透明圆形）
   const actionIconStyle: React.CSSProperties = {
@@ -57,8 +58,7 @@ const CustomerCard = memo(function CustomerCard({
     borderRadius: '50%',
     cursor: 'pointer',
     backgroundColor: 'rgba(255,255,255,0.22)',
-    backdropFilter: 'blur(4px)',
-    color: token.colorWhite,
+    color: token2.colorWhite,
     fontSize: 14,
     lineHeight: 1,
     transition: 'background-color 0.2s',
@@ -117,34 +117,6 @@ const CustomerCard = memo(function CustomerCard({
   // 头像背景色与卡片头部色调保持一致
   const avatarBg = useMemo(() => getAvatarColor(customerTier, token), [customerTier, token]);
 
-  // --- 海浪随机参数生成（基于客户ID做种子，保证每次渲染一致） ---
-  const waveParams = useMemo(() => {
-    const mulberry32 = (seed: number): (() => number) => {
-      return () => {
-        seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-        let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-        t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-        return ((t ^ t >>> 14) >>> 0) / 4294967296;
-      };
-    };
-    const baseSeed = String(customer.id || '0').split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-    interface WaveParam {
-      durationMult: number;
-      delayS: number;
-      topOffset: number;
-    }
-    const layers: WaveParam[] = [];
-    for (let i = 0; i < 2; i++) {
-      const rng = mulberry32(baseSeed + i * 7919);
-      layers.push({
-        durationMult: 0.82 + rng() * 0.36,
-        delayS: Math.round(rng() * 45) / 100,
-        topOffset: Math.round(rng() * 4 - 2),
-      });
-    }
-    return layers;
-  }, [customer.id]);
-
   // 整卡点击：仅列表视图（传入 onOpenDetail）时启用
   const cardClickable = !!onOpenDetail;
 
@@ -175,63 +147,10 @@ const CustomerCard = memo(function CustomerCard({
             overflow: 'hidden',
           }}
         >
-          <div style={{
-            position: 'absolute', top: -36, right: -24,
-            width: 120, height: 120, borderRadius: '50%',
-            backgroundColor: 'rgba(255,255,255,0.08)',
-          }} />
-          <div style={{
-            position: 'absolute', bottom: -48, right: 60,
-            width: 88, height: 88, borderRadius: '50%',
-            backgroundColor: 'rgba(255,255,255,0.04)',
-          }} />
-
-          {/* 金币掉落（仅新客卡片） */}
-          {customerTier === 'shine' && (
-            <div className="coin-rain-container">
-              {[4, 8, 14, 20, 28, 36, 44, 56].map((delay, i) => (
-                <div
-                  key={i}
-                  className="coin-particle"
-                  style={{
-                    left: `${10 + (i * 11) % 75}%`,
-                    animationDuration: `${2 + (i % 3) * 0.6}s`,
-                    animationDelay: `${delay * 0.15}s`,
-                    width: `${8 + (i % 4) * 2}px`,
-                    height: `${8 + (i % 4) * 2}px`,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* 海浪线条动画（高意向 & 中意向 & 低意向） */}
-          {(customerTier === 'bottle' || customerTier === 'hatch' || customerTier === 'dull') && (
-            <div className="wave-line-container">
-              <svg className="wave-svg wave-bob1" viewBox="0 0 800 120" preserveAspectRatio="none"
-                style={{
-                  top: 48 + waveParams[0].topOffset,
-                  animationDuration: `${(10.4 * waveParams[0].durationMult).toFixed(2)}s`,
-                  animationDelay: `${waveParams[0].delayS}s`,
-                }}>
-                <path d="M0,28 C22,22 68,22 90,28 C112,34 158,34 180,28 C202,22 248,22 270,28 C292,34 338,34 360,28 C382,22 428,22 450,28 C472,34 518,34 540,28 C562,22 608,22 630,28 C652,34 698,34 720,28 C742,22 788,22 800,26 L800,120 L0,120 Z" fill="rgba(255,255,255,0.08)" />
-              </svg>
-              <svg className="wave-svg wave-bob2" viewBox="0 0 800 120" preserveAspectRatio="none"
-                style={{
-                  top: 68 + waveParams[1].topOffset,
-                  animationDuration: `${(13.6 * waveParams[1].durationMult).toFixed(2)}s`,
-                  animationDelay: `${waveParams[1].delayS}s`,
-                }}>
-                <path d="M0,42 C30,24 100,24 130,42 C160,50 230,50 260,42 C290,24 360,24 390,42 C420,50 490,50 520,42 C550,24 620,24 650,42 C680,50 750,50 780,42 C800,40 800,40 800,42 L800,120 L0,120 Z" fill="rgba(255,255,255,0.07)" />
-              </svg>
-            </div>
-          )}
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{
                 backgroundColor: 'rgba(255,255,255,0.2)',
-                backdropFilter: 'blur(4px)',
                 color: token.colorWhite,
                 fontSize: 11, fontWeight: 600,
                 padding: '3px 10px',
@@ -256,7 +175,6 @@ const CustomerCard = memo(function CustomerCard({
                   );
                 }}
               />
-              <FlagIcon country={customer.country} style={{ borderRadius: 2 }} />
             </div>
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
@@ -265,12 +183,7 @@ const CustomerCard = memo(function CustomerCard({
           {/* 国家 + 联系人名称 同一行 */}
           <div style={{ marginTop: 6, position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '4px 14px' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
-              {(() => {
-                const c = findCountry(customer.country);
-                const zh = c?.zh || (customer.country || '未知');
-                const en = c?.code || '';
-                return <>{zh}{en ? ` · ${en}` : ''}</>;
-              })()}
+              <CountrySelect readOnly value={customer.country} style={{ color: 'inherit', fontSize: 11 }} />
             </span>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.88)', lineHeight: 1.4 }}>
               <UserOutlined style={{ fontSize: 11, flexShrink: 0 }} />
@@ -359,8 +272,6 @@ const CustomerCard = memo(function CustomerCard({
             </div>
           )}
 
-          {/* 金色星光闪烁（仅新客卡片，限制在头部区域内） */}
-          {customerTier === 'shine' && <CustomerCardSparkle />}
         </div>
 
         {/* 内容区：头像+负责人为一个整体（左右布局），与两个金额块三等分 */}
@@ -429,11 +340,6 @@ const CustomerCard = memo(function CustomerCard({
           </div>
         </div>
       </Card>
-      {customerTier === 'chest' && <div className="chest-shimmer" />}
-      {customerTier === 'cheer' && <div className="cheer-pulse" />}
-      {customerTier === 'bottle' && <div className="bottle-drift" />}
-      {customerTier === 'hatch' && <div className="hatch-breathe" />}
-      {customerTier === 'dull' && <div className="dull-glimmer" />}
     </div>
   );
 });

@@ -1,21 +1,14 @@
 import type { Customer } from '../../api/customers';
+import { getIntentGrade } from './intentLevel';
 
 // ========== 客户等级（A/B/C/D 四级，仅由商机中最高采购意向决定，不受重点客户影响） ==========
 export function getGrade(customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; tagColor: string } {
-  // 从商机记录中取最高等级的采购意向
-  const intentRank: Record<string, number> = { '准成交': 4, '高意向': 3, '中意向': 2, '低意向': 1 };
-  const probabilities = (customer.pipelines || [])
-    .map((p: any) => p.probability)
-    .filter(Boolean);
-  const level = probabilities.length > 0
-    ? probabilities.reduce((max, p) => (intentRank[p] || 0) > (intentRank[max] || 0) ? p : max, probabilities[0])
-    : null;
+  // 采购意向等级由商机最高概率派生（逻辑统一收口在 intentLevel.ts）
+  const grade = getIntentGrade(customer.pipelines || []);
 
   // 等级只反映商机真实意向，重点客户不加权（避免“设为重点”篡改意向等级）
-  if (level === '准成交') return { grade: 'A', tagColor: 'red' };
-  if (level === '高意向') return { grade: 'B', tagColor: 'orange' };
-  if (level === '中意向') return { grade: 'C', tagColor: 'gold' };
-  return { grade: 'D', tagColor: 'gray' };
+  const TAG_COLOR: Record<'A' | 'B' | 'C' | 'D', string> = { A: 'red', B: 'orange', C: 'gold', D: 'gray' };
+  return { grade, tagColor: TAG_COLOR[grade] };
 }
 
 // ========== 标签色值 ==========
