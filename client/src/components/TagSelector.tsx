@@ -139,9 +139,6 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
           </Tag>
         )
       )}
-      {showAddButton && tags.length >= maxCount && (
-        <span style={{ fontSize: 12, color: token.colorTextQuaternary }}>最多添加 {maxCount} 个标签</span>
-      )}
     </div>
   );
 }
