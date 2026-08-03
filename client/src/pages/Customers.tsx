@@ -7,7 +7,7 @@ import { userApi, User } from '../api/users';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { getGrade } from '../components/customer/shared/utils';
-import { diffList, pickChanged } from '../utils/diff';
+import { diffList } from '../utils/diff';
 import {
   listCacheKey, getListCache, setListCache, invalidateAll, fetchCustomerDetail, installCacheLifecycle,
 } from '../utils/customerCache';
@@ -193,23 +193,35 @@ export default function CustomersPage() {
     }
   }, [list]);
 
-  // ===== 详情弹窗：保存成功后同步 UI 状态（仅更新对应项，不整页重排） =====
+  // 列表项上的聚合字段（商机金额/成交金额/最后下单日期）由 list 接口计算，
+  // getById（详情接口）不返回它们；合并详情数据时必须保留，否则会被清成 undefined。
+  const AGG_FIELDS: (keyof Customer)[] = ['pipelineAmount', 'totalAmount', 'lastOrderDate'];
+
+  // 用 next 覆盖 prev 的变化字段，但保留 prev 上 list 接口的聚合字段（next 没有时不清空）
+  const mergeKeepAgg = useCallback((prev: Customer | null, next: Customer): Customer => {
+    if (!prev || prev.id !== next.id) return next;
+    const merged = { ...prev, ...next };
+    for (const f of AGG_FIELDS) {
+      if (next[f] === undefined) merged[f] = prev[f];
+    }
+    return merged;
+  }, []);
+
+  // 打开详情时（getById 异步补充完整数据）只更新弹窗自身的 detailCustomer，
+  // 不要回写 list——list 中的聚合字段（商机/成交金额）由 list 接口计算，getById 不返回，
+  // 回写会把它们清成 undefined，导致列表金额变化。
+  const handleDetailLoaded = useCallback((loaded: Customer) => {
+    setDetailCustomer((prev) => (prev && prev.id === loaded.id ? { ...prev, ...loaded } : prev));
+  }, []);
+
+  // ===== 详情弹窗：编辑保存成功后同步 UI 状态（仅更新对应项，不整页重排） =====
   const handleDetailUpdated = useCallback((updated: Customer) => {
-    // 用差异对比，只把变化的字段合并进现有对象，保持引用稳定
-    setDetailCustomer((prev) => {
-      if (!prev || prev.id !== updated.id) return prev;
-      const delta = pickChanged(prev, updated);
-      return delta ? { ...prev, ...delta } : prev;
-    });
+    setDetailCustomer((prev) => (prev && prev.id === updated.id ? mergeKeepAgg(prev, updated) : prev));
     setList((prev) =>
-      prev.map((item) => {
-        if (item.id !== updated.id) return item;
-        const delta = pickChanged(item, updated);
-        return delta ? { ...item, ...delta } : item;
-      })
+      prev.map((item) => (item.id === updated.id ? mergeKeepAgg(item, updated) : item))
     );
     invalidateAll(); // 列表/详情缓存已过期，下次拉取回源
-  }, []);
+  }, [mergeKeepAgg]);
 
   // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
   const handleTagsChanged = useCallback((id: string, tags: string) => {
@@ -404,6 +416,7 @@ export default function CustomersPage() {
         customer={detailCustomer}
         customerList={list}
         onClose={() => setDetailModalOpen(false)}
+        onDetailLoaded={handleDetailLoaded}
         onSaved={handleDetailUpdated}
         onTagsChanged={handleTagsChanged}
         onTransfer={handleTransferFromModal}
@@ -411,20 +424,22 @@ export default function CustomersPage() {
         onDelete={handleDeleteFromModal}
         onAddPipeline={(c) => openCreatePipeline(c)}
         onCreateOrder={(c) => openCreateOrder(c.id)}
-        onToggleKeyAccount={(c) => {
-          // 局部同步 UI：用差异合并更新字段（未变化项保持引用，避免重渲染），
-          // 再用 sortCustomers 重排（重点客户优先等规则生效，排序开销可忽略）
-          const next = { ...c, isKeyAccount: !c.isKeyAccount };
-          setDetailCustomer((prev) => (prev?.id === c.id ? next : prev));
-          setList((prev) =>
-            sortCustomers(
-              prev.map((item) => {
-                if (item.id !== c.id) return item;
-                const delta = pickChanged(item, next);
-                return delta ? { ...item, ...delta } : item;
-              })
-            )
-          );
+        onToggleKeyAccount={async (c) => {
+          // 先本地乐观更新（保留聚合字段，避免金额被清成 undefined），再调用后端持久化
+          const nextKey = !c.isKeyAccount;
+          const applyLocal = (item: Customer): Customer =>
+            item.id === c.id ? mergeKeepAgg(item, { ...item, isKeyAccount: nextKey }) : item;
+          setDetailCustomer((prev) => (prev?.id === c.id ? { ...prev, isKeyAccount: nextKey } : prev));
+          setList((prev) => sortCustomers(prev.map(applyLocal)));
+          try {
+            await customerApi.update(c.id, { isKeyAccount: nextKey });
+            invalidateDetail(c.id); // 详情缓存失效，下次打开回源最新值
+          } catch {
+            // 失败回滚
+            setDetailCustomer((prev) => (prev?.id === c.id ? { ...prev, isKeyAccount: c.isKeyAccount } : prev));
+            setList((prev) => sortCustomers(prev.map((item) => (item.id === c.id ? { ...item, isKeyAccount: c.isKeyAccount } : item))));
+            message.error('重点客户状态更新失败');
+          }
         }}
       />
 

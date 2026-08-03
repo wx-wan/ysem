@@ -41,6 +41,8 @@ interface CustomerDetailModalProps {
   onCreateOrder?: (customer: Customer) => void;
   /** 切换重点客户成功后由父级刷新数据 */
   onToggleKeyAccount?: (customer: Customer) => void;
+  /** 打开详情时 getById 异步补充完整数据，仅更新弹窗自身，不回写列表（避免污染列表聚合字段） */
+  onDetailLoaded?: (customer: Customer) => void;
   /** 抽屉编辑保存成功后由父级同步数据 */
   onSaved?: (customer: Customer) => void;
   /** 标签变更：仅传入客户 id 与最新的标签字符串，由父级做最小化同步 */
@@ -99,7 +101,7 @@ function useMockPipelines(customer: Customer | null): MockPipelineItem[] {
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, customerList = [], onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged,
+  open, customer, customerList = [], onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
 }) => {
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
@@ -150,7 +152,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     let cancelled = false;
     fetchCustomerDetail(customer.id).then((data) => {
       if (!cancelled && data) {
-        onSaved?.(data);
+        onDetailLoaded?.(data);
       }
     }).catch(() => { /* 忽略，保留列表项数据渲染 */ });
     return () => { cancelled = true; };
