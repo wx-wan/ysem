@@ -350,7 +350,7 @@ export default function Sales() {
                 <div style={{ marginTop: 16, padding: '12px 16px', background: token.colorFillQuaternary, borderRadius: 12, fontSize: 12, color: token.colorTextSecondary }}>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
                   <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
-                  <div>预估金额、预计成交日期、成交概率、样品类型、样品数量、样品状态</div>
+                  <div>预估金额、预计成交日期、采购意向、样品类型、样品数量、样品状态</div>
                   <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
                   <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
                 </div>

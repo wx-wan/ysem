@@ -228,7 +228,7 @@
     "sourceExcel": "Excel导入",
     "sourceXiaoman": "小满API",
     "estimatedAmount": "预估金额",
-    "probability": "成交概率",
+    "probability": "采购意向",
     "estimatedCloseDate": "预计成交日期",
     "productInterest": "感兴趣产品",
     "sampleType": "样品类型",

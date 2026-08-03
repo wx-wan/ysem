@@ -1,5 +1,5 @@
 import type { Customer } from '../../../api/customers';
-import { getIntentGrade } from './intentLevel';
+import { getIntentGrade, INTENT_LABEL } from './intentLevel';
 
 // ========== 客户等级（A/B/C/D 四级，仅由商机中最高采购意向决定，不受重点客户影响） ==========
 export function getGrade(customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; tagColor: string } {
@@ -43,33 +43,28 @@ export function tagColorToBg(tagColor: string, token: any): string {
   return m[tagColor] || token.colorFillSecondary;
 }
 
-// ========== 客户逻辑类型标签（成交/未成交 + 商机最高采购意向，全站统一收口） ==========
-const INTENT_LABEL: Record<'A' | 'B' | 'C' | 'D', string> = {
-  A: '准成交', B: '高意向', C: '中意向', D: '低意向',
-};
-
-// 渲染用纯文字标签（卡片视图与详情弹窗共用，保证一致）
-// 规则：已成交客户按首单年份 → 本年度新客/往年老客；未成交客户按商机最高意向 → 未成交客户·意向
-export function getCustomerLogicLabel(customer: Customer): string {
-  const cy = new Date().getFullYear().toString();
-  if (customer.firstOrderDate) {
-    return customer.firstOrderDate.startsWith(cy) ? '本年度新客' : '往年老客';
-  }
+// ========== 客户采购意向标签（全站统一收口，全局只有 准成交/高意向/中意向/低意向 四种表述） ==========
+// 采购意向等级由商机中最高概率派生（逻辑统一收口在 intentLevel.ts）。
+// 成交客户与未成交客户共用同一套展示逻辑，不再区分「本年度新客/往年老客/未成交客户」。
+export function getCustomerIntentLabel(customer: Customer): string {
   const { grade } = getGrade(customer);
-  const hasPipelines = (customer.pipelines || []).length > 0;
-  return hasPipelines ? `未成交客户 · ${INTENT_LABEL[grade] || '低意向'}` : '未成交客户';
+  return INTENT_LABEL[grade] || '低意向';
 }
+
+// 兼容旧名：逻辑标签即采购意向标签
+export const getCustomerLogicLabel = getCustomerIntentLabel;
 
 // 带颜色的类型标签（兼容旧调用方）
 export function getCustomerTypeLabel(customer: Customer): { label: string; color: string } | null {
-  const label = getCustomerLogicLabel(customer);
+  const grade = getGrade(customer).grade;
+  const label = INTENT_LABEL[grade] || '低意向';
   const color: Record<string, string> = {
-    '本年度新客': 'green',
-    '往年老客': 'blue',
-    '未成交客户': 'default',
+    A: 'green',
+    B: 'blue',
+    C: 'gold',
+    D: 'default',
   };
-  if (label.startsWith('未成交客户 ·')) return { label, color: 'orange' };
-  return { label, color: color[label] || 'default' };
+  return { label, color: color[grade] || 'default' };
 }
 
 // ========== 客户排序（纯函数，全站唯一来源：各组件/列表/详情共用） ==========

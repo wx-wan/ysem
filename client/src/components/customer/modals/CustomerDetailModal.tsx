@@ -22,6 +22,7 @@ import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCach
 import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
+import { INTENT_LABEL, gradeFromProbability } from '../shared/intentLevel';
 import { findCountry } from '../../../data/countries';
 import FlagIcon from '../../FlagIcon';
 import TagSelector from '../../TagSelector';
@@ -100,7 +101,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     return `CUS-${datePart}-${seq}`;
   }, [customer?.id, customer?.createdAt, customerList]);
 
-  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel（成交→本年度新客/往年老客；未成交→未成交客户·最高意向）
+  // 逻辑标签：统一复用 shared/utils 的 getCustomerLogicLabel —— 成交与未成交客户共用采购意向标签（准成交/高意向/中意向/低意向）
   const logicTag = useMemo(() => (customer ? getCustomerLogicLabel(customer) : ''), [customer]);
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
@@ -217,7 +218,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           </Tag>
           {item.probability != null && (
             <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
-              成交概率 {item.probability}%
+              {INTENT_LABEL[gradeFromProbability(item.probability)]}
             </div>
           )}
         </div>

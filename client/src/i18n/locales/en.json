@@ -228,7 +228,7 @@
     "sourceExcel": "Excel Import",
     "sourceXiaoman": "Xiaoman API",
     "estimatedAmount": "Est. Amount",
-    "probability": "Probability",
+    "probability": "Purchase intent",
     "estimatedCloseDate": "Est. Close Date",
     "productInterest": "Product Interest",
     "sampleType": "Sample Type",
