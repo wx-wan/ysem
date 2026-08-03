@@ -1,7 +1,7 @@
 import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../../api/customers';
-import { INTENT_ORDER } from '../shared/intentLevel';
+import { INTENT_ORDER, INTENT_LABEL, gradeFromProbability } from '../shared/intentLevel';
 import Price from '../../common/Price';
 import {
   GlobalOutlined,
@@ -206,12 +206,20 @@ export default function CustomerStats({
                     (sum, item) => sum + (item._sum.estimatedAmount || 0),
                     0
                   );
-                  const data = estimatedBreakdown
+                  const data = Object.values(
+                    estimatedBreakdown.reduce((acc, item) => {
+                      const grade = gradeFromProbability(item.probability);
+                      const name = INTENT_LABEL[grade];
+                      const amount = item._sum.estimatedAmount || 0;
+                      if (!acc[name]) acc[name] = { name, count: 0, amount: 0, percent: 0 };
+                      acc[name].count += item._count;
+                      acc[name].amount += amount;
+                      return acc;
+                    }, {} as Record<string, { name: string; count: number; amount: number; percent: number }>)
+                  )
                     .map((item) => ({
-                      name: item.probability,
-                      count: item._count,
-                      amount: item._sum.estimatedAmount || 0,
-                      percent: total > 0 ? ((item._sum.estimatedAmount || 0) / total) * 100 : 0,
+                      ...item,
+                      percent: total > 0 ? (item.amount / total) * 100 : 0,
                     }))
                     .sort((a, b) => INTENT_ORDER.indexOf(a.name) - INTENT_ORDER.indexOf(b.name));
                   const colors = ['#7c3aed', '#6366f1', '#06b6d4', '#10b981'];
