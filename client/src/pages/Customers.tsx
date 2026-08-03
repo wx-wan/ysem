@@ -164,8 +164,11 @@ export default function CustomersPage() {
 
   useEffect(() => {
     installCacheLifecycle(); // 注册「离开视图即失效」缓存生命周期（幂等）
+    // 先确定角色再发起列表请求：user 未加载（role 未知）时暂不请求，
+    // 避免以错误的角色（非管理员）发起 listMy，拿到不完整数据
+    if (!user) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, user]);
 
   const openTransfer = useCallback((customerId: string) => {
     const found = list.find((c) => c.id === customerId);
