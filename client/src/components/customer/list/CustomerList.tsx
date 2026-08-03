@@ -6,8 +6,8 @@ import FlagIcon from '../../FlagIcon';
 import type { Customer } from '../../../api/customers';
 import { getGrade, tagColorToHex } from '../shared/utils';
 import CustomerTags, { filterCustomTags } from '../cards/CustomerTags';
-import { useCurrencyStore } from '../../../stores/useCurrencyStore';
 import { findCountry } from '../../../data/countries';
+import Price from '../../common/Price';
 
 interface CustomerListProps {
   list: Customer[];
@@ -22,8 +22,6 @@ const CustomerList = memo(function CustomerList({
   onOpenDetail,
   onListUpdate,
 }: CustomerListProps) {
-  const { format: formatCurrency } = useCurrencyStore();
-
   const columns = useMemo(() => [
     {
       title: '客户信息',
@@ -79,7 +77,7 @@ const CustomerList = memo(function CustomerList({
       width: 130,
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ fontWeight: 600, color: token.colorTextHeading }}>{formatCurrency(v || 0)}</span>
+        <span style={{ fontWeight: 600, color: token.colorTextHeading }}><Price value={v || 0} /></span>
       ),
     },
     {
@@ -89,7 +87,7 @@ const CustomerList = memo(function CustomerList({
       width: 130,
       align: 'right' as const,
       render: (v: number) => (
-        <span style={{ fontWeight: 600, color: token.colorTextHeading }}>{formatCurrency(v || 0)}</span>
+        <span style={{ fontWeight: 600, color: token.colorTextHeading }}><Price value={v || 0} /></span>
       ),
     },
     {
@@ -101,7 +99,7 @@ const CustomerList = memo(function CustomerList({
         return <CustomerTags tags={tags} token={token} />;
       },
     },
-  ], [token, onListUpdate, formatCurrency]);
+  ], [token, onListUpdate]);
 
   return (
     <Table

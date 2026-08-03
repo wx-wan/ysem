@@ -1,17 +1,17 @@
 import { Card, theme } from 'antd';
-import { TeamOutlined, DollarOutlined } from '@ant-design/icons';
+import { TeamOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
 import StageButtons from './StageButtons';
+import Price from '../common/Price';
 
 interface KanbanCardProps {
   item: SalesItem;
-  formatCurrency: (value: number) => string;
   onViewDetail: (id: string) => void;
   onStageChange: (id: string, newStage: string) => void;
 }
 
-export default function KanbanCard({ item, formatCurrency, onViewDetail, onStageChange }: KanbanCardProps) {
+export default function KanbanCard({ item, onViewDetail, onStageChange }: KanbanCardProps) {
   const { token } = theme.useToken();
   const amount = item.stage === 'ORDER' ? (item.orderAmount || 0) : (item.estimatedAmount || 0);
   return (
@@ -37,7 +37,7 @@ export default function KanbanCard({ item, formatCurrency, onViewDetail, onStage
         <div style={{ textAlign: 'right', flexShrink: 0 }}>
           {(item.estimatedAmount || item.orderAmount) && (
             <div style={{ fontWeight: 700, color: token.colorText, fontSize: 15, whiteSpace: 'nowrap', letterSpacing: '-0.2px' }}>
-              {formatCurrency(amount)}
+              <Price value={amount} />
             </div>
           )}
           {item.probability && item.stage === 'OPPORTUNITY' && (

@@ -18,8 +18,8 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
-import { useCurrencyStore } from '../../../stores/useCurrencyStore';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
+import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
 import { findCountry } from '../../../data/countries';
@@ -175,10 +175,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     fontSize: 15, lineHeight: 1, transition: 'all 0.22s ease', padding: 0, flexShrink: 0,
   });
 
-  // ---- 格式化金额（预估/订单金额均以 CNY 为基准，跟随全局币种统一转换展示） ----
-  const { format: formatCurrency } = useCurrencyStore();
-  const fmtCNY = (v?: number | null) => formatCurrency(Number(v || 0));
-
   // ---- tab 配置 ----
   const tabOptions = [
     { key: 'pipeline' as const, label: '商机记录', count: realPipelines.length },
@@ -239,7 +235,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         {/* 右侧：预估金额 */}
         <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
           <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>预估金额</div>
-          <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}>{fmtCNY(item.estimatedAmount)}</Text>
+          <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={item.estimatedAmount} /></Text>
         </div>
 
         {/* 最右：负责人 */}
@@ -284,7 +280,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
         <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>订单金额</div>
-        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}>{fmtCNY(item.amountCNY)}</Text>
+        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={item.amountCNY} /></Text>
       </div>
     </div>
   );

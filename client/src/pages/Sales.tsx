@@ -11,16 +11,15 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { theme } from 'antd';
 import { salesApi, SalesItem } from '../api/sales';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 import StageButtons, { STAGES } from '../components/sales/StageButtons';
 import { getStage } from '../components/sales/stages';
 import KanbanView from '../components/sales/KanbanView';
+import Price from '../components/common/Price';
 
 export default function Sales() {
   const { message } = App.useApp();
-  const { format: formatCurrency } = useCurrencyStore();
   const { token } = theme.useToken();
 
   // 视图模式
@@ -172,7 +171,7 @@ export default function Sales() {
       title: '金额', dataIndex: 'estimatedAmount', width: 120,
       render: (_: unknown, r: SalesItem) => {
         const amt = r.stage === 'ORDER' ? r.orderAmount : r.estimatedAmount;
-        return amt ? formatCurrency(amt) : '-';
+        return amt ? <Price value={amt} /> : '-';
       },
     },
     { title: '来源', dataIndex: 'source', width: 90 },
@@ -197,7 +196,7 @@ export default function Sales() {
         </Space>
       ),
     },
-  ], [formatCurrency]);
+  ], []);
 
   // ============ 列表视图 ============
 
@@ -316,7 +315,6 @@ export default function Sales() {
       {viewMode === 'kanban' ? (
         <KanbanView
           kanbanData={kanbanData}
-          formatCurrency={formatCurrency}
           onViewDetail={handleViewDetail}
           onStageChange={handleStageChange}
           onAdd={(stage) => { setEditingItem(null); fetchAssignUsers(); setInitialFormStage(stage); setModalOpen(true); }}
@@ -392,7 +390,6 @@ export default function Sales() {
         onStageChange={handleStageChange}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        formatCurrency={formatCurrency}
       />
     </div>
   );

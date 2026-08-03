@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Row, Col, Tag, Typography } from 'antd';
 import { Order } from '../../api/customers';
+import Price from '../common/Price';
 
 const { Text } = Typography;
 
@@ -15,12 +16,10 @@ const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
 interface Props {
   open: boolean;
   detailOrder: Order | null;
-  formattedAmount: string;
-  formatCurrency: (amount: number) => string;
   onClose: () => void;
 }
 
-const OrderDetailModal: React.FC<Props> = React.memo(({ open, detailOrder, formattedAmount, formatCurrency, onClose }) => {
+const OrderDetailModal: React.FC<Props> = React.memo(({ open, detailOrder, onClose }) => {
   if (!detailOrder) return null;
 
   return (
@@ -37,7 +36,7 @@ const OrderDetailModal: React.FC<Props> = React.memo(({ open, detailOrder, forma
           <Col span={12}><Text type="secondary">订单号</Text><br /><Text strong>{detailOrder.orderNo || '-'}</Text></Col>
           <Col span={12}><Text type="secondary">客户</Text><br /><Text>{detailOrder.customer?.companyName || '-'}</Text></Col>
           <Col span={12}><Text type="secondary">订单日期</Text><br /><Text>{detailOrder.orderDate || '-'}</Text></Col>
-          <Col span={12}><Text type="secondary">金额</Text><br /><Text strong style={{ fontSize: 16 }}>{formattedAmount || formatCurrency(detailOrder.amountCNY ?? 0)}</Text></Col>
+          <Col span={12}><Text type="secondary">金额</Text><br /><Text strong style={{ fontSize: 16 }}><Price value={detailOrder.amountCNY ?? 0} /></Text></Col>
           <Col span={12}><Text type="secondary">交付日期</Text><br /><Text>{detailOrder.deliveryDate || '-'}</Text></Col>
           <Col span={12}><Text type="secondary">付款条件</Text><br /><Text>{detailOrder.paymentTerms || '-'}</Text></Col>
           <Col span={12}>

@@ -4,7 +4,6 @@ import {
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
@@ -24,7 +23,6 @@ import OrderFormModal from '../components/customer/modals/OrderFormModal';
 export default function CustomersPage() {
   const { token } = theme.useToken();
   const { message } = App.useApp();
-  const { format: formatCurrency } = useCurrencyStore();
 
   // ========== 状态 ==========
   const [loading, setLoading] = useState(false);
@@ -323,7 +321,7 @@ export default function CustomersPage() {
 
   return (
     <div style={{ padding: '0 0 24px' }}>
-      <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={filterType} formatCurrency={formatCurrency} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
+      <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={filterType} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
 
       {/* 工具栏 */}
       <CustomerToolbar

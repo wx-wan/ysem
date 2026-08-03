@@ -4,6 +4,7 @@ import { EditOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
 import { SALES_STAGES, STAGE_LABELS } from './stages';
+import Price from '../common/Price';
 
 const STAGES = SALES_STAGES;
 
@@ -14,10 +15,9 @@ interface Props {
   onStageChange: (id: string, newStage: string) => void;
   onEdit: (item: SalesItem) => void;
   onDelete: (id: string) => void;
-  formatCurrency: (amount: number) => string;
 }
 
-const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClose, onStageChange, onEdit, onDelete, formatCurrency }) => {
+const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClose, onStageChange, onEdit, onDelete }) => {
   if (!detailItem) return null;
   const st = STAGES.find((s) => s.key === detailItem.stage);
 
@@ -66,7 +66,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       )}
       {detailItem.stage === 'OPPORTUNITY' && (
         <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-          <Descriptions.Item label="预估金额">{detailItem.estimatedAmount ? formatCurrency(detailItem.estimatedAmount) : '-'}</Descriptions.Item>
+          <Descriptions.Item label="预估金额">{detailItem.estimatedAmount ? <Price value={detailItem.estimatedAmount} /> : '-'}</Descriptions.Item>
           <Descriptions.Item label="采购意向">{getIntentLabel(detailItem.probability)}</Descriptions.Item>
           <Descriptions.Item label="预计成交日期">{detailItem.estimatedCloseDate || '-'}</Descriptions.Item>
         </Descriptions>
@@ -80,7 +80,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       )}
       {detailItem.stage === 'ORDER' && (
         <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-          <Descriptions.Item label="订单金额">{detailItem.orderAmount ? formatCurrency(detailItem.orderAmount) : '-'}</Descriptions.Item>
+          <Descriptions.Item label="订单金额">{detailItem.orderAmount ? <Price value={detailItem.orderAmount} /> : '-'}</Descriptions.Item>
           <Descriptions.Item label="下单日期">{detailItem.orderDate || '-'}</Descriptions.Item>
           <Descriptions.Item label="交付日期">{detailItem.deliveryDate || '-'}</Descriptions.Item>
           <Descriptions.Item label="付款条件">{detailItem.paymentTerms || '-'}</Descriptions.Item>

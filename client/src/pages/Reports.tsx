@@ -7,7 +7,7 @@ import {
 } from '@ant-design/icons';
 import { customerApi } from '../api/customers';
 import { orderApi } from '../api/customers';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
+import Price from '../components/common/Price';
 
 const { Text, Title } = Typography;
 
@@ -27,7 +27,7 @@ interface ReportStats {
 }
 
 export default function ReportsPage() {
-  const { format: formatCurrency } = useCurrencyStore();
+  const { } = useCurrencyStore();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportStats | null>(null);
@@ -102,9 +102,9 @@ export default function ReportsPage() {
     { title: '订单数', value: stats.pipelineOrderCount, color: C.error, icon: <FileDoneOutlined /> },
     // 第二行
     { title: '老客户数', value: stats.oldCustomerCount, color: C.info, icon: <TeamOutlined /> },
-    { title: '老客户订单金额', value: formatCurrency(stats.oldCustomerAmount), color: C.primary, icon: <DollarOutlined /> },
+    { title: '老客户订单金额', value: <Price value={stats.oldCustomerAmount} />, color: C.primary, icon: <DollarOutlined /> },
     { title: '新客户数', value: stats.newCustomerCount, color: C.purple, icon: <FireOutlined /> },
-    { title: '新客户成交金额', value: formatCurrency(stats.newCustomerAmount), color: C.purple, icon: <DollarOutlined /> },
+    { title: '新客户成交金额', value: <Price value={stats.newCustomerAmount} />, color: C.purple, icon: <DollarOutlined /> },
     // 第三行
     { title: '线索→商机转化率', value: stats.leadToOpportunity, color: C.warning, icon: <PercentageOutlined />, suffix: '%' },
     { title: '商机→样品/订单转化率', value: stats.opportunityToNext, color: C.warning, icon: <RiseOutlined />, suffix: '%' },
@@ -159,7 +159,7 @@ export default function ReportsPage() {
                 { title: '订单号', dataIndex: 'orderNo', key: 'orderNo', width: 120, render: (v: string) => v || '-' },
                 { title: '客户', key: 'customer', width: 140, render: (_: any, r: any) => r.customer?.companyName || '-' },
                 { title: '金额', dataIndex: 'amountCNY', key: 'amountCNY', width: 110, align: 'right' as const,
-                  render: (v: number) => v != null ? formatCurrency(v) : '-' },
+                  render: (v: number) => v != null ? <Price value={v} /> : '-' },
                 { title: '日期', dataIndex: 'orderDate', key: 'orderDate', width: 100, render: (v: string) => v || '-' },
                 { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Tag color={v === '已发货' ? 'success' : v === '处理中' ? 'processing' : 'default'} bordered={false}>{v || '-'}</Tag> },
               ]}
@@ -178,7 +178,7 @@ export default function ReportsPage() {
                 { title: '客户', dataIndex: 'companyName', key: 'companyName', render: (v: string) => <Text strong>{v}</Text> },
                 { title: '订单数', dataIndex: 'count', key: 'count', width: 70, align: 'center' as const },
                 { title: '累计金额', dataIndex: 'total', key: 'total', width: 120, align: 'right' as const,
-                  render: (v: number) => <Text strong>{formatCurrency(v)}</Text> },
+                  render: (v: number) => <Text strong><Price value={v} /></Text> },
               ]}
             />
           </Card>

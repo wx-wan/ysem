@@ -10,7 +10,7 @@ import { useDs } from '../shared/ds';
 import TagSelector from '../../TagSelector';
 import CountrySelect from '../../CountrySelect';
 import { customerApi } from '../../../api/customers';
-import { useCurrencyStore } from '../../../stores/useCurrencyStore';
+import Price from '../../common/Price';
 import { message } from 'antd';
 
 interface CustomerCardProps {
@@ -66,7 +66,6 @@ const CustomerCard = memo(function CustomerCard({
   };
 
   const grade = useMemo(() => getGrade(customer), [customer]);
-  const { format: formatCurrency } = useCurrencyStore();
 
   // 兼容：详情接口可能不返回 pipelineAmount/totalAmount，从关联数组汇总 fallback
   const displayPipelineAmount = customer.pipelineAmount
@@ -297,7 +296,7 @@ const CustomerCard = memo(function CustomerCard({
               <div style={{ minHeight: 68, textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>预计商机金额</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
-                  {formatCurrency(displayPipelineAmount || 0)}
+                  <Price value={displayPipelineAmount || 0} />
                 </div>
                 <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.pipelines ?? (customer.pipelines || []).length} 商机</div>
               </div>
@@ -308,7 +307,7 @@ const CustomerCard = memo(function CustomerCard({
               <div style={{ minHeight: 68, textAlign: 'right' }}>
                 <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>成交订单金额</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
-                  {formatCurrency(displayTotalAmount || 0)}
+                  <Price value={displayTotalAmount || 0} />
                 </div>
                 <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.orders ?? (customer.orders || []).length} 单</div>
               </div>

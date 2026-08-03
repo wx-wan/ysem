@@ -2,6 +2,7 @@ import { Card, Row, Col, Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../../api/customers';
 import { INTENT_ORDER } from '../shared/intentLevel';
+import Price from '../../common/Price';
 import {
   GlobalOutlined,
   DollarOutlined,
@@ -28,7 +29,6 @@ interface CustomerStatsProps {
   list: Customer[];
   token: any;
   filterType: string;
-  formatCurrency: (value: number) => string;
   estimatedBreakdown?: EstimatedBreakdownItem[];
   contractBreakdown?: ContractBreakdownItem[];
 }
@@ -45,7 +45,6 @@ export default function CustomerStats({
   list,
   token,
   filterType,
-  formatCurrency,
   estimatedBreakdown,
   contractBreakdown = [],
 }: CustomerStatsProps) {
@@ -194,7 +193,7 @@ export default function CustomerStats({
       ...gradients[0],
     },
     {
-      value: formatCurrency(estimatedAmount),
+      value: <Price value={estimatedAmount} />,
       label: '预计商机金额',
       sub: (
         <Popover
@@ -233,7 +232,7 @@ export default function CustomerStats({
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                             <span style={{ fontSize: 13, color: token.colorText }}>{item.name}</span>
                             <span style={{ fontSize: 13, fontWeight: 600, color: token.colorTextHeading }}>
-                              {formatCurrency(item.amount)}
+                              <Price value={item.amount} />
                             </span>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -269,7 +268,7 @@ export default function CustomerStats({
       ...gradients[1],
     },
     {
-      value: formatCurrency(totalContractAmount),
+      value: <Price value={totalContractAmount} />,
       label: '累计成交订单金额',
       sub: (
         <Popover
@@ -294,7 +293,7 @@ export default function CustomerStats({
                     <Cell fill="#7c3aed" />
                     <Cell fill="#f59e0b" />
                   </Pie>
-                  <ReTooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <ReTooltip formatter={(value) => <Price value={Number(value)} />} />
                   <foreignObject x="50%" y="50%" width="1" height="1">
                     <div
                       style={{

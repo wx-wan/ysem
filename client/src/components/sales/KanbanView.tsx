@@ -6,14 +6,13 @@ import KanbanCard from './KanbanCard';
 
 interface KanbanViewProps {
   kanbanData: Record<string, { title: string; items: SalesItem[] }>;
-  formatCurrency: (value: number) => string;
   onViewDetail: (id: string) => void;
   onStageChange: (id: string, newStage: string) => void;
   onAdd: (stage: string) => void;
 }
 
 export default function KanbanView({
-  kanbanData, formatCurrency, onViewDetail, onStageChange, onAdd,
+  kanbanData, onViewDetail, onStageChange, onAdd,
 }: KanbanViewProps) {
   return (
     <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8 }}>
@@ -49,7 +48,6 @@ export default function KanbanView({
                   <KanbanCard
                     key={item.id}
                     item={item}
-                    formatCurrency={formatCurrency}
                     onViewDetail={onViewDetail}
                     onStageChange={onStageChange}
                   />
