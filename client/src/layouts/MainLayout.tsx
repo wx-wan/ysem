@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Spin, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -17,9 +17,11 @@ export default function MainLayout() {
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token: { colorBgContainer } } = theme.useToken();
 
-  // 获取用户信息
+  // 获取用户信息（防 StrictMode 双重挂载重复请求）
+  const profileFetched = useRef(false);
   useEffect(() => {
-    if (!user) {
+    if (!user && !profileFetched.current) {
+      profileFetched.current = true;
       authApi.getProfile().then((res) => {
         useAuthStore.getState().setAuth(
           res.data.data,
