@@ -18,6 +18,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
+import { useCurrencyStore } from '../../../stores/useCurrencyStore';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { getCustomerTier } from '../shared/customerTier';
@@ -174,9 +175,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     fontSize: 15, lineHeight: 1, transition: 'all 0.22s ease', padding: 0, flexShrink: 0,
   });
 
-  // ---- 格式化金额（预估/订单金额均为 CNY） ----
-  const fmtCNY = (v?: number | null) =>
-    `CNY ${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  // ---- 格式化金额（预估/订单金额均以 CNY 为基准，跟随全局币种统一转换展示） ----
+  const { format: formatCurrency } = useCurrencyStore();
+  const fmtCNY = (v?: number | null) => formatCurrency(Number(v || 0));
 
   // ---- tab 配置 ----
   const tabOptions = [
