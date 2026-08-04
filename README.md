@@ -209,7 +209,7 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
   - 修复「首次打开编辑弹窗时预计成交金额/预计成交时间未赋值」：原 `setTimeout(0)` 在条件字段（经 `Form.useWatch` 异步挂载）尚未渲染即赋值导致丢失，改为按 stage 轮询 `requestAnimationFrame` + `getFieldInstance` 等待字段实例挂载后再 `setFieldsValue`
   - 保存逻辑下沉父级：组件仅负责校验与数字类型转换，通过 `onSuccess(values)` 回传；持久化与前端缓存统一由 `Customers.tsx` 处理（先乐观更新 `detailCustomer` 缓存保持一致，再 `salesApi` 落库，最后回源详情）
   - 移除打开编辑时的 `salesApi.get`（直接复用父级传入的完整 `SalesItem`）与保存后的列表刷新（`fetchData`），整条数据流统一来自缓存
-- **详情内变更统一走缓存**：关闭详情、转化商机、删除商机、保存商机、订单成功等场景均不再触发任何网络回源——改为乐观更新 `detailCustomer` 后直接写 `detailCache`（纯前端缓存，不调用 `fetchCustomerDetail(..., true)`），聚合金额在 `CustomerOverview` 基于 `detailCustomer.pipelines` 实时计算；真正改变列表基础字段的场景（编辑/转交/删除/导入客户）保留失效刷新
+- **详情弹窗「销售记录」模块新增顶部添加区块**：将销售记录列表每页 `pageSize` 由 6 减为 5（首栏留给添加块），在列表第一条之前插入风格统一的"新建销售记录"区块（主色虚线边框 + 渐变底 + hover 实线加阴影，圆角 12），含「线索/商机/订单」三阶段色点入口，分别复用 `onAddPipeline` / `onCreateOrder` 回调；不改动原列表 dataSource / 分页 / 筛选逻辑
 - **商机转订单弹窗**：新增「转为订单」确认弹窗，支持选择订单类型（正式订单 / 样品单），预计成交金额自动作为订单金额
 - **订单/销售模型扩展（schema）**：`Order` 新增 `orderType`(SAMPLE/FORMAL)、`sampleAmountCNY`(样品单金额)、`moldFeeCNY`(模具费)、`moldFeeRefundable`(模具费可退)；`SalesPipeline` 新增 `orderType`；后端 `order.controller` 完善 `create`/`update` 字段写入
 - **客户卡片新增「首次合作日期」**：在头部展示 `customer.firstOrderDate`；新增 `server/src/scripts/backfill-firstOrderDate.ts` 脚本回填老数据的首次合作日期（取客户最早订单 `orderDate` 写入 `firstOrderDate`）
