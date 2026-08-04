@@ -826,6 +826,28 @@ html, body {
   }
 }
 
+/* ========== 全局滚动条样式（Operate 主题，与 CustomerOverview 滚动区一致） ========== */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--ant-color-fill-quaternary, #f1f5f9);
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(22, 119, 255, 0.35);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(22, 119, 255, 0.6);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(22, 119, 255, 0.35) var(--ant-color-fill-quaternary, #f1f5f9);
+}
+
 /* ========== 客户卡片荣誉层级 ========== */
 
 /* --- 未成交-低意向(D)：极淡蓝色，比孵化更浅 --- */
