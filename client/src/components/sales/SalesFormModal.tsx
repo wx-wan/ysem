@@ -49,6 +49,9 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         estimatedAmount: raw.estimatedAmount ? Number(raw.estimatedAmount) : undefined,
         sampleQuantity: raw.sampleQuantity ? Number(raw.sampleQuantity) : undefined,
         orderAmount: raw.orderAmount ? Number(raw.orderAmount) : undefined,
+        estimatedCloseDate: raw.estimatedCloseDate
+          ? (dayjs.isDayjs(raw.estimatedCloseDate) ? raw.estimatedCloseDate.format('YYYY-MM-DD') : raw.estimatedCloseDate)
+          : undefined,
       };
       setSaving(true);
       // 仅回传校验后的值，由父级负责：先更新前端缓存保持一致，再持久化到数据库
@@ -229,11 +232,7 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item
-                  name="estimatedCloseDate"
-                  label="预计成交日期"
-                  getValueFromEvent={(d) => (d ? d.format('YYYY-MM-DD') : undefined)}
-                >
+                <Form.Item name="estimatedCloseDate" label="预计成交日期">
                   <DatePicker
                     style={{ width: '100%' }}
                     placeholder="选择预计成交日期"
