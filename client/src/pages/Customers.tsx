@@ -68,6 +68,8 @@ export default function CustomersPage() {
   const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
   const [newPipelineStage, setNewPipelineStage] = useState<string>('LEAD');
+  // 从详情新建时携带的客户（公司名称固定、基础信息带出、负责人锁当前用户）
+  const [newPipelineCustomer, setNewPipelineCustomer] = useState<Customer | null>(null);
 
   // 新建销售记录：类型选择弹窗（线索 / 商机 / 订单）
   const [newTypeOpen, setNewTypeOpen] = useState(false);
@@ -281,6 +283,7 @@ export default function CustomersPage() {
     setNewTypeCustomer(null);
     setEditingPipeline(null);
     setNewPipelineStage(stage);
+    setNewPipelineCustomer(c); // 携带客户：公司名称固定、基础信息带出、负责人锁当前用户
     setPipelineEditOpen(true);
   }, []);
 
@@ -615,8 +618,11 @@ export default function CustomersPage() {
         open={pipelineEditOpen}
         editingItem={editingPipeline}
         initialStage={newPipelineStage}
+        customer={newPipelineCustomer}
+        currentUserId={user?.id}
+        fixedOwner={!!newPipelineCustomer}
         assignUsers={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
-            onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); }}
+            onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
             onSuccess={handlePipelineEditSuccess}
           />
 

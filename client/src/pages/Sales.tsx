@@ -11,6 +11,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { theme } from 'antd';
 import { salesApi, SalesItem } from '../api/sales';
+import { customerApi, Customer } from '../api/customers';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 import StageButtons, { STAGES } from '../components/sales/StageButtons';
@@ -47,6 +48,7 @@ export default function Sales() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<SalesItem | null>(null);
   const [assignUsers, setAssignUsers] = useState<{ id: string; realName: string }[]>([]);
+  const [customerOptions, setCustomerOptions] = useState<{ label: string; value: string; raw: Customer }[]>([]);
 
   // ============ 数据加载 ============
 
@@ -81,6 +83,15 @@ export default function Sales() {
     } catch { /* ignore */ }
   };
 
+  const fetchCustomers = async () => {
+    try {
+      const res = await customerApi.listAll({ pageSize: 9999 });
+      setCustomerOptions(
+        (res.data.data.list || []).map((c: Customer) => ({ label: c.companyName, value: c.id, raw: c }))
+      );
+    } catch { /* ignore */ }
+  };
+
   useEffect(() => {
     if (viewMode === 'kanban') fetchKanban();
     else fetchList();
@@ -97,6 +108,7 @@ export default function Sales() {
     setEditingItem(null);
     setInitialFormStage(stage);
     fetchAssignUsers();
+    fetchCustomers();
     setModalOpen(true);
   };
 
@@ -458,6 +470,7 @@ export default function Sales() {
         open={modalOpen}
         editingItem={editingItem}
         assignUsers={assignUsers}
+        customerOptions={customerOptions}
         initialStage={initialFormStage}
         onClose={() => { setModalOpen(false); setEditingItem(null); }}
         onSuccess={handleFormSuccess}

@@ -198,6 +198,12 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
+### 2026-08-04（补充 3）
+
+- **商机/线索表单「公司名称」与「负责人」按场景区分**：
+  - 客户详情内新建（父级传入 `customer`）：公司名称固定为该客户（disabled 文本框），并自动带出联系人/电话/邮箱/国家等基础信息；负责人默认为当前用户且**不可选择**（`fixedOwner`，带 tooltip 说明）
+  - 销售页独立新建：公司名称改为「全部客户」下拉框（`customerApi.listAll`），选中后自动带出该客户基础信息填入表单；负责人可正常选择
+
 ### 2026-08-04（补充 2）
 
 - **「新建销售记录」补充类型选择逻辑**：点击详情弹窗「新建销售记录」区块 → 弹出类型选择弹窗（线索 / 商机 / 订单）；线索为手动新建（后续可扩展为产品链接点击同步）、商机打开 `SalesFormModal`(`initialStage=OPPORTUNITY`)、订单打开 `OrderFormModal`；补全原 TODO 占位的 `openCreatePipeline`，改为真正打开表单并通过 `newPipelineStage` 控制新建阶段

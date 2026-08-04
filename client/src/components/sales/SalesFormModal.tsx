@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker } from 'antd';
 import dayjs from 'dayjs';
 import { SalesItem } from '../../api/sales';
+import { Customer } from '../../api/customers';
 import { SALES_STAGES } from './stages';
 
 const STAGES = SALES_STAGES;
@@ -28,13 +29,21 @@ interface Props {
   editingItem: SalesItem | null;
   assignUsers: Array<{ id: string; realName: string }>;
   initialStage?: string;
+  /** 详情场景：由父级传入的客户（公司名称固定、基础信息带出、负责人不可改） */
+  customer?: Customer | null;
+  /** 当前用户 id：详情场景下作为默认负责人 */
+  currentUserId?: string;
+  /** 详情场景：禁用负责人选择 */
+  fixedOwner?: boolean;
+  /** 销售页独立新建：全部客户下拉选项（含 raw 客户） */
+  customerOptions?: Array<{ label: string; value: string; raw?: Customer }>;
   onClose: () => void;
   /** 保存成功：组件只负责校验并回传（数字已转换后的）值，
    *  持久化与前端缓存更新交由父级统一处理（先更新前端缓存保持一致，最后落库） */
   onSuccess: (values: any) => void;
 }
 
-const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignUsers, initialStage, onClose, onSuccess }) => {
+const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignUsers, initialStage, customer, currentUserId, fixedOwner, customerOptions, onClose, onSuccess }) => {
   const { token } = theme.useToken();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
@@ -66,6 +75,17 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
 
   React.useEffect(() => {
     if (open) {
+      // 详情场景：客户基础信息作为默认值带出（editingItem 已有值则优先）
+      const baseInfo: Record<string, any> = customer
+        ? {
+            companyName: customer.companyName,
+            contactName: customer.contactName,
+            phone: customer.phone,
+            email: customer.email,
+            country: customer.country,
+            assignedTo: fixedOwner ? currentUserId : undefined,
+          }
+        : {};
       if (editingItem) {
         // 先设置 stage，让对应阶段的条件字段先挂载，
         // 条件字段（OPPORTUNITY / ORDER 等）依赖 Form.useWatch 异步渲染，
@@ -83,6 +103,7 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         const tryFill = () => {
           if (!waitFor || form.getFieldInstance(waitFor)) {
             form.setFieldsValue({
+              ...baseInfo,
               ...editingItem,
               estimatedCloseDate: editingItem.estimatedCloseDate ? dayjs(editingItem.estimatedCloseDate) : undefined,
             });
@@ -94,7 +115,11 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         return () => cancelAnimationFrame(raf);
       } else {
         form.resetFields();
-        form.setFieldsValue({ stage: initialStage || 'LEAD' });
+        form.setFieldsValue({
+          stage: initialStage || 'LEAD',
+          ...baseInfo,
+          assignedTo: fixedOwner ? currentUserId : undefined,
+        });
       }
     }
   }, [open, editingItem, form, initialStage]);
@@ -171,7 +196,28 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
-                <Input />
+                {customer ? (
+                  <Input disabled />
+                ) : (
+                  <Select
+                    showSearch
+                    placeholder="选择客户"
+                    optionFilterProp="label"
+                    options={customerOptions}
+                    onChange={(value) => {
+                      const opt = customerOptions?.find((o) => o.value === value);
+                      if (opt?.raw) {
+                        form.setFieldsValue({
+                          companyName: opt.raw.companyName,
+                          contactName: opt.raw.contactName,
+                          phone: opt.raw.phone,
+                          email: opt.raw.email,
+                          country: opt.raw.country,
+                        });
+                      }
+                    }}
+                  />
+                )}
               </Form.Item>
             </Col>
             <Col span={6}>
@@ -308,10 +354,15 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
             </>
           )}
 
-          <Form.Item name="assignedTo" label="负责人">
+          <Form.Item
+            name="assignedTo"
+            label="负责人"
+            tooltip={fixedOwner ? '当前场景下负责人默认为您本人，不可修改' : undefined}
+          >
             <Select
-              allowClear
-              placeholder="选择负责人"
+              allowClear={!fixedOwner}
+              disabled={fixedOwner}
+              placeholder={fixedOwner ? '默认当前用户' : '选择负责人'}
               options={assignUsers.map((u) => ({ label: u.realName, value: u.id }))}
             />
           </Form.Item>
