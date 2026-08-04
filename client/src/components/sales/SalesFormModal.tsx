@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker } from 'antd';
+import dayjs from 'dayjs';
 import { SalesItem } from '../../api/sales';
 import { SALES_STAGES } from './stages';
 
@@ -78,7 +79,10 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         let raf = 0;
         const tryFill = () => {
           if (!waitFor || form.getFieldInstance(waitFor)) {
-            form.setFieldsValue(editingItem);
+            form.setFieldsValue({
+              ...editingItem,
+              estimatedCloseDate: editingItem.estimatedCloseDate ? dayjs(editingItem.estimatedCloseDate) : undefined,
+            });
           } else {
             raf = requestAnimationFrame(tryFill);
           }
@@ -225,8 +229,16 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
                 </Form.Item>
               </Col>
               <Col span={8}>
-                <Form.Item name="estimatedCloseDate" label="预计成交日期">
-                  <Input type="date" />
+                <Form.Item
+                  name="estimatedCloseDate"
+                  label="预计成交日期"
+                  getValueFromEvent={(d) => (d ? d.format('YYYY-MM-DD') : undefined)}
+                >
+                  <DatePicker
+                    style={{ width: '100%' }}
+                    placeholder="选择预计成交日期"
+                    disabledDate={(current) => !!current && current < dayjs().startOf('day')}
+                  />
                 </Form.Item>
               </Col>
             </Row>

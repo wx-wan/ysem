@@ -201,6 +201,7 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 ### 2026-08-04
 
 - **商机表单 (`SalesFormModal`) 阶段联动重构与首次赋值修复**：
+  - 「预计成交日期」改用 Ant Design `DatePicker`（原为原生 `input[type=date]`），并加 `disabledDate` 限制，只可选当日及之后的日期，不可选之前的日期
   - 按阶段（线索 / 商机 / 样品单 / 订单）分块渲染条件字段：线索→感兴趣产品+备注；商机→预估金额+采购意向+预计成交日期；样品单→样品类型+数量+状态；订单→订单金额+下单/交付日期+付款条件+状态
   - 修复「首次打开编辑弹窗时预计成交金额/预计成交时间未赋值」：原 `setTimeout(0)` 在条件字段（经 `Form.useWatch` 异步挂载）尚未渲染即赋值导致丢失，改为按 stage 轮询 `requestAnimationFrame` + `getFieldInstance` 等待字段实例挂载后再 `setFieldsValue`
   - 保存逻辑下沉父级：组件仅负责校验与数字类型转换，通过 `onSuccess(values)` 回传；持久化与前端缓存统一由 `Customers.tsx` 处理（先乐观更新 `detailCustomer` 缓存保持一致，再 `salesApi` 落库，最后回源详情）
