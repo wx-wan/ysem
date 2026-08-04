@@ -673,7 +673,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       <div
                         onClick={() => onAddPipeline?.(customer)}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
                           padding: '12px 16px', borderRadius: 12, cursor: 'pointer',
                           background: ct.primaryBg,
                           border: `1px dashed ${ct.primary}`,
