@@ -241,13 +241,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     fontSize: 15, lineHeight: 1, transition: 'all 0.22s ease', padding: 0, flexShrink: 0,
   });
 
-  // ---- 添加区块的阶段入口按钮（线索/商机/订单） ----
-  const addEntryBtn = (color: string, bg: string): React.CSSProperties => ({
-    padding: '4px 12px', borderRadius: 8, cursor: 'pointer',
-    border: `1px solid ${color}`, color, background: bg,
-    fontSize: 12, fontWeight: 500, lineHeight: 1.6, transition: 'all 0.18s ease', outline: 'none',
-  });
-
   // ---- tab 配置 ----
   const tabOptions = [
     { key: 'pipeline' as const, label: '概览', count: realPipelines.length },
@@ -680,52 +673,35 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       <div
                         onClick={() => onAddPipeline?.(customer)}
                         style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          gap: 12, padding: '12px 16px', borderRadius: 12, cursor: 'pointer',
-                          background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
-                          border: `1px dashed ${token.colorPrimary}`,
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '12px 16px', borderRadius: 12, cursor: 'pointer',
+                          background: ct.primaryBg,
+                          border: `1px dashed ${ct.primary}`,
                           transition: 'all .2s',
                         }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.borderStyle = 'solid';
-                          e.currentTarget.style.boxShadow = `0 2px 12px ${token.colorPrimaryBg}`;
+                          e.currentTarget.style.boxShadow = `0 2px 12px ${ct.primary}25`;
+                          e.currentTarget.style.background = ct.primaryLight;
                         }}
                         onMouseLeave={(e) => {
                           e.currentTarget.style.borderStyle = 'dashed';
                           e.currentTarget.style.boxShadow = 'none';
+                          e.currentTarget.style.background = ct.primaryBg;
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                          <span
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                              width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                              background: token.colorPrimary, color: '#fff', fontSize: 14,
-                            }}
-                          >
-                            <PlusOutlined />
-                          </span>
-                          <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText, whiteSpace: 'nowrap' }}>
-                            新建销售记录
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => onAddPipeline?.(customer)}
-                            style={addEntryBtn(token.colorPrimary, token.colorPrimaryBg)}
-                          >线索</button>
-                          <button
-                            type="button"
-                            onClick={() => onAddPipeline?.(customer)}
-                            style={addEntryBtn('#d97706', '#fff7ed')}
-                          >商机</button>
-                          <button
-                            type="button"
-                            onClick={() => onCreateOrder?.(customer)}
-                            style={addEntryBtn('#16a34a', '#f0fdf4')}
-                          >订单</button>
-                        </div>
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                            background: ct.primary, color: '#fff', fontSize: 14,
+                          }}
+                        >
+                          <PlusOutlined />
+                        </span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText, whiteSpace: 'nowrap' }}>
+                          新建销售记录
+                        </span>
                       </div>
                     )}
                     {activeTab === 'orders' && paginatedData.map((it: UnifiedRecord, index: number) => (
