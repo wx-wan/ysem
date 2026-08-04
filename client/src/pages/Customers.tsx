@@ -9,7 +9,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
 import {
-  listCacheKey, getListCache, setListCache, invalidateAll, invalidateDetail, fetchCustomerDetail, installCacheLifecycle,
+  listCacheKey, getListCache, setListCache, invalidateAll, invalidateDetail, setDetailCache, installCacheLifecycle,
 } from '../utils/customerCache';
 import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
@@ -305,9 +305,12 @@ export default function CustomersPage() {
     setPipelineEditOpen(false);
     setEditingPipeline(null);
     setDetailVersion(v => v + 1);
-    // 3) 回源详情缓存（不拉列表：概览聚合金额来自详情缓存，已由上方乐观更新保持一致）
+    // 3) 仅更新前端详情缓存，不再发网络回源（概览聚合金额来自详情缓存，已由上方乐观更新保持一致）
     if (cid) {
-      await fetchCustomerDetail(cid, true); // 回源并写回 detailCache
+      setDetailCustomer((prev2) => {
+        if (prev2) setDetailCache(prev2);
+        return prev2;
+      });
     }
     invalidateDetail(cid || '');
   }, [detailCustomer, editingPipeline, message]);
@@ -334,8 +337,17 @@ export default function CustomersPage() {
       // 刷新客户详情（数据层来自缓存，不拉列表）
       setDetailVersion(v => v + 1);
       if (detailCustomer) {
-        const fresh = await fetchCustomerDetail(detailCustomer.id, true);
-        setDetailCustomer(fresh);
+        setDetailCustomer((prev) => {
+          if (!prev) return prev;
+          const pipelines = (prev.pipelines || []).map((p: any) =>
+            p.id === convertPipeline.id
+              ? { ...p, orderStatus: '成交', orderType: convertOrderType, orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined }
+              : p
+          );
+          const updated = { ...prev, pipelines };
+          setDetailCache(updated);
+          return updated;
+        });
       }
       invalidateDetail(detailCustomer?.id || '');
     } catch {
@@ -358,8 +370,13 @@ export default function CustomersPage() {
           // 刷新客户详情（数据层来自缓存，不拉列表）
           setDetailVersion(v => v + 1);
           if (detailCustomer) {
-            const fresh = await fetchCustomerDetail(detailCustomer.id, true);
-            setDetailCustomer(fresh);
+            setDetailCustomer((prev) => {
+              if (!prev) return prev;
+              const pipelines = (prev.pipelines || []).filter((p: any) => p.id !== pipeline.id);
+              const updated = { ...prev, pipelines };
+              setDetailCache(updated);
+              return updated;
+            });
           }
           invalidateDetail(detailCustomer?.id || '');
         } catch {
@@ -403,11 +420,9 @@ export default function CustomersPage() {
 
   const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
-    if (detailCustomer) {
-      const fresh = await fetchCustomerDetail(detailCustomer.id, true); // 强制回源，确保订单后数据最新
-      setDetailCustomer(fresh);
-    }
-    invalidateDetail(detailCustomer?.id || '');
+    // 订单数据已通过 orderApi 持久化；保持前端详情缓存，不额外回源
+    // （订单成功属详情内变更，切走标签页时缓存失效，下次进入自然刷新）
+    if (detailCustomer) setDetailCache(detailCustomer);
   }, [detailCustomer]);
 
   // ========== 渲染卡片视图 ==========
