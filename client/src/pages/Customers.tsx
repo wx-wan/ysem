@@ -275,8 +275,8 @@ export default function CustomersPage() {
   }, []);
 
   // 按类型打开对应新建表单（线索/商机走 SalesFormModal，订单走 OrderFormModal）
+  // 注意：保留客户详情弹窗不关闭，新建表单叠在其上
   const openCreatePipeline = useCallback((c: Customer, stage: 'LEAD' | 'OPPORTUNITY' = 'LEAD') => {
-    setDetailModalOpen(false);
     setNewTypeOpen(false);
     setNewTypeCustomer(null);
     setEditingPipeline(null);
