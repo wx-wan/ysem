@@ -36,7 +36,7 @@ export default function Sales() {
   const [keyword, setKeyword] = useState('');
   const [filterStage, setFilterStage] = useState<string>('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useState(19);
 
   // 弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
@@ -93,9 +93,9 @@ export default function Sales() {
 
   // ============ 操作 ============
 
-  const handleCreate = () => {
+  const handleCreate = (stage: string = 'LEAD') => {
     setEditingItem(null);
-    setInitialFormStage('LEAD');
+    setInitialFormStage(stage);
     fetchAssignUsers();
     setModalOpen(true);
   };
@@ -104,6 +104,21 @@ export default function Sales() {
     setEditingItem(item);
     fetchAssignUsers();
     setModalOpen(true);
+  };
+
+  const handleFormSuccess = async (values: any) => {
+    try {
+      if (editingItem) {
+        await salesApi.update(editingItem.id, values);
+        message.success('保存成功');
+      } else {
+        await salesApi.create(values);
+        message.success('创建成功');
+      }
+      refresh();
+    } catch {
+      message.error('保存失败，请重试');
+    }
   };
 
   const handleViewDetail = async (id: string) => {
@@ -202,6 +217,71 @@ export default function Sales() {
 
   const ListView = () => (
     <Card variant="borderless" style={{ borderRadius: 16 }}>
+      {/* 顶部添加区块：占用一栏高度，与表格风格统一，不动原列表逻辑 */}
+      <div
+        onClick={() => handleCreate('LEAD')}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: 12, padding: '14px 18px', marginBottom: 16,
+          borderRadius: 12, cursor: 'pointer',
+          background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
+          border: `1px dashed ${token.colorPrimary}`,
+          transition: 'all .2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderStyle = 'solid';
+          e.currentTarget.style.boxShadow = `0 2px 12px ${token.colorPrimaryBg}`;
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderStyle = 'dashed';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <Space size={10}>
+          <span
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 8,
+              background: token.colorPrimary, color: '#fff', fontSize: 16,
+            }}
+          >
+            <PlusOutlined />
+          </span>
+          <div style={{ lineHeight: 1.3 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
+              新建销售记录
+            </div>
+            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
+              在这里快速添加一条线索、商机、样品单或订单
+            </div>
+          </div>
+        </Space>
+        <Space size={8} onClick={(e) => e.stopPropagation()}>
+          {STAGES.map((s) => (
+            <Button
+              key={s.key}
+              size="small"
+              onClick={() => handleCreate(s.key)}
+              style={{
+                borderRadius: 8,
+                borderColor: s.color,
+                color: s.color,
+                background: s.bg,
+                fontWeight: 500,
+              }}
+            >
+              <span
+                style={{
+                  display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
+                  background: s.color, marginRight: 6, verticalAlign: 'middle',
+                }}
+              />
+              {s.label}
+            </Button>
+          ))}
+        </Space>
+      </div>
+
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space wrap>
           <Select
@@ -288,7 +368,7 @@ export default function Sales() {
       {/* 工具栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>新增</Button>
           <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入</Button>
         </Space>
 
@@ -380,8 +460,7 @@ export default function Sales() {
         assignUsers={assignUsers}
         initialStage={initialFormStage}
         onClose={() => { setModalOpen(false); setEditingItem(null); }}
-        onSuccess={refresh}
-        api={{ create: salesApi.create, update: salesApi.update }}
+        onSuccess={handleFormSuccess}
       />
       <SalesDetailDrawer
         open={detailOpen}

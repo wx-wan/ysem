@@ -198,7 +198,10 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
-### 2026-08-04
+### 2026-08-04（补充）
+
+- **销售列表顶部新增「添加」区块**：将列表表格整体下移、每页默认条数 `pageSize` 由 20 减为 19（少显示一栏），腾出的位置在表格上方插入一个风格统一的"新建销售记录"区块（`borderRadius:12`、主色 `#1677ff` 虚线边框 + 渐变底、hover 变实线并加阴影），内含「线索/商机/样品单/订单」四个阶段色点快捷入口，点击直接以对应阶段打开新增表单；**不改动原 Table 的 dataSource / 分页 / 筛选逻辑**
+- `SalesFormModal` 在销售页场景由父级 `Sales.tsx` 负责落库（`handleFormSuccess` 调 `salesApi.create/update` 后 `refresh`），与详情页的缓存模式分工一致
 
 - **商机表单 (`SalesFormModal`) 阶段联动重构与首次赋值修复**：
   - 「预计成交日期」改用 Ant Design `DatePicker`（原为原生 `input[type=date]`），并加 `disabledDate` 限制，只可选当日及之后的日期，不可选之前的日期
