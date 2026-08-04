@@ -44,6 +44,8 @@ interface CustomerDetailModalProps {
   onRelease?: (customer: Customer) => void;
   onDelete?: (customer: Customer) => void;
   onAddPipeline?: (customer: Customer) => void;
+  /** 点击「新建销售记录」区块：由父级弹出类型选择（线索/商机/订单） */
+  onPickNewType?: (customer: Customer) => void;
   onCreateOrder?: (customer: Customer) => void;
   /** 切换重点客户成功后由父级刷新数据 */
   onToggleKeyAccount?: (customer: Customer) => void;
@@ -85,7 +87,7 @@ type UnifiedRecord =
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
+  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onPickNewType, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
   onEditPipeline, onConvertPipeline, onDeletePipeline, detailVersion,
 }) => {
   const { modal } = App.useApp();
@@ -671,7 +673,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {activeTab === 'orders' && (
                       <div
-                        onClick={() => onAddPipeline?.(customer)}
+                        onClick={() => onPickNewType?.(customer)}
                         style={{
                           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
                           padding: '12px 16px', borderRadius: 12, cursor: 'pointer',

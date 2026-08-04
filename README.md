@@ -198,6 +198,10 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
+### 2026-08-04（补充 2）
+
+- **「新建销售记录」补充类型选择逻辑**：点击详情弹窗「新建销售记录」区块 → 弹出类型选择弹窗（线索 / 商机 / 订单）；线索为手动新建（后续可扩展为产品链接点击同步）、商机打开 `SalesFormModal`(`initialStage=OPPORTUNITY`)、订单打开 `OrderFormModal`；补全原 TODO 占位的 `openCreatePipeline`，改为真正打开表单并通过 `newPipelineStage` 控制新建阶段
+
 ### 2026-08-04（补充）
 
 - **销售列表顶部新增「添加」区块**：将列表表格整体下移、每页默认条数 `pageSize` 由 20 减为 19（少显示一栏），腾出的位置在表格上方插入一个风格统一的"新建销售记录"区块（`borderRadius:12`、主色 `#1677ff` 虚线边框 + 渐变底、hover 变实线并加阴影），内含「线索/商机/样品单/订单」四个阶段色点快捷入口，点击直接以对应阶段打开新增表单；**不改动原 Table 的 dataSource / 分页 / 筛选逻辑**

@@ -67,6 +67,11 @@ export default function CustomersPage() {
   // 商机编辑弹窗
   const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
+  const [newPipelineStage, setNewPipelineStage] = useState<string>('LEAD');
+
+  // 新建销售记录：类型选择弹窗（线索 / 商机 / 订单）
+  const [newTypeOpen, setNewTypeOpen] = useState(false);
+  const [newTypeCustomer, setNewTypeCustomer] = useState<Customer | null>(null);
 
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
@@ -263,11 +268,21 @@ export default function CustomersPage() {
     }
   }, [message, fetchData]);
 
-  const openCreatePipeline = useCallback((c: Customer) => {
+  // 打开「新建销售记录」类型选择弹窗
+  const openPickNewType = useCallback((c: Customer) => {
+    setNewTypeCustomer(c);
+    setNewTypeOpen(true);
+  }, []);
+
+  // 按类型打开对应新建表单（线索/商机走 SalesFormModal，订单走 OrderFormModal）
+  const openCreatePipeline = useCallback((c: Customer, stage: 'LEAD' | 'OPPORTUNITY' = 'LEAD') => {
     setDetailModalOpen(false);
-    // TODO: 新增商机（待接入）
-    message.info(`新增商机 ${c.companyName}（待接入）`);
-  }, [message]);
+    setNewTypeOpen(false);
+    setNewTypeCustomer(null);
+    setEditingPipeline(null);
+    setNewPipelineStage(stage);
+    setPipelineEditOpen(true);
+  }, []);
 
   // 编辑商机：数据来自父级（详情里的 pipelines 已是完整 SalesItem），无需再请求
   const handleEditPipeline = useCallback((pipeline: any) => {
@@ -555,7 +570,7 @@ export default function CustomersPage() {
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}
-        onAddPipeline={(c) => openCreatePipeline(c)}
+        onPickNewType={(c) => openPickNewType(c)}
         onCreateOrder={(c) => openCreateOrder(c.id)}
         onEditPipeline={handleEditPipeline}
         onConvertPipeline={handleConvertPipeline}
@@ -595,10 +610,11 @@ export default function CustomersPage() {
         onSuccess={handleOrderSuccess}
       />
 
-      {/* ===== 商机编辑弹窗 ===== */}
+      {/* ===== 商机编辑 / 新建弹窗 ===== */}
       <SalesFormModal
         open={pipelineEditOpen}
         editingItem={editingPipeline}
+        initialStage={newPipelineStage}
         assignUsers={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
             onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); }}
             onSuccess={handlePipelineEditSuccess}
@@ -623,6 +639,59 @@ export default function CustomersPage() {
             <Radio.Button value="FORMAL">正式订单</Radio.Button>
             <Radio.Button value="SAMPLE">样品单</Radio.Button>
           </Radio.Group>
+        </div>
+      </Modal>
+
+      {/* 新建销售记录 — 选择类型（线索 / 商机 / 订单） */}
+      <Modal
+        title="新建销售记录"
+        open={newTypeOpen}
+        footer={null}
+        onCancel={() => { setNewTypeOpen(false); setNewTypeCustomer(null); }}
+        width={520}
+        destroyOnHidden
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, padding: '8px 0 4px' }}>
+          {[
+            { key: 'LEAD', label: '线索', desc: '手动新建，或后续由产品链接点击同步', color: '#1677ff' },
+            { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交', color: '#d97706' },
+            { key: 'ORDER', label: '订单', desc: '已成交的正式订单或样品单', color: '#16a34a' },
+          ].map((opt) => (
+            <div
+              key={opt.key}
+              onClick={() => {
+                if (!newTypeCustomer) return;
+                if (opt.key === 'ORDER') {
+                  setNewTypeOpen(false);
+                  setNewTypeCustomer(null);
+                  openCreateOrder(newTypeCustomer.id);
+                } else {
+                  openCreatePipeline(newTypeCustomer, opt.key as 'LEAD' | 'OPPORTUNITY');
+                }
+              }}
+              style={{
+                cursor: 'pointer', padding: '18px 16px', borderRadius: 12,
+                border: `1px solid ${token.colorBorderSecondary}`, background: token.colorBgContainer,
+                transition: 'all .2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = opt.color;
+                e.currentTarget.style.boxShadow = `0 4px 16px ${opt.color}22`;
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = token.colorBorderSecondary;
+                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.color }} />
+                <span style={{ fontSize: 15, fontWeight: 600, color: token.colorText }}>{opt.label}</span>
+              </div>
+              <div style={{ fontSize: 12, color: token.colorTextSecondary, lineHeight: 1.5 }}>{opt.desc}</div>
+            </div>
+          ))}
         </div>
       </Modal>
     </div>
