@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Spin, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,21 @@ import { authApi } from '../api/auth';
 import HeaderTools from './HeaderTools';
 
 const { Header, Content } = Layout;
+
+// 路由 → 页面名映射
+const routeTitles: Record<string, string> = {
+  '/dashboard': '仪表盘',
+  '/sales': '销售管理',
+  '/orders': '订单管理',
+  '/production': '生产管理',
+  '/shipment': '发货管理',
+  '/customers': '客户管理',
+  '/reports': '数据报表',
+  '/system/user': '用户管理',
+  '/system/role': '角色管理',
+  '/system/dept': '部门管理',
+  '/system/perm': '权限管理',
+};
 
 export default function MainLayout() {
   const { t } = useTranslation();
@@ -39,6 +54,15 @@ export default function MainLayout() {
   useEffect(() => {
     fetchRates();
   }, []);
+
+  // 动态设置标签页标题
+  const pageTitle = useMemo(() => {
+    const name = routeTitles[location.pathname] || '';
+    return name ? `${name} - Joylifetoy` : 'Joylifetoy';
+  }, [location.pathname]);
+  useEffect(() => {
+    document.title = pageTitle;
+  }, [pageTitle]);
 
   const handleLogout = () => {
     authApi.logout().finally(() => {

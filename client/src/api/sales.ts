@@ -26,6 +26,7 @@ export interface SalesItem {
   deliveryDate?: string;
   paymentTerms?: string;
   orderStatus?: string;
+  orderType?: string;   // SAMPLE / FORMAL
   orderNotes?: string;
   assignedTo?: string;
   assignee?: { id: string; realName: string; username: string } | null;

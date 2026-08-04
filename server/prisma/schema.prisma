@@ -184,7 +184,11 @@ model Order {
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   orderNo      String?
   orderDate    String?
+  orderType    String?  // SAMPLE / FORMAL  订单类型：样品单 / 正式订单
   amountCNY    Float?
+  sampleAmountCNY Float? // 样品单金额（当订单类型为 SAMPLE 时）
+  moldFeeCNY   Float?   // 模具费（正式订单关联，满足条件可退）
+  moldFeeRefundable Boolean? @default(false) // 模具费是否可退
   deliveryDate String?
   paymentTerms String?
   status       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
@@ -234,6 +238,7 @@ model SalesPipeline {
   deliveryDate      String?  // 交付日期
   paymentTerms      String?  // 付款条件
   orderStatus       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
+  orderType         String?  // SAMPLE / FORMAL  转化后的订单类型
   orderNotes        String?
 
   // 系统字段

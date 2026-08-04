@@ -88,7 +88,11 @@ export interface Order {
   customerId: string;
   orderNo?: string;
   orderDate?: string;
+  orderType?: string;     // SAMPLE / FORMAL
   amountCNY?: number;
+  sampleAmountCNY?: number;
+  moldFeeCNY?: number;
+  moldFeeRefundable?: boolean;
   deliveryDate?: string;
   paymentTerms?: string;
   status?: string;

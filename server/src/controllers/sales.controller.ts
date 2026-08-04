@@ -33,6 +33,7 @@ const createPipelineSchema = z.object({
   deliveryDate: z.string().optional().nullable(),
   paymentTerms: z.string().optional().nullable(),
   orderStatus: z.string().optional().nullable(),
+  orderType: z.enum(['SAMPLE', 'FORMAL']).optional().nullable(),
   orderNotes: z.string().optional().nullable(),
   assignedTo: z.string().optional().nullable(),
 });

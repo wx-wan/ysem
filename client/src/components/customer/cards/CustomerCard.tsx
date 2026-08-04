@@ -1,6 +1,6 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
-import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../../KeyAccountStar';
 import type { Customer } from '../../../api/customers';
 import { getGrade, getCustomerLogicLabel } from '../shared/utils';
@@ -194,6 +194,15 @@ const CustomerCard = memo(function CustomerCard({
               </span>
             )}
           </div>
+          {/* 首次合作日期 */}
+          {customer.firstOrderDate && (
+            <div style={{ marginTop: 4, position: 'relative', zIndex: 1 }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
+                <MoneyCollectOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.firstOrderDate}</span>
+              </span>
+            </div>
+          )}
 
           {/* 操作图标组：头部右下角（编辑 / 转交 / 释放 / 删除） */}
           {(onEdit || canOperate) && (

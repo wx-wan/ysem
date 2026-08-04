@@ -129,14 +129,16 @@ export default function ReportsPage() {
                     </span>
                   }
                   value={item.value}
-                  valueStyle={{
-                    fontSize: 26,
-                    fontWeight: 700,
-                    color: token.colorText,
-                    letterSpacing: '-0.3px',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
+                  styles={{
+                    content: {
+                      fontSize: 26,
+                      fontWeight: 700,
+                      color: token.colorText,
+                      letterSpacing: '-0.3px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }
                   }}
                   suffix={item.suffix ? <span style={{ fontSize: 16, color: token.colorTextTertiary }}>{item.suffix}</span> : undefined}
                 />

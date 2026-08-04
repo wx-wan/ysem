@@ -198,6 +198,20 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
+### 2026-08-04
+
+- **商机表单 (`SalesFormModal`) 阶段联动重构与首次赋值修复**：
+  - 按阶段（线索 / 商机 / 样品单 / 订单）分块渲染条件字段：线索→感兴趣产品+备注；商机→预估金额+采购意向+预计成交日期；样品单→样品类型+数量+状态；订单→订单金额+下单/交付日期+付款条件+状态
+  - 修复「首次打开编辑弹窗时预计成交金额/预计成交时间未赋值」：原 `setTimeout(0)` 在条件字段（经 `Form.useWatch` 异步挂载）尚未渲染即赋值导致丢失，改为按 stage 轮询 `requestAnimationFrame` + `getFieldInstance` 等待字段实例挂载后再 `setFieldsValue`
+  - 保存逻辑下沉父级：组件仅负责校验与数字类型转换，通过 `onSuccess(values)` 回传；持久化与前端缓存统一由 `Customers.tsx` 处理（先乐观更新 `detailCustomer` 缓存保持一致，再 `salesApi` 落库，最后回源详情）
+  - 移除打开编辑时的 `salesApi.get`（直接复用父级传入的完整 `SalesItem`）与保存后的列表刷新（`fetchData`），整条数据流统一来自缓存
+- **详情内变更统一走缓存**：关闭详情、转化商机、删除商机、订单成功等场景均不再触发列表请求，仅更新/回源详情缓存（聚合金额在 `CustomerOverview` 基于 `detailCustomer.pipelines` 实时计算）；真正改变列表基础字段的场景（编辑/转交/删除/导入客户）保留失效刷新
+- **商机转订单弹窗**：新增「转为订单」确认弹窗，支持选择订单类型（正式订单 / 样品单），预计成交金额自动作为订单金额
+- **订单/销售模型扩展（schema）**：`Order` 新增 `orderType`(SAMPLE/FORMAL)、`sampleAmountCNY`(样品单金额)、`moldFeeCNY`(模具费)、`moldFeeRefundable`(模具费可退)；`SalesPipeline` 新增 `orderType`；后端 `order.controller` 完善 `create`/`update` 字段写入
+- **客户卡片新增「首次合作日期」**：在头部展示 `customer.firstOrderDate`；新增 `server/src/scripts/backfill-firstOrderDate.ts` 脚本回填老数据的首次合作日期（取客户最早订单 `orderDate` 写入 `firstOrderDate`）
+- **浏览器标签页标题**：`MainLayout` 按当前路由动态设置 `document.title`（如「客户管理 - Joylifetoy」），`index.html` 与 `i18n` 应用名统一为 `Joylifetoy`
+- **数据报告 (`Reports`)**：图表与卡片样式优化（金额卡片 `token.colorText`、阶段卡片 `stage.color` 等主题色对齐）
+
 ### 2026-08-01
 
 - **自定义字体**：引入 Montserrat（英文）+ 思源黑体 SourceHanSansCN（中文），字体子集化压缩至 ~368KB

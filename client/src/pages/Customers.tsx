@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  App, Spin, theme, Row, Col, Pagination,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio,
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
+import { salesApi, SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
@@ -19,10 +20,11 @@ import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
 import OrderFormModal from '../components/customer/modals/OrderFormModal';
+import SalesFormModal from '../components/sales/SalesFormModal';
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
 
   // ========== 状态 ==========
   const [loading, setLoading] = useState(false);
@@ -61,6 +63,18 @@ export default function CustomersPage() {
   // 订单弹窗
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [orderCustomer, setOrderCustomer] = useState<Customer | null>(null);
+
+  // 商机编辑弹窗
+  const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
+
+  // 转化订单弹窗
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
+  const [convertPipeline, setConvertPipeline] = useState<SalesItem | null>(null);
+  const [convertOrderType, setConvertOrderType] = useState<'FORMAL' | 'SAMPLE'>('FORMAL');
+
+  // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
+  const [detailVersion, setDetailVersion] = useState(0);
 
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role?.code === 'admin';
@@ -255,6 +269,106 @@ export default function CustomersPage() {
     message.info(`新增商机 ${c.companyName}（待接入）`);
   }, [message]);
 
+  // 编辑商机：数据来自父级（详情里的 pipelines 已是完整 SalesItem），无需再请求
+  const handleEditPipeline = useCallback((pipeline: any) => {
+    setEditingPipeline(pipeline as SalesItem);
+    setPipelineEditOpen(true);
+  }, []);
+
+  // 商机编辑保存成功：先更新前端缓存保证界面一致，最后再持久化到数据库
+  const handlePipelineEditSuccess = useCallback(async (values: any) => {
+    const cid = detailCustomer?.id;
+    // 1) 先更新前端缓存（乐观更新详情中的商机数据），保证前端数据一致
+    if (cid && detailCustomer && editingPipeline) {
+      setDetailCustomer((prev) => {
+        if (!prev) return prev;
+        const pipelines = prev.pipelines ? [...prev.pipelines] : [];
+        const idx = pipelines.findIndex((p: any) => p.id === editingPipeline.id);
+        const updated = { ...editingPipeline, ...values, stage: values.stage || editingPipeline.stage };
+        if (idx >= 0) pipelines[idx] = updated;
+        else pipelines.push(updated);
+        return { ...prev, pipelines };
+      });
+    }
+    // 2) 最后更新到数据库
+    try {
+      if (editingPipeline) {
+        await salesApi.update(editingPipeline.id, values);
+        message.success('更新成功');
+      } else {
+        await salesApi.create(values);
+        message.success('创建成功');
+      }
+    } catch (e) {
+      message.error('保存失败，请重试');
+    }
+    setPipelineEditOpen(false);
+    setEditingPipeline(null);
+    setDetailVersion(v => v + 1);
+    // 3) 回源详情缓存（不拉列表：概览聚合金额来自详情缓存，已由上方乐观更新保持一致）
+    if (cid) {
+      await fetchCustomerDetail(cid, true); // 回源并写回 detailCache
+    }
+    invalidateDetail(cid || '');
+  }, [detailCustomer, editingPipeline, message]);
+
+  // 商机转订单
+  const handleConvertPipeline = useCallback((pipeline: SalesItem) => {
+    setConvertPipeline(pipeline);
+    setConvertOrderType('FORMAL');
+    setConvertModalOpen(true);
+  }, []);
+
+  const handleConvertConfirm = useCallback(async () => {
+    if (!convertPipeline) return;
+    try {
+      await salesApi.update(convertPipeline.id, {
+        orderStatus: '成交',
+        orderType: convertOrderType,
+        orderAmount: convertPipeline.estimatedAmount,
+        orderDate: convertPipeline.estimatedCloseDate || undefined,
+      } as any);
+      message.success(`商机已转为${convertOrderType === 'SAMPLE' ? '样品单' : '正式订单'}`);
+      setConvertModalOpen(false);
+      setConvertPipeline(null);
+      // 刷新客户详情（数据层来自缓存，不拉列表）
+      setDetailVersion(v => v + 1);
+      if (detailCustomer) {
+        const fresh = await fetchCustomerDetail(detailCustomer.id, true);
+        setDetailCustomer(fresh);
+      }
+      invalidateDetail(detailCustomer?.id || '');
+    } catch {
+      message.error('转化失败');
+    }
+  }, [convertPipeline, convertOrderType, message, detailCustomer]);
+
+  // 删除商机
+  const handleDeletePipeline = useCallback((pipeline: SalesItem) => {
+    modal.confirm({
+      title: '删除商机',
+      content: `确认删除商机「${pipeline.title || pipeline.companyName}」？此操作不可撤销。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await salesApi.delete(pipeline.id);
+          message.success('商机已删除');
+          // 刷新客户详情（数据层来自缓存，不拉列表）
+          setDetailVersion(v => v + 1);
+          if (detailCustomer) {
+            const fresh = await fetchCustomerDetail(detailCustomer.id, true);
+            setDetailCustomer(fresh);
+          }
+          invalidateDetail(detailCustomer?.id || '');
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
+  }, [message, detailCustomer]);
+
   const openCreateOrder = useCallback((customerId: string) => {
     const found = list.find((c) => c.id === customerId);
     if (found) {
@@ -294,8 +408,7 @@ export default function CustomersPage() {
       setDetailCustomer(fresh);
     }
     invalidateDetail(detailCustomer?.id || '');
-    fetchData();
-  }, [detailCustomer, fetchData]);
+  }, [detailCustomer]);
 
   // ========== 渲染卡片视图 ==========
   const renderCardView = useMemo(() => (
@@ -420,7 +533,7 @@ export default function CustomersPage() {
       <CustomerDetailModal
         open={detailModalOpen}
         customer={detailCustomer}
-        onClose={() => setDetailModalOpen(false)}
+        onClose={() => { setDetailModalOpen(false); }}
         onDetailLoaded={handleDetailLoaded}
         onSaved={handleDetailUpdated}
         onTagsChanged={handleTagsChanged}
@@ -429,6 +542,10 @@ export default function CustomersPage() {
         onDelete={handleDeleteFromModal}
         onAddPipeline={(c) => openCreatePipeline(c)}
         onCreateOrder={(c) => openCreateOrder(c.id)}
+        onEditPipeline={handleEditPipeline}
+        onConvertPipeline={handleConvertPipeline}
+        onDeletePipeline={handleDeletePipeline}
+        detailVersion={detailVersion}
         onToggleKeyAccount={async (c) => {
           // 先本地乐观更新（保留聚合字段，避免金额被清成 undefined），再调用后端持久化
           const nextKey = !c.isKeyAccount;
@@ -462,6 +579,37 @@ export default function CustomersPage() {
         onClose={() => { setOrderModalOpen(false); setOrderCustomer(null); }}
         onSuccess={handleOrderSuccess}
       />
+
+      {/* ===== 商机编辑弹窗 ===== */}
+      <SalesFormModal
+        open={pipelineEditOpen}
+        editingItem={editingPipeline}
+        assignUsers={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
+            onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); }}
+            onSuccess={handlePipelineEditSuccess}
+          />
+
+      {/* 商机转化订单 — 选择订单类型 */}
+      <Modal
+        title="转为订单"
+        open={convertModalOpen}
+        onOk={handleConvertConfirm}
+        onCancel={() => { setConvertModalOpen(false); setConvertPipeline(null); }}
+        okText="确认转化"
+        cancelText="取消"
+        destroyOnHidden
+      >
+        <div style={{ marginBottom: 12 }}>
+          将商机「<strong>{convertPipeline?.title || convertPipeline?.companyName}</strong>」转为成交订单，预计成交金额 ¥{convertPipeline?.estimatedAmount?.toLocaleString() || 0} 将作为订单金额。
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>订单类型：</span>
+          <Radio.Group value={convertOrderType} onChange={e => setConvertOrderType(e.target.value)}>
+            <Radio.Button value="FORMAL">正式订单</Radio.Button>
+            <Radio.Button value="SAMPLE">样品单</Radio.Button>
+          </Radio.Group>
+        </div>
+      </Modal>
     </div>
   );
 }

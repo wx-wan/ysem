@@ -278,7 +278,7 @@ export default function Sales() {
               <Statistic
                 title={<span style={{ color: stage.color, fontSize: 13 }}>{stage.label}</span>}
                 value={stats[stage.key] || 0}
-                valueStyle={{ color: stage.color, fontSize: 26, fontWeight: 700 }}
+                styles={{ content: { color: stage.color, fontSize: 26, fontWeight: 700 } }}
               />
             </Card>
           </Col>

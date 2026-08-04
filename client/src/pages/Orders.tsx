@@ -215,7 +215,7 @@ export default function OrdersPage() {
               title={`累计金额 (${currency.code})`}
               value={totalAmount}
               precision={0}
-              valueStyle={{ color: '#52c41a' }}
+              styles={{ content: { color: '#52c41a' } }}
               formatter={(v) => <Price value={Number(v)} />}
             />
           </Card>

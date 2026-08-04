@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, message, Modal, Skeleton } from 'antd';
+import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, App, message, Skeleton } from 'antd';
 import AppModal from '../../AppModal';
 import {
   DollarOutlined,
@@ -16,6 +16,8 @@ import {
   UserOutlined,
   IdcardOutlined,
   NumberOutlined,
+  MoneyCollectOutlined,
+  RiseOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
@@ -50,6 +52,12 @@ interface CustomerDetailModalProps {
   onSaved?: (customer: Customer) => void;
   /** 标签变更：仅传入客户 id 与最新的标签字符串，由父级做最小化同步 */
   onTagsChanged?: (id: string, tags: string) => void;
+  /** 商机操作回调 */
+  onEditPipeline?: (pipeline: RealPipeline) => void;
+  onConvertPipeline?: (pipeline: RealPipeline) => void;
+  onDeletePipeline?: (pipeline: RealPipeline) => void;
+  /** 详情版本号：商机编辑/转化/删除后递增，触发 modal 内部重新拉取客户数据 */
+  detailVersion?: number;
 }
 
 /** 真实商机记录（来自 getById 的 pipelines，非模拟数据） */
@@ -67,23 +75,34 @@ interface RealPipeline {
   updatedAt?: string;
 }
 
+/** 销售记录统一条目：订单 + 商机管道，按创建时间混合排序 */
+type UnifiedRecord =
+  | { kind: 'order'; data: Order }
+  | { kind: 'pipeline'; data: RealPipeline };
+
 // ============================================================
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
+  onEditPipeline, onConvertPipeline, onDeletePipeline, detailVersion,
 }) => {
+  const { modal } = App.useApp();
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
-  // 概览 tab 不分页；销售记录每页 7 条；跟进动态每页 9 条（均匹配弹窗右侧高度，超出则分页）
-  const pageSize = activeTab === 'pipeline' ? 3 : activeTab === 'activities' ? 9 : 7;
+  // 概览 tab 不分页；销售记录每页 6 条；跟进动态每页 8 条
+  const pageSize = activeTab === 'pipeline' ? 3 : activeTab === 'orders' ? 6 : 8;
 
   // 抽屉编辑状态
   const [editDrawerOpen, setEditDrawerOpen] = useState(false);
 
   // 详情异步加载状态（open 时由 getById 补充完整数据）
-  const [detailLoading, setDetailLoading] = useState(false);
+  // 用正向标记：初始 false，仅 fetch 成功后才置 true。避免首帧显示"暂无记录"的中间态
+  const [detailLoaded, setDetailLoaded] = useState(false);
+
+  // 商机列表项悬浮态（控制侧边操作按钮滑出）
+  const [hoveredPipelineId, setHoveredPipelineId] = useState<string | null>(null);
 
   const ct = getCustomerTier(customer);
 
@@ -108,23 +127,26 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   useEffect(() => {
     // 仅在弹窗打开且客户存在时拉取；依赖加入 open，
     // 保证「同一客户二次打开」也会重新补充完整数据（列表项不含 orders/activities）
-    if (!open || !customer?.id) return;
+    if (!open || !customer?.id) {
+      setDetailLoaded(false);
+      return;
+    }
     let cancelled = false;
-    setDetailLoading(true);
+    setDetailLoaded(false);
     fetchCustomerDetail(customer.id).then((data) => {
       if (!cancelled && data) {
         onDetailLoaded?.(data);
+        setDetailLoaded(true);
       }
-    }).catch(() => { /* 忽略，保留列表项数据渲染 */ })
-      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    }).catch(() => { /* 忽略，保留列表项数据渲染 */ });
     return () => { cancelled = true; };
     // 依赖 open：每次打开（含同一客户二次打开）都重新补充详情，避免数据丢失
-  }, [open, customer?.id]);
+  }, [open, customer?.id, detailVersion]);
 
   /** 删除客户：二次确认后交由父级执行 */
   const handleDelete = () => {
     if (!customer) return;
-    Modal.confirm({
+    modal.confirm({
       title: '删除客户',
       content: `确定要删除客户「${customer.companyName || customer.contactName || '-'}」吗？删除后不可恢复。`,
       okText: '删除',
@@ -191,7 +213,13 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     let data: any[] = [];
     switch (activeTab) {
       case 'pipeline': data = realPipelines; break;
-      case 'orders': data = customer?.orders || []; break;
+      case 'orders': {
+        const orders: UnifiedRecord[] = (customer?.orders || []).map(o => ({ kind: 'order', data: o }));
+        const orderPipelines: UnifiedRecord[] = realPipelines.map(p => ({ kind: 'pipeline', data: p }));
+        data = [...orders, ...orderPipelines].sort(
+          (a, b) => new Date(b.data.createdAt || '').getTime() - new Date(a.data.createdAt || '').getTime()
+        );
+      } break;
       case 'activities': data = customer?.activities || []; break;
     }
     const start = (currentPage - 1) * pageSize;
@@ -200,7 +228,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   const totalCount =
     activeTab === 'pipeline' ? realPipelines.length :
-    activeTab === 'orders' ? (customer?.orders?.length ?? 0) :
+    activeTab === 'orders' ? ((customer?.orders?.length ?? 0) + realPipelines.length) :
     activeTab === 'activities' ? (customer?.activities?.length ?? 0) : 0;
 
   // ---- 圆形操作按钮样式工厂 ----
@@ -225,12 +253,21 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     const ownerName = item.assignee?.realName || customer?.owner?.realName || '未分配';
     const stage = item.orderStatus || item.sampleStatus || '商机';
     const stageColor = item.orderStatus ? '#16a34a' : item.sampleStatus ? '#d97706' : ct.primary;
+    const isHovered = hoveredPipelineId === item.id;
+
+    const actionBtnBase: React.CSSProperties = {
+      width: 32, height: 32, borderRadius: 8, border: `1px solid ${token.colorBorderSecondary}`,
+      background: token.colorBgContainer, cursor: 'pointer',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 14, transition: 'all 0.18s ease', outline: 'none', color: token.colorTextSecondary,
+    };
+
     return (
       <div
         key={item.id}
         style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16, cursor: 'default', position: 'relative', overflow: 'hidden' }}
-        onMouseEnter={listCardHover}
-        onMouseLeave={listCardLeave}
+        onMouseEnter={(e) => { listCardHover(e); setHoveredPipelineId(item.id); }}
+        onMouseLeave={(e) => { listCardLeave(e); setHoveredPipelineId(null); }}
       >
         {/* 左侧：阶段标签 */}
         <div style={{ flexShrink: 0, minWidth: 80 }}>
@@ -244,11 +281,17 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           )}
         </div>
 
-        {/* 中间：标题 */}
+        {/* 中间：标题 + 创建时间 + 预计成交 */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.title || item.companyName || '-'}</Text>
+          {item.createdAt && (
+            <Text ellipsis style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3, display: 'block' }}>
+              <ClockCircleOutlined style={{ marginRight: 4, fontSize: 10 }} />
+              {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm')}
+            </Text>
+          )}
           {item.estimatedCloseDate && (
-            <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
+            <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2, display: 'block' }}>
               预计成交 {item.estimatedCloseDate}
             </Text>
           )}
@@ -260,7 +303,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={item.estimatedAmount} /></Text>
         </div>
 
-        {/* 最右：负责人 */}
+        {/* 负责人 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <Avatar size={26} style={{ backgroundColor: stageColor, fontSize: 12, fontWeight: 700 }}>
@@ -268,6 +311,54 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
             </Avatar>
             <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{ownerName}</span>
           </div>
+        </div>
+
+        {/* 侧边操作按钮组（hover 时滑出） */}
+        <div
+          style={{
+            position: 'absolute',
+            right: isHovered ? 8 : -108,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            gap: 6,
+            transition: 'right 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+            padding: '4px',
+            borderRadius: 10,
+            background: token.colorBgContainer,
+            boxShadow: isHovered ? `0 2px 12px ${ct.primary}1a` : 'none',
+          }}
+        >
+          {onEditPipeline && (
+            <button type="button" title="编辑商机"
+              style={actionBtnBase}
+              onClick={(e) => { e.stopPropagation(); onEditPipeline(item); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = ct.primaryBg; e.currentTarget.style.borderColor = ct.primary + '40'; e.currentTarget.style.color = ct.primary; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
+            >
+              <EditOutlined />
+            </button>
+          )}
+          {onConvertPipeline && (
+            <button type="button" title="转为订单"
+              style={actionBtnBase}
+              onClick={(e) => { e.stopPropagation(); onConvertPipeline(item); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#e6f7e6'; e.currentTarget.style.borderColor = '#16a34a40'; e.currentTarget.style.color = '#16a34a'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
+            >
+              <RiseOutlined />
+            </button>
+          )}
+          {onDeletePipeline && (
+            <button type="button" title="删除商机"
+              style={actionBtnBase}
+              onClick={(e) => { e.stopPropagation(); onDeletePipeline(item); }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = '#fff1f0'; e.currentTarget.style.borderColor = '#ff4d4f40'; e.currentTarget.style.color = '#ff4d4f'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
+            >
+              <DeleteOutlined />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -353,7 +444,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       <AppModal
         open={open}
         onClose={onClose}
-        width={1000}
+        width={1200}
         centered
         closable={false}
         maskClosable={!editDrawerOpen}
@@ -362,7 +453,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         bodyStyle={{ overflow: 'hidden', borderBottomLeftRadius: 20, borderBottomRightRadius: 20 }}
       >
         {customer && (
-          <div style={{ display: 'flex', minHeight: 750, background: token.colorBgContainer }}>
+          <div style={{ display: 'flex', minHeight: 500, background: token.colorBgContainer }}>
             {/* ==================== 左侧：上半彩色 + 下半白色标签区 ==================== */}
             <div
               style={{
@@ -449,6 +540,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   <InfoRow icon={<MailOutlined style={{ fontSize: 14 }} />} value={customer.email} />
                   <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
                   <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
+                  <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderDate || undefined} />
                 </div>
               </div>
 
@@ -566,7 +658,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   <div style={{ background: token.colorFillQuaternary, borderRadius: 16, padding: '4px 4px 8px', marginBottom: 8 }}>
                     <CustomerOverview customer={customer} />
                   </div>
-                ) : detailLoading ? (
+                ) : !detailLoaded ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     {Array.from({ length: 3 }).map((_, i) => (
                       <div key={i} style={{ background: token.colorBgContainer, border: `1px solid ${token.colorBorderSecondary}`, borderRadius: 16, padding: '16px 20px' }}>
@@ -576,13 +668,17 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   </div>
                 ) : paginatedData.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeTab === 'orders' && paginatedData.map((it, index) => <React.Fragment key={`orders-${it.id ?? 'x'}-${index}`}>{renderOrderItem(it as Order)}</React.Fragment>)}
+                    {activeTab === 'orders' && paginatedData.map((it: UnifiedRecord, index: number) => (
+                      <React.Fragment key={`orders-${it.data.id}-${index}`}>
+                        {it.kind === 'order' ? renderOrderItem(it.data) : renderPipelineItem(it.data)}
+                      </React.Fragment>
+                    ))}
                     {activeTab === 'activities' && paginatedData.map((it, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
                   </div>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={
                     <div style={{ color: token.colorTextSecondary, fontSize: 13 }}>
-                      {activeTab === 'orders' && '暂无订单记录'}
+                      {activeTab === 'orders' && '暂无销售记录'}
                       {activeTab === 'activities' && '暂无活动记录'}
                     </div>
                   } style={{ padding: '52px 0' }}>

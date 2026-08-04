@@ -249,7 +249,6 @@ export default function CustomerStats({
                                 showInfo={false}
                                 strokeColor={colors[idx % colors.length]}
                                 railColor="#f1f5f9"
-                                size={8}
                               />
                             </div>
                             <span style={{ fontSize: 12, color: token.colorTextSecondary, minWidth: 36, textAlign: 'right' }}>
