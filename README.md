@@ -211,7 +211,7 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
   - 移除打开编辑时的 `salesApi.get`（直接复用父级传入的完整 `SalesItem`）与保存后的列表刷新（`fetchData`），整条数据流统一来自缓存
 - **详情弹窗高度一致 + 滚动条全局统一**：
   - 详情弹窗「卡片列表区域」由 `minHeight:520` 改为固定 `height:520`，切换各 tab（概览/销售记录/跟进动态）时弹窗总高恒定，数据过多时列表区内部滚动而非撑高弹窗
-  - 新增全局滚动条样式（`styles/global.css`）：细 6px、track 用 `--ant-color-fill-quaternary`、thumb 用 Operate 主色 `rgba(22,119,255,.35)`（hover `.6`）、圆角 4px，Firefox 用 `scrollbar-width:thin` + `scrollbar-color`；与 `CustomerOverview` 滚动区风格一致
+  - 新增全局滚动条样式（`styles/global.css`）：细 6px、track `#f1f5f9`、thumb 中性灰 `#cbd5e1`（hover `#94a3b8`）圆角 4px，Firefox 用 `scrollbar-width:thin`；采用中性灰而非主色以降低视觉权重、更清晰，与 `CustomerOverview` 滚动区风格一致
 - **商机转订单弹窗**：新增「转为订单」确认弹窗，支持选择订单类型（正式订单 / 样品单），预计成交金额自动作为订单金额
 - **订单/销售模型扩展（schema）**：`Order` 新增 `orderType`(SAMPLE/FORMAL)、`sampleAmountCNY`(样品单金额)、`moldFeeCNY`(模具费)、`moldFeeRefundable`(模具费可退)；`SalesPipeline` 新增 `orderType`；后端 `order.controller` 完善 `create`/`update` 字段写入
 - **客户卡片新增「首次合作日期」**：在头部展示 `customer.firstOrderDate`；新增 `server/src/scripts/backfill-firstOrderDate.ts` 脚本回填老数据的首次合作日期（取客户最早订单 `orderDate` 写入 `firstOrderDate`）

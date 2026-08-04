@@ -826,26 +826,26 @@ html, body {
   }
 }
 
-/* ========== 全局滚动条样式（Operate 主题，与 CustomerOverview 滚动区一致） ========== */
+/* ========== 全局滚动条样式（中性灰，低权重更清晰） ========== */
 *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 *::-webkit-scrollbar-track {
-  background: var(--ant-color-fill-quaternary, #f1f5f9);
+  background: #f1f5f9;
   border-radius: 4px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(22, 119, 255, 0.35);
+  background: #cbd5e1;
   border-radius: 4px;
   transition: background 0.2s;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(22, 119, 255, 0.6);
+  background: #94a3b8;
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(22, 119, 255, 0.35) var(--ant-color-fill-quaternary, #f1f5f9);
+  scrollbar-color: #cbd5e1 #f1f5f9;
 }
 
 /* ========== 客户卡片荣誉层级 ========== */
