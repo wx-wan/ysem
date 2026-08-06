@@ -46,17 +46,25 @@ async function main() {
   // 2. 创建默认权限（菜单 & 按钮）
   const menuPermissions = [
     { name: '仪表盘', code: 'dashboard', type: 'MENU' as const, path: '/dashboard', icon: 'DashboardOutlined', sort: 0 },
-    { name: '系统管理', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 1 },
-    { name: '用户管理', code: 'system:user', type: 'MENU' as const, path: '/system/user', icon: 'UserOutlined', sort: 10 },
-    { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11 },
-    { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12 },
-    { name: '权限管理', code: 'system:perm', type: 'MENU' as const, path: '/system/perm', icon: 'SafetyOutlined', sort: 13 },
+    { name: '销售管理', code: 'sales', type: 'MENU' as const, path: '/sales', icon: 'ShoppingOutlined', sort: 1 },
+    { name: '产品', code: 'sales:products', type: 'MENU' as const, path: '/sales/products', icon: 'AppstoreOutlined', sort: 10, parent: 'sales' },
+    { name: '线索', code: 'sales:leads', type: 'MENU' as const, path: '/sales/leads', icon: 'ProjectOutlined', sort: 11, parent: 'sales' },
+    { name: '商机', code: 'sales:opportunities', type: 'MENU' as const, path: '/sales/opportunities', icon: 'ThunderboltOutlined', sort: 12, parent: 'sales' },
+    { name: '订单', code: 'sales:orders', type: 'MENU' as const, path: '/sales/orders', icon: 'ShoppingCartOutlined', sort: 13, parent: 'sales' },
+    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 2 },
+    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 3 },
+    { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 4 },
+    { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 5 },
+    { name: '系统管理', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
+    { name: '用户管理', code: 'system:user', type: 'MENU' as const, path: '/system/user', icon: 'UserOutlined', sort: 10, parent: 'system' },
+    { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11, parent: 'system' },
+    { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12, parent: 'system' },
+    { name: '权限管理', code: 'system:perm', type: 'MENU' as const, path: '/system/perm', icon: 'SafetyOutlined', sort: 13, parent: 'system' },
   ];
 
   // 先建父级菜单
-  let systemMenuId: string | null = null;
   for (const perm of menuPermissions) {
-    const created = await prisma.permission.upsert({
+    await prisma.permission.upsert({
       where: { code: perm.code },
       update: {},
       create: {
@@ -69,17 +77,18 @@ async function main() {
         parentId: null,
       },
     });
-    if (perm.code === 'system') systemMenuId = created.id;
   }
 
   // 更新子菜单的 parentId
-  if (systemMenuId) {
-    const childCodes = ['system:user', 'system:role', 'system:dept', 'system:perm'];
-    for (const code of childCodes) {
-      await prisma.permission.update({
-        where: { code },
-        data: { parentId: systemMenuId },
-      });
+  for (const perm of menuPermissions) {
+    if (perm.parent) {
+      const parent = await prisma.permission.findUnique({ where: { code: perm.parent } });
+      if (parent) {
+        await prisma.permission.update({
+          where: { code: perm.code },
+          data: { parentId: parent.id },
+        });
+      }
     }
   }
 
@@ -91,6 +100,12 @@ async function main() {
     { name: '角色新增', code: 'system:role:create', type: 'BUTTON' as const, sort: 0 },
     { name: '角色编辑', code: 'system:role:edit', type: 'BUTTON' as const, sort: 1 },
     { name: '角色删除', code: 'system:role:delete', type: 'BUTTON' as const, sort: 2 },
+    { name: '部门新增', code: 'system:dept:create', type: 'BUTTON' as const, sort: 0 },
+    { name: '部门编辑', code: 'system:dept:edit', type: 'BUTTON' as const, sort: 1 },
+    { name: '部门删除', code: 'system:dept:delete', type: 'BUTTON' as const, sort: 2 },
+    { name: '权限新增', code: 'system:perm:create', type: 'BUTTON' as const, sort: 0 },
+    { name: '权限编辑', code: 'system:perm:edit', type: 'BUTTON' as const, sort: 1 },
+    { name: '权限删除', code: 'system:perm:delete', type: 'BUTTON' as const, sort: 2 },
   ];
 
   for (const perm of buttonPermissions) {
@@ -109,6 +124,32 @@ async function main() {
       update: {},
       create: { roleId: adminRole.id, permissionId: perm.id },
     });
+  }
+
+  // 为业务人员分配业务菜单权限（仪表盘/销售/客户/订单/报表）
+  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'customers', 'orders', 'production', 'shipment', 'reports'];
+  for (const code of businessMenuCodes) {
+    const perm = await prisma.permission.findUnique({ where: { code } });
+    if (perm) {
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: businessRole.id, permissionId: perm.id } },
+        update: {},
+        create: { roleId: businessRole.id, permissionId: perm.id },
+      });
+    }
+  }
+
+  // 为普通用户分配基础菜单权限（仪表盘/客户/报表）
+  const userMenuCodes = ['dashboard', 'customers', 'reports'];
+  for (const code of userMenuCodes) {
+    const perm = await prisma.permission.findUnique({ where: { code } });
+    if (perm) {
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: userRole.id, permissionId: perm.id } },
+        update: {},
+        create: { roleId: userRole.id, permissionId: perm.id },
+      });
+    }
   }
 
   // 4. 创建默认部门

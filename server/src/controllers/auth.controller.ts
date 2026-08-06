@@ -38,7 +38,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const user = await prisma.user.findUnique({
       where: { username },
-      include: { role: true },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
     });
 
     if (!user) {
@@ -64,6 +64,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     };
 
     const tokens = generateTokens(payload);
+
+    // 计算权限 code 列表
+    const permissions =
+      user.role?.code === 'admin'
+        ? ['*']
+        : user.role?.permissions.map((rp) => rp.permission.code) ?? [];
 
     // 保存 refreshToken 并更新登录时间
     await prisma.user.update({
@@ -93,6 +99,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         avatar: user.avatar,
         role: user.role,
         departmentId: user.departmentId,
+        permissions,
       },
     }, '登录成功');
   } catch (err) {
@@ -185,7 +192,8 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
     select: {
       id: true, username: true, realName: true, email: true, phone: true,
       avatar: true, status: true, lastLoginAt: true, createdAt: true,
-      role: true, department: true,
+      role: { include: { permissions: { include: { permission: true } } } },
+      department: true,
     },
   });
 
@@ -193,7 +201,13 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
     fail(res, 404, '用户不存在');
     return;
   }
-  success(res, user);
+
+  const permissions =
+    user.role?.code === 'admin'
+      ? ['*']
+      : user.role?.permissions.map((rp) => rp.permission.code) ?? [];
+
+  success(res, { ...user, permissions });
 };
 
 // 修改密码

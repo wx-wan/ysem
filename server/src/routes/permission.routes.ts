@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getPermissions, getPermissionTree, createPermission, updatePermission, deletePermission } from '../controllers/permission.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePerm } from '../middleware/auth';
 
 const router = Router();
 
@@ -23,7 +23,7 @@ router.use(authenticate);
  *       200:
  *         description: 权限列表
  */
-router.get('/', getPermissions);
+router.get('/', requirePerm('system:perm'), getPermissions);
 
 /**
  * @swagger
@@ -35,7 +35,7 @@ router.get('/', getPermissions);
  *       200:
  *         description: 树形权限结构
  */
-router.get('/tree', getPermissionTree);
+router.get('/tree', requirePerm('system:perm'), getPermissionTree);
 
 /**
  * @swagger
@@ -62,9 +62,9 @@ router.get('/tree', getPermissionTree);
  *       200:
  *         description: 创建成功
  */
-router.post('/', authorize('admin'), createPermission);
+router.post('/', requirePerm('system:perm:create'), createPermission);
 
-router.put('/:id', authorize('admin'), updatePermission);
-router.delete('/:id', authorize('admin'), deletePermission);
+router.put('/:id', requirePerm('system:perm:edit'), updatePermission);
+router.delete('/:id', requirePerm('system:perm:delete'), deletePermission);
 
 export default router;

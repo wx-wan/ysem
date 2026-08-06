@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntdApp } from 'antd';
 import { useAuthStore } from './stores/useAuthStore';
+import { usePermission } from './hooks/usePermission';
 import { setMessageHolder } from './api/message-holder';
 import MainLayout from './layouts/MainLayout';
 import LoginPage from './pages/Login';
@@ -29,10 +30,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// 路由守卫 — 角色校验（仅 admin 可访问系统管理）
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const role = useAuthStore((s) => s.user?.role?.code);
-  if (role !== 'admin') return <Navigate to="/dashboard" replace />;
+// 路由守卫 — 权限校验（按页面所需的 permission code）
+function PermRoute({ perm, children }: { perm: string; children: React.ReactNode }) {
+  const { hasPerm } = usePermission();
+  if (!hasPerm(perm)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
 
@@ -66,10 +67,10 @@ function App() {
         <Route path="shipment" element={<ShipmentPage />} />
         <Route path="customers" element={<CustomersPage />} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="system/user" element={<AdminRoute><UserPage /></AdminRoute>} />
-        <Route path="system/role" element={<AdminRoute><RolePage /></AdminRoute>} />
-        <Route path="system/dept" element={<AdminRoute><DeptPage /></AdminRoute>} />
-        <Route path="system/perm" element={<AdminRoute><PermPage /></AdminRoute>} />
+        <Route path="system/user" element={<PermRoute perm="system:user"><UserPage /></PermRoute>} />
+        <Route path="system/role" element={<PermRoute perm="system:role"><RolePage /></PermRoute>} />
+        <Route path="system/dept" element={<PermRoute perm="system:dept"><DeptPage /></PermRoute>} />
+        <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

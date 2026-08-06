@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import PermFormModal from '../components/perm/PermFormModal';
+import { usePermission } from '../hooks/usePermission';
 
 interface PermRecord {
   id: string;
@@ -25,6 +26,7 @@ const permApi = {
 export default function PermPage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const { hasPerm } = usePermission();
   const [permissions, setPermissions] = useState<PermRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -94,15 +96,21 @@ export default function PermPage() {
       title: t('common.operation'), width: 200, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('perm.addChild')}</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
-          <Popconfirm title={t('perm.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
-          </Popconfirm>
+          {hasPerm('system:perm:edit') && (
+            <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('perm.addChild')}</Button>
+          )}
+          {hasPerm('system:perm:edit') && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          )}
+          {hasPerm('system:perm:delete') && (
+            <Popconfirm title={t('perm.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ], [t, typeMap]);
+  ], [t, typeMap, hasPerm]);
 
   const parentOptions = useMemo(() => permissions
     .filter((p) => p.type === 'MENU')
@@ -113,7 +121,9 @@ export default function PermPage() {
       <div className="page-header"><h2>{t('perm.title')}</h2></div>
       <div className="search-bar">
         <Button icon={<ReloadOutlined />} onClick={fetchPerms}>{t('common.refresh')}</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('perm.addTitle')}</Button>
+        {hasPerm('system:perm:create') && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('perm.addTitle')}</Button>
+        )}
       </div>
 
       <div className="table-container">

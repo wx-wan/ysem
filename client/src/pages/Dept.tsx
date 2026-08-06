@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import DeptFormModal from '../components/dept/DeptFormModal';
+import { usePermission } from '../hooks/usePermission';
 
 interface DeptRecord {
   id: string;
@@ -28,6 +29,7 @@ const deptApi = {
 export default function DeptPage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const { hasPerm } = usePermission();
   const [depts, setDepts] = useState<DeptRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -86,15 +88,21 @@ export default function DeptPage() {
       title: t('common.operation'), width: 200, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('dept.addChild')}</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
-          <Popconfirm title={t('dept.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
-          </Popconfirm>
+          {hasPerm('system:dept:create') && (
+            <Button type="link" size="small" onClick={() => handleAdd(record.id)}>{t('dept.addChild')}</Button>
+          )}
+          {hasPerm('system:dept:edit') && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          )}
+          {hasPerm('system:dept:delete') && (
+            <Popconfirm title={t('dept.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ], [t]);
+  ], [t, hasPerm]);
 
   const parentDeptOptions = useMemo(() => depts.map((d) => ({ label: d.name, value: d.id })), [depts]);
 
@@ -103,7 +111,9 @@ export default function DeptPage() {
       <div className="page-header"><h2>{t('dept.title')}</h2></div>
       <div className="search-bar">
         <Button icon={<ReloadOutlined />} onClick={fetchDepts}>{t('common.refresh')}</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('dept.addTitle')}</Button>
+        {hasPerm('system:dept:create') && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('dept.addTitle')}</Button>
+        )}
       </div>
 
       <div className="table-container">

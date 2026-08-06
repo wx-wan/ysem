@@ -17,6 +17,7 @@ export interface LoginResult {
     avatar: string;
     role: { id: string; name: string; code: string } | null;
     departmentId: string;
+    permissions?: string[];
   };
 }
 

@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { getRoles, getRole, createRole, updateRole, deleteRole, assignPermissions } from '../controllers/role.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePerm } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authenticate);
-router.use(authorize('admin'));
+router.use(requirePerm('system:role'));
 
 /**
  * @swagger
@@ -63,9 +63,9 @@ router.get('/:id', getRole);
  *       200:
  *         description: 创建成功
  */
-router.post('/', createRole);
+router.post('/', requirePerm('system:role:create'), createRole);
 
-router.put('/:id', updateRole);
+router.put('/:id', requirePerm('system:role:edit'), updateRole);
 
 /**
  * @swagger
@@ -82,7 +82,7 @@ router.put('/:id', updateRole);
  *       200:
  *         description: 删除成功
  */
-router.delete('/:id', deleteRole);
+router.delete('/:id', requirePerm('system:role:delete'), deleteRole);
 
 /**
  * @swagger

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import RoleFormModal from '../components/role/RoleFormModal';
 import RolePermModal from '../components/role/RolePermModal';
+import { usePermission } from '../hooks/usePermission';
 
 interface RoleRecord {
   id: string;
@@ -31,6 +32,7 @@ const permApi = {
 export default function RolePage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const { hasPerm } = usePermission();
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -93,22 +95,30 @@ export default function RolePage() {
       title: t('common.operation'), width: 220, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>{t('role.permission')}</Button>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
-          <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
-          </Popconfirm>
+          {hasPerm('system:role:edit') && (
+            <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>{t('role.permission')}</Button>
+          )}
+          {hasPerm('system:role:edit') && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          )}
+          {hasPerm('system:role:delete') && (
+            <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ], [t]);
+  ], [t, hasPerm]);
 
   return (
     <>
       <div className="page-header"><h2>{t('role.title')}</h2></div>
       <div className="search-bar">
         <Button icon={<ReloadOutlined />} onClick={fetchRoles}>{t('common.refresh')}</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('role.addTitle')}</Button>
+        {hasPerm('system:role:create') && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('role.addTitle')}</Button>
+        )}
       </div>
 
       <div className="table-container">

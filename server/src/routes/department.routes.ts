@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDepartments, getDeptTree, getDepartment, createDepartment, updateDepartment, deleteDepartment } from '../controllers/department.controller';
-import { authenticate, authorize } from '../middleware/auth';
+import { authenticate, requirePerm } from '../middleware/auth';
 
 const router = Router();
 
@@ -23,7 +23,7 @@ router.use(authenticate);
  *       200:
  *         description: 部门列表
  */
-router.get('/', getDepartments);
+router.get('/', requirePerm('system:dept'), getDepartments);
 
 /**
  * @swagger
@@ -35,10 +35,10 @@ router.get('/', getDepartments);
  *       200:
  *         description: 树形部门结构
  */
-router.get('/tree', getDeptTree);
+router.get('/tree', requirePerm('system:dept'), getDeptTree);
 
-router.get('/:id', getDepartment);
-router.post('/', authorize('admin'), createDepartment);
+router.get('/:id', requirePerm('system:dept'), getDepartment);
+router.post('/', requirePerm('system:dept:create'), createDepartment);
 
 /**
  * @swagger
@@ -55,8 +55,8 @@ router.post('/', authorize('admin'), createDepartment);
  *       200:
  *         description: 更新成功
  */
-router.put('/:id', authorize('admin'), updateDepartment);
+router.put('/:id', requirePerm('system:dept:edit'), updateDepartment);
 
-router.delete('/:id', authorize('admin'), deleteDepartment);
+router.delete('/:id', requirePerm('system:dept:delete'), deleteDepartment);
 
 export default router;

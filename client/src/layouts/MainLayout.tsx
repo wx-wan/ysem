@@ -27,6 +27,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
+import { usePermission } from '../hooks/usePermission';
 import { authApi } from '../api/auth';
 import HeaderTools from './HeaderTools';
 
@@ -103,38 +104,41 @@ export default function MainLayout() {
     if (key.startsWith('/')) navigate(key);
   };
 
-  const roleCode = user?.role?.code || 'user';
-  const isAdmin = roleCode === 'admin';
+  const { hasPerm } = usePermission();
 
-  // 侧边栏菜单
+  // 侧边栏菜单（按权限动态渲染）
   const menuItems: MenuProps['items'] = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
-    {
-      key: 'sales-group',
-      icon: <ShoppingOutlined />,
-      label: t('menu.sales'),
-      children: [
-        { key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') },
-        { key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') },
-        { key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') },
-        { key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') },
-      ],
-    },
-    { key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') },
-    { key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') },
-    { key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') },
-    { key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') },
-    ...(isAdmin
+    ...(hasPerm('sales')
+      ? [
+          {
+            key: 'sales-group',
+            icon: <ShoppingOutlined />,
+            label: t('menu.sales'),
+            children: [
+              ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
+              ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
+              ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
+              ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
+            ],
+          },
+        ]
+      : []),
+    ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
+    ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
+    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
+    ...(hasPerm('reports') ? [{ key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') }] : []),
+    ...(hasPerm('system')
       ? [
           {
             key: 'system-group',
             icon: <SettingOutlined />,
             label: t('menu.system'),
             children: [
-              { key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') },
-              { key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') },
-              { key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') },
-              { key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') },
+              ...(hasPerm('system:user') ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }] : []),
+              ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') }] : []),
+              ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
+              ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
             ],
           },
         ]

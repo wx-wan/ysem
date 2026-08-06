@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import UserFormModal from '../components/user/UserFormModal';
 import { buildTablePagination } from '../components/common/tablePagination';
+import { usePermission } from '../hooks/usePermission';
 
 interface UserRecord {
   id: string;
@@ -38,6 +39,7 @@ const userApi = {
 export default function UserPage() {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const { hasPerm } = usePermission();
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -123,14 +125,18 @@ export default function UserPage() {
       title: t('common.operation'), width: 150, fixed: 'right',
       render: (_, record) => (
         <Space>
-          <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
-          <Popconfirm title={t('user.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
-          </Popconfirm>
+          {hasPerm('system:user:edit') && (
+            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
+          )}
+          {hasPerm('system:user:delete') && (
+            <Popconfirm title={t('user.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ], [t, statusMap]);
+  ], [t, statusMap, hasPerm]);
 
   return (
     <>
@@ -147,7 +153,9 @@ export default function UserPage() {
         />
         <Button type="primary" icon={<SearchOutlined />} onClick={() => { setPage(1); fetchUsers(); }}>{t('common.search')}</Button>
         <Button icon={<ReloadOutlined />} onClick={fetchUsers}>{t('common.refresh')}</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('user.addTitle')}</Button>
+        {hasPerm('system:user:create') && (
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('user.addTitle')}</Button>
+        )}
       </div>
 
       <div className="table-container">

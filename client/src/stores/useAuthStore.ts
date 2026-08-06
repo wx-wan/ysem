@@ -9,6 +9,7 @@ interface UserInfo {
   avatar: string;
   role: { id: string; name: string; code: string } | null;
   departmentId: string;
+  permissions?: string[];
 }
 
 interface AuthState {
@@ -16,7 +17,9 @@ interface AuthState {
   accessToken: string | null;
   refreshToken: string | null;
   isAuthenticated: boolean;
+  permissions: string[];
   setAuth: (user: UserInfo, accessToken: string, refreshToken: string) => void;
+  setPermissions: (permissions: string[]) => void;
   logout: () => void;
   restoreAuth: () => void;
 }
@@ -26,20 +29,29 @@ export const useAuthStore = create<AuthState>((set) => ({
   accessToken: localStorage.getItem('accessToken'),
   refreshToken: localStorage.getItem('refreshToken'),
   isAuthenticated: !!localStorage.getItem('accessToken'),
+  permissions: JSON.parse(localStorage.getItem('permissions') || '[]'),
 
   setAuth: (user, accessToken, refreshToken) => {
+    const permissions = user.permissions ?? [];
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
-    set({ user, accessToken, refreshToken, isAuthenticated: true });
+    localStorage.setItem('permissions', JSON.stringify(permissions));
+    set({ user, accessToken, refreshToken, permissions, isAuthenticated: true });
+  },
+
+  setPermissions: (permissions) => {
+    localStorage.setItem('permissions', JSON.stringify(permissions));
+    set({ permissions });
   },
 
   logout: () => {
     localStorage.clear();
-    set({ user: null, accessToken: null, refreshToken: null, isAuthenticated: false });
+    set({ user: null, accessToken: null, refreshToken: null, permissions: [], isAuthenticated: false });
   },
 
   restoreAuth: () => {
     const token = localStorage.getItem('accessToken');
-    set({ accessToken: token, isAuthenticated: !!token });
+    const permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
+    set({ accessToken: token, permissions, isAuthenticated: !!token });
   },
 }));
