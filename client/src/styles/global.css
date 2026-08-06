@@ -1181,10 +1181,15 @@ html, body {
 .um-row:hover > td {
   background: var(--c-primary-bg) !important;
 }
-/* 修复：固定操作列在 hover 时保持可见 */
+/* 修复：固定操作列必须始终有实色背景，否则会被相邻列 hover 透出 */
+.um-card .ant-table-tbody > tr > td.ant-table-cell-fix-right {
+  background: var(--c-surface) !important;
+  position: sticky;
+  z-index: 3;
+}
 .um-row:hover > td.ant-table-cell-fix-right {
   background: var(--c-primary-bg) !important;
-  z-index: 2;
+  z-index: 3;
 }
 
 .user-cell {
