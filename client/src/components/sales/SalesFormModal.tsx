@@ -1,8 +1,10 @@
 import React from 'react';
-import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker, Button, Space } from 'antd';
+import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { SalesItem } from '../../api/sales';
 import { Customer } from '../../api/customers';
+import { productApi, ProductOption } from '../../api/products';
 import { SALES_STAGES } from './stages';
 
 const STAGES = SALES_STAGES;
@@ -37,17 +39,31 @@ interface Props {
   fixedOwner?: boolean;
   /** 销售页独立新建：全部客户下拉选项（含 raw 客户） */
   customerOptions?: Array<{ label: string; value: string; raw?: Customer }>;
+  /** 产品选项：用于线索关联产品（由父级传入或全部加载） */
+  productOptions?: ProductOption[];
   onClose: () => void;
   /** 保存成功：组件只负责校验并回传（数字已转换后的）值，
    *  持久化与前端缓存更新交由父级统一处理（先更新前端缓存保持一致，最后落库） */
   onSuccess: (values: any) => void;
 }
 
-const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignUsers, initialStage, customer, currentUserId, fixedOwner, customerOptions, onClose, onSuccess }) => {
+const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignUsers, initialStage, customer, currentUserId, fixedOwner, customerOptions, productOptions, onClose, onSuccess }) => {
   const { token } = theme.useToken();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
+  const [innerProductOptions, setInnerProductOptions] = React.useState<ProductOption[]>(productOptions || []);
   const stageForForm = Form.useWatch('stage', form) || 'LEAD';
+
+  // 若父级未传入产品选项，则自行加载
+  React.useEffect(() => {
+    if (productOptions && productOptions.length) {
+      setInnerProductOptions(productOptions);
+    } else if (open) {
+      productApi.options().then((res) => {
+        if (res.data.code === 200) setInnerProductOptions(res.data.data);
+      }).catch(() => {});
+    }
+  }, [productOptions, open]);
 
   const handleSubmit = async () => {
     try {
@@ -56,10 +72,14 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
       const values = {
         ...raw,
         estimatedAmount: raw.estimatedAmount ? Number(raw.estimatedAmount) : undefined,
-        sampleQuantity: raw.sampleQuantity ? Number(raw.sampleQuantity) : undefined,
         orderAmount: raw.orderAmount ? Number(raw.orderAmount) : undefined,
         estimatedCloseDate: raw.estimatedCloseDate
           ? (dayjs.isDayjs(raw.estimatedCloseDate) ? raw.estimatedCloseDate.format('YYYY-MM-DD') : raw.estimatedCloseDate)
+          : undefined,
+        products: Array.isArray(raw.products)
+          ? raw.products
+              .filter((p: any) => p && p.productId)
+              .map((p: any) => ({ productId: p.productId, quantity: p.quantity ? Number(p.quantity) : 1 }))
           : undefined,
       };
       setSaving(true);
@@ -96,7 +116,6 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         const waitFor = {
           LEAD: undefined,
           OPPORTUNITY: 'estimatedAmount',
-          SAMPLE: 'sampleType',
           ORDER: 'orderAmount',
         }[stage];
         let raf = 0;
@@ -106,6 +125,9 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
               ...baseInfo,
               ...editingItem,
               estimatedCloseDate: editingItem.estimatedCloseDate ? dayjs(editingItem.estimatedCloseDate) : undefined,
+              products: editingItem.leadProducts?.length
+                ? editingItem.leadProducts.map((p) => ({ productId: p.productId, quantity: p.quantity }))
+                : undefined,
             });
           } else {
             raf = requestAnimationFrame(tryFill);
@@ -252,8 +274,52 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
 
           {stageForForm === 'LEAD' && (
             <>
-              <Form.Item name="productInterest" label="感兴趣产品">
-                <Input.TextArea rows={2} />
+              <Form.Item label="关联产品" tooltip="线索由产品产生，可关联多个产品及其数量">
+                <Form.List name="products">
+                  {(fields, { add, remove }) => (
+                    <>
+                      {fields.map(({ key, name, ...restField }) => (
+                        <Space key={key} align="baseline" style={{ display: 'flex', marginBottom: 8 }} wrap>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'productId']}
+                            rules={[{ required: true, message: '请选择产品' }]}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Select
+                              showSearch
+                              placeholder="选择产品"
+                              style={{ width: 320 }}
+                              optionFilterProp="label"
+                              options={innerProductOptions.map((p) => ({
+                                label: `${p.name}${p.sku ? `（${p.sku}）` : ''}`,
+                                value: p.id,
+                              }))}
+                            />
+                          </Form.Item>
+                          <Form.Item
+                            {...restField}
+                            name={[name, 'quantity']}
+                            initialValue={1}
+                            style={{ marginBottom: 0 }}
+                          >
+                            <Input type="number" min={1} placeholder="数量" style={{ width: 100 }} />
+                          </Form.Item>
+                          <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#bbb' }} />
+                        </Space>
+                      ))}
+                      <Button
+                        type="dashed"
+                        onClick={() => add({ quantity: 1 })}
+                        block
+                        icon={<PlusOutlined />}
+                        style={{ marginTop: fields.length ? 0 : 0 }}
+                      >
+                        添加关联产品
+                      </Button>
+                    </>
+                  )}
+                </Form.List>
               </Form.Item>
               <Form.Item name="leadNotes" label="备注">
                 <Input.TextArea rows={2} />
@@ -284,31 +350,6 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
                     placeholder="选择预计成交日期"
                     disabledDate={(current) => !!current && current < dayjs().startOf('day')}
                   />
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
-
-          {stageForForm === 'SAMPLE' && (
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item name="sampleType" label="样品类型">
-                  <Input />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="sampleQuantity" label="样品数量">
-                  <Input type="number" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="sampleStatus" label="样品状态">
-                  <Select options={[
-                    { label: '待发送', value: 'PENDING' },
-                    { label: '已发送', value: 'SENT' },
-                    { label: '已确认', value: 'CONFIRMED' },
-                    { label: '已反馈', value: 'FEEDBACK' },
-                  ]} />
                 </Form.Item>
               </Col>
             </Row>

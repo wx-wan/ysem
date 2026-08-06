@@ -88,14 +88,19 @@ export interface Order {
   customerId: string;
   orderNo?: string;
   orderDate?: string;
-  orderType?: string;     // SAMPLE / FORMAL
   amountCNY?: number;
-  sampleAmountCNY?: number;
-  moldFeeCNY?: number;
-  moldFeeRefundable?: boolean;
+  depositAmount?: number;
+  depositPaid?: boolean;
   deliveryDate?: string;
   paymentTerms?: string;
-  status?: string;
+  // 7 阶段流程：预付款 → 下打样单 → 设计 → 开模 → 寄样 → 生产 → 出货
+  status?: 'DEPOSIT' | 'SAMPLE_ORDER' | 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | 'PRODUCTION' | 'SHIPPED' | null;
+  sampleOrderDate?: string;
+  designDate?: string;
+  moldDate?: string;
+  sampleSentDate?: string;
+  productionStartDate?: string;
+  shippedDate?: string;
   notes?: string;
   customer?: { id: string; companyName: string; contactName?: string; ownerId?: string; email?: string; phone?: string; country?: string };
   createdAt: string;
@@ -162,7 +167,7 @@ export const customerApi = {
     request.get<ApiResponse<{
       leadCount: number;
       opportunityCount: number;
-      sampleCount: number;
+      sampleOrderCount: number;
       pipelineOrderCount: number;
       newCustomerCount: number;
       oldCustomerCount: number;

@@ -31,8 +31,24 @@ export interface SalesItem {
   assignedTo?: string;
   assignee?: { id: string; realName: string; username: string } | null;
   activities?: SalesActivity[];
+  leadProducts?: LeadProduct[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LeadProduct {
+  id: string;
+  leadId: string;
+  productId: string;
+  quantity: number;
+  product?: {
+    id: string;
+    name: string;
+    sku?: string | null;
+    type: 'SELF' | 'EXTERNAL';
+    selfKind?: 'FINISHED' | 'SEMI' | null;
+    unit?: string | null;
+  };
 }
 
 export interface SalesActivity {

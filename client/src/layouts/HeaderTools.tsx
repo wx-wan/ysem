@@ -1,10 +1,6 @@
 import { Avatar, Badge, Dropdown } from 'antd';
 import {
-  SettingOutlined,
   UserOutlined,
-  TeamOutlined,
-  ApartmentOutlined,
-  SafetyOutlined,
   BellOutlined,
   TranslationOutlined,
   DollarOutlined,
@@ -31,9 +27,6 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
   const rateToCNY = useCurrencyStore.getState().getRateToCNY();
   const currentLang = i18n.language;
 
-  const roleCode = user?.role?.code || 'user';
-  const hasSystemAccess = roleCode === 'admin';
-
   const toggleLanguage = () => {
     const nextLang = currentLang === 'zh' ? 'en' : 'zh';
     i18n.changeLanguage(nextLang);
@@ -47,30 +40,10 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
 
   const avatarMenuItems: MenuProps['items'] = [
     {
-      key: 'profile',
-      icon: <UserOutlined />,
-      label: t('header.profile'),
-    },
-    {
       key: 'password',
       icon: <KeyOutlined />,
       label: t('header.changePassword'),
     },
-    ...(hasSystemAccess
-      ? [
-          {
-            key: 'system',
-            icon: <SettingOutlined />,
-            label: t('menu.system'),
-            children: [
-              { key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') },
-              { key: '/system/role', icon: <TeamOutlined />, label: t('menu.systemRole') },
-              { key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') },
-              { key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') },
-            ],
-          },
-        ]
-      : []),
     { type: 'divider' as const },
     {
       key: 'logout',

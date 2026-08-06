@@ -2,27 +2,26 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, Tag, Space,
   Card, Statistic, Row, Col, message, Popconfirm, DatePicker,
-  Typography,
+  Typography, Pagination,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
   ShoppingCartOutlined, DeleteOutlined, EyeOutlined,
 } from '@ant-design/icons';
 import { orderApi, Order } from '../api/customers';
+import { ORDER_STAGES, getOrderStatusMeta } from '../api/orders';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import Price from '../components/common/Price';
+import { buildTablePagination } from '../components/common/tablePagination';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
 const { RangePicker } = DatePicker;
 
-const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待确认', color: 'default' },
-  CONFIRMED: { label: '已确认', color: 'processing' },
-  IN_PRODUCTION: { label: '生产中', color: 'orange' },
-  SHIPPED: { label: '已发货', color: 'cyan' },
-  DELIVERED: { label: '已交付', color: 'green' },
-};
+const STATUS_OPTIONS: Record<string, { label: string; color: string }> = ORDER_STAGES.reduce(
+  (acc, s) => { acc[s.key] = { label: s.label, color: s.color }; return acc; },
+  {} as Record<string, { label: string; color: string }>,
+);
 
 export default function OrdersPage() {
   const { currency } = useCurrencyStore();
@@ -72,7 +71,7 @@ export default function OrdersPage() {
   const openCreate = () => {
     setEditingOrder(null);
     form.resetFields();
-    form.setFieldsValue({ status: 'PENDING' });
+    form.setFieldsValue({ status: 'DEPOSIT' });
     setModalOpen(true);
   };
 
@@ -249,11 +248,9 @@ export default function OrdersPage() {
           value={status || undefined}
           onChange={(v) => { setStatus(v || ''); setPage(1); }}
         >
-          <Select.Option value="PENDING">待确认</Select.Option>
-          <Select.Option value="CONFIRMED">已确认</Select.Option>
-          <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-          <Select.Option value="SHIPPED">已发货</Select.Option>
-          <Select.Option value="DELIVERED">已交付</Select.Option>
+          {ORDER_STAGES.map((s) => (
+            <Select.Option key={s.key} value={s.key}>{s.label}</Select.Option>
+          ))}
         </Select>
         <div style={{ flex: 1 }} />
         <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
@@ -269,16 +266,20 @@ export default function OrdersPage() {
         dataSource={list}
         loading={loading}
         scroll={{ x: 1000 }}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: false,
-          showTotal: (t) => `共 ${t} 条`,
-          onChange: (p) => setPage(p),
-        }}
+        pagination={false}
         size="middle"
       />
+
+      {total > pageSize && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+          <Pagination
+            {...buildTablePagination({
+              total, page, pageSize,
+              onChange: (p) => setPage(p),
+            })}
+          />
+        </div>
+      )}
 
       {/* 创建/编辑弹窗 */}
       <Modal

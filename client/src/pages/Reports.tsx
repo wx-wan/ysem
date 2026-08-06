@@ -14,7 +14,7 @@ const { Text, Title } = Typography;
 interface ReportStats {
   leadCount: number;
   opportunityCount: number;
-  sampleCount: number;
+  sampleOrderCount: number;
   pipelineOrderCount: number;
   newCustomerCount: number;
   oldCustomerCount: number;
@@ -27,7 +27,6 @@ interface ReportStats {
 }
 
 export default function ReportsPage() {
-  const { } = useCurrencyStore();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportStats | null>(null);
@@ -71,7 +70,7 @@ export default function ReportsPage() {
   if (loading) return <div style={{ textAlign: 'center', padding: 80 }}><Spin size="large" /></div>;
 
   const stats = report || {
-    leadCount: 0, opportunityCount: 0, sampleCount: 0, pipelineOrderCount: 0,
+    leadCount: 0, opportunityCount: 0, sampleOrderCount: 0, pipelineOrderCount: 0,
     newCustomerCount: 0, oldCustomerCount: 0,
     newCustomerAmount: 0, oldCustomerAmount: 0,
     leadToOpportunity: 0, opportunityToNext: 0, sampleToOrder: 0, leadToOrder: 0,
@@ -98,7 +97,7 @@ export default function ReportsPage() {
     // 第一行
     { title: '线索量', value: stats.leadCount, color: C.primary, icon: <UserOutlined /> },
     { title: '商机量', value: stats.opportunityCount, color: C.success, icon: <AimOutlined /> },
-    { title: '样品单数', value: stats.sampleCount, color: C.warning, icon: <ExperimentOutlined /> },
+    { title: '下打样单数', value: stats.sampleOrderCount, color: C.warning, icon: <ExperimentOutlined /> },
     { title: '订单数', value: stats.pipelineOrderCount, color: C.error, icon: <FileDoneOutlined /> },
     // 第二行
     { title: '老客户数', value: stats.oldCustomerCount, color: C.info, icon: <TeamOutlined /> },
@@ -107,8 +106,8 @@ export default function ReportsPage() {
     { title: '新客户成交金额', value: <Price value={stats.newCustomerAmount} />, color: C.purple, icon: <DollarOutlined /> },
     // 第三行
     { title: '线索→商机转化率', value: stats.leadToOpportunity, color: C.warning, icon: <PercentageOutlined />, suffix: '%' },
-    { title: '商机→样品/订单转化率', value: stats.opportunityToNext, color: C.warning, icon: <RiseOutlined />, suffix: '%' },
-    { title: '样品→订单转化率', value: stats.sampleToOrder, color: C.success, icon: <ShoppingCartOutlined />, suffix: '%' },
+    { title: '商机→订单流转率', value: stats.opportunityToNext, color: C.warning, icon: <RiseOutlined />, suffix: '%' },
+    { title: '下打样单→出货转化率', value: stats.sampleToOrder, color: C.success, icon: <ShoppingCartOutlined />, suffix: '%' },
     { title: '综合转化率（线索→订单）', value: stats.leadToOrder, color: C.primary, icon: <RiseOutlined />, suffix: '%' },
   ];
 

@@ -154,20 +154,20 @@ function computeOverview(customer: Customer): OverviewData {
   // 管道转化率计算
   const pipelines = customer.pipelines || [];
   const totalPipelines = pipelines.length;
-  const oppCount = pipelines.filter(p => ['OPPORTUNITY', 'SAMPLE', 'ORDER'].includes(p.stage)).length;
+  const oppCount = pipelines.filter(p => ['OPPORTUNITY', 'ORDER'].includes(p.stage)).length;
   const orderPipelineCount = pipelines.filter(p => p.stage === 'ORDER').length;
 
   const leadToOppRate = totalPipelines > 0 ? Math.round(oppCount / totalPipelines * 100) : null;
   const oppToOrderRate = oppCount > 0 ? Math.round(orderPipelineCount / oppCount * 100) : null;
   const leadToOrderRate = totalPipelines > 0 ? Math.round(orderPipelineCount / totalPipelines * 100) : null;
 
-  // 样品单数
-  const sampleOrderCount = orders.filter(o => o.orderType === 'SAMPLE').length;
+  // 下打样单阶段订单数（样品单融入订单流程）
+  const sampleOrderCount = orders.filter(o => o.status === 'SAMPLE_ORDER').length;
 
-  // 样品单成交金额（从商机转化、且订单类型为样品单的求和）
-  const sampleOrderAmount = pipelines
-    .filter(p => p.orderStatus === '成交' && p.orderType === 'SAMPLE')
-    .reduce((sum, p) => sum + (p.orderAmount || 0), 0);
+  // 下打样单阶段订单成交金额
+  const sampleOrderAmount = orders
+    .filter(o => o.status === 'SAMPLE_ORDER')
+    .reduce((sum, o) => sum + (o.amountCNY || 0), 0);
 
   return {
     totalAmount,
@@ -608,7 +608,7 @@ const CustomerOverview: React.FC<CustomerOverviewProps> = ({ customer }) => {
           color={ct.primary}
         />
         <StatCard
-          title="样品单数"
+          title="下打样单数"
           value={`${data.sampleOrderCount} 单`}
           icon={<FileTextOutlined />}
           color="#eb2f96"

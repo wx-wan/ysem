@@ -31,20 +31,38 @@ else
     echo "  ✓ 数据库已存在，跳过初始化"
 fi
 
-# Step 3: 启动后端服务
+# Step 3: 启动后端服务（单一实例保护，避免重复 watch 进程堆积导致 CPU 飙高）
 echo ""
 echo "[3/4] 启动后端服务（端口 3000）..."
-nohup npx tsx watch src/index.ts > /tmp/ysem-server.log 2>&1 &
-SERVER_PID=$!
-echo "  ✓ 后端服务已启动 (PID: $SERVER_PID)"
+
+# 端口占用检测：若 3000 已被占用，说明已有实例在跑，直接退出避免叠加
+if lsof -ti :3000 >/dev/null 2>&1; then
+  echo "  ⚠ 端口 3000 已被占用，后端实例可能已在运行。"
+  echo "    如需重启请先停止旧进程："
+  echo "    kill \$(lsof -ti :3000) ; kill \$(lsof -ti :5173)"
+  echo "    跳过后端启动。"
+else
+  nohup npx tsx watch --clear-screen=false src/index.ts > /tmp/ysem-server.log 2>&1 &
+  SERVER_PID=$!
+  echo "$SERVER_PID" > /tmp/ysem-server.pid
+  echo "  ✓ 后端服务已启动 (PID: $SERVER_PID)"
+fi
 
 # Step 4: 启动前端服务
 echo ""
 echo "[4/4] 启动前端服务（端口 5173）..."
 cd /Users/stra/CodeBuddy/ysem/client
-nohup npx vite --host > /tmp/ysem-client.log 2>&1 &
-CLIENT_PID=$!
-echo "  ✓ 前端服务已启动 (PID: $CLIENT_PID)"
+
+if lsof -ti :5173 >/dev/null 2>&1; then
+  echo "  ⚠ 端口 5173 已被占用，前端实例可能已在运行。"
+  echo "    如需重启请先停止旧进程：kill \$(lsof -ti :5173)"
+  echo "    跳过前端启动。"
+else
+  nohup npx vite --host > /tmp/ysem-client.log 2>&1 &
+  CLIENT_PID=$!
+  echo "$CLIENT_PID" > /tmp/ysem-client.pid
+  echo "  ✓ 前端服务已启动 (PID: $CLIENT_PID)"
+fi
 
 echo ""
 echo "========================================="
@@ -58,5 +76,6 @@ echo "  查看日志:"
 echo "    后端: tail -f /tmp/ysem-server.log"
 echo "    前端: tail -f /tmp/ysem-client.log"
 echo ""
-echo "  停止服务: kill $SERVER_PID $CLIENT_PID"
+echo "  停止服务:"
+echo "    kill \$(cat /tmp/ysem-server.pid) \$(cat /tmp/ysem-client.pid)"
 echo "========================================="

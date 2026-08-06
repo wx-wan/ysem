@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Table, Button, Input, Space, Tag, App, Popconfirm } from 'antd';
+import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import UserFormModal from '../components/user/UserFormModal';
+import { buildTablePagination } from '../components/common/tablePagination';
 
 interface UserRecord {
   id: string;
@@ -156,12 +157,20 @@ export default function UserPage() {
           dataSource={users}
           loading={loading}
           scroll={{ x: 1100 }}
-          pagination={{
-            current: page, pageSize, total, showSizeChanger: true, showTotal: (count) => t('common.total', { count }),
-            onChange: (p, ps) => { setPage(p); setPageSize(ps); },
-          }}
+          pagination={false}
         />
       </div>
+
+      {total > pageSize && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+          <Pagination
+            {...buildTablePagination({
+              total, page, pageSize,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+            })}
+          />
+        </div>
+      )}
 
       <UserFormModal
         open={modalOpen}

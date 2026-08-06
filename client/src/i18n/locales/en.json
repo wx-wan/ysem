@@ -72,6 +72,7 @@
   "menu": {
     "dashboard": "Dashboard",
     "sales": "Sales",
+    "products": "Products",
     "orders": "Orders",
     "production": "Production",
     "shipment": "Shipment",

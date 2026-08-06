@@ -72,6 +72,7 @@
   "menu": {
     "dashboard": "仪表盘",
     "sales": "销售",
+    "products": "产品",
     "orders": "订单",
     "production": "生产",
     "shipment": "出货",

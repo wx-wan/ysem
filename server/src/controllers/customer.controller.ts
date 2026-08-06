@@ -1026,8 +1026,9 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
     const [
       leadCount,
       opportunityCount,
-      sampleCount,
+      sampleOrderCount,
       pipelineOrderCount,
+      shippedOrderCount,
       newCustomerCount,
       oldCustomerCount,
       newCustomerOrders,
@@ -1035,8 +1036,10 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
     ] = await Promise.all([
       prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "LEAD" } }),
       prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "OPPORTUNITY" } }),
-      prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "SAMPLE" } }),
+      // 订单 7 阶段中"下打样单"阶段的订单数（取代原 SAMPLE 阶段）
+      prisma.order.count({ where: { status: "SAMPLE_ORDER" } }),
       prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "ORDER" } }),
+      prisma.order.count({ where: { status: "SHIPPED" } }),
       prisma.customer.count({
         where: { ...customerWhere, firstOrderDate: { startsWith: currentYear } },
       }),
@@ -1081,10 +1084,11 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
       ? Math.round((opportunityCount / leadCount) * 100)
       : 0;
     const opportunityToNext = opportunityCount > 0
-      ? Math.round(((sampleCount + pipelineOrderCount) / opportunityCount) * 100)
+      ? Math.round(((sampleOrderCount + pipelineOrderCount) / opportunityCount) * 100)
       : 0;
-    const sampleToOrder = sampleCount > 0
-      ? Math.round((pipelineOrderCount / sampleCount) * 100)
+    // 下打样单 → 出货 转化率
+    const sampleToOrder = sampleOrderCount > 0
+      ? Math.round((shippedOrderCount / sampleOrderCount) * 100)
       : 0;
     const leadToOrder = leadCount > 0
       ? Math.round((pipelineOrderCount / leadCount) * 100)
@@ -1093,7 +1097,7 @@ export const getReportStats = async (req: Request, res: Response, next: NextFunc
     success(res, {
       leadCount,
       opportunityCount,
-      sampleCount,
+      sampleOrderCount,
       pipelineOrderCount,
       newCustomerCount,
       oldCustomerCount,

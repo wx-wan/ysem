@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Space, App } from 'antd';
 import { orderApi, Order } from '../../api/customers';
+import { ORDER_STAGES } from '../../api/orders';
 
 interface Props {
   open: boolean;
@@ -42,7 +43,7 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, editingOrder, onClos
         form.setFieldsValue({ ...editingOrder });
       } else {
         form.resetFields();
-        form.setFieldsValue({ status: 'PENDING' });
+        form.setFieldsValue({ status: 'DEPOSIT' });
       }
     }
   }, [open, editingOrder, form]);
@@ -73,8 +74,26 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, editingOrder, onClos
           <Form.Item name="orderDate" label="订单日期" style={{ width: 170 }}>
             <Input type="date" />
           </Form.Item>
-          <Form.Item name="amountCNY" label="金额（CNY）" style={{ width: 170 }}>
+          <Form.Item name="amountCNY" label="订单金额（CNY）" style={{ width: 170 }}>
             <Input type="number" placeholder="0.00" />
+          </Form.Item>
+        </Space>
+        <Space style={{ width: '100%' }} size={16}>
+          <Form.Item name="depositAmount" label="预付款金额（CNY）" style={{ width: 170 }}>
+            <Input type="number" placeholder="0.00" />
+          </Form.Item>
+          <Form.Item name="depositPaid" label="预付款已付" style={{ width: 170 }}>
+            <Select>
+              <Select.Option value={true}>是</Select.Option>
+              <Select.Option value={false}>否</Select.Option>
+            </Select>
+          </Form.Item>
+          <Form.Item name="status" label="当前阶段" style={{ width: 170 }}>
+            <Select>
+              {ORDER_STAGES.map((s) => (
+                <Select.Option key={s.key} value={s.key}>{s.label}</Select.Option>
+              ))}
+            </Select>
           </Form.Item>
         </Space>
         <Space style={{ width: '100%' }} size={16}>
@@ -83,15 +102,6 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, editingOrder, onClos
           </Form.Item>
           <Form.Item name="paymentTerms" label="付款条件" style={{ width: 170 }}>
             <Input placeholder="如 T/T 30%" />
-          </Form.Item>
-          <Form.Item name="status" label="状态" style={{ width: 170 }}>
-            <Select>
-              <Select.Option value="PENDING">待确认</Select.Option>
-              <Select.Option value="CONFIRMED">已确认</Select.Option>
-              <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-              <Select.Option value="SHIPPED">已发货</Select.Option>
-              <Select.Option value="DELIVERED">已交付</Select.Option>
-            </Select>
           </Form.Item>
         </Space>
         <Form.Item name="notes" label="备注">

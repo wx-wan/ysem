@@ -178,20 +178,28 @@ model CustomerActivity {
 }
 
 // ========== 订单表 ==========
+// 订单阶段（统一流程，样品单融入订单）：
+//   DEPOSIT(预付款) → SAMPLE_ORDER(下打样单) → DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样) → PRODUCTION(生产) → SHIPPED(出货)
 model Order {
   id           String   @id @default(uuid())
   customerId   String
   customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   orderNo      String?
   orderDate    String?
-  orderType    String?  // SAMPLE / FORMAL  订单类型：样品单 / 正式订单
-  amountCNY    Float?
-  sampleAmountCNY Float? // 样品单金额（当订单类型为 SAMPLE 时）
-  moldFeeCNY   Float?   // 模具费（正式订单关联，满足条件可退）
-  moldFeeRefundable Boolean? @default(false) // 模具费是否可退
+  amountCNY    Float?        // 订单金额（CNY）
+  depositAmount Float?       // 预付款金额（CNY）
+  depositPaid  Boolean? @default(false) // 预付款是否已付
   deliveryDate String?
   paymentTerms String?
-  status       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
+  // 7 阶段流程
+  status       String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
+  // 各阶段时间节点（用于进度跟踪，可选）
+  sampleOrderDate String? // 下打样单日期
+  designDate      String? // 设计完成日期
+  moldDate        String? // 开模日期
+  sampleSentDate  String? // 寄样日期
+  productionStartDate String? // 生产开始日期
+  shippedDate     String? // 出货日期
   notes        String?
   createdBy    String?
   createdAt    DateTime @default(now())
@@ -201,7 +209,7 @@ model Order {
 // ========== 销售管道 ==========
 model SalesPipeline {
   id          String      @id @default(uuid())
-  stage       String      @default("LEAD") // LEAD → OPPORTUNITY → SAMPLE → ORDER
+  stage       String      @default("LEAD") // LEAD → OPPORTUNITY → ORDER
 
   // 关联客户
   customerId String?
@@ -226,27 +234,61 @@ model SalesPipeline {
   probability        String? // 采购意向：准成交 / 高意向 / 中意向 / 低意向（直接存储文案，不再存数字）
   opportunityNotes   String?
 
-  // 样品阶段
-  sampleType     String?   // 样品类型
-  sampleQuantity Int?      // 样品数量
-  sampleStatus   String?   // PENDING / SENT / CONFIRMED / FEEDBACK
-  sampleNotes    String?
-
   // 订单阶段
   orderAmount       Float?   // 订单金额(CNY)
   orderDate         String?  // 下单日期
   deliveryDate      String?  // 交付日期
   paymentTerms      String?  // 付款条件
-  orderStatus       String?  // PENDING / CONFIRMED / IN_PRODUCTION / SHIPPED / DELIVERED
-  orderType         String?  // SAMPLE / FORMAL  转化后的订单类型
+  orderStatus       String?  // 订单阶段已统一到 Order 模型（DEPOSIT/SAMPLE_ORDER/DESIGN/MOLD/SAMPLE_SENT/PRODUCTION/SHIPPED）
   orderNotes        String?
 
   // 系统字段
   assignedTo String?
   assignee   User?       @relation(fields: [assignedTo], references: [id])
   activities SalesActivity[]
+  leadProducts LeadProduct[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
+}
+
+// ========== 产品 ==========
+// type: SELF(自产品) / EXTERNAL(外购品)
+// selfKind: 仅 SELF 使用 -> FINISHED(成品) / SEMI(半成品)
+// source: MANUAL(手动录入) / SYNC(平台同步) / RPA(RPA导入)
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  sku         String?  @unique
+  type        String   @default("SELF")      // SELF / EXTERNAL
+  selfKind    String?                     // FINISHED / SEMI（仅自产品）
+  category    String?
+  unit        String?
+  spec        String?
+  description String?                     // 产品描述
+  price       Float?                      // 含税单价
+  currency    String?  @default("CNY")
+  taxRate     Float?  @default(13)         // 税率 %
+  stock       Int?    @default(0)          // 当前库存
+  lowStockAlert Int?   @default(0)         // 最低库存预警
+  source      String   @default("MANUAL")  // MANUAL / SYNC / RPA
+  status      String   @default("ACTIVE")  // ACTIVE / INACTIVE
+  remark      String?
+  leadProducts LeadProduct[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// 线索-产品关联（一条线索可包含多个产品，带数量）
+model LeadProduct {
+  id        String   @id @default(cuid())
+  leadId    String
+  productId String
+  quantity  Int      @default(1)
+  pipeline  SalesPipeline @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([leadId, productId])
 }
 
 // ========== 销售活动日志 ==========

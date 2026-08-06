@@ -15,6 +15,7 @@ import exchangeRoutes from './routes/exchange.routes';
 import salesRoutes from './routes/sales.routes';
 import customerRoutes from './routes/customer.routes';
 import orderRoutes from './routes/order.routes';
+import productRoutes from './routes/product.routes';
 import path from 'path';
 
 const app = express();
@@ -100,6 +101,7 @@ app.use('/api/ext/exchange', exchangeRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
+app.use('/api/products', productRoutes);
 
 // 错误处理
 app.use(errorHandler);

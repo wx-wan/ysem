@@ -67,15 +67,21 @@ interface CustomerDetailModalProps {
 interface RealPipeline {
   id: string;
   title?: string;
+  stage?: string;
   companyName?: string;
   estimatedAmount?: number | null;
   probability?: number | null;
   orderStatus?: string | null;
-  sampleStatus?: string | null;
   estimatedCloseDate?: string | null;
   assignee?: { id: string; realName?: string } | null;
   createdAt?: string;
   updatedAt?: string;
+  leadProducts?: Array<{
+    id: string;
+    productId: string;
+    quantity: number;
+    product?: { id: string; name: string; sku?: string | null; type?: string; selfKind?: string | null };
+  }>;
 }
 
 /** 销售记录统一条目：订单 + 商机管道，按创建时间混合排序 */
@@ -254,8 +260,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   // ---- 商机记录项渲染（真实数据） ----
   const renderPipelineItem = (item: RealPipeline) => {
     const ownerName = item.assignee?.realName || customer?.owner?.realName || '未分配';
-    const stage = item.orderStatus || item.sampleStatus || '商机';
-    const stageColor = item.orderStatus ? '#16a34a' : item.sampleStatus ? '#d97706' : ct.primary;
+    const stage = item.orderStatus || '商机';
+    const stageColor = item.orderStatus ? '#16a34a' : ct.primary;
     const isHovered = hoveredPipelineId === item.id;
 
     const actionBtnBase: React.CSSProperties = {
@@ -298,6 +304,16 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               预计成交 {item.estimatedCloseDate}
             </Text>
           )}
+          {item.stage === 'LEAD' && item.leadProducts?.length ? (
+            <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {item.leadProducts.map((lp) => (
+                <Tag key={lp.id} style={{ margin: 0, fontSize: 11, borderRadius: 8, lineHeight: '18px' }}>
+                  {lp.product?.name || '产品'}
+                  {lp.quantity ? ` ×${lp.quantity}` : ''}
+                </Tag>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         {/* 右侧：预估金额 */}

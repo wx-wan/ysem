@@ -71,13 +71,6 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
           <Descriptions.Item label="预计成交日期">{detailItem.estimatedCloseDate || '-'}</Descriptions.Item>
         </Descriptions>
       )}
-      {detailItem.stage === 'SAMPLE' && (
-        <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
-          <Descriptions.Item label="样品类型">{detailItem.sampleType || '-'}</Descriptions.Item>
-          <Descriptions.Item label="样品数量">{detailItem.sampleQuantity || '-'}</Descriptions.Item>
-          <Descriptions.Item label="样品状态">{detailItem.sampleStatus || '-'}</Descriptions.Item>
-        </Descriptions>
-      )}
       {detailItem.stage === 'ORDER' && (
         <Descriptions column={1} size="small" bordered style={{ marginTop: 16 }}>
           <Descriptions.Item label="订单金额">{detailItem.orderAmount ? <Price value={detailItem.orderAmount} /> : '-'}</Descriptions.Item>

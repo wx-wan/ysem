@@ -4,7 +4,7 @@
   "description": "义乌寿春企业管理系统 - 后端服务",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --clear-screen=false --ignore node_modules --ignore .git --ignore '*.db' --ignore dist src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",

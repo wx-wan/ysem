@@ -1,19 +1,45 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Spin, theme } from 'antd';
+import { Layout, Menu, Spin, theme, Grid } from 'antd';
+import type { MenuProps } from 'antd';
+import {
+  DashboardOutlined,
+  ShoppingOutlined,
+  AppstoreOutlined,
+  ProjectOutlined,
+  ThunderboltOutlined,
+  ShoppingCartOutlined,
+  UnorderedListOutlined,
+  SolutionOutlined,
+  ProfileOutlined,
+  ClusterOutlined,
+  ReconciliationOutlined,
+  SendOutlined,
+  TeamOutlined,
+  BarChartOutlined,
+  SettingOutlined,
+  UserOutlined,
+  ApartmentOutlined,
+  SafetyOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
+} from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { authApi } from '../api/auth';
 import HeaderTools from './HeaderTools';
 
-const { Header, Content } = Layout;
+const { Sider, Header, Content } = Layout;
 
 // 路由 → 页面名映射
 const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
   '/sales': '销售管理',
-  '/orders': '订单管理',
+  '/sales/products': '产品',
+  '/sales/leads': '线索',
+  '/sales/opportunities': '商机',
+  '/sales/orders': '订单',
   '/production': '生产管理',
   '/shipment': '发货管理',
   '/customers': '客户管理',
@@ -30,7 +56,9 @@ export default function MainLayout() {
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
-  const { token: { colorBgContainer } } = theme.useToken();
+  const { token } = theme.useToken();
+  const screens = Grid.useBreakpoint();
+  const [collapsed, setCollapsed] = useState(false);
 
   // 获取用户信息（防 StrictMode 双重挂载重复请求）
   const profileFetched = useRef(false);
@@ -71,35 +99,131 @@ export default function MainLayout() {
     });
   };
 
-  const handleMenuClick = ({ key }: { key: string }) => {
+  const handleMenuClick: MenuProps['onClick'] = ({ key }) => {
     if (key.startsWith('/')) navigate(key);
   };
 
-  const navItems = [
-    { key: '/dashboard', label: t('menu.dashboard') },
-    { key: '/sales', label: t('menu.sales') },
-    { key: '/orders', label: t('menu.orders') },
-    { key: '/production', label: t('menu.production') },
-    { key: '/shipment', label: t('menu.shipment') },
-    { key: '/customers', label: t('menu.customers') },
-    { key: '/reports', label: t('menu.reports') },
+  const roleCode = user?.role?.code || 'user';
+  const isAdmin = roleCode === 'admin';
+
+  // 侧边栏菜单
+  const menuItems: MenuProps['items'] = [
+    { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
+    {
+      key: 'sales-group',
+      icon: <ShoppingOutlined />,
+      label: t('menu.sales'),
+      children: [
+        { key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') },
+        { key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') },
+        { key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') },
+        { key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') },
+      ],
+    },
+    { key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') },
+    { key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') },
+    { key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') },
+    { key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') },
+    ...(isAdmin
+      ? [
+          {
+            key: 'system-group',
+            icon: <SettingOutlined />,
+            label: t('menu.system'),
+            children: [
+              { key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') },
+              { key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') },
+              { key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') },
+              { key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') },
+            ],
+          },
+        ]
+      : []),
   ];
 
-  // ==================== 角色权限配置 ====================
-  const allowedNavKeys: Record<string, string[]> = {
-    admin: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
-    business: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
-    user: ['/dashboard', '/sales', '/orders', '/production', '/shipment', '/customers', '/reports'],
-  };
-
-  const roleCode = user?.role?.code || 'user';
-  const visibleNavKeys = allowedNavKeys[roleCode] || allowedNavKeys.user;
-  const visibleNavItems = navItems.filter((item) => visibleNavKeys.includes(item.key));
-
-  const activePath = location.pathname;
+  // 当前选中项与展开项
+  const selectedKey = (() => {
+    const path = location.pathname;
+    if (path.startsWith('/sales/products')) return '/sales/products';
+    if (path.startsWith('/sales/leads')) return '/sales/leads';
+    if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
+    if (path.startsWith('/sales/orders')) return '/sales/orders';
+    if (path.startsWith('/system/')) return path;
+    return path;
+  })();
+  const openKeys = collapsed ? [] : selectedKey.startsWith('/sales') ? ['sales-group'] : selectedKey.startsWith('/system') ? ['system-group'] : [];
 
   return (
-    <Layout className="main-layout horizontal">
+    <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+      <Sider
+        theme="light"
+        collapsible
+        collapsed={collapsed}
+        onCollapse={setCollapsed}
+        trigger={null}
+        width={232}
+        style={{
+          borderRight: `1px solid ${token.colorBorderSecondary}`,
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+          overflow: 'auto',
+        }}
+      >
+        <div
+          className="sider-brand"
+          onClick={() => navigate('/')}
+          style={{ cursor: 'pointer', userSelect: 'none' }}
+        >
+          <img className="brand-icon" src="/logo.png" alt="Logo" draggable={false} />
+          {!collapsed && <span className="brand-text">Joylifetoy</span>}
+        </div>
+        <Menu
+          mode="inline"
+          theme="light"
+          selectedKeys={[selectedKey]}
+          defaultOpenKeys={['sales-group']}
+          items={menuItems}
+          onClick={handleMenuClick}
+          style={{ borderInlineEnd: 'none', background: 'transparent' }}
+        />
+      </Sider>
+
+      <Layout>
+        <Header
+          className="top-header"
+          style={{
+            background: token.colorBgContainer,
+            padding: '0 20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            position: 'sticky',
+            top: 0,
+            zIndex: 10,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span
+              className="sider-trigger"
+              onClick={() => setCollapsed((c) => !c)}
+              style={{ fontSize: 18, cursor: 'pointer', color: token.colorTextSecondary }}
+            >
+              {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+            </span>
+            <span style={{ fontSize: 16, fontWeight: 600, color: token.colorText }}>
+              {routeTitles[location.pathname] || 'Joylifetoy'}
+            </span>
+          </div>
+          <HeaderTools user={user} onLogout={handleLogout} onMenuClick={handleMenuClick} />
+        </Header>
+
+        <Content className="page-container" style={{ padding: 20, overflow: 'auto' }}>
+          <Outlet />
+        </Content>
+      </Layout>
+
       {ratesLoading && (
         <div
           style={{
@@ -121,33 +245,6 @@ export default function MainLayout() {
           </span>
         </div>
       )}
-      <Header className="top-header" style={{ background: colorBgContainer }}>
-        {/* 左侧品牌 */}
-        <div className="header-brand" onClick={() => navigate('/')}>
-          <img className="brand-icon" src="/logo.png" alt="Logo" draggable={false} />
-          <span className="brand-text">Joylifetoy</span>
-        </div>
-
-        {/* 中间导航 */}
-        <nav className="header-nav">
-          {visibleNavItems.map((item) => (
-            <div
-              key={item.key}
-              className={`nav-item ${activePath === item.key || activePath.startsWith(item.key) ? 'active' : ''}`}
-              onClick={() => navigate(item.key)}
-            >
-              {item.label}
-            </div>
-          ))}
-        </nav>
-
-        {/* 右侧工具区 */}
-        <HeaderTools user={user} onLogout={handleLogout} onMenuClick={handleMenuClick} />
-      </Header>
-
-      <Content className="page-container">
-        <Outlet />
-      </Content>
     </Layout>
   );
 }

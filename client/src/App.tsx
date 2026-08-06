@@ -7,6 +7,11 @@ import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
 import SalesPage from './pages/Sales';
 import CustomersPage from './pages/Customers';
+import SalesLayout from './layouts/SalesLayout';
+import ProductsPage from './pages/Products';
+import SalesLeadsPage from './pages/SalesLeads';
+import SalesOpportunitiesPage from './pages/SalesOpportunities';
+import SalesOrdersPage from './pages/SalesOrders';
 import ReportsPage from './pages/Reports';
 import OrdersPage from './pages/Orders';
 import ProductionPage from './pages/Production';
@@ -49,7 +54,13 @@ function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="sales" element={<SalesPage />} />
+        <Route path="sales" element={<SalesLayout />}>
+          <Route index element={<SalesPage />} />
+          <Route path="products" element={<ProductsPage />} />
+          <Route path="leads" element={<SalesLeadsPage />} />
+          <Route path="opportunities" element={<SalesOpportunitiesPage />} />
+          <Route path="orders" element={<SalesOrdersPage />} />
+        </Route>
         <Route path="orders" element={<OrdersPage />} />
         <Route path="production" element={<ProductionPage />} />
         <Route path="shipment" element={<ShipmentPage />} />

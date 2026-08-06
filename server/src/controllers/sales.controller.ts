@@ -36,6 +36,11 @@ const createPipelineSchema = z.object({
   orderType: z.enum(['SAMPLE', 'FORMAL']).optional().nullable(),
   orderNotes: z.string().optional().nullable(),
   assignedTo: z.string().optional().nullable(),
+  // 线索关联产品：[{ productId, quantity }]
+  products: z.array(z.object({
+    productId: z.string(),
+    quantity: z.number().int().positive().optional(),
+  })).optional().nullable(),
 });
 
 const updatePipelineSchema = createPipelineSchema.partial();
@@ -89,7 +94,13 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
         where,
         skip,
         take,
-        include: { assignee: { select: { id: true, realName: true, username: true } } },
+        include: {
+          assignee: { select: { id: true, realName: true, username: true } },
+          leadProducts: {
+            include: { product: { select: { id: true, name: true, sku: true, type: true, selfKind: true, unit: true } } },
+            orderBy: { createdAt: 'asc' },
+          },
+        },
         orderBy: { updatedAt: 'desc' },
       }),
       prisma.salesPipeline.count({ where }),
@@ -155,6 +166,10 @@ export const getPipeline = async (req: AuthRequest, res: Response): Promise<void
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
         activities: { orderBy: { createdAt: 'desc' }, take: 30 },
+        leadProducts: {
+          include: { product: { select: { id: true, name: true, sku: true, type: true, selfKind: true, unit: true, spec: true, price: true } } },
+          orderBy: { createdAt: 'asc' },
+        },
       },
     });
     if (!pipeline) { fail(res, 404, '记录不存在'); return; }
@@ -189,9 +204,28 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
     }
     const pipelineNumber = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 
+    // 从 data 中提取 products（非 SalesPipeline 模型字段），剩余字段用于创建
+    const { products, ...pipelineData } = data;
+
     const pipeline = await prisma.salesPipeline.create({
-      data: { ...data, pipelineNumber },
-      include: { assignee: { select: { id: true, realName: true, username: true } } },
+      data: {
+        ...pipelineData,
+        pipelineNumber,
+        leadProducts: products?.length
+          ? {
+              create: products.map((p) => ({
+                productId: p.productId,
+                quantity: p.quantity ?? 1,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        assignee: { select: { id: true, realName: true, username: true } },
+        leadProducts: {
+          include: { product: { select: { id: true, name: true, sku: true, type: true, selfKind: true, unit: true } } },
+        },
+      },
     });
 
     // 记录销售活动
@@ -238,10 +272,35 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
     const existing = await prisma.salesPipeline.findUnique({ where: { id: req.params.id } });
     if (!existing) { fail(res, 404, '记录不存在'); return; }
 
+    // 从 data 中提取 products（非 SalesPipeline 模型字段），剩余字段用于更新
+    const { products, ...pipelineData } = data;
+
+    // 若传入 products，则重建线索-产品关联
+    if (products !== undefined) {
+      await prisma.leadProduct.deleteMany({ where: { leadId: req.params.id } });
+    }
+
     const pipeline = await prisma.salesPipeline.update({
       where: { id: req.params.id },
-      data,
-      include: { assignee: { select: { id: true, realName: true, username: true } } },
+      data: {
+        ...pipelineData,
+        leadProducts: products?.length
+          ? {
+              create: products.map((p) => ({
+                productId: p.productId,
+                quantity: p.quantity ?? 1,
+              })),
+            }
+          : products !== undefined
+            ? { deleteMany: {} }
+            : undefined,
+      },
+      include: {
+        assignee: { select: { id: true, realName: true, username: true } },
+        leadProducts: {
+          include: { product: { select: { id: true, name: true, sku: true, type: true, selfKind: true, unit: true } } },
+        },
+      },
     });
 
     // 如果阶段变更，记录活动

@@ -198,6 +198,23 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
+### 2026-08-04（补充 4）—— 产品管理模块
+
+- **新增「产品管理」独立模块**（菜单入口位于销售管理之后）：
+  - 数据模型：`Product`（产品基础表）与 `LeadProduct`（线索-产品关联表，含 `quantity`）
+  - 产品类型分为 **自产品（`SELF`，细分成品 `FINISHED` / 半成品 `SEMI`）** 与 **外购品（`EXTERNAL`）**
+  - 来源标记 `source`：`MANUAL`（手动录入）/ `SYNC`（平台同步）/ `RPA`（RPA 导入）
+  - 支持产品的列表查询（关键词/类型/来源筛选）、新增、编辑、删除、批量删除
+  - 支持 **文件导入**（Excel/CSV，表头含：产品名称、SKU、类型、明细类别、分类、规格、单位、价格、币种、备注）与 **RPA 导入**（上传文件经 RPA 流程抓取，标记 source=RPA）
+  - **平台同步**接口预留（`/api/products/sync`，当前返回"通道待接入"，待后续对接具体平台 API 后开放）
+  - 下拉选项接口 `/api/products/options`（为线索/订单选择产品提供数据源）
+- **线索与产品关联**：线索由产品产生，一条线索可包含多个产品（带数量）
+  - 线索创建/编辑表单（`SalesFormModal`）在「线索」阶段增加「关联产品」列表编辑器（多选产品 + 数量）
+  - 后端 `sales` 路由 `createPipeline` / `updatePipeline` 支持 `products: [{productId, quantity}]`，自动维护 `leadProducts` 关联
+  - 线索列表/详情 `getPipelines` / `getPipeline` 回参包含 `leadProducts`（带 product 概要）
+  - 客户详情弹窗「销售记录」中线索卡片展示关联产品标签（`产品名 ×数量`）
+- 数据库：`prisma db push` 同步新模型至 SQLite 开发库
+
 ### 2026-08-04（补充 3）
 
 - **商机/线索表单「公司名称」与「负责人」按场景区分**：

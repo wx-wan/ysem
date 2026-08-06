@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, Button, Space, Input, Select, Table, Tag, Popconfirm, App, Upload, Tabs, Modal,
-  Statistic, Row, Col,
+  Statistic, Row, Col, Pagination,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
@@ -15,16 +15,18 @@ import { customerApi, Customer } from '../api/customers';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 import StageButtons, { STAGES } from '../components/sales/StageButtons';
+import type { StageKey } from '../components/sales/stages';
 import { getStage } from '../components/sales/stages';
+import { buildTablePagination } from '../components/common/tablePagination';
 import KanbanView from '../components/sales/KanbanView';
 import Price from '../components/common/Price';
 
-export default function Sales() {
+export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
   const { message } = App.useApp();
   const { token } = theme.useToken();
 
   // 视图模式
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>('kanban');
+  const [viewMode, setViewMode] = useState<'kanban' | 'list'>(fixedStage ? 'list' : 'kanban');
 
   // 数据状态
   const [kanbanData, setKanbanData] = useState<Record<string, { title: string; items: SalesItem[] }>>({});
@@ -35,7 +37,7 @@ export default function Sales() {
 
   // 筛选
   const [keyword, setKeyword] = useState('');
-  const [filterStage, setFilterStage] = useState<string>('');
+  const [filterStage, setFilterStage] = useState<string>(fixedStage ?? '');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(19);
 
@@ -104,7 +106,7 @@ export default function Sales() {
 
   // ============ 操作 ============
 
-  const handleCreate = (stage: string = 'LEAD') => {
+  const handleCreate = (stage: string = fixedStage ?? 'LEAD') => {
     setEditingItem(null);
     setInitialFormStage(stage);
     fetchAssignUsers();
@@ -228,14 +230,18 @@ export default function Sales() {
   // ============ 列表视图 ============
 
   const ListView = () => (
-    <Card variant="borderless" style={{ borderRadius: 16 }}>
-      {/* 顶部添加区块：占用一栏高度，与表格风格统一，不动原列表逻辑 */}
+    <>
+      <Card
+        variant="borderless"
+        style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}
+      >
+      {/* 顶部添加区块：与表格风格统一，对齐客户页工具栏节奏 */}
       <div
         onClick={() => handleCreate('LEAD')}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 12, padding: '14px 18px', marginBottom: 16,
-          borderRadius: 12, cursor: 'pointer',
+          borderRadius: token.borderRadius, cursor: 'pointer',
           background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
           border: `1px dashed ${token.colorPrimary}`,
           transition: 'all .2s',
@@ -264,7 +270,7 @@ export default function Sales() {
               新建销售记录
             </div>
             <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-              在这里快速添加一条线索、商机、样品单或订单
+              在这里快速添加一条线索、商机或订单
             </div>
           </div>
         </Space>
@@ -294,7 +300,15 @@ export default function Sales() {
         </Space>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
+      {/* 搜索与筛选栏：对齐客户页工具栏（白卡内 dashed 底边框） */}
+      <div
+        style={{
+          padding: '16px 20px',
+          borderBottom: `1px dashed ${token.colorBorderSecondary}`,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          gap: 8, flexWrap: 'wrap', marginBottom: 16,
+        }}
+      >
         <Space wrap>
           <Select
             style={{ width: 130 }}
@@ -329,16 +343,24 @@ export default function Sales() {
         columns={columns}
         dataSource={listData}
         loading={loading}
-        size="small"
+        size="middle"
         rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys as string[]) }}
         scroll={{ x: 1000 }}
-        pagination={{
-          current: page, pageSize, total,
-          showSizeChanger: true, showTotal: (t) => `共 ${t} 条`,
-          onChange: (p, s) => { setPage(p); setPageSize(s); },
-        }}
+        pagination={false}
       />
     </Card>
+
+    {total > pageSize && (
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+        <Pagination
+          {...buildTablePagination({
+            total, page, pageSize,
+            onChange: (p, s) => { setPage(p); setPageSize(s); },
+          })}
+        />
+      </div>
+    )}
+    </>
   );
 
   // ============ 统计卡片 ============
@@ -357,6 +379,7 @@ export default function Sales() {
   return (
     <div>
       {/* 概览卡片 */}
+      {!fixedStage && (
       <Row gutter={16} style={{ marginBottom: 16 }}>
         {STAGES.map((stage) => (
           <Col xs={12} sm={6} key={stage.key}>
@@ -376,15 +399,20 @@ export default function Sales() {
           </Col>
         ))}
       </Row>
+      )}
 
       {/* 工具栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>新增</Button>
+          {!fixedStage && (
           <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入</Button>
+          )}
         </Space>
 
         <Space>
+          {!fixedStage && (
+          <>
           <Button
             type={viewMode === 'kanban' ? 'primary' : 'default'}
             icon={<AppstoreOutlined />}
@@ -399,6 +427,8 @@ export default function Sales() {
           >
             列表
           </Button>
+          </>
+          )}
           <Button icon={<ReloadOutlined />} onClick={refresh} />
         </Space>
       </div>
@@ -442,9 +472,9 @@ export default function Sales() {
                 <div style={{ marginTop: 16, padding: '12px 16px', background: token.colorFillQuaternary, borderRadius: 12, fontSize: 12, color: token.colorTextSecondary }}>
                   <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
                   <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
-                  <div>预估金额、预计成交日期、采购意向、样品类型、样品数量、样品状态</div>
+                  <div>预估金额、预计成交日期、采购意向</div>
                   <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
-                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
+                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 订单</div>
                 </div>
               </div>
             ),

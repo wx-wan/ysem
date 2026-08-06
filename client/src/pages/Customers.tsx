@@ -21,6 +21,7 @@ import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
 import OrderFormModal from '../components/customer/modals/OrderFormModal';
 import SalesFormModal from '../components/sales/SalesFormModal';
+import { buildTablePagination } from '../components/common/tablePagination';
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
@@ -78,7 +79,6 @@ export default function CustomersPage() {
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
   const [convertPipeline, setConvertPipeline] = useState<SalesItem | null>(null);
-  const [convertOrderType, setConvertOrderType] = useState<'FORMAL' | 'SAMPLE'>('FORMAL');
 
   // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
   const [detailVersion, setDetailVersion] = useState(0);
@@ -334,9 +334,8 @@ export default function CustomersPage() {
   }, [detailCustomer, editingPipeline, message]);
 
   // 商机转订单
-  const handleConvertPipeline = useCallback((pipeline: SalesItem) => {
+  const handleConvertPipeline = useCallback((pipeline: RealPipeline) => {
     setConvertPipeline(pipeline);
-    setConvertOrderType('FORMAL');
     setConvertModalOpen(true);
   }, []);
 
@@ -345,11 +344,10 @@ export default function CustomersPage() {
     try {
       await salesApi.update(convertPipeline.id, {
         orderStatus: '成交',
-        orderType: convertOrderType,
         orderAmount: convertPipeline.estimatedAmount,
         orderDate: convertPipeline.estimatedCloseDate || undefined,
       } as any);
-      message.success(`商机已转为${convertOrderType === 'SAMPLE' ? '样品单' : '正式订单'}`);
+      message.success('商机已转为成交订单');
       setConvertModalOpen(false);
       setConvertPipeline(null);
       // 刷新客户详情（数据层来自缓存，不拉列表）
@@ -359,7 +357,7 @@ export default function CustomersPage() {
           if (!prev) return prev;
           const pipelines = (prev.pipelines || []).map((p: any) =>
             p.id === convertPipeline.id
-              ? { ...p, orderStatus: '成交', orderType: convertOrderType, orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined }
+              ? { ...p, orderStatus: '成交', orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined }
               : p
           );
           const updated = { ...prev, pipelines };
@@ -371,10 +369,10 @@ export default function CustomersPage() {
     } catch {
       message.error('转化失败');
     }
-  }, [convertPipeline, convertOrderType, message, detailCustomer]);
+  }, [convertPipeline, message, detailCustomer]);
 
   // 删除商机
-  const handleDeletePipeline = useCallback((pipeline: SalesItem) => {
+  const handleDeletePipeline = useCallback((pipeline: RealPipeline) => {
     modal.confirm({
       title: '删除商机',
       content: `确认删除商机「${pipeline.title || pipeline.companyName}」？此操作不可撤销。`,
@@ -483,13 +481,10 @@ export default function CustomersPage() {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
         <Pagination
-          current={page}
-          total={list.length}
-          pageSize={pageSize}
-          showSizeChanger={false}
-          showQuickJumper
-          showTotal={(t) => `共 ${t} 条`}
-          onChange={(p) => setPage(p)}
+          {...buildTablePagination({
+            total: list.length, page, pageSize,
+            onChange: (p) => setPage(p),
+          })}
         />
       </div>
     );
@@ -640,11 +635,8 @@ export default function CustomersPage() {
           将商机「<strong>{convertPipeline?.title || convertPipeline?.companyName}</strong>」转为成交订单，预计成交金额 ¥{convertPipeline?.estimatedAmount?.toLocaleString() || 0} 将作为订单金额。
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>订单类型：</span>
-          <Radio.Group value={convertOrderType} onChange={e => setConvertOrderType(e.target.value)}>
-            <Radio.Button value="FORMAL">正式订单</Radio.Button>
-            <Radio.Button value="SAMPLE">样品单</Radio.Button>
-          </Radio.Group>
+          <span>订单阶段：</span>
+          <span style={{ color: '#16a34a', fontWeight: 600 }}>订单（已成交，进入订单流程）</span>
         </div>
       </Modal>
 
@@ -661,7 +653,7 @@ export default function CustomersPage() {
           {[
             { key: 'LEAD', label: '线索', desc: '手动新建，或后续由产品链接点击同步', color: '#1677ff' },
             { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交', color: '#d97706' },
-            { key: 'ORDER', label: '订单', desc: '已成交的正式订单或样品单', color: '#16a34a' },
+            { key: 'ORDER', label: '订单', desc: '已成交，进入订单 7 阶段流程', color: '#16a34a' },
           ].map((opt) => (
             <div
               key={opt.key}

@@ -130,6 +130,44 @@ html, body {
   background: var(--c-bg) !important;
 }
 
+/* 侧边栏品牌 */
+.sider-brand {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.sider-brand .brand-icon {
+  height: 30px;
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.sider-brand .brand-text {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--c-text);
+  white-space: nowrap;
+}
+
+.sider-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.sider-trigger:hover {
+  background: var(--c-border);
+}
+
 .main-layout.horizontal .ant-layout-header {
   height: 64px;
   padding: 0 32px;
