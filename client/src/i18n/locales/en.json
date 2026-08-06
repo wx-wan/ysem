@@ -95,6 +95,7 @@
     "password": "Password",
     "status": "Status",
     "createdAt": "Created At",
+    "lastLogin": "Last Login",
     "searchPlaceholder": "Search username/name/email",
     "addTitle": "Add User",
     "editTitle": "Edit User",

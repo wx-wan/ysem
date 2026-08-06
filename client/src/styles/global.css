@@ -1181,6 +1181,11 @@ html, body {
 .um-row:hover > td {
   background: var(--c-primary-bg) !important;
 }
+/* 修复：固定操作列在 hover 时保持可见 */
+.um-row:hover > td.ant-table-cell-fix-right {
+  background: var(--c-primary-bg) !important;
+  z-index: 2;
+}
 
 .user-cell {
   display: flex;

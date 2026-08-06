@@ -95,6 +95,7 @@
     "password": "密码",
     "status": "状态",
     "createdAt": "创建时间",
+    "lastLogin": "最后登录",
     "searchPlaceholder": "搜索用户名/姓名/邮箱",
     "addTitle": "新增用户",
     "editTitle": "编辑用户",
