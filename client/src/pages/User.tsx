@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import UserFormModal from '../components/user/UserFormModal';
+import ResetPasswordModal from '../components/user/ResetPasswordModal';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { usePermission } from '../hooks/usePermission';
 
@@ -34,6 +35,7 @@ interface DeptOption {
 const userApi = {
   create: (data: any) => request.post('/users', data),
   update: (id: string, data: any) => request.put(`/users/${id}`, data),
+  resetPassword: (id: string, password: string) => request.post(`/users/${id}/reset-password`, { password }),
 };
 
 export default function UserPage() {
@@ -50,6 +52,8 @@ export default function UserPage() {
   const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [depts, setDepts] = useState<DeptOption[]>([]);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserRecord | null>(null);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -97,6 +101,16 @@ export default function UserPage() {
     setEditingUser(null);
   };
 
+  const handleResetPwd = (record: UserRecord) => {
+    setResetTarget(record);
+    setResetOpen(true);
+  };
+
+  const handleResetClose = () => {
+    setResetOpen(false);
+    setResetTarget(null);
+  };
+
   const statusMap = useMemo<Record<string, { color: string; text: string }>>(() => ({
     ACTIVE: { color: 'green', text: t('user.statusActive') },
     DISABLED: { color: 'red', text: t('user.statusDisabled') },
@@ -132,6 +146,9 @@ export default function UserPage() {
             <Popconfirm title={t('user.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
               <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
             </Popconfirm>
+          )}
+          {hasPerm('system:user:resetpwd') && (
+            <Button type="link" size="small" icon={<KeyOutlined />} onClick={() => handleResetPwd(record)}>{t('user.resetPwd')}</Button>
           )}
         </Space>
       ),
@@ -186,6 +203,15 @@ export default function UserPage() {
         roles={roles}
         depts={depts}
         onClose={handleModalClose}
+        onSuccess={fetchUsers}
+        api={userApi}
+        t={t}
+      />
+
+      <ResetPasswordModal
+        open={resetOpen}
+        targetUser={resetTarget}
+        onClose={handleResetClose}
         onSuccess={fetchUsers}
         api={userApi}
         t={t}

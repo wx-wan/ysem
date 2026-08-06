@@ -114,7 +114,17 @@
     "deptPlaceholder": "Please select department",
     "statusActive": "Active",
     "statusDisabled": "Disabled",
-    "statusLocked": "Locked"
+    "statusLocked": "Locked",
+    "resetPwd": "Reset Password",
+    "resetPwdTitle": "Reset Password",
+    "resetPwdFor": "Reset password for user:",
+    "resetPwdNew": "New Password",
+    "resetPwdNewPlaceholder": "Enter new password (at least 6 chars)",
+    "resetPwdConfirm": "Confirm Password",
+    "resetPwdConfirmPlaceholder": "Enter new password again",
+    "resetPwdMismatch": "Passwords do not match",
+    "resetPwdSuccess": "Password reset successfully",
+    "resetPwdRequired": "Password must be at least 6 characters"
   },
   "role": {
     "title": "Role Management",

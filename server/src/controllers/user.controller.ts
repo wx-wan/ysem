@@ -149,3 +149,31 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<void>
     fail(res, 500, '服务器错误');
   }
 };
+
+// 重置用户密码（有用户管理权限即可，原密码为 bcrypt 哈希不可逆，只能重置）
+const resetPasswordSchema = z.object({
+  password: z.string().min(6).max(100),
+});
+
+export const resetPassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const data = resetPasswordSchema.parse(req.body);
+
+    const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!existing) { fail(res, 404, '用户不存在'); return; }
+
+    // 防止管理员误改自己（不影响功能，纯提示性约束交由前端，这里允许）
+    const hashedPassword = await bcrypt.hash(data.password, 12);
+    await prisma.user.update({
+      where: { id: req.params.id },
+      data: { password: hashedPassword, lastLoginAt: existing.lastLoginAt },
+    });
+    success(res, null, '密码重置成功');
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      fail(res, 400, '参数校验失败：' + err.errors.map(e => e.message).join(', '));
+      return;
+    }
+    fail(res, 500, '服务器错误');
+  }
+};

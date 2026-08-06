@@ -97,6 +97,7 @@ async function main() {
     { name: '用户新增', code: 'system:user:create', type: 'BUTTON' as const, sort: 0 },
     { name: '用户编辑', code: 'system:user:edit', type: 'BUTTON' as const, sort: 1 },
     { name: '用户删除', code: 'system:user:delete', type: 'BUTTON' as const, sort: 2 },
+    { name: '重置密码', code: 'system:user:resetpwd', type: 'BUTTON' as const, sort: 3 },
     { name: '角色新增', code: 'system:role:create', type: 'BUTTON' as const, sort: 0 },
     { name: '角色编辑', code: 'system:role:edit', type: 'BUTTON' as const, sort: 1 },
     { name: '角色删除', code: 'system:role:delete', type: 'BUTTON' as const, sort: 2 },

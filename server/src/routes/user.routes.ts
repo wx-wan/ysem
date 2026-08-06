@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getUsers, getUser, createUser, updateUser, deleteUser } from '../controllers/user.controller';
+import { getUsers, getUser, createUser, updateUser, deleteUser, resetPassword } from '../controllers/user.controller';
 import { authenticate, requirePerm } from '../middleware/auth';
 
 const router = Router();
@@ -111,5 +111,23 @@ router.put('/:id', requirePerm('system:user:edit'), updateUser);
  *         description: 删除成功
  */
 router.delete('/:id', requirePerm('system:user:delete'), deleteUser);
+
+/**
+ * @swagger
+ * /api/users/{id}/reset-password:
+ *   post:
+ *     tags: [用户管理]
+ *     summary: 重置用户密码
+ *     description: 有用户管理权限者可为任意用户重置密码（原密码为哈希不可逆）
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: 重置成功
+ */
+router.post('/:id/reset-password', requirePerm('system:user:resetpwd'), resetPassword);
 
 export default router;

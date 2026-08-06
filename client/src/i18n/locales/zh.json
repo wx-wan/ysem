@@ -114,7 +114,17 @@
     "deptPlaceholder": "请选择部门",
     "statusActive": "正常",
     "statusDisabled": "禁用",
-    "statusLocked": "锁定"
+    "statusLocked": "锁定",
+    "resetPwd": "重置密码",
+    "resetPwdTitle": "重置密码",
+    "resetPwdFor": "为以下用户重置密码：",
+    "resetPwdNew": "新密码",
+    "resetPwdNewPlaceholder": "请输入新密码（至少6位）",
+    "resetPwdConfirm": "确认新密码",
+    "resetPwdConfirmPlaceholder": "请再次输入新密码",
+    "resetPwdMismatch": "两次输入的密码不一致",
+    "resetPwdSuccess": "密码重置成功",
+    "resetPwdRequired": "新密码至少6位"
   },
   "role": {
     "title": "角色管理",
