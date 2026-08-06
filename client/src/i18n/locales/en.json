@@ -124,7 +124,11 @@
     "resetPwdConfirmPlaceholder": "Enter new password again",
     "resetPwdMismatch": "Passwords do not match",
     "resetPwdSuccess": "Password reset successfully",
-    "resetPwdRequired": "Password must be at least 6 characters"
+    "resetPwdRequired": "Password must be at least 6 characters",
+    "pageDesc": "Manage accounts, role assignments and access permissions",
+    "listTitle": "User List",
+    "neverLogin": "Never logged in",
+    "empty": "No users yet. Click Add User on the top right."
   },
   "role": {
     "title": "Role Management",

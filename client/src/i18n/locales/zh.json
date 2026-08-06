@@ -124,7 +124,11 @@
     "resetPwdConfirmPlaceholder": "请再次输入新密码",
     "resetPwdMismatch": "两次输入的密码不一致",
     "resetPwdSuccess": "密码重置成功",
-    "resetPwdRequired": "新密码至少6位"
+    "resetPwdRequired": "新密码至少6位",
+    "pageDesc": "管理系统账号、角色分配与访问权限",
+    "listTitle": "用户列表",
+    "neverLogin": "从未登录",
+    "empty": "暂无用户，点击右上角新增用户"
   },
   "role": {
     "title": "角色管理",

@@ -990,3 +990,285 @@ html, body {
   color: var(--tag-selector-color, #999);
   opacity: 0.7;
 }
+
+/* ========== 用户管理（User Management）========== */
+.user-management {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 页面头：标题 + 描述 + 主操作 */
+.um-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.um-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--c-text);
+  margin: 0;
+}
+
+.um-subtitle {
+  font-size: 13px;
+  color: var(--c-text-tertiary);
+  margin: 6px 0 0;
+}
+
+.um-add-btn {
+  height: 38px;
+  padding: 0 18px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.28);
+  border-radius: var(--radius-sm);
+}
+.um-add-btn:hover {
+  box-shadow: 0 4px 14px rgba(22, 119, 255, 0.36);
+  transform: translateY(-1px);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* 工具条：搜索 + 状态筛选 + 刷新 */
+.um-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.um-search {
+  width: 300px;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+}
+.um-search .ant-input {
+  border-radius: var(--radius-sm);
+}
+
+.um-status-filter.ant-segmented {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  padding: 3px;
+  border-radius: 999px;
+}
+.um-status-filter .ant-segmented-item {
+  border-radius: 999px;
+  color: var(--c-text-secondary);
+  font-size: 13px;
+  transition: color 0.2s, background 0.2s;
+}
+.um-status-filter .ant-segmented-item-selected {
+  background: var(--c-surface);
+  color: var(--c-primary);
+  font-weight: 600;
+  box-shadow: var(--shadow-rest);
+}
+.um-status-filter .ant-segmented-thumb {
+  background: var(--c-surface);
+  border-radius: 999px;
+}
+
+.um-toolbar-spacer {
+  flex: 1;
+}
+
+.um-refresh.ant-btn {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--c-text-secondary);
+  border-color: var(--c-border);
+  background: var(--c-surface);
+}
+.um-refresh.ant-btn:hover {
+  color: var(--c-primary);
+  border-color: var(--c-primary);
+}
+
+/* 数据卡片 */
+.um-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+
+.um-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--c-border);
+}
+
+.um-card-head-left {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.um-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+
+.um-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+
+.um-stat-pills {
+  display: flex;
+  gap: 8px;
+}
+
+.um-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--c-bg);
+}
+.um-stat-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.um-stat-active i { background: #10b981; }
+.um-stat-disabled i { background: #ef4444; }
+
+/* 表格表头与单元格 */
+.um-card .ant-table-thead > tr > th {
+  background: var(--c-bg) !important;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  border-bottom: 1px solid var(--c-border);
+  font-size: 12px;
+  padding: 12px 16px;
+}
+.um-card .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--c-border);
+  font-size: 13px;
+  padding: 12px 16px;
+}
+.um-card .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+
+/* 表格行内单元格 */
+.um-row .ant-table-cell {
+  transition: background 0.15s ease;
+}
+.um-row:hover > td {
+  background: var(--c-primary-bg) !important;
+}
+
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.user-cell-avatar.ant-avatar {
+  background: var(--c-primary);
+  color: #fff;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.user-cell-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  min-width: 0;
+}
+.user-cell-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+}
+.user-cell-sub {
+  font-size: 12px;
+  color: var(--c-text-tertiary);
+}
+
+.cell-muted {
+  color: var(--c-text-tertiary);
+}
+
+/* 角色 Tag：主色浅底 */
+.role-tag.ant-tag {
+  margin: 0;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
+  border: none;
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  padding: 1px 10px;
+  font-size: 12px;
+}
+
+/* 状态药丸 */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* 操作列图标按钮 */
+.user-actions {
+  display: inline-flex;
+  align-items: center;
+}
+.action-btn.ant-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--c-text-secondary);
+}
+.action-btn.ant-btn:hover {
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
+}
+.action-btn.action-danger.ant-btn:hover {
+  color: var(--c-error);
+  background: rgba(239, 68, 68, 0.10);
+}
+
+/* 分页 */
+.um-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 2px 0;
+}
