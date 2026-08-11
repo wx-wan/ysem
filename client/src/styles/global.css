@@ -91,13 +91,17 @@ html, body {
   font-family: 'Montserrat', 'SourceHanSansCN', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
-/* 登录页背景（务实浅色 + 主色点缀，避免 landing-page 味渐变） */
+/* 登录页背景（涂鸦手绘风格，铺满不重复） */
 .login-container {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: radial-gradient(circle at 50% 0%, var(--c-primary-bg) 0%, var(--c-bg) 55%);
+  background-image: url('/login-bg.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-color: #fff;
 }
 
 .login-card {
