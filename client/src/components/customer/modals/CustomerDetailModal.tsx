@@ -229,7 +229,11 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           (a, b) => new Date(b.data.createdAt || '').getTime() - new Date(a.data.createdAt || '').getTime()
         );
       } break;
-      case 'activities': data = customer?.activities || []; break;
+      case 'activities':
+        data = (customer?.activities || []).slice().sort(
+          (a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()
+        );
+        break;
     }
     const start = (currentPage - 1) * pageSize;
     return data.slice(start, start + pageSize);

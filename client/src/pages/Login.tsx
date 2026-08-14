@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Button, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
@@ -12,6 +12,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const setAuth = useAuthStore((s) => s.setAuth);
+
+  useEffect(() => {
+    document.title = 'Joylifetoy';
+    return () => { document.title = 'Joylifetoy'; };
+  }, []);
 
   const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
