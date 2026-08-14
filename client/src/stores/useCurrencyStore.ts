@@ -44,10 +44,9 @@ interface CurrencyState {
 
 const STORAGE_KEY = 'ysem_currency';
 
-// 汇率缓存：后端汇率为「每日」更新（一天出一次），取半个更新周期作为有效期，
-// 既能避免每次刷新都请求，又能及时拿到新一天的汇率。
+// 汇率缓存：一天只刷新一次，其余时间取 localStorage 缓存值
 const RATES_CACHE_KEY = 'ysem_exchange_rates';
-const RATES_CACHE_TTL = 6 * 60 * 60 * 1000; // 6 小时
+const RATES_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时（一天一次）
 
 interface CachedRates {
   rates: Record<string, number>;
