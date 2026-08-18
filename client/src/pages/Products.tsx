@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Button, Space, Input, Modal, Form, Select,
-  Switch, Tag, Popconfirm, message, Card, Row, Col, Typography, Divider, Pagination,
+  Switch, Tag, Popconfirm, message, Card, Row, Col, Typography, Divider, Pagination, Skeleton,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -196,7 +196,15 @@ export default function Products() {
       {/* 数据卡片网格 */}
       <Card className="pm-grid-card" styles={{ body: { padding: 20 } }}>
         {loading ? (
-          <div className="pm-grid-loading">加载中…</div>
+          <Row gutter={[16, 16]}>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <Col key={i} xs={24} sm={12} md={12} lg={8} xl={6}>
+                <div className="pm-prod-card pm-prod-card--skeleton">
+                  <Skeleton active paragraph={{ rows: 4 }} title={false} />
+                </div>
+              </Col>
+            ))}
+          </Row>
         ) : list.length === 0 ? (
           <div className="pm-grid-empty">暂无产品，点击右上角「新建产品」开始添加</div>
         ) : viewMode === 'card' ? (
