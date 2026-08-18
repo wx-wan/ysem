@@ -575,7 +575,7 @@ export default function Products() {
             <label className="pm-form-row-label">
               受众 <span className="pm-req">*</span>
             </label>
-            <div className="pm-pick-grid">
+            <div className="pm-pick-grid pm-pick-grid--3">
               {audiences.map((a) => (
                 <button
                   type="button"
@@ -605,7 +605,7 @@ export default function Products() {
               <label className="pm-form-row-label">
                 品类 <span className="pm-req">*</span>
               </label>
-              <div className="pm-pick-grid">
+              <div className="pm-pick-grid pm-pick-grid--3">
                 {categories.length ? categories.map((c) => (
                   <button
                     type="button"

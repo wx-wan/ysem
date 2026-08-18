@@ -338,8 +338,9 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 20px;
-  padding: 12px 4px;
+  width: 60%;
+  margin: 0 auto 20px;
+  padding: 6px 0;
 }
 .pm-step-dot {
   display: flex;
@@ -399,6 +400,10 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 10px;
+}
+/* 受众 / 品类：每行 3 个卡片 */
+.pm-pick-grid--3 {
+  grid-template-columns: repeat(3, 1fr);
 }
 .pm-pick {
   position: relative;
