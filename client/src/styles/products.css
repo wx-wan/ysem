@@ -206,6 +206,17 @@
   color: var(--c-text-secondary, #64748b);
 }
 
+/* 列表模式表格 */
+.pm-grid-card .ant-table-wrapper {
+  border-radius: 12px;
+  overflow: hidden;
+}
+.pm-grid-card .ant-table-thead > tr > th {
+  background: #fafbfc;
+  font-weight: 600;
+  color: var(--c-text, #1a1a1a);
+}
+
 /* 状态药丸 */
 .pm-status {
   display: inline-flex;

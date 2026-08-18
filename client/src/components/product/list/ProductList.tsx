@@ -1,0 +1,80 @@
+import { Table, Tag, Button, Space, Popconfirm } from 'antd';
+import {
+  EyeOutlined, EditOutlined, DeleteOutlined,
+} from '@ant-design/icons';
+import type { ColumnsType } from 'antd/es/table';
+import { buildTablePagination } from '../../common/tablePagination';
+import { SUPPLY_MODES } from '../../../pages/Products';
+import type { Product } from '../../../api/products';
+import { useDs } from '../../customer/shared/ds';
+
+interface ProductListProps {
+  data: Product[];
+  total: number;
+  page: number;
+  pageSize: number;
+  onPageChange: (page: number, pageSize: number) => void;
+  onView: (r: Product) => void;
+  onEdit: (r: Product) => void;
+  onDelete: (id: number) => void;
+}
+
+export default function ProductList({
+  data, total, page, pageSize, onPageChange, onView, onEdit, onDelete,
+}: ProductListProps) {
+  const ds = useDs();
+
+  const columns: ColumnsType<Product> = [
+    { title: 'SKU', dataIndex: 'sku', width: 140, render: (v: string) => v || '-' },
+    { title: '名称', dataIndex: 'name', ellipsis: true },
+    { title: '分类', render: (_: unknown, r: Product) => r.category?.name || '-' },
+    { title: '工艺', render: (_: unknown, r: Product) => r.craft?.name || '-' },
+    { title: '单位', dataIndex: 'unit', width: 80, render: (v: string) => v || '-' },
+    {
+      title: '供应模式',
+      render: (_: unknown, r: Product) =>
+        r.supplyModes
+          ? r.supplyModes.split(',').map((m: string) => {
+              const f = SUPPLY_MODES.find((s) => s.value === m);
+              return f ? <Tag key={m} variant="filled">{f.label}</Tag> : null;
+            })
+          : <span style={{ color: ds.textMuted }}>未设</span>,
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      width: 90,
+      render: (v: string) =>
+        v === 'ACTIVE' ? (
+          <span className="pm-status pm-status--active">启用</span>
+        ) : (
+          <span className="pm-status pm-status--inactive">停用</span>
+        ),
+    },
+    {
+      title: '操作',
+      key: 'action',
+      width: 130,
+      fixed: 'right',
+      render: (_: unknown, r: Product) => (
+        <Space>
+          <Button type="text" icon={<EyeOutlined />} onClick={() => onView(r)} />
+          <Button type="text" icon={<EditOutlined />} onClick={() => onEdit(r)} />
+          <Popconfirm title="确定删除？" onConfirm={() => onDelete(r.id)}>
+            <Button type="text" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <Table<Product>
+      rowKey="id"
+      dataSource={data}
+      columns={columns}
+      scroll={{ x: 900 }}
+      pagination={buildTablePagination({ total, page, pageSize, onChange: onPageChange })}
+    />
+  );
+}

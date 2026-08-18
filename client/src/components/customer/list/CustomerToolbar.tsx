@@ -1,11 +1,12 @@
 import { Input, Button, Select } from 'antd';
 import {
-  SearchOutlined, AppstoreOutlined, UnorderedListOutlined,
+  SearchOutlined,
   UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../../TagSelector';
 import { INTENT_LABEL } from '../shared/intentLevel';
 import { useDs } from '../shared/ds';
+import ViewModeSwitch from '../../common/ViewModeSwitch';
 import type { User } from '../../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
@@ -162,50 +163,8 @@ export default function CustomerToolbar({
 
         <div style={{ flex: 1 }} />
 
-        {/* 视图切换 */}
-        <div style={{
-          display: 'flex',
-          background: ds.surface,
-          borderRadius: ds.radius,
-          padding: 2,
-        }}>
-          <button
-            onClick={() => setViewMode('card')}
-            title="卡片视图"
-            style={{
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px 10px',
-              borderRadius: 6,
-              background: viewMode === 'card' ? ds.primaryBg : 'transparent',
-              color: viewMode === 'card' ? ds.primary : ds.textMuted,
-              boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <AppstoreOutlined />
-          </button>
-          <button
-            onClick={() => setViewMode('list')}
-            title="列表视图"
-            style={{
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px 10px',
-              borderRadius: 6,
-              background: viewMode === 'list' ? ds.primaryBg : 'transparent',
-              color: viewMode === 'list' ? ds.primary : ds.textMuted,
-              boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-            }}
-          >
-            <UnorderedListOutlined />
-          </button>
-        </div>
+        {/* 视图切换（共用组件） */}
+        <ViewModeSwitch value={viewMode} onChange={setViewMode} />
 
         <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
           导入

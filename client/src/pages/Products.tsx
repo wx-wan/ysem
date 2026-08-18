@@ -12,11 +12,13 @@ import productApi, {
   taxonomyApi,
 } from '../api/products';
 import ImageUploadCropper from '../components/common/ImageUploadCropper';
+import ViewModeSwitch from '../components/common/ViewModeSwitch';
+import ProductList from '../components/product/list/ProductList';
 
 const { Text } = Typography;
 
 // 供货模式选项
-const SUPPLY_MODES = [
+export const SUPPLY_MODES = [
   { label: '深度定制', value: 'DEEP_CUSTOM' },
   { label: '轻定制', value: 'LIGHT_CUSTOM' },
   { label: '成品现货', value: 'STOCK' },
@@ -52,6 +54,7 @@ export default function Products() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
   const [form] = Form.useForm();
+  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
 
   const fetchList = async () => {
     setLoading(true);
@@ -147,14 +150,6 @@ export default function Products() {
 
   return (
     <div className="pm-container">
-      {/* 页面头 */}
-      <div className="pm-header">
-        <div>
-          <h2 className="pm-title">产品管理</h2>
-          <p className="pm-desc">定制类产品开发与管理</p>
-        </div>
-      </div>
-
       {/* 工具条 */}
       <Card className="pm-toolbar" styles={{ body: { padding: '12px 16px' } }}>
         <Row gutter={12} align="middle" wrap>
@@ -190,7 +185,10 @@ export default function Products() {
             </Space>
           </Col>
           <Col>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品</Button>
+            <Space>
+              <ViewModeSwitch value={viewMode} onChange={setViewMode} />
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品</Button>
+            </Space>
           </Col>
         </Row>
       </Card>
@@ -201,7 +199,7 @@ export default function Products() {
           <div className="pm-grid-loading">加载中…</div>
         ) : list.length === 0 ? (
           <div className="pm-grid-empty">暂无产品，点击右上角「新建产品」开始添加</div>
-        ) : (
+        ) : viewMode === 'card' ? (
           <>
             <Row gutter={[16, 16]}>
               {list.map((r) => (
@@ -282,6 +280,17 @@ export default function Products() {
               />
             </div>
           </>
+        ) : (
+          <ProductList
+            data={list}
+            total={total}
+            page={page}
+            pageSize={pageSize}
+            onPageChange={(p) => setPage(p)}
+            onView={(r) => { setViewing(r); setDetailOpen(true); }}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+          />
         )}
       </Card>
 
