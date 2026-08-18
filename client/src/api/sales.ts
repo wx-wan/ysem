@@ -64,12 +64,12 @@ export interface SalesActivity {
 
 export const salesApi = {
   // 列表
-  list: (params: Record<string, string>) =>
-    axios.get<{ data: { list: SalesItem[]; total: number; page: number; pageSize: number } }>('/sales', { params }),
+  list: (params: Record<string, string>, signal?: AbortSignal) =>
+    axios.get<{ data: { list: SalesItem[]; total: number; page: number; pageSize: number } }>('/sales', { params, signal }),
 
   // 看板
-  kanban: () =>
-    axios.get<{ data: { columns: Record<string, { title: string; items: SalesItem[] }>; stats: Record<string, number> } }>('/sales/kanban'),
+  kanban: (signal?: AbortSignal) =>
+    axios.get<{ data: { columns: Record<string, { title: string; items: SalesItem[] }>; stats: Record<string, number> } }>('/sales/kanban', { signal }),
 
   // 详情
   get: (id: string) =>

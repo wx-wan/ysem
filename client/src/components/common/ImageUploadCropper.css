@@ -1,0 +1,80 @@
+.iuc-trigger {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.iuc-upload {
+  display: inline-block;
+}
+
+.iuc-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px dashed var(--c-border, #d9d9d9);
+  background: var(--c-surface, #fff);
+  color: var(--c-text-tertiary, #999);
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.iuc-add:hover {
+  border-color: var(--c-primary, #1677ff);
+  color: var(--c-primary, #1677ff);
+}
+
+.iuc-placeholder {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.iuc-preview {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--c-border, #d9d9d9);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.iuc-preview-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.iuc-preview:hover .iuc-preview-mask {
+  opacity: 1;
+}
+
+.iuc-replace {
+  padding: 0;
+  height: auto;
+}
+
+.iuc-cropper-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+  background: #f5f5f5;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.iuc-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 360px;
+}

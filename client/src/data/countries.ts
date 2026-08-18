@@ -166,7 +166,7 @@ export function findCountry(name?: string): CountryData | undefined {
     (c) =>
       c.zh === trimmed ||
       c.en === trimmed ||
-      c.en.toLowerCase() === trimmed.toLowerCase() ||
+      c.en?.toLowerCase() === trimmed.toLowerCase() ||
       c.code === trimmed.toUpperCase()
   );
 }

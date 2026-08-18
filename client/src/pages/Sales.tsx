@@ -54,25 +54,29 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
 
   // ============ 数据加载 ============
 
-  const fetchKanban = useCallback(async () => {
+  const fetchKanban = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await salesApi.kanban();
+      const res = await salesApi.kanban(signal);
       setKanbanData(res.data.data.columns);
+    } catch {
+      // 忽略取消/异常
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const fetchList = useCallback(async () => {
+  const fetchList = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
       const params: Record<string, string> = { page: String(page), pageSize: String(pageSize) };
       if (keyword) params.keyword = keyword;
       if (filterStage) params.stage = filterStage;
-      const res = await salesApi.list(params);
+      const res = await salesApi.list(params, signal);
       setListData(res.data.data.list);
       setTotal(res.data.data.total);
+    } catch {
+      // 忽略取消/异常
     } finally {
       setLoading(false);
     }
@@ -95,8 +99,10 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
   };
 
   useEffect(() => {
-    if (viewMode === 'kanban') fetchKanban();
-    else fetchList();
+    const controller = new AbortController();
+    if (viewMode === 'kanban') fetchKanban(controller.signal);
+    else fetchList(controller.signal);
+    return () => controller.abort();
   }, [viewMode, fetchKanban, fetchList]);
 
   const refresh = () => {
@@ -193,7 +199,7 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
       title: '阶段', dataIndex: 'stage', width: 90,
       render: (s: string) => {
         const st = getStage(s);
-        return <Tag color={st?.tagColor} bordered={false}>{st?.label || s}</Tag>;
+        return <Tag color={st?.tagColor} variant="filled">{st?.label || s}</Tag>;
       },
     },
     {

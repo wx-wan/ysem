@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, Select, App } from 'antd';
+import ImageUploadCropper from '../common/ImageUploadCropper';
 
 interface UserRecord {
   id: string;
@@ -8,6 +9,7 @@ interface UserRecord {
   email: string;
   phone: string;
   status: string;
+  avatar?: string | null;
   role?: { id: string; name: string } | null;
   department?: { id: string; name: string } | null;
 }
@@ -57,6 +59,7 @@ const UserFormModal: React.FC<Props> = React.memo(({ open, editingUser, roles, d
       if (editingUser) {
         form.setFieldsValue({
           username: editingUser.username,
+          avatar: editingUser.avatar,
           realName: editingUser.realName,
           email: editingUser.email,
           phone: editingUser.phone,
@@ -82,6 +85,15 @@ const UserFormModal: React.FC<Props> = React.memo(({ open, editingUser, roles, d
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form.Item name="avatar" label={t('user.avatar')} getValueFromEvent={(e) => (typeof e === 'string' ? e : e?.target?.value)}>
+          <ImageUploadCropper
+            shape="circle"
+            aspect={1}
+            maxSize={512 * 1024}
+            uploadUrl="/upload"
+            onUploaded={(url) => form.setFieldValue('avatar', url)}
+          />
+        </Form.Item>
         <Form.Item name="username" label={t('user.username')} rules={[{ required: true, message: t('user.usernameRequired') }]}>
           <Input disabled={!!editingUser} placeholder={t('user.usernamePlaceholder')} />
         </Form.Item>

@@ -18,6 +18,7 @@ interface UserRecord {
   status: string;
   createdAt: string;
   lastLoginAt: string;
+  avatar?: string | null;
   role: { id: string; name: string; code: string } | null;
   department: { id: string; name: string } | null;
 }
@@ -134,7 +135,7 @@ export default function UserPage() {
       width: 220,
       render: (_: string, record) => (
         <div className="user-cell">
-          <Avatar size={36} className="user-cell-avatar" icon={<UserOutlined />}>
+          <Avatar size={36} className="user-cell-avatar" src={record.avatar} icon={<UserOutlined />}>
             {(record.realName || record.username).slice(0, 1).toUpperCase()}
           </Avatar>
           <div className="user-cell-info">

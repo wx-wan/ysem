@@ -47,7 +47,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       <Descriptions column={1} size="small" bordered>
         <Descriptions.Item label="标题">{detailItem.title}</Descriptions.Item>
         <Descriptions.Item label="阶段">
-          <Tag color={st?.tagColor} bordered={false}>{st?.label || detailItem.stage}</Tag>
+          <Tag color={st?.tagColor} variant="filled">{st?.label || detailItem.stage}</Tag>
         </Descriptions.Item>
         <Descriptions.Item label="公司名称">{detailItem.companyName}</Descriptions.Item>
         <Descriptions.Item label="联系人">{detailItem.contactName || '-'}</Descriptions.Item>

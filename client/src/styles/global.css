@@ -389,10 +389,23 @@ html, body {
   margin-bottom: 16px;
 }
 
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
 .page-header h2 {
   font-size: 20px;
   font-weight: 700;
   color: var(--c-text);
+}
+
+.page-header-desc {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--c-text-tertiary);
 }
 
 /* 搜索区域 */
@@ -426,6 +439,51 @@ html, body {
 .table-container .ant-table-tbody > tr > td {
   border-bottom: 1px solid var(--c-bg);
   font-size: 13px;
+}
+
+/* ===== 产品分类管理卡片（内联 Tab + 表格） ===== */
+.pt-card {
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-rest);
+  overflow: hidden;
+}
+
+.pt-tabs.ant-tabs {
+  padding: 4px 12px 0;
+}
+
+.pt-tabs.ant-tabs > .ant-tabs-nav {
+  margin: 0 0 4px;
+}
+
+.pt-tabs.ant-tabs > .ant-tabs-nav::before {
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pt-tabs .ant-tabs-tab {
+  padding: 12px 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+}
+
+.pt-tabs .ant-tabs-tab-active .ant-tabs-tab-btn {
+  font-weight: 600;
+  color: var(--c-primary);
+}
+
+.pt-tabs .ant-tabs-ink-bar {
+  background: var(--c-primary);
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+}
+
+.pt-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px dashed var(--c-border);
 }
 
 /* ========== 现代仪表盘样式 ========== */

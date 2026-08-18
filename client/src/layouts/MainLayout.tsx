@@ -49,6 +49,7 @@ const routeTitles: Record<string, string> = {
   '/system/role': '角色管理',
   '/system/dept': '部门管理',
   '/system/perm': '权限管理',
+  '/system/product-taxonomy': '产品管理',
 };
 
 export default function MainLayout() {
@@ -139,6 +140,7 @@ export default function MainLayout() {
               ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') }] : []),
               ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
+              ...(hasPerm('product:taxonomy:view') ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }] : []),
             ],
           },
         ]

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { App as AntdApp, ConfigProvider } from 'antd';
@@ -10,6 +10,7 @@ import './i18n';
 import i18n from './i18n';
 import 'flag-icons/css/flag-icons.min.css';
 import './styles/global.css';
+import './styles/products.css';
 
 function Root() {
   const [antdLocale, setAntdLocale] = useState<Locale>(
@@ -47,8 +48,4 @@ function Root() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Root />
-  </React.StrictMode>,
-);
+ReactDOM.createRoot(document.getElementById('root')!).render(<Root />);

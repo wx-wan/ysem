@@ -60,6 +60,7 @@ async function main() {
     { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11, parent: 'system' },
     { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12, parent: 'system' },
     { name: '权限管理', code: 'system:perm', type: 'MENU' as const, path: '/system/perm', icon: 'SafetyOutlined', sort: 13, parent: 'system' },
+    { name: '产品分类管理', code: 'product:taxonomy:view', type: 'MENU' as const, path: '/system/product-taxonomy', icon: 'AppstoreOutlined', sort: 14, parent: 'system' },
   ];
 
   // 先建父级菜单
@@ -107,6 +108,9 @@ async function main() {
     { name: '权限新增', code: 'system:perm:create', type: 'BUTTON' as const, sort: 0 },
     { name: '权限编辑', code: 'system:perm:edit', type: 'BUTTON' as const, sort: 1 },
     { name: '权限删除', code: 'system:perm:delete', type: 'BUTTON' as const, sort: 2 },
+    { name: '产品分类新增', code: 'product:taxonomy:create', type: 'BUTTON' as const, sort: 0 },
+    { name: '产品分类编辑', code: 'product:taxonomy:update', type: 'BUTTON' as const, sort: 1 },
+    { name: '产品分类删除', code: 'product:taxonomy:delete', type: 'BUTTON' as const, sort: 2 },
   ];
 
   for (const perm of buttonPermissions) {
@@ -211,6 +215,62 @@ async function main() {
   console.log('✅ 数据库初始化完成！');
   console.log(`📧 管理员: ${username} / ${password}`);
   console.log(`📧 业务员: business / business123`);
+
+  // 5. 初始化产品分类数据
+  console.log('🏭 初始化产品分类...');
+
+  // 一级工艺
+  const crafts = [
+    { name: '搪胶', sort: 0 },
+    { name: '注塑', sort: 1 },
+    { name: '搪胶+注塑', sort: 2 },
+    { name: '硅胶', sort: 3 },
+    { name: '硅胶+注塑', sort: 4 },
+  ];
+  for (const c of crafts) {
+    await prisma.productCraft.upsert({ where: { name: c.name }, update: {}, create: c });
+  }
+
+  // 二级受众 + 三级品类
+  const audienceData = [
+    {
+      name: '儿童', sort: 0,
+      categories: ['沐浴玩具', '挤压玩具（非沐浴类）', '存钱罐', '摆件', '益智玩具', '安抚玩具', '节日玩具', '沙滩玩具'],
+    },
+    {
+      name: '宠物', sort: 1,
+      categories: ['宠物益智啃咬玩具', '抛掷球类玩具', '宠物发声玩具', '宠物碗及喂食器', '宠物便携包及出行用品', '宠物清洁美容产品'],
+    },
+    {
+      name: '配件', sort: 2,
+      categories: ['脸皮', '没有分类的归为配件'],
+    },
+    {
+      name: '文具', sort: 3,
+      categories: ['印章', '笔', '笔筒'],
+    },
+    {
+      name: '家居', sort: 4,
+      categories: ['杯套', '门档', '沥水篮'],
+    },
+  ];
+
+  for (const aud of audienceData) {
+    const audience = await prisma.productAudience.upsert({
+      where: { name: aud.name },
+      update: {},
+      create: { name: aud.name, sort: aud.sort },
+    });
+    for (let i = 0; i < aud.categories.length; i++) {
+      await prisma.productCategory.upsert({
+        where: { audienceId_name: { audienceId: audience.id, name: aud.categories[i] } },
+        update: {},
+        create: { name: aud.categories[i], audienceId: audience.id, sort: i },
+      });
+    }
+  }
+
+  console.log('✅ 产品分类初始化完成！');
 }
 
 main()

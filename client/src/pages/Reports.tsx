@@ -162,7 +162,7 @@ export default function ReportsPage() {
                 { title: '金额', dataIndex: 'amountCNY', key: 'amountCNY', width: 110, align: 'right' as const,
                   render: (v: number) => v != null ? <Price value={v} /> : '-' },
                 { title: '日期', dataIndex: 'orderDate', key: 'orderDate', width: 100, render: (v: string) => v || '-' },
-                { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Tag color={v === '已发货' ? 'success' : v === '处理中' ? 'processing' : 'default'} bordered={false}>{v || '-'}</Tag> },
+                { title: '状态', dataIndex: 'status', key: 'status', width: 90, render: (v: string) => <Tag color={v === '已发货' ? 'success' : v === '处理中' ? 'processing' : 'default'} variant="filled">{v || '-'}</Tag> },
               ]}
             />
           </Card>

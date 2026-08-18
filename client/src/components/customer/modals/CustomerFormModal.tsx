@@ -117,7 +117,7 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
           <Select placeholder="选择采购意向">
             {INTENT_OPTIONS.map((o) => (
               <Select.Option key={o.value} value={o.value}>
-                <Tag color={o.tagColor} bordered={false}>{o.label}</Tag>
+                <Tag color={o.tagColor} variant="filled">{o.label}</Tag>
               </Select.Option>
             ))}
           </Select>

@@ -29,6 +29,10 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiResponse>) => {
+    // 取消的请求（AbortController）不弹错误提示
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
       // 尝试用 refreshToken 刷新
       const refreshToken = localStorage.getItem('refreshToken');
@@ -58,3 +62,13 @@ request.interceptors.response.use(
 );
 
 export default request;
+
+/** 上传图片文件，返回后端给出的访问 URL */
+export async function uploadImage(file: Blob, filename = 'image.png'): Promise<string> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  const res = await request.post<ApiResponse<{ url: string; filename: string }>>('/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data.data.url;
+}

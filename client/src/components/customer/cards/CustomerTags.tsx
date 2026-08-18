@@ -59,7 +59,7 @@ export default function CustomerTags({ tags, token, variant = 'default' }: Custo
         return (
           <Tag
             key={tag.name}
-            bordered={false}
+            variant="filled"
             style={{
               margin: 0,
               borderRadius: token.borderRadiusSM,

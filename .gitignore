@@ -56,3 +56,7 @@ design.json
 hooks.json
 config.json
 run-live.sh
+
+# Uploaded files (server runtime)
+server/uploads/
+uploads/

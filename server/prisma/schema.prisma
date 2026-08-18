@@ -251,28 +251,93 @@ model SalesPipeline {
   updatedAt  DateTime    @updatedAt
 }
 
+// ========== 一级工艺 ==========
+model ProductCraft {
+  id        String   @id @default(uuid())
+  name      String   @unique              // 搪胶 / 注塑 / 搪胶+注塑 / 硅胶 / 硅胶+注塑
+  sort      Int      @default(0)
+  status    Int      @default(1)          // 1 启用 / 0 停用
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ========== 二级受众 ==========
+model ProductAudience {
+  id         String   @id @default(uuid())
+  name       String   @unique             // 儿童 / 宠物 / 配件 / 文具 / 家居
+  sort       Int      @default(0)
+  status     Int      @default(1)
+  categories ProductCategory[]            // 关联三级品类
+  products   Product[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ========== 三级产品品类 ==========
+model ProductCategory {
+  id        String   @id @default(uuid())
+  name      String                        // 沐浴玩具 / 挤压玩具 / 存钱罐 ...
+  audienceId String
+  audience  ProductAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+  sort      Int      @default(0)
+  status    Int      @default(1)
+  products  Product[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([audienceId, name])
+}
+
 // ========== 产品 ==========
-// type: SELF(自产品) / EXTERNAL(外购品)
-// selfKind: 仅 SELF 使用 -> FINISHED(成品) / SEMI(半成品)
-// source: MANUAL(手动录入) / SYNC(平台同步) / RPA(RPA导入)
+// 定制类产品核心模型：工艺 → 受众 → 品类 三级分类 + 产品属性 + 产品要求
 model Product {
   id          String   @id @default(cuid())
   name        String
   sku         String?  @unique
-  type        String   @default("SELF")      // SELF / EXTERNAL
-  selfKind    String?                     // FINISHED / SEMI（仅自产品）
-  category    String?
-  unit        String?
+
+  // ---- 三级分类 ----
+  craftId     String?
+  craft       ProductCraft?    @relation(fields: [craftId], references: [id])
+  audienceId  String?
+  audience    ProductAudience? @relation(fields: [audienceId], references: [id])
+  categoryId  String?
+  category    ProductCategory? @relation(fields: [categoryId], references: [id])
+
+  // ---- (定制)产品属性（必填）----
+  images      String?                      // 造型图片 URL，多图逗号分隔
+  sizeL       String?                      // 长 cm
+  sizeW       String?                      // 宽 cm
+  sizeH       String?                      // 高 cm
+  weight      String?                      // 克重 g
+  unit        String?                      // 产品单位（套/个）
+
+  // ---- (深/轻)产品要求（打样单号）----
+  sampleNo    String?                      // 打样单号
+  logo        Boolean  @default(false)      // 功能：logo
+  sound       Boolean  @default(false)      // 发声
+  glow        Boolean  @default(false)      // 发光
+  colorChange Boolean  @default(false)      // 变色
+  sprayWater  Boolean  @default(false)      // 喷水
+  colors      String?                      // 颜色（潘通色），逗号分隔
+  colorImage  String?                      // 颜色标注图片 URL
+  packaging   String?                      // 产品包装（卡/盒/袋/桶）
+
+  // ---- 供货定制模式（多选，由角色决定可选范围）----
+  supplyModes String?  @default("")        // 逗号分隔：DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
+
+  // ---- 保留原有字段 ----
   spec        String?
-  description String?                     // 产品描述
-  price       Float?                      // 含税单价
+  description String?
+  price       Float?
   currency    String?  @default("CNY")
-  taxRate     Float?  @default(13)         // 税率 %
-  stock       Int?    @default(0)          // 当前库存
-  lowStockAlert Int?   @default(0)         // 最低库存预警
-  source      String   @default("MANUAL")  // MANUAL / SYNC / RPA
-  status      String   @default("ACTIVE")  // ACTIVE / INACTIVE
+  taxRate     Float?  @default(13)
+  stock       Int?    @default(0)
+  lowStockAlert Int?  @default(0)
+  source      String   @default("MANUAL")
+  status      String   @default("ACTIVE")
   remark      String?
+
   leadProducts LeadProduct[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

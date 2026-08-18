@@ -98,7 +98,7 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
         placement="bottomRight"
       >
         <div className="user-avatar">
-          <Avatar icon={<UserOutlined />} size="small" />
+          <Avatar src={user?.avatar} icon={<UserOutlined />} size="small" />
           <div className="user-info">
             <span className="user-name">{user?.realName || user?.username || t('common.noData')}</span>
             <span className="user-role">{user?.role?.name || t('menu.systemUser')}</span>

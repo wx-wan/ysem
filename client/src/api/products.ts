@@ -1,20 +1,87 @@
 import request from './request';
-import type { ApiResponse } from './request';
 
-// ========== 类型 ==========
-export type ProductType = 'SELF' | 'EXTERNAL'; // 自产品 / 外购品
-export type SelfKind = 'FINISHED' | 'SEMI';     // 成品 / 半成品
-export type ProductSource = 'MANUAL' | 'SYNC' | 'RPA';
-export type ProductStatus = 'ACTIVE' | 'INACTIVE';
+// ============ 产品分类 Taxonomy ============
+
+export interface ProductCraft {
+  id: string;
+  name: string;
+  sort: number;
+  status: number;
+}
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  audienceId: string;
+  audience?: { id: string; name: string };
+  sort: number;
+  status: number;
+}
+
+export interface ProductAudience {
+  id: string;
+  name: string;
+  sort: number;
+  status: number;
+  categories?: ProductCategory[];
+}
+
+export const taxonomyApi = {
+  // 工艺
+  getCrafts: () => request.get<ProductCraft[]>('/product/taxonomy/crafts'),
+  createCraft: (data: Partial<ProductCraft>) => request.post('/product/taxonomy/crafts', data),
+  updateCraft: (id: string, data: Partial<ProductCraft>) => request.put(`/product/taxonomy/crafts/${id}`, data),
+  deleteCraft: (id: string) => request.delete(`/product/taxonomy/crafts/${id}`),
+
+  // 受众
+  getAudiences: () => request.get<ProductAudience[]>('/product/taxonomy/audiences'),
+  createAudience: (data: Partial<ProductAudience>) => request.post('/product/taxonomy/audiences', data),
+  updateAudience: (id: string, data: Partial<ProductAudience>) => request.put(`/product/taxonomy/audiences/${id}`, data),
+  deleteAudience: (id: string) => request.delete(`/product/taxonomy/audiences/${id}`),
+
+  // 品类
+  getCategories: () => request.get<ProductCategory[]>('/product/taxonomy/categories'),
+  createCategory: (data: Partial<ProductCategory>) => request.post('/product/taxonomy/categories', data),
+  updateCategory: (id: string, data: Partial<ProductCategory>) => request.put(`/product/taxonomy/categories/${id}`, data),
+  deleteCategory: (id: string) => request.delete(`/product/taxonomy/categories/${id}`),
+};
+
+// ============ 产品 Product ============
 
 export interface Product {
   id: string;
   name: string;
   sku?: string | null;
-  type: ProductType;
-  selfKind?: SelfKind | null;
-  category?: string | null;
-  unit?: string | null;
+  craftId?: string | null;
+  craft?: { id: string; name: string } | null;
+  audienceId?: string | null;
+  audience?: { id: string; name: string; categories?: ProductCategory[] } | null;
+  categoryId?: string | null;
+  category?: { id: string; name: string } | null;
+
+  // 产品属性
+  images?: string | null;       // 多图逗号分隔 URL
+  sizeL?: string | null;        // 长 cm
+  sizeW?: string | null;        // 宽 cm
+  sizeH?: string | null;        // 高 cm
+  weight?: string | null;       // 克重 g
+  unit?: string | null;         // 单位
+
+  // 产品要求
+  sampleNo?: string | null;     // 打样单号
+  logo?: boolean;               // 功能勾选
+  sound?: boolean;              // 发声
+  glow?: boolean;               // 发光
+  colorChange?: boolean;        // 变色
+  sprayWater?: boolean;         // 喷水
+  colors?: string | null;       // 潘通色
+  colorImage?: string | null;   // 颜色标注图
+  packaging?: string | null;    // 包装（卡/盒/袋/桶）
+
+  // 供货模式
+  supplyModes?: string | null;  // DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
+
+  // 原有字段
   spec?: string | null;
   description?: string | null;
   price?: number | null;
@@ -22,123 +89,40 @@ export interface Product {
   taxRate?: number | null;
   stock?: number | null;
   lowStockAlert?: number | null;
-  source: ProductSource;
-  status: ProductStatus;
+  source?: string;
+  status?: string;
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface ProductQuery {
+interface ProductListParams {
   page?: number;
   pageSize?: number;
   keyword?: string;
-  type?: string;
-  source?: string;
+  craftId?: string;
+  audienceId?: string;
+  categoryId?: string;
   status?: string;
 }
 
+// 下拉选项类型（供销售单等引用）
 export interface ProductOption {
   id: string;
   name: string;
   sku?: string | null;
-  type: ProductType;
-  selfKind?: SelfKind | null;
-  unit?: string | null;
-  price?: number | null;
 }
 
-export interface ProductPayload {
-  name: string;
-  sku?: string | null;
-  type?: ProductType;
-  selfKind?: SelfKind | null;
-  category?: string | null;
-  unit?: string | null;
-  spec?: string | null;
-  description?: string | null;
-  price?: number | null;
-  currency?: string | null;
-  taxRate?: number | null;
-  stock?: number | null;
-  lowStockAlert?: number | null;
-  source?: ProductSource;
-  status?: ProductStatus;
-  remark?: string | null;
-}
-
-export interface LeadProductItem {
-  productId: string;
-  quantity?: number;
-}
-
-export interface ImportResult {
-  total: number;
-  success: number;
-  errors: string[];
-}
-
-// ========== API ==========
-export const productApi = {
-  list: (params: ProductQuery) =>
-    request.get<ApiResponse<{ list: Product[]; total: number; page: number; pageSize: number }>>('/products', { params }),
-
-  get: (id: string) =>
-    request.get<ApiResponse<Product>>(`/products/${id}`),
-
-  create: (data: ProductPayload) =>
-    request.post<ApiResponse<Product>>('/products', data),
-
-  update: (id: string, data: Partial<ProductPayload>) =>
-    request.put<ApiResponse<Product>>(`/products/${id}`, data),
-
-  remove: (id: string) =>
-    request.delete<ApiResponse<null>>(`/products/${id}`),
-
-  batchRemove: (ids: string[]) =>
-    request.delete<ApiResponse<null>>('/products/batch', { data: { ids } }),
-
-  import: (file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return request.post<ApiResponse<ImportResult>>('/products/import', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-
-  importByRpa: (file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return request.post<ApiResponse<ImportResult>>('/products/import/rpa', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-
-  syncPlatform: () =>
-    request.get<ApiResponse<{ synced: number; message: string }>>('/products/sync'),
-
-  options: () =>
-    request.get<ApiResponse<ProductOption[]>>('/products/options'),
+const productApi = {
+  getList: (params?: ProductListParams) =>
+    request.get<{ list: Product[]; total: number; page: number; pageSize: number }>('/products', { params }),
+  getById: (id: string) => request.get<Product>(`/products/${id}`),
+  // 兼容旧接口：获取产品下拉选项（仅 id/name/sku）
+  options: () => request.get<ProductOption[]>('/products/options'),
+  create: (data: Partial<Product>) => request.post('/products', data),
+  update: (id: string, data: Partial<Product>) => request.put(`/products/${id}`, data),
+  delete: (id: string) => request.delete(`/products/${id}`),
 };
 
-// ========== 标签文案 ==========
-export const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
-  SELF: '自产品',
-  EXTERNAL: '外购品',
-};
-
-export const SELF_KIND_LABELS: Record<SelfKind, string> = {
-  FINISHED: '成品',
-  SEMI: '半成品',
-};
-
-export const PRODUCT_SOURCE_LABELS: Record<ProductSource, string> = {
-  MANUAL: '手动录入',
-  SYNC: '平台同步',
-  RPA: 'RPA导入',
-};
-
-export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
-  ACTIVE: '启用',
-  INACTIVE: '停用',
-};
+export { productApi };
+export default productApi;
