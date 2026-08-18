@@ -18,6 +18,7 @@ build/
 # Database
 *.db
 *.db-journal
+*.db.bak*
 prisma/migrations/*/migration_lock.toml
 
 # IDE
