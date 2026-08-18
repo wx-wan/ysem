@@ -341,10 +341,13 @@ export default function Products() {
               <Typography.Text strong className="pm-section-title">(定制)产品属性 <Text type="secondary">必填</Text></Typography.Text>
               <div className="pm-section-body">
 
-                <Form.Item name="images" label="造型图片（上传）" htmlFor="product-images">
-                  <ImageUploadCropper id="product-images" aspect={NaN} maxSize={2 * 1024 * 1024} uploadUrl="/upload"
-                    onUploaded={(url) => form.setFieldValue('images', url)} />
-                </Form.Item>
+                <div className="pm-form-row">
+                  <label className="pm-form-row-label">造型图片（上传）</label>
+                  <Form.Item name="images" noStyle>
+                    <ImageUploadCropper aspect={NaN} maxSize={2 * 1024 * 1024} uploadUrl="/upload"
+                      onUploaded={(url) => form.setFieldValue('images', url)} />
+                  </Form.Item>
+                </div>
 
                 <Row gutter={10}>
                   <Col span={8}>
@@ -406,10 +409,13 @@ export default function Products() {
                   <Input placeholder="多个颜色逗号分隔" />
                 </Form.Item>
 
-                <Form.Item name="colorImage" label="颜色标注图" htmlFor="product-colorImage">
-                  <ImageUploadCropper id="product-colorImage" aspect={NaN} uploadUrl="/upload"
-                    onUploaded={(url) => form.setFieldValue('colorImage', url)} />
-                </Form.Item>
+                <div className="pm-form-row">
+                  <label className="pm-form-row-label">颜色标注图</label>
+                  <Form.Item name="colorImage" noStyle>
+                    <ImageUploadCropper aspect={NaN} uploadUrl="/upload"
+                      onUploaded={(url) => form.setFieldValue('colorImage', url)} />
+                  </Form.Item>
+                </div>
 
                 <Form.Item name="packaging" label="产品包装">
                   <Select mode="multiple" placeholder="选择包装类型" allowClear
