@@ -395,22 +395,16 @@
   min-width: 16px;
 }
 
-/* 选择卡片网格 */
-.pm-pick-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
-}
-/* 受众 / 品类：每行 3 个卡片 */
-.pm-pick-grid--3 {
-  grid-template-columns: repeat(3, 1fr);
-}
+/* 选择卡片 */
 .pm-pick {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  justify-content: center;
   gap: 2px;
+  width: 100%;
+  min-height: 68px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   background: var(--c-surface, #fff);
@@ -460,7 +454,6 @@
   color: #ff4d4f;
 }
 .pm-pick-empty {
-  grid-column: 1 / -1;
   padding: 14px;
   font-size: 13px;
   color: var(--c-text-tertiary, #94a3b8);

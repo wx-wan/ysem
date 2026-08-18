@@ -543,30 +543,31 @@ export default function Products() {
             <label className="pm-form-row-label">
               工艺 <span className="pm-req">*</span>
             </label>
-            <div className={cx('pm-pick-grid')}>
+            <Row gutter={[10, 10]}>
               {CRAFT_ORDER.filter((name) => crafts.some((c) => c.name === name))
                 .concat(crafts.filter((c) => !CRAFT_ORDER.includes(c.name)).map((c) => c.name))
                 .map((name) => crafts.find((c) => c.name === name)!)
                 .map((c) => {
                   const checked = stepCrafts.some((s) => s.id === c.id);
                   return (
-                    <button
-                      type="button"
-                      key={c.id}
-                      className={cx('pm-pick', checked && 'is-selected')}
-                      onClick={() => {
-                        setStepCrafts((prev) =>
-                          checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
-                        );
-                        setStepErr((e) => ({ ...e, craftId: undefined }));
-                      }}
-                    >
-                      <CheckCircleFilled className="pm-pick-check" />
-                      <span className="pm-pick-name">{c.name}</span>
-                    </button>
+                    <Col span={8} key={c.id}>
+                      <button
+                        type="button"
+                        className={cx('pm-pick', checked && 'is-selected')}
+                        onClick={() => {
+                          setStepCrafts((prev) =>
+                            checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
+                          );
+                          setStepErr((e) => ({ ...e, craftId: undefined }));
+                        }}
+                      >
+                        <CheckCircleFilled className="pm-pick-check" />
+                        <span className="pm-pick-name">{c.name}</span>
+                      </button>
+                    </Col>
                   );
                 })}
-            </div>
+            </Row>
             {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
           </div>
 
@@ -575,27 +576,28 @@ export default function Products() {
             <label className="pm-form-row-label">
               受众 <span className="pm-req">*</span>
             </label>
-            <div className="pm-pick-grid pm-pick-grid--3">
+            <Row gutter={[10, 10]}>
               {audiences.map((a) => (
-                <button
-                  type="button"
-                  key={a.id}
-                  className={cx('pm-pick', stepAudience?.id === a.id && 'is-selected')}
-                  onClick={() => {
-                    setStepAudience(a);
-                    setStepCategory(undefined);
-                    setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
-                    handleAudienceChange(a.id);
-                  }}
-                >
-                  <CheckCircleFilled className="pm-pick-check" />
-                  <span className="pm-pick-name">{a.name}</span>
-                  {a.categories?.length ? (
-                    <span className="pm-pick-sub">{a.categories.length} 个品类</span>
-                  ) : null}
-                </button>
+                <Col span={8} key={a.id}>
+                  <button
+                    type="button"
+                    className={cx('pm-pick', stepAudience?.id === a.id && 'is-selected')}
+                    onClick={() => {
+                      setStepAudience(a);
+                      setStepCategory(undefined);
+                      setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
+                      handleAudienceChange(a.id);
+                    }}
+                  >
+                    <CheckCircleFilled className="pm-pick-check" />
+                    <span className="pm-pick-name">{a.name}</span>
+                    {a.categories?.length ? (
+                      <span className="pm-pick-sub">{a.categories.length} 个品类</span>
+                    ) : null}
+                  </button>
+                </Col>
               ))}
-            </div>
+            </Row>
             {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
           </div>
 
@@ -605,24 +607,27 @@ export default function Products() {
               <label className="pm-form-row-label">
                 品类 <span className="pm-req">*</span>
               </label>
-              <div className="pm-pick-grid pm-pick-grid--3">
+              <Row gutter={[10, 10]}>
                 {categories.length ? categories.map((c) => (
-                  <button
-                    type="button"
-                    key={c.id}
-                    className={cx('pm-pick', stepCategory?.id === c.id && 'is-selected')}
-                    onClick={() => {
-                      setStepCategory(c);
-                      setStepErr((e) => ({ ...e, categoryId: undefined }));
-                    }}
-                  >
-                    <CheckCircleFilled className="pm-pick-check" />
-                    <span className="pm-pick-name">{c.name}</span>
-                  </button>
+                  <Col span={8} key={c.id}>
+                    <button
+                      type="button"
+                      className={cx('pm-pick', stepCategory?.id === c.id && 'is-selected')}
+                      onClick={() => {
+                        setStepCategory(c);
+                        setStepErr((e) => ({ ...e, categoryId: undefined }));
+                      }}
+                    >
+                      <CheckCircleFilled className="pm-pick-check" />
+                      <span className="pm-pick-name">{c.name}</span>
+                    </button>
+                  </Col>
                 )) : (
-                  <div className="pm-pick-empty">该受众暂无品类，可直接进入下一步</div>
+                  <Col span={24}>
+                    <div className="pm-pick-empty">该受众暂无品类，可直接进入下一步</div>
+                  </Col>
                 )}
-              </div>
+              </Row>
               {stepErr.categoryId && <div className="pm-pick-err">{stepErr.categoryId}</div>}
             </div>
           )}
