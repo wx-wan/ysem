@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  EyeOutlined, ReloadOutlined,
+  EyeOutlined, ReloadOutlined, CheckCircleFilled,
 } from '@ant-design/icons';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
@@ -16,6 +16,9 @@ import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
 
 const { Text } = Typography;
+
+// 类名拼接工具
+const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
 // 供货模式选项
 export const SUPPLY_MODES = [
@@ -89,23 +92,60 @@ export default function Products() {
   // 受众变化时联动品类
   const handleAudienceChange = (audienceId?: string) => {
     setSelectedAudienceId(audienceId);
-    form.setFieldValue('categoryId', undefined);
     if (audienceId) {
       const aud = audiences.find((a) => a.id === audienceId);
       setCategories(aud?.categories || []);
     } else {
       setCategories([]);
     }
+    try { form.setFieldValue('categoryId', undefined); } catch { /* 主表单未挂载时忽略 */ }
+  };
+
+  // 第一步卡片式选择的状态
+  const [stepOpen, setStepOpen] = useState(false);
+  const [stepCraft, setStepCraft] = useState<ProductCraft | undefined>();
+  const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
+  const [stepCategory, setStepCategory] = useState<ProductCategory | undefined>();
+  const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
+
+  const resetStep = () => {
+    setStepCraft(undefined);
+    setStepAudience(undefined);
+    setStepCategory(undefined);
+    setStepErr({});
+    setCategories([]);
+    setSelectedAudienceId(undefined);
   };
 
   const openCreate = () => {
+    resetStep();
+    setStepOpen(true);
+  };
+
+  const handleStepNext = async () => {
+    const v = {
+      craftId: stepCraft?.id,
+      audienceId: stepAudience?.id,
+      categoryId: stepCategory?.id,
+    };
+    const err: typeof stepErr = {};
+    if (!v.craftId) err.craftId = '请选择一级工艺';
+    if (!v.audienceId) err.audienceId = '请选择二级受众';
+    // 仅当受众下存在品类时才要求选择品类
+    if (selectedAudienceId && categories.length > 0 && !v.categoryId) err.categoryId = '请选择三级品类';
+    setStepErr(err);
+    if (Object.keys(err).length) return; // 校验失败：停留在第一步
+
+    setStepOpen(false);
     setEditing(null);
-    setCategories([]);
-    setSelectedAudienceId(undefined);
     setOpen(true);
     setTimeout(() => {
       form.resetFields();
-      form.setFieldsValue({ logo: false, sound: false, glow: false, colorChange: false, sprayWater: false });
+      form.setFieldsValue({
+        ...v,
+        logo: false, sound: false, glow: false, colorChange: false, sprayWater: false,
+      });
+      if (v.audienceId) handleAudienceChange(v.audienceId);
     }, 0);
   };
 
@@ -455,6 +495,120 @@ export default function Products() {
             <Input.TextArea rows={2} placeholder="备注信息" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      {/* 第一步：选择工艺 / 受众 / 品类 */}
+      <Modal
+        title="新建产品 · 选择分类"
+        open={stepOpen}
+        onCancel={() => setStepOpen(false)}
+        onOk={handleStepNext}
+        okText="下一步"
+        cancelText="取消"
+        width={680}
+        destroyOnHidden
+        forceRender={false}
+      >
+        <div className="pm-form" style={{ marginTop: 12 }}>
+          {/* 三步指示器 */}
+          <div className="pm-step-bar">
+            <div className={cx('pm-step-dot', stepCraft && 'is-done')}>
+              <span className="pm-step-idx">1</span>
+              <span className="pm-step-label">{stepCraft ? stepCraft.name : '一级工艺'}</span>
+            </div>
+            <div className="pm-step-line" />
+            <div className={cx('pm-step-dot', stepCraft && 'is-active', stepAudience && 'is-done')}>
+              <span className="pm-step-idx">2</span>
+              <span className="pm-step-label">{stepAudience ? stepAudience.name : '二级受众'}</span>
+            </div>
+            <div className="pm-step-line" />
+            <div className={cx('pm-step-dot', stepAudience && 'is-active', stepCategory && 'is-done')}>
+              <span className="pm-step-idx">3</span>
+              <span className="pm-step-label">{stepCategory ? stepCategory.name : '三级品类'}</span>
+            </div>
+          </div>
+
+          {/* 一级工艺 */}
+          <div className="pm-form-row">
+            <label className="pm-form-row-label">
+              一级工艺 <span className="pm-req">*</span>
+            </label>
+            <div className={cx('pm-pick-grid')}>
+              {crafts.map((c) => (
+                <button
+                  type="button"
+                  key={c.id}
+                  className={cx('pm-pick', stepCraft?.id === c.id && 'is-selected')}
+                  onClick={() => {
+                    setStepCraft(c);
+                    setStepErr((e) => ({ ...e, craftId: undefined }));
+                  }}
+                >
+                  <CheckCircleFilled className="pm-pick-check" />
+                  <span className="pm-pick-name">{c.name}</span>
+                </button>
+              ))}
+            </div>
+            {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
+          </div>
+
+          {/* 二级受众 */}
+          <div className="pm-form-row">
+            <label className="pm-form-row-label">
+              二级受众 <span className="pm-req">*</span>
+            </label>
+            <div className="pm-pick-grid">
+              {audiences.map((a) => (
+                <button
+                  type="button"
+                  key={a.id}
+                  className={cx('pm-pick', stepAudience?.id === a.id && 'is-selected')}
+                  onClick={() => {
+                    setStepAudience(a);
+                    setStepCategory(undefined);
+                    setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
+                    handleAudienceChange(a.id);
+                  }}
+                >
+                  <CheckCircleFilled className="pm-pick-check" />
+                  <span className="pm-pick-name">{a.name}</span>
+                  {a.categories?.length ? (
+                    <span className="pm-pick-sub">{a.categories.length} 个品类</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+            {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
+          </div>
+
+          {/* 三级品类：选完受众后出现 */}
+          {selectedAudienceId && (
+            <div className="pm-form-row">
+              <label className="pm-form-row-label">
+                三级品类 <span className="pm-req">*</span>
+              </label>
+              <div className="pm-pick-grid">
+                {categories.length ? categories.map((c) => (
+                  <button
+                    type="button"
+                    key={c.id}
+                    className={cx('pm-pick', stepCategory?.id === c.id && 'is-selected')}
+                    onClick={() => {
+                      setStepCategory(c);
+                      setStepErr((e) => ({ ...e, categoryId: undefined }));
+                    }}
+                  >
+                    <CheckCircleFilled className="pm-pick-check" />
+                    <span className="pm-pick-name">{c.name}</span>
+                  </button>
+                )) : (
+                  <div className="pm-pick-empty">该受众暂无品类，可直接进入下一步</div>
+                )}
+              </div>
+              {stepErr.categoryId && <div className="pm-pick-err">{stepErr.categoryId}</div>}
+            </div>
+          )}
+        </div>
       </Modal>
 
       {/* 详情弹窗 */}
