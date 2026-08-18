@@ -97,19 +97,25 @@ export default function Products() {
 
   const openCreate = () => {
     setEditing(null);
-    form.resetFields();
-    form.setFieldsValue({ logo: false, sound: false, glow: false, colorChange: false, sprayWater: false });
+    setCategories([]);
+    setSelectedAudienceId(undefined);
     setOpen(true);
+    setTimeout(() => {
+      form.resetFields();
+      form.setFieldsValue({ logo: false, sound: false, glow: false, colorChange: false, sprayWater: false });
+    }, 0);
   };
 
   const openEdit = (record: Product) => {
     setEditing(record);
-    form.setFieldsValue({
-      ...record,
-      supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
-    });
-    if (record.audienceId) handleAudienceChange(record.audienceId);
     setOpen(true);
+    setTimeout(() => {
+      form.setFieldsValue({
+        ...record,
+        supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
+      });
+      if (record.audienceId) handleAudienceChange(record.audienceId);
+    }, 0);
   };
 
   const handleSubmit = async () => {
