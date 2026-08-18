@@ -20,6 +20,9 @@ const { Text } = Typography;
 // 类名拼接工具
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
+// 工艺固定展示顺序（前端兜底，确保 搪胶→注塑→硅胶 在前）
+const CRAFT_ORDER = ['搪胶', '注塑', '硅胶'];
+
 // 供货模式选项
 export const SUPPLY_MODES = [
   { label: '深度定制', value: 'DEEP_CUSTOM' },
@@ -64,7 +67,7 @@ export default function Products() {
     try {
       const res = await productApi.getList({
         page, pageSize, keyword,
-        craftId: filterCraftId,
+        craftIds: filterCraftId,
         audienceId: filterAudienceId,
       });
       if (res.data.code === 200 || res.data.code === 0) {
@@ -103,13 +106,13 @@ export default function Products() {
 
   // 第一步卡片式选择的状态
   const [stepOpen, setStepOpen] = useState(false);
-  const [stepCraft, setStepCraft] = useState<ProductCraft | undefined>();
+  const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
   const [stepCategory, setStepCategory] = useState<ProductCategory | undefined>();
   const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
 
   const resetStep = () => {
-    setStepCraft(undefined);
+    setStepCrafts([]);
     setStepAudience(undefined);
     setStepCategory(undefined);
     setStepErr({});
@@ -124,15 +127,15 @@ export default function Products() {
 
   const handleStepNext = async () => {
     const v = {
-      craftId: stepCraft?.id,
+      craftIds: stepCrafts.map((c) => c.id),
       audienceId: stepAudience?.id,
       categoryId: stepCategory?.id,
     };
     const err: typeof stepErr = {};
-    if (!v.craftId) err.craftId = '请选择一级工艺';
-    if (!v.audienceId) err.audienceId = '请选择二级受众';
+    if (!v.craftIds.length) err.craftId = '请选择工艺';
+    if (!v.audienceId) err.audienceId = '请选择受众';
     // 仅当受众下存在品类时才要求选择品类
-    if (selectedAudienceId && categories.length > 0 && !v.categoryId) err.categoryId = '请选择三级品类';
+    if (selectedAudienceId && categories.length > 0 && !v.categoryId) err.categoryId = '请选择品类';
     setStepErr(err);
     if (Object.keys(err).length) return; // 校验失败：停留在第一步
 
@@ -155,6 +158,7 @@ export default function Products() {
     setTimeout(() => {
       form.setFieldsValue({
         ...record,
+        craftIds: record.crafts?.map((c) => c.id) || [],
         supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
       });
       if (record.audienceId) handleAudienceChange(record.audienceId);
@@ -271,7 +275,9 @@ export default function Products() {
                     <div className="pm-prod-body">
                       <div className="pm-prod-name" title={r.name}>{r.name}</div>
                       <div className="pm-prod-tags">
-                        {r.craft ? <span className="pm-prod-tag">{r.craft.name}</span> : null}
+                        {r.crafts?.length
+                          ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
+                          : null}
                         {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
                         {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
                       </div>
@@ -372,18 +378,22 @@ export default function Products() {
           {/* 三级分类 */}
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="craftId" label="一级工艺">
-                <Select placeholder="选择工艺" allowClear options={crafts.map((c) => ({ label: c.name, value: c.id }))} />
+              <Form.Item name="craftIds" label="工艺">
+                <Select mode="multiple" placeholder="可多选，如 搪胶+注塑" allowClear
+                  options={CRAFT_ORDER.filter((name) => crafts.some((c) => c.name === name))
+                    .concat(crafts.filter((c) => !CRAFT_ORDER.includes(c.name)).map((c) => c.name))
+                    .map((name) => crafts.find((c) => c.name === name)!)
+                    .map((c) => ({ label: c.name, value: c.id }))} />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="audienceId" label="二级受众">
+              <Form.Item name="audienceId" label="受众">
                 <Select placeholder="选择受众" allowClear onChange={handleAudienceChange}
                   options={audiences.map((a) => ({ label: a.name, value: a.id }))} />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="categoryId" label="三级品类">
+              <Form.Item name="categoryId" label="品类">
                 <Select placeholder="先选受众" allowClear disabled={!selectedAudienceId}
                   options={categories.map((c) => ({ label: c.name, value: c.id }))} />
               </Form.Item>
@@ -512,50 +522,58 @@ export default function Products() {
         <div className="pm-form" style={{ marginTop: 12 }}>
           {/* 三步指示器 */}
           <div className="pm-step-bar">
-            <div className={cx('pm-step-dot', stepCraft && 'is-done')}>
+            <div className={cx('pm-step-dot', stepCrafts.length && 'is-done')}>
               <span className="pm-step-idx">1</span>
-              <span className="pm-step-label">{stepCraft ? stepCraft.name : '一级工艺'}</span>
+              <span className="pm-step-label">{stepCrafts.length ? stepCrafts.map((c) => c.name).join('+') : '工艺'}</span>
             </div>
             <div className="pm-step-line" />
-            <div className={cx('pm-step-dot', stepCraft && 'is-active', stepAudience && 'is-done')}>
+            <div className={cx('pm-step-dot', stepCrafts.length && 'is-active', stepAudience && 'is-done')}>
               <span className="pm-step-idx">2</span>
-              <span className="pm-step-label">{stepAudience ? stepAudience.name : '二级受众'}</span>
+              <span className="pm-step-label">{stepAudience ? stepAudience.name : '受众'}</span>
             </div>
             <div className="pm-step-line" />
             <div className={cx('pm-step-dot', stepAudience && 'is-active', stepCategory && 'is-done')}>
               <span className="pm-step-idx">3</span>
-              <span className="pm-step-label">{stepCategory ? stepCategory.name : '三级品类'}</span>
+              <span className="pm-step-label">{stepCategory ? stepCategory.name : '品类'}</span>
             </div>
           </div>
 
-          {/* 一级工艺 */}
+          {/* 工艺 */}
           <div className="pm-form-row">
             <label className="pm-form-row-label">
-              一级工艺 <span className="pm-req">*</span>
+              工艺 <span className="pm-req">*</span>
             </label>
             <div className={cx('pm-pick-grid')}>
-              {crafts.map((c) => (
-                <button
-                  type="button"
-                  key={c.id}
-                  className={cx('pm-pick', stepCraft?.id === c.id && 'is-selected')}
-                  onClick={() => {
-                    setStepCraft(c);
-                    setStepErr((e) => ({ ...e, craftId: undefined }));
-                  }}
-                >
-                  <CheckCircleFilled className="pm-pick-check" />
-                  <span className="pm-pick-name">{c.name}</span>
-                </button>
-              ))}
+              {CRAFT_ORDER.filter((name) => crafts.some((c) => c.name === name))
+                .concat(crafts.filter((c) => !CRAFT_ORDER.includes(c.name)).map((c) => c.name))
+                .map((name) => crafts.find((c) => c.name === name)!)
+                .map((c) => {
+                  const checked = stepCrafts.some((s) => s.id === c.id);
+                  return (
+                    <button
+                      type="button"
+                      key={c.id}
+                      className={cx('pm-pick', checked && 'is-selected')}
+                      onClick={() => {
+                        setStepCrafts((prev) =>
+                          checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
+                        );
+                        setStepErr((e) => ({ ...e, craftId: undefined }));
+                      }}
+                    >
+                      <CheckCircleFilled className="pm-pick-check" />
+                      <span className="pm-pick-name">{c.name}</span>
+                    </button>
+                  );
+                })}
             </div>
             {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
           </div>
 
-          {/* 二级受众 */}
+          {/* 受众 */}
           <div className="pm-form-row">
             <label className="pm-form-row-label">
-              二级受众 <span className="pm-req">*</span>
+              受众 <span className="pm-req">*</span>
             </label>
             <div className="pm-pick-grid">
               {audiences.map((a) => (
@@ -581,11 +599,11 @@ export default function Products() {
             {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
           </div>
 
-          {/* 三级品类：选完受众后出现 */}
+          {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
             <div className="pm-form-row">
               <label className="pm-form-row-label">
-                三级品类 <span className="pm-req">*</span>
+                品类 <span className="pm-req">*</span>
               </label>
               <div className="pm-pick-grid">
                 {categories.length ? categories.map((c) => (
@@ -659,7 +677,7 @@ export default function Products() {
             </Row>
             <Divider />
             <Row gutter={16}>
-              <Col span={8}><Text type="secondary">工艺：</Text>{viewing.craft?.name || '-'}</Col>
+              <Col span={8}><Text type="secondary">工艺：</Text>{viewing.crafts?.length ? viewing.crafts.map((c) => c.name).join(' + ') : '-'}</Col>
               <Col span={8}><Text type="secondary">受众：</Text>{viewing.audience?.name || '-'}</Col>
               <Col span={8}><Text type="secondary">品类：</Text>{viewing.category?.name || '-'}</Col>
             </Row>

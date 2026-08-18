@@ -7,7 +7,7 @@ import { success, created, fail } from '../utils/response';
 const productSchema = z.object({
   name: z.string().min(1, '产品名称不能为空'),
   sku: z.string().optional(),
-  craftId: z.string().uuid().nullable().optional(),
+  craftIds: z.array(z.string().uuid()).optional(),
   audienceId: z.string().uuid().nullable().optional(),
   categoryId: z.string().uuid().nullable().optional(),
   // 产品属性
@@ -58,7 +58,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     const page = Math.max(1, Number(req.query.page) || 1);
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 10));
     const keyword = (req.query.keyword as string)?.trim() || '';
-    const craftId = req.query.craftId as string | undefined;
+    const craftIds = (req.query.craftIds as string | undefined)?.split(',').filter(Boolean);
     const audienceId = req.query.audienceId as string | undefined;
     const categoryId = req.query.categoryId as string | undefined;
     const status = req.query.status as string | undefined;
@@ -69,7 +69,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
       { sku: { contains: keyword } },
       { sampleNo: { contains: keyword } },
     ];
-    if (craftId) where.craftId = craftId;
+    if (craftIds?.length) where.crafts = { some: { id: { in: craftIds } } };
     if (audienceId) where.audienceId = audienceId;
     if (categoryId) where.categoryId = categoryId;
     if (status) where.status = status;
@@ -78,7 +78,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
       prisma.product.findMany({
         where,
         include: {
-          craft: { select: { id: true, name: true } },
+          crafts: { select: { id: true, name: true } },
           audience: { select: { id: true, name: true } },
           category: { select: { id: true, name: true } },
         },
@@ -98,7 +98,7 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
     const product = await prisma.product.findUnique({
       where: { id: req.params.id },
       include: {
-        craft: true,
+        crafts: true,
         audience: { include: { categories: true } },
         category: true,
       },
@@ -110,7 +110,10 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
 
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = productSchema.parse(req.body);
+    const parsed = productSchema.parse(req.body);
+    const { craftIds, ...rest } = parsed;
+    const data: Record<string, unknown> = { ...rest };
+    if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
     const product = await prisma.product.create({ data });
     created(res, product);
   } catch (err) {
@@ -121,7 +124,12 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = productSchema.partial().parse(req.body);
+    const parsed = productSchema.partial().parse(req.body);
+    const { craftIds, ...rest } = parsed;
+    const data: Record<string, unknown> = { ...rest };
+    if (craftIds !== undefined) {
+      data.crafts = craftIds?.length ? { set: craftIds.map((id) => ({ id })) } : { set: [] };
+    }
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data,

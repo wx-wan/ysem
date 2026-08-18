@@ -28,7 +28,11 @@ export default function ProductList({
     { title: 'SKU', dataIndex: 'sku', width: 140, render: (v: string) => v || '-' },
     { title: '名称', dataIndex: 'name', ellipsis: true },
     { title: '分类', render: (_: unknown, r: Product) => r.category?.name || '-' },
-    { title: '工艺', render: (_: unknown, r: Product) => r.craft?.name || '-' },
+    {
+      title: '工艺',
+      render: (_: unknown, r: Product) =>
+        r.crafts?.length ? r.crafts.map((c) => c.name).join('+') : '-',
+    },
     { title: '单位', dataIndex: 'unit', width: 80, render: (v: string) => v || '-' },
     {
       title: '供应模式',

@@ -52,8 +52,8 @@ export interface Product {
   id: string;
   name: string;
   sku?: string | null;
-  craftId?: string | null;
-  craft?: { id: string; name: string } | null;
+  craftIds?: string[];
+  crafts?: { id: string; name: string }[];
   audienceId?: string | null;
   audience?: { id: string; name: string; categories?: ProductCategory[] } | null;
   categoryId?: string | null;
@@ -100,7 +100,7 @@ interface ProductListParams {
   page?: number;
   pageSize?: number;
   keyword?: string;
-  craftId?: string;
+  craftIds?: string;
   audienceId?: string;
   categoryId?: string;
   status?: string;

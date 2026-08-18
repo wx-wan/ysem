@@ -251,13 +251,13 @@ model SalesPipeline {
   updatedAt  DateTime    @updatedAt
 }
 
-// ========== 一级工艺 ==========
+// ========== 工艺 ==========
 model ProductCraft {
   id        String   @id @default(uuid())
-  name      String   @unique              // 搪胶 / 注塑 / 搪胶+注塑 / 硅胶 / 硅胶+注塑
+  name      String   @unique              // 搪胶 / 注塑 / 硅胶（基础工艺，可多选组合）
   sort      Int      @default(0)
   status    Int      @default(1)          // 1 启用 / 0 停用
-  products  Product[]
+  products  Product[]                    // 多对多：一个产品可挂多个工艺
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -297,8 +297,7 @@ model Product {
   sku         String?  @unique
 
   // ---- 三级分类 ----
-  craftId     String?
-  craft       ProductCraft?    @relation(fields: [craftId], references: [id])
+  crafts      ProductCraft[]                  // 多对多：工艺（可多选，如 搪胶+注塑）
   audienceId  String?
   audience    ProductAudience? @relation(fields: [audienceId], references: [id])
   categoryId  String?

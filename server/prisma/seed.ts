@@ -219,13 +219,11 @@ async function main() {
   // 5. 初始化产品分类数据
   console.log('🏭 初始化产品分类...');
 
-  // 一级工艺
+  // 工艺（基础项，产品侧多选组合，如 搪胶+注塑）
   const crafts = [
-    { name: '搪胶', sort: 0 },
-    { name: '注塑', sort: 1 },
-    { name: '搪胶+注塑', sort: 2 },
+    { name: '搪胶', sort: 1 },
+    { name: '注塑', sort: 2 },
     { name: '硅胶', sort: 3 },
-    { name: '硅胶+注塑', sort: 4 },
   ];
   for (const c of crafts) {
     await prisma.productCraft.upsert({ where: { name: c.name }, update: {}, create: c });
