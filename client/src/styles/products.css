@@ -262,6 +262,18 @@
   gap: 4px;
 }
 
+/* 自定义行标签（避免 label for 指向非表单元素） */
+.pm-form-row {
+  margin-bottom: 16px;
+}
+.pm-form-row-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--c-text, #1a1a1a);
+  line-height: 1.5;
+}
+
 /* 详情 */
 .pm-detail-section h4 {
   font-size: 14px;

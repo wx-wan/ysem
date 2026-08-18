@@ -295,6 +295,7 @@ export default function Products() {
         cancelText="取消"
         width={860}
         destroyOnHidden
+        forceRender={false}
       >
         <Form form={form} layout="vertical" className="pm-form" style={{ marginTop: 16 }}>
           {/* 基础信息 */}
@@ -340,8 +341,8 @@ export default function Products() {
               <Typography.Text strong className="pm-section-title">(定制)产品属性 <Text type="secondary">必填</Text></Typography.Text>
               <div className="pm-section-body">
 
-                <Form.Item name="images" label="造型图片（上传）">
-                  <ImageUploadCropper aspect={NaN} maxSize={2 * 1024 * 1024} uploadUrl="/upload"
+                <Form.Item name="images" label="造型图片（上传）" htmlFor="product-images">
+                  <ImageUploadCropper id="product-images" aspect={NaN} maxSize={2 * 1024 * 1024} uploadUrl="/upload"
                     onUploaded={(url) => form.setFieldValue('images', url)} />
                 </Form.Item>
 
@@ -388,7 +389,8 @@ export default function Products() {
                   <Input placeholder="输入打样单号" />
                 </Form.Item>
 
-                <Form.Item label="功能（勾选）">
+                <div className="pm-form-row">
+                  <label className="pm-form-row-label">功能（勾选）</label>
                   <Row gutter={[8, 8]}>
                     {(['logo', 'sound', 'glow', 'colorChange', 'sprayWater'] as const).map((key) => (
                       <Col span={8} key={key}>
@@ -398,14 +400,14 @@ export default function Products() {
                       </Col>
                     ))}
                   </Row>
-                </Form.Item>
+                </div>
 
                 <Form.Item name="colors" label="颜色（潘通色）">
                   <Input placeholder="多个颜色逗号分隔" />
                 </Form.Item>
 
-                <Form.Item name="colorImage" label="颜色标注图">
-                  <ImageUploadCropper aspect={NaN} uploadUrl="/upload"
+                <Form.Item name="colorImage" label="颜色标注图" htmlFor="product-colorImage">
+                  <ImageUploadCropper id="product-colorImage" aspect={NaN} uploadUrl="/upload"
                     onUploaded={(url) => form.setFieldValue('colorImage', url)} />
                 </Form.Item>
 

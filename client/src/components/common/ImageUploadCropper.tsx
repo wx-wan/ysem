@@ -25,6 +25,8 @@ export interface ImageUploadCropperProps {
   placeholder?: string;
   /** 是否禁用 */
   disabled?: boolean;
+  /** 组件 id，用于 label htmlFor 关联 */
+  id?: string;
   /** 上传接口地址（baseURL 之外的完整路径或 /api 开头）；传入后确认时自动上传并返回 URL */
   uploadUrl?: string;
   /** 上传成功后从响应里取 URL 的路径，默认取 data.url */
@@ -82,6 +84,7 @@ export default function ImageUploadCropper({
   size = 120,
   placeholder,
   disabled,
+  id,
   uploadUrl,
   urlField = 'data.url',
   onUploaded,
@@ -158,13 +161,15 @@ export default function ImageUploadCropper({
 
   return (
     <>
-      <div className="iuc-trigger">
+      <div className="iuc-trigger" id={id}>
         {value ? (
           <div
             className="iuc-preview"
             style={previewStyle}
             onClick={() => !disabled && setOpen(false)}
             role="button"
+            tabIndex={disabled ? -1 : 0}
+            aria-label={value ? '更换图片' : '上传图片'}
           >
             <div className="iuc-preview-mask">
               <Space direction="vertical" size={2}>
@@ -181,7 +186,7 @@ export default function ImageUploadCropper({
             disabled={disabled}
             className="iuc-upload"
           >
-            <div className="iuc-add" style={{ width: size, height: size, borderRadius: shape === 'circle' ? '50%' : 12 }}>
+            <div className="iuc-add" style={{ width: size, height: size, borderRadius: shape === 'circle' ? '50%' : 12 }} role="button" tabIndex={disabled ? -1 : 0} aria-label="上传图片">
               <PlusOutlined style={{ fontSize: size * 0.2 }} />
               {placeholder && <span className="iuc-placeholder">{placeholder}</span>}
             </div>
