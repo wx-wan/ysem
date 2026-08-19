@@ -602,7 +602,9 @@ export default function Products() {
                         setStepAudience(a);
                         setStepCategory(undefined);
                         setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
-                        handleAudienceChange(a.id);
+                        // step-1 弹窗内仅同步本地 state，主表单 form 尚未挂载
+                        setCategories(a?.categories || []);
+                        setSelectedAudienceId(a.id);
                       }}
                     >
                       <CheckCircleFilled className="pm-pick-check" />
