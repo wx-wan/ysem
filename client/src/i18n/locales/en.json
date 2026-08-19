@@ -78,12 +78,13 @@
     "shipment": "Shipment",
     "customers": "Customers",
     "reports": "Reports",
-    "system": "System Management",
+    "system": "Settings",
     "systemUser": "User Management",
     "systemRole": "Role Management",
     "systemDept": "Department Management",
     "systemPerm": "Permission Management",
-    "systemProductTaxonomy": "Product Taxonomy"
+    "systemProductTaxonomy": "Product Taxonomy",
+    "systemCertificates": "Certificates"
   },
   "user": {
     "title": "User Management",
@@ -246,7 +247,6 @@
     "colorChange": "Color Change",
     "sprayWater": "Water Spray",
     "colors": "Colors(Pantone)",
-    "colorImage": "Color Image",
     "packaging": "Packaging",
     "supplyModes": "Supply Mode",
     "deepCustom": "Deep Customization",

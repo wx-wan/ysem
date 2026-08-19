@@ -5,8 +5,9 @@ import {
 } from '@ant-design/icons';
 import TagSelector from '../../TagSelector';
 import { INTENT_LABEL } from '../shared/intentLevel';
-import { useDs } from '../shared/ds';
 import ViewModeSwitch from '../../common/ViewModeSwitch';
+import PageToolbar from '../../common/page/PageToolbar';
+import FilterCapsules from '../../common/page/FilterCapsules';
 import type { User } from '../../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
@@ -67,7 +68,6 @@ export default function CustomerToolbar({
   isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
   noOrderBreakdown, doneBreakdown,
 }: CustomerToolbarProps) {
-  const ds = useDs();
   const showNoOrderSub = filterType === 'noOrder';
   const showDoneSub = filterType === 'done';
 
@@ -83,154 +83,80 @@ export default function CustomerToolbar({
   };
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      {/* 主工具栏 */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <Input
-          prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-          placeholder="搜索客户名、国家、联系人..."
-          style={{ width: 280, borderRadius: 8, height: 36 }}
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onPressEnter={() => { setPage(1); fetchData(); }}
-          allowClear
-        />
-
-        {/* 主筛选胶囊 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            background: ds.surface,
-            borderRadius: ds.radiusPill,
-            padding: '3px 4px',
-          }}
-        >
-          {MAIN_FILTERS.map((opt) => {
-            const active = filterType === opt.key;
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleFilterChange(opt.key)}
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '5px 12px',
-                  borderRadius: ds.radiusPill,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.25s ease',
-                  background: active ? ds.primary : 'transparent',
-                  color: active ? '#fff' : ds.textMuted,
-                  boxShadow: active ? `0 2px 8px ${ds.primaryBg}` : 'none',
-                }}
-              >
-                {opt.key === 'all' && isAdmin ? '团队客户' : opt.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <TagSelector
-          value={filterTags}
-          onChange={(v) => { setFilterTags(v); setPage(1); }}
-          placeholder="输入标签名称"
-          showAddButton={false}
-        />
-
-        {isAdmin && !filterTypePublic && (
-          <Select
-            placeholder="筛选业务员"
-            value={selectedOwnerId || undefined}
-            onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
-            allowClear
-            style={{ width: 160, borderRadius: 8 }}
-            showSearch
-            filterOption={(input: string, option: any) =>
-              option?.label?.toLowerCase().includes(input.toLowerCase())
-            }
-            options={userList
-              .filter((u: User) => u.status === 'ACTIVE')
-              .map((u: User) => ({
-                value: u.id,
-                label: u.realName || u.username,
-              }))}
+    <PageToolbar
+      actions={
+        <>
+          <ViewModeSwitch value={viewMode} onChange={setViewMode} />
+          <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
+            导入
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ borderRadius: 8 }}>
+            新增客户
+          </Button>
+        </>
+      }
+      extra={
+        (showNoOrderSub || showDoneSub) ? (
+          <FilterCapsules
+            tone="sub"
+            value={subFilterType}
+            onChange={handleSubFilterChange}
+            options={(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => ({
+              key: opt.key,
+              label: opt.label,
+              count: showNoOrderSub
+                ? (noOrderBreakdown?.[opt.key] ?? 0)
+                : (doneBreakdown?.[opt.key] ?? 0),
+            }))}
           />
-        )}
+        ) : undefined
+      }
+    >
+      <Input
+        prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
+        placeholder="搜索客户名、国家、联系人..."
+        style={{ flex: '1 1 220px', minWidth: 160, maxWidth: 280, borderRadius: 8, height: 36 }}
+        value={keyword}
+        onChange={(e) => setKeyword(e.target.value)}
+        onPressEnter={() => { setPage(1); fetchData(); }}
+        allowClear
+      />
 
-        <div style={{ flex: 1 }} />
+      <FilterCapsules
+        value={filterType}
+        onChange={handleFilterChange}
+        options={MAIN_FILTERS.map((opt) => ({
+          key: opt.key,
+          label: opt.key === 'all' && isAdmin ? '团队客户' : opt.label,
+        }))}
+      />
 
-        {/* 视图切换（共用组件） */}
-        <ViewModeSwitch value={viewMode} onChange={setViewMode} />
+      <TagSelector
+        value={filterTags}
+        onChange={(v) => { setFilterTags(v); setPage(1); }}
+        placeholder="输入标签名称"
+        showAddButton={false}
+      />
 
-        <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
-          导入
-        </Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ borderRadius: 8 }}>
-          新增客户
-        </Button>
-      </div>
-
-      {/* 子筛选栏 */}
-      {(showNoOrderSub || showDoneSub) && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            marginTop: 10,
-            background: ds.surfaceSub,
-            borderRadius: ds.radiusPill,
-            padding: '3px 4px',
-            width: 'fit-content',
-          }}
-        >
-          {(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => {
-            const active = subFilterType === opt.key;
-            const count = showNoOrderSub
-              ? (noOrderBreakdown?.[opt.key] ?? 0)
-              : (doneBreakdown?.[opt.key] ?? 0);
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleSubFilterChange(opt.key)}
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 10px',
-                  borderRadius: ds.radius,
-                  fontSize: 12,
-                  fontWeight: active ? 600 : 500,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s ease',
-                  background: active ? ds.primaryBg : 'transparent',
-                  color: active ? ds.primary : ds.textFaint,
-                }}
-              >
-                {opt.label}
-                <span
-                  style={{
-                    marginLeft: 6,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: '1px 6px',
-                    borderRadius: 10,
-                    background: active ? ds.primary : ds.surface,
-                    color: active ? token.colorWhite : ds.textFaint,
-                    lineHeight: '16px',
-                  }}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+      {isAdmin && !filterTypePublic && (
+        <Select
+          placeholder="筛选业务员"
+          value={selectedOwnerId || undefined}
+          onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
+          allowClear
+          style={{ flex: '0 1 160px', minWidth: 140, borderRadius: 8 }}
+          showSearch
+          filterOption={(input: string, option: any) =>
+            option?.label?.toLowerCase().includes(input.toLowerCase())
+          }
+          options={userList
+            .filter((u: User) => u.status === 'ACTIVE')
+            .map((u: User) => ({
+              value: u.id,
+              label: u.realName || u.username,
+            }))}
+        />
       )}
-    </div>
+    </PageToolbar>
   );
 }

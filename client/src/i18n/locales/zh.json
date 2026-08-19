@@ -78,12 +78,13 @@
     "shipment": "出货",
     "customers": "客户",
     "reports": "报告",
-    "system": "系统管理",
+    "system": "设置",
     "systemUser": "用户管理",
     "systemRole": "角色管理",
     "systemDept": "部门管理",
     "systemPerm": "权限管理",
-    "systemProductTaxonomy": "产品管理"
+    "systemProductTaxonomy": "产品管理",
+    "systemCertificates": "证书管理"
   },
   "user": {
     "title": "用户管理",
@@ -246,7 +247,6 @@
     "colorChange": "变色",
     "sprayWater": "喷水",
     "colors": "颜色(潘通色)",
-    "colorImage": "颜色标注图",
     "packaging": "包装",
     "supplyModes": "供货模式",
     "deepCustom": "深度定制",

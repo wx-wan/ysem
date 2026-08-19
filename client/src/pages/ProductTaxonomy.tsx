@@ -114,6 +114,7 @@ export default function ProductTaxonomy() {
 
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true },
+    { title: '编码', dataIndex: 'code', key: 'code', width: 110, render: (c: string) => c || '-' },
     { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
@@ -172,9 +173,18 @@ export default function ProductTaxonomy() {
       );
     }
     return (
-      <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入' }]}>
-        <Input placeholder="输入名称" />
-      </Form.Item>
+      <>
+        <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入' }]}>
+          <Input placeholder="输入名称" />
+        </Form.Item>
+        <Form.Item
+          name="code"
+          label="编码"
+          extra={activeTab === 'craft' ? '用于自动生成 SKU，如 搪胶=TJ、注塑=ZS、硅胶=GJ' : '用于自动生成 SKU，如 儿童=ET、宠物=CW、配件=PJ、文具=WJ、家居=JJ'}
+        >
+          <Input placeholder="输入编码，如 TJ" maxLength={10} />
+        </Form.Item>
+      </>
     );
   };
 

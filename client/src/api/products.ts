@@ -1,10 +1,11 @@
-import request from './request';
+import request, { type ApiResponse } from './request';
 
 // ============ 产品分类 Taxonomy ============
 
 export interface ProductCraft {
   id: string;
   name: string;
+  code?: string | null;
   sort: number;
   status: number;
 }
@@ -21,6 +22,7 @@ export interface ProductCategory {
 export interface ProductAudience {
   id: string;
   name: string;
+  code?: string | null;
   sort: number;
   status: number;
   categories?: ProductCategory[];
@@ -60,7 +62,7 @@ export interface Product {
   category?: { id: string; name: string } | null;
 
   // 产品属性
-  images?: string | null;       // 多图逗号分隔 URL
+  images?: string | null;       // 图片 JSON 数组 [{url,name}]，第一张为主图
   sizeL?: string | null;        // 长 cm
   sizeW?: string | null;        // 宽 cm
   sizeH?: string | null;        // 高 cm
@@ -75,11 +77,13 @@ export interface Product {
   colorChange?: boolean;        // 变色
   sprayWater?: boolean;         // 喷水
   colors?: string | null;       // 潘通色
-  colorImage?: string | null;   // 颜色标注图
   packaging?: string | null;    // 包装（卡/盒/袋/桶）
 
   // 供货模式
   supplyModes?: string | null;  // DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
+
+  // 认证资质
+  certificationIds?: string | null;  // 关联证书 id，逗号分隔
 
   // 原有字段
   spec?: string | null;
@@ -119,6 +123,9 @@ const productApi = {
   getById: (id: string) => request.get<Product>(`/products/${id}`),
   // 兼容旧接口：获取产品下拉选项（仅 id/name/sku）
   options: () => request.get<ProductOption[]>('/products/options'),
+  // SKU 预览：按 工艺-受众 返回下一个自动生成的 SKU（不落库）
+  skuPreview: (params: { craftIds?: string; audienceId?: string; excludeId?: string }) =>
+    request.get<ApiResponse<{ sku: string | null }>>('/products/sku-preview', { params }),
   create: (data: Partial<Product>) => request.post('/products', data),
   update: (id: string, data: Partial<Product>) => request.put(`/products/${id}`, data),
   delete: (id: string) => request.delete(`/products/${id}`),

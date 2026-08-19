@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Button, Space, Input, Modal, Form, Select,
-  Switch, Tag, Popconfirm, message, Card, Row, Col, Typography, Divider, Pagination, Skeleton,
+  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Skeleton,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -11,17 +11,17 @@ import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
   taxonomyApi,
 } from '../api/products';
-import ImageUploadCropper from '../components/common/ImageUploadCropper';
+import { certificateApi, Certificate } from '../api/certificates';
+import ProductImageList from '../components/common/ProductImageList';
+import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
+import { useAuthStore } from '../stores/useAuthStore';
 
 const { Text } = Typography;
 
 // 类名拼接工具
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
-
-// 工艺固定展示顺序（前端兜底，确保 搪胶→注塑→硅胶 在前）
-
 
 // 供货模式选项
 export const SUPPLY_MODES = [
@@ -30,13 +30,15 @@ export const SUPPLY_MODES = [
   { label: '成品现货', value: 'STOCK' },
 ];
 
-// 包装选项
-const PACKAGING_OPTIONS = ['卡', '盒', '袋', '桶'];
-
-// 功能勾选标签
-const FEATURE_LABELS = { logo: 'Logo', sound: '发声', glow: '发光', colorChange: '变色', sprayWater: '喷水' };
+// 供货模式按角色可选范围：admin 全选 / purchaser 仅轻定制+成品现货 / 其他（业务等）默认深度定制、不可修改
+const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
+  admin: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
+  purchaser: ['LIGHT_CUSTOM', 'STOCK'],
+};
+const DEFAULT_SUPPLY_MODE = 'DEEP_CUSTOM';
 
 export default function Products() {
+  const { message } = App.useApp();
   const [list, setList] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -61,6 +63,12 @@ export default function Products() {
   const [viewing, setViewing] = useState<Product | null>(null);
   const [form] = Form.useForm();
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+
+  // 当前用户角色 → 供货模式可选范围（admin 全选 / purchaser 轻定制+现货 / 其他默认深度定制）
+  const roleCode = useAuthStore((s) => s.user?.role?.code ?? '');
+  const allowedSupplyModes = SUPPLY_MODES_BY_ROLE[roleCode] ?? [DEFAULT_SUPPLY_MODE];
+  const supplyModesReadOnly = allowedSupplyModes.length <= 1; // 仅一个可用项（业务等）→ 不可修改
 
   const fetchList = async () => {
     setLoading(true);
@@ -89,7 +97,15 @@ export default function Products() {
     } catch {}
   };
 
+  const fetchCertificates = async () => {
+    try {
+      const res = await certificateApi.list();
+      if (res.data.code === 200 || res.data.code === 0) setCertificates(res.data.data);
+    } catch {}
+  };
+
   useEffect(() => { fetchTaxonomy(); }, []);
+  useEffect(() => { fetchCertificates(); }, []);
   useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId]);
 
   // 受众变化时联动品类
@@ -98,10 +114,15 @@ export default function Products() {
     if (audienceId) {
       const aud = audiences.find((a) => a.id === audienceId);
       setCategories(aud?.categories || []);
+      // 回填/联动时：仅当当前品类不属于新受众的品类列表时才清空（aud 未加载时保留现值）
+      try {
+        const cur = form.getFieldValue('categoryId');
+        if (cur && aud && !aud.categories.some((c) => c.id === cur)) form.setFieldValue('categoryId', undefined);
+      } catch { /* 主表单未挂载时忽略 */ }
     } else {
       setCategories([]);
+      try { form.setFieldValue('categoryId', undefined); } catch { /* 主表单未挂载时忽略 */ }
     }
-    try { form.setFieldValue('categoryId', undefined); } catch { /* 主表单未挂载时忽略 */ }
   };
 
   // 第一步卡片式选择的状态
@@ -110,6 +131,32 @@ export default function Products() {
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
   const [stepCategory, setStepCategory] = useState<ProductCategory | undefined>();
   const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
+
+  // SKU 自动预览：按「工艺-受众-序号」实时请求后端生成，无需人工录入
+  const [skuPreview, setSkuPreview] = useState<string>('');
+  const watchedCraftIds = Form.useWatch('craftIds', form);
+  const watchedAudienceId = Form.useWatch('audienceId', form);
+  useEffect(() => {
+    const craftsKey = (watchedCraftIds ?? []).map(String).sort().join(',');
+    const audId = watchedAudienceId as string | undefined;
+    if (!craftsKey || !audId) { setSkuPreview(''); return; }
+    // 编辑模式且工艺/受众未变化：保留原 SKU，不重新请求（避免序号 +1）
+    if (editing) {
+      const origCraftsKey = (editing.crafts ?? []).map((c) => c.id).sort().join(',');
+      if (craftsKey === origCraftsKey && audId === editing.audienceId) {
+        setSkuPreview(editing.sku || '');
+        return;
+      }
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await productApi.skuPreview({ craftIds: craftsKey, audienceId: audId, excludeId: editing?.id });
+        const d = res.data?.data;
+        setSkuPreview(d?.sku || '');
+      } catch { /* 预览失败静默，保存时由后端生成 */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [watchedCraftIds, watchedAudienceId, editing]);
 
   const resetStep = () => {
     setStepCrafts([]);
@@ -164,7 +211,8 @@ export default function Products() {
     form.resetFields();
     form.setFieldsValue({
       ...v,
-      logo: false, sound: false, glow: false, colorChange: false, sprayWater: false,
+      // 新建默认：管理员/采购取首个可用模式，业务默认深度定制
+      supplyModes: [allowedSupplyModes[0]],
     });
     if (v.audienceId) handleAudienceChange(v.audienceId);
   };
@@ -174,10 +222,14 @@ export default function Products() {
     setOpen(true);
     // 主表单 Modal 已 forceRender，先重置再回填，避免残留上一次的值
     form.resetFields();
+    // 供货模式按角色过滤（如采购不可含深度定制；业务固定深度定制）
+    const modes = (record.supplyModes ? record.supplyModes.split(',') : [])
+      .filter((m) => allowedSupplyModes.includes(m));
     form.setFieldsValue({
       ...record,
       craftIds: record.crafts?.map((c) => c.id) || [],
-      supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
+      supplyModes: modes.length ? modes : [allowedSupplyModes[0]],
+      certificationIds: record.certificationIds ? record.certificationIds.split(',') : [],
     });
     if (record.audienceId) handleAudienceChange(record.audienceId);
   };
@@ -188,6 +240,7 @@ export default function Products() {
       const data = {
         ...values,
         supplyModes: Array.isArray(values.supplyModes) ? values.supplyModes.join(',') : '',
+        certificationIds: Array.isArray(values.certificationIds) ? values.certificationIds.join(',') : '',
       };
       if (editing) {
         await productApi.update(editing.id, data);
@@ -217,7 +270,7 @@ export default function Products() {
           <Col flex="auto">
             <Space wrap>
               <Input
-                placeholder="搜索产品名称 / SKU / 打样单号"
+                placeholder="搜索产品名称 / SKU"
                 prefix={<SearchOutlined />}
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
@@ -276,11 +329,8 @@ export default function Products() {
                   <div className="pm-prod-card">
                     {/* 渐变头 */}
                     <div className="pm-prod-cover">
-                      {r.images ? (
-                        (() => {
-                          const first = r.images.split(',').filter(Boolean)[0];
-                          return first ? <img src={first} alt="" /> : null;
-                        })()
+                      {mainImageUrl(r.images) ? (
+                        <img src={mainImageUrl(r.images)} alt="" />
                       ) : null}
                       <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
                       <span className={`pm-status pm-prod-status ${r.status === 'ACTIVE' ? 'pm-status--active' : 'pm-status--inactive'}`}>
@@ -367,157 +417,139 @@ export default function Products() {
 
       {/* 新建 / 编辑弹窗 */}
       <Modal
-        title={editing ? '编辑产品' : '新建产品'}
+        title={
+          <div className="pm-modal-title">
+            <span>{editing ? '编辑产品' : '新建产品'}</span>
+            <span className={cx('pm-sku-preview pm-sku-head', !skuPreview && 'is-empty')}>
+              {skuPreview ? (
+                <>
+                  <Tag color="processing" className="pm-sku-tag">自动</Tag>
+                  <span>{skuPreview}</span>
+                </>
+              ) : 'SKU 待生成'}
+            </span>
+          </div>
+        }
         open={open}
         onCancel={() => setOpen(false)}
         onOk={handleSubmit}
         okText="保存"
         cancelText="取消"
-        width={860}
+        width={1000}
         // forceRender 让 form 常驻连接，打开时可直接 setFieldsValue，避免 useForm not connected 警告
         forceRender
+        styles={{
+          body: { paddingTop: 12 },
+        }}
       >
-        <Form form={form} layout="vertical" className="pm-form" style={{ marginTop: 16 }}>
-          {/* 基础信息 */}
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入' }]}>
-                <Input placeholder="输入产品名称" />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="sku" label="SKU">
-                <Input placeholder="可选，唯一编码" />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {/* 三级分类 */}
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item name="craftIds" label="工艺">
-                <Select mode="multiple" placeholder="可多选，如 搪胶+注塑" allowClear
-                  options={crafts.map((c) => ({ label: c.name, value: c.id }))} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="audienceId" label="受众">
-                <Select placeholder="选择受众" allowClear onChange={handleAudienceChange}
-                  options={audiences.map((a) => ({ label: a.name, value: a.id }))} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="categoryId" label="品类">
-                <Select placeholder="先选受众" allowClear disabled={!selectedAudienceId}
-                  options={categories.map((c) => ({ label: c.name, value: c.id }))} />
-              </Form.Item>
-            </Col>
-          </Row>
-
-          {/* ====== 双栏：属性区 + 要求区 ====== */}
-          <Divider titlePlacement="left" plain>产品信息</Divider>
+        <Form form={form} layout="vertical" className="pm-form">
           <Row gutter={24}>
-            {/* 左：(定制)产品属性 */}
-            <Col span={12}>
-              <Typography.Text strong className="pm-section-title">(定制)产品属性 <Text type="secondary">必填</Text></Typography.Text>
-              <div className="pm-section-body">
-
-                <div className="pm-form-row">
-                  <label className="pm-form-row-label">造型图片（上传）</label>
-                  <Form.Item name="images" noStyle>
-                    <ImageUploadCropper aspect={NaN} maxSize={2 * 1024 * 1024} uploadUrl="/upload"
-                      onUploaded={(url) => form.setFieldValue('images', url)} />
-                  </Form.Item>
-                </div>
-
-                <Row gutter={10}>
-                  <Col span={8}>
-                    <Form.Item name="sizeL" label="长(cm)">
-                      <Input placeholder="长" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name="sizeW" label="宽(cm)">
-                      <Input placeholder="宽" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={8}>
-                    <Form.Item name="sizeH" label="高(cm)">
-                      <Input placeholder="高" />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Row gutter={10}>
-                  <Col span={12}>
-                    <Form.Item name="weight" label="克重(g)">
-                      <Input placeholder="克重" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="unit" label="产品单位">
-                      <Select placeholder="单位" allowClear options={[{ label: '套', value: '套' }, { label: '个', value: '个' }]} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-              </div>
-            </Col>
-
-            {/* 右：(深/轻)产品要求 */}
-            <Col span={12}>
-              <Typography.Text strong className="pm-section-title">(深/轻) 产品要求 <Text type="secondary">（打样单号）</Text></Typography.Text>
-              <div className="pm-section-body">
-
-                <Form.Item name="sampleNo" label="打样单号">
-                  <Input placeholder="输入打样单号" />
-                </Form.Item>
-
-                <div className="pm-form-row">
-                  <label className="pm-form-row-label">功能（勾选）</label>
-                  <Row gutter={[8, 8]}>
-                    {(['logo', 'sound', 'glow', 'colorChange', 'sprayWater'] as const).map((key) => (
-                      <Col span={8} key={key}>
-                        <Form.Item name={key} valuePropName="checked" noStyle>
-                          <Switch checkedChildren={FEATURE_LABELS[key]} unCheckedChildren={FEATURE_LABELS[key]} />
-                        </Form.Item>
-                      </Col>
-                    ))}
+            {/* 左：基础信息栏 */}
+            <Col xs={24} xl={16} className="pm-col-stretch">
+              {/* 基础信息 */}
+              <Card title="基础信息" variant="outlined" className="pm-card">
+                <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}>
+                        <Input placeholder="输入产品名称" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={12}>
+                      <Form.Item name="supplyModes" label="供货模式">
+                        <Select
+                          mode="multiple"
+                          placeholder={supplyModesReadOnly ? '深度定制（默认）' : '选择一个供货模式'}
+                          allowClear={!supplyModesReadOnly}
+                          disabled={supplyModesReadOnly}
+                          maxCount={1}
+                          options={SUPPLY_MODES.filter((s) => allowedSupplyModes.includes(s.value))}
+                        />
+                      </Form.Item>
+                    </Col>
                   </Row>
-                </div>
 
-                <Form.Item name="colors" label="颜色（潘通色）">
-                  <Input placeholder="多个颜色逗号分隔" />
-                </Form.Item>
+                  <Row gutter={16}>
+                    <Col span={8}>
+                      <Form.Item name="craftIds" label="工艺">
+                        <Select mode="multiple" placeholder="可多选，如 搪胶+注塑" allowClear
+                          options={crafts.map((c) => ({ label: c.name, value: c.id }))} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="audienceId" label="受众">
+                        <Select placeholder="选择受众" allowClear onChange={handleAudienceChange}
+                          options={audiences.map((a) => ({ label: a.name, value: a.id }))} />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="categoryId" label="品类">
+                        <Select placeholder="先选受众" allowClear disabled={!selectedAudienceId}
+                          options={categories.map((c) => ({ label: c.name, value: c.id }))} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
 
-                <div className="pm-form-row">
-                  <label className="pm-form-row-label">颜色标注图</label>
-                  <Form.Item name="colorImage" noStyle>
-                    <ImageUploadCropper aspect={NaN} uploadUrl="/upload"
-                      onUploaded={(url) => form.setFieldValue('colorImage', url)} />
+                  <Form.Item name="remark" label="商品描述">
+                    <Input.TextArea rows={2} placeholder="备注信息" />
                   </Form.Item>
-                </div>
 
-                <Form.Item name="packaging" label="产品包装">
-                  <Select mode="multiple" placeholder="选择包装类型" allowClear
-                    options={PACKAGING_OPTIONS.map((p) => ({ label: p, value: p }))} />
-                </Form.Item>
+                  <Divider className="pm-card-divider" />
 
+                  <Row gutter={10}>
+                    <Col span={8}>
+                      <Form.Item name="sizeL" label="长 (cm)">
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="sizeW" label="宽 (cm)">
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="sizeH" label="高 (cm)">
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                  <Row gutter={10}>
+                    <Col span={8}>
+                      <Form.Item name="weight" label="克重 (g)">
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="unit" label="单位">
+                        <Select placeholder="选择" allowClear options={[{ label: '套', value: '套' }, { label: '个', value: '个' }]} />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+              </Card>
+            </Col>
+
+            {/* 右：图片上传框（统一入口，第一张为主图） */}
+            <Col xs={24} xl={8} className="pm-col-stretch">
+              <div className="pm-col-inner">
+                <Card title="产品图片" variant="outlined" className="pm-card pm-card-sticky">
+                  <Form.Item name="images" noStyle>
+                    <ProductImageList uploadUrl="/upload" />
+                  </Form.Item>
+                </Card>
+
+                {/* 认证资质 */}
+                <Card title="认证资质" variant="outlined" className="pm-card pm-card-stretch">
+                  <Form.Item name="certificationIds" label="认证资质">
+                    <Select mode="multiple" placeholder="选择现有证书" allowClear
+                      optionFilterProp="label"
+                      options={certificates.map((c) => ({
+                        label: c.code ? `${c.name}（${c.code}）` : c.name,
+                        value: c.id,
+                      }))} />
+                  </Form.Item>
+                </Card>
               </div>
             </Col>
-          </Row>
-
-          {/* 供货定制模式 */}
-          <Divider titlePlacement="left" plain>供货定制模式 <Text type="secondary">（多选属性）由用户角色决定</Text></Divider>
-          <Form.Item name="supplyModes" label="供货模式">
-            <Select mode="multiple" placeholder="选择供货模式" allowClear
-              options={SUPPLY_MODES} />
-          </Form.Item>
-
-          {/* 备注 */}
-          <Form.Item name="remark" label="备注">
-            <Input.TextArea rows={2} placeholder="备注信息" />
-          </Form.Item>
+            </Row>
         </Form>
       </Modal>
 
@@ -534,27 +566,9 @@ export default function Products() {
         forceRender={false}
       >
         <div className="pm-form" style={{ marginTop: 12 }}>
-          {/* 三步指示器 */}
-          <div className="pm-step-bar">
-            <div className={cx('pm-step-dot', stepCrafts.length && 'is-done')}>
-              <span className="pm-step-idx">1</span>
-              <span className="pm-step-label">{stepCrafts.length ? crafts.filter((c) => stepCrafts.some((s) => s.id === c.id)).map((c) => c.name).join('+') : '工艺'}</span>
-            </div>
-            <div className="pm-step-line" />
-            <div className={cx('pm-step-dot', stepCrafts.length && 'is-active', stepAudience && 'is-done')}>
-              <span className="pm-step-idx">2</span>
-              <span className="pm-step-label">{stepAudience ? stepAudience.name : '受众'}</span>
-            </div>
-            <div className="pm-step-line" />
-            <div className={cx('pm-step-dot', stepAudience && 'is-active', stepCategory && 'is-done')}>
-              <span className="pm-step-idx">3</span>
-              <span className="pm-step-label">{stepCategory ? stepCategory.name : '品类'}</span>
-            </div>
-          </div>
-
           {/* 工艺 */}
           <div className="pm-form-row">
-            <label className="pm-form-row-label">
+            <label className="pm-form-label">
               工艺 <span className="pm-req">*</span>
             </label>
             <Row gutter={[10, 10]}>
@@ -588,7 +602,7 @@ export default function Products() {
           {/* 受众：选完工艺后出现 */}
           {stepCrafts.length > 0 && (
             <div className="pm-form-row">
-              <label className="pm-form-row-label">
+              <label className="pm-form-label">
                 受众 <span className="pm-req">*</span>
               </label>
               <Row gutter={[10, 10]}>
@@ -622,7 +636,7 @@ export default function Products() {
           {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
             <div className="pm-form-row">
-              <label className="pm-form-row-label">
+              <label className="pm-form-label">
                 品类 <span className="pm-req">*</span>
               </label>
               <Row gutter={[10, 10]}>
@@ -670,31 +684,20 @@ export default function Products() {
             <Row gutter={24}>
               <Col span={12}>
                 <div className="pm-detail-section">
-                  <h4>(定制)产品属性</h4>
-                  {viewing.images && (
+                  <h4>产品属性</h4>
+                  {parseImages(viewing.images).length > 0 && (
                     <div className="pm-detail-images">
-                      {viewing.images.split(',').filter(Boolean).map((img, i) => (
-                        <img key={i} src={img} alt="" style={{ maxWidth: 200, borderRadius: 8, marginBottom: 8 }} />
+                      {parseImages(viewing.images).map((img, i) => (
+                        <div key={i} className="pm-detail-img-item">
+                          <img src={img.url} alt={img.name} />
+                          <span>{img.name}{i === 0 ? '（主图）' : ''}</span>
+                        </div>
                       ))}
                     </div>
                   )}
                   <p><Text type="secondary">尺寸：</Text>{[viewing.sizeL, viewing.sizeW, viewing.sizeH].filter(Boolean).join(' × ') || '-'}</p>
                   <p><Text type="secondary">克重：</Text>{viewing.weight || '-'} g</p>
                   <p><Text type="secondary">单位：</Text>{viewing.unit || '-'}</p>
-                </div>
-              </Col>
-              <Col span={12}>
-                <div className="pm-detail-section">
-                  <h4>(深/轻) 产品要求</h4>
-                  <p><Text type="secondary">打样单号：</Text>{viewing.sampleNo || '-'}</p>
-                  <div style={{ marginBottom: 8 }}>
-                    {(['logo', 'sound', 'glow', 'colorChange', 'sprayWater'] as const).map((k) =>
-                      viewing[k] ? <Tag key={k} color="blue">{FEATURE_LABELS[k]}</Tag> : null
-                    )}
-                  </div>
-                  <p><Text type="secondary">颜色：</Text>{viewing.colors || '-'}</p>
-                  {viewing.colorImage && <img src={viewing.colorImage} alt="" style={{ maxWidth: 150, borderRadius: 8 }} />}
-                  <p><Text type="secondary">包装：</Text>{viewing.packaging || '-'}</p>
                 </div>
               </Col>
             </Row>

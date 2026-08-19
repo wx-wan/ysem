@@ -22,6 +22,7 @@ import RolePage from './pages/Role';
 import DeptPage from './pages/Dept';
 import PermPage from './pages/Perm';
 import ProductTaxonomyPage from './pages/ProductTaxonomy';
+import CertificatePage from './pages/Certificate';
 import NotFoundPage from './pages/NotFound';
 
 // 路由守卫 — 登录校验
@@ -73,6 +74,7 @@ function App() {
         <Route path="system/dept" element={<PermRoute perm="system:dept"><DeptPage /></PermRoute>} />
         <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
         <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductTaxonomyPage /></PermRoute>} />
+        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><CertificatePage /></PermRoute>} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

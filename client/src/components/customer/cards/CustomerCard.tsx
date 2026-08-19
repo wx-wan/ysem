@@ -134,14 +134,17 @@ const CustomerCard = memo(function CustomerCard({
             overflow: 'hidden',
           }}
         >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '4px 0', position: 'relative', zIndex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, flex: '1 1 auto' }}>
               <PurchaseIntentTag label={intentLabel} size="small" style={{
                 backgroundColor: 'rgba(255,255,255,0.2)',
                 color: token.colorWhite,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
               }} />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
               <KeyAccountStar
                 isKeyAccount={customer.isKeyAccount || false}
                 color="rgba(255,255,255,0.9)"
@@ -168,7 +171,7 @@ const CustomerCard = memo(function CustomerCard({
               />
             </div>
           </div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: token.colorWhite, marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1, overflowWrap: 'break-word', wordBreak: 'break-word' }}>
             {customer.companyName || '-'}
           </div>
           {/* 国家 + 联系人名称 同一行 */}
@@ -274,11 +277,13 @@ const CustomerCard = memo(function CustomerCard({
 
         </div>
 
-        {/* 内容区：头像+负责人为一个整体（左右布局），与两个金额块三等分 */}
+        {/* 内容区：头像+负责人为一个整体，与两个金额块并排。
+            <1200px 时头像全宽一行、金额两列并排，避免窄卡三等分导致文字折行/竖排；
+            >=1200px 恢复三等分，信息密度更高。 */}
         <div style={{ padding: '16px 20px' }}>
           <Row gutter={[16, 16]} align="top">
-            {/* 头像 + 负责人（整体左右布局，占一等分） */}
-            <Col span={8}>
+            {/* 头像 + 负责人（整体左右布局） */}
+            <Col xs={24} xl={8}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 68 }}>
                 <Avatar
                   size={36}
@@ -303,10 +308,10 @@ const CustomerCard = memo(function CustomerCard({
               </div>
             </Col>
 
-            {/* 预计商机金额（占一等分） */}
-            <Col span={8}>
+            {/* 预计商机金额 */}
+            <Col xs={24} xl={8}>
               <div style={{ minHeight: 68, textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>预计商机金额</div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px', whiteSpace: 'nowrap' }}>预计商机金额</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
                   <Price value={displayPipelineAmount || 0} />
                 </div>
@@ -314,10 +319,10 @@ const CustomerCard = memo(function CustomerCard({
               </div>
             </Col>
 
-            {/* 成交订单金额（占一等分） */}
-            <Col span={8}>
+            {/* 成交订单金额 */}
+            <Col xs={24} xl={8}>
               <div style={{ minHeight: 68, textAlign: 'right' }}>
-                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px' }}>成交订单金额</div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, minHeight: 20, lineHeight: '20px', whiteSpace: 'nowrap' }}>成交订单金额</div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
                   <Price value={displayTotalAmount || 0} />
                 </div>

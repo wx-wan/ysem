@@ -8,6 +8,7 @@ import { success, created, fail } from '../utils/response';
 
 const craftSchema = z.object({
   name: z.string().min(1, '名称不能为空'),
+  code: z.string().trim().max(10, '编码最多 10 位').optional(),
   sort: z.number().int().optional(),
   status: z.number().int().optional(),
 });
@@ -52,6 +53,7 @@ export const deleteCraft = async (req: AuthRequest, res: Response): Promise<void
 
 const audienceSchema = z.object({
   name: z.string().min(1, '名称不能为空'),
+  code: z.string().trim().max(10, '编码最多 10 位').optional(),
   sort: z.number().int().optional(),
   status: z.number().int().optional(),
 });

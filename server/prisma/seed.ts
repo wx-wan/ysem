@@ -43,6 +43,17 @@ async function main() {
     },
   });
 
+  const purchaserRole = await prisma.role.upsert({
+    where: { code: 'purchaser' },
+    update: {},
+    create: {
+      name: '采购人员',
+      code: 'purchaser',
+      description: '采购人员，可查看仪表盘、销售、客户、订单，供货模式仅可选轻定制/成品现货',
+      sort: 3,
+    },
+  });
+
   // 2. 创建默认权限（菜单 & 按钮）
   const menuPermissions = [
     { name: '仪表盘', code: 'dashboard', type: 'MENU' as const, path: '/dashboard', icon: 'DashboardOutlined', sort: 0 },
@@ -55,7 +66,7 @@ async function main() {
     { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 3 },
     { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 4 },
     { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 5 },
-    { name: '系统管理', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
+    { name: '设置', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
     { name: '用户管理', code: 'system:user', type: 'MENU' as const, path: '/system/user', icon: 'UserOutlined', sort: 10, parent: 'system' },
     { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11, parent: 'system' },
     { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12, parent: 'system' },
@@ -144,6 +155,18 @@ async function main() {
     }
   }
 
+  // 为采购人员分配业务菜单权限（与业务人员相同）
+  for (const code of businessMenuCodes) {
+    const perm = await prisma.permission.findUnique({ where: { code } });
+    if (perm) {
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: purchaserRole.id, permissionId: perm.id } },
+        update: {},
+        create: { roleId: purchaserRole.id, permissionId: perm.id },
+      });
+    }
+  }
+
   // 为普通用户分配基础菜单权限（仪表盘/客户/报表）
   const userMenuCodes = ['dashboard', 'customers', 'reports'];
   for (const code of userMenuCodes) {
@@ -212,43 +235,60 @@ async function main() {
     },
   });
 
+  // 创建测试采购员
+  const purPwd = await bcrypt.hash('purchaser123', 12);
+  await prisma.user.upsert({
+    where: { username: 'purchaser' },
+    update: {},
+    create: {
+      username: 'purchaser',
+      password: purPwd,
+      realName: '李四',
+      email: 'purchaser@ysem.com',
+      roleId: purchaserRole.id,
+      departmentId: rootDept.id,
+      status: 'ACTIVE',
+    },
+  });
+
   console.log('✅ 数据库初始化完成！');
   console.log(`📧 管理员: ${username} / ${password}`);
   console.log(`📧 业务员: business / business123`);
+  console.log(`📧 采购员: purchaser / purchaser123`);
 
   // 5. 初始化产品分类数据
   console.log('🏭 初始化产品分类...');
 
-  // 工艺（基础项，产品侧多选组合，如 搪胶+注塑）
+  // 工艺（基础项，产品侧多选组合，如 搪胶+注塑）；code 用于自动生成 SKU
   const crafts = [
-    { name: '搪胶', sort: 1 },
-    { name: '注塑', sort: 2 },
-    { name: '硅胶', sort: 3 },
+    { name: '搪胶', code: 'TJ', sort: 1 },
+    { name: '注塑', code: 'ZS', sort: 2 },
+    { name: '硅胶', code: 'GJ', sort: 3 },
   ];
   for (const c of crafts) {
-    await prisma.productCraft.upsert({ where: { name: c.name }, update: {}, create: c });
+    await prisma.productCraft.upsert({ where: { name: c.name }, update: { code: c.code }, create: c });
   }
 
   // 二级受众 + 三级品类
   const audienceData = [
     {
-      name: '儿童', sort: 0,
-      categories: ['沐浴玩具', '挤压玩具（非沐浴类）', '存钱罐', '摆件', '益智玩具', '安抚玩具', '节日玩具', '沙滩玩具'],
+      name: '儿童', code: 'ET', sort: 0,
+      categories: ['沐浴玩具', '挤压玩具', '存钱罐', '摆件', '益智玩具', '安抚玩具', '节日玩具', '沙滩玩具'],
     },
     {
-      name: '宠物', sort: 1,
+      name: '宠物', code: 'CW', sort: 1,
       categories: ['宠物益智啃咬玩具', '抛掷球类玩具', '宠物发声玩具', '宠物碗及喂食器', '宠物便携包及出行用品', '宠物清洁美容产品'],
     },
     {
-      name: '配件', sort: 2,
-      categories: ['脸皮', '没有分类的归为配件'],
+      name: '配件', code: 'PJ', sort: 2,
+      categories: ['脸皮', '新品类'],
     },
     {
-      name: '文具', sort: 3,
+      name: '文具', code: 'WJ', sort: 3,
       categories: ['印章', '笔', '笔筒'],
     },
     {
-      name: '家居', sort: 4,
+      name: '家居', code: 'JJ', sort: 4,
       categories: ['杯套', '门档', '沥水篮'],
     },
   ];
@@ -256,8 +296,8 @@ async function main() {
   for (const aud of audienceData) {
     const audience = await prisma.productAudience.upsert({
       where: { name: aud.name },
-      update: {},
-      create: { name: aud.name, sort: aud.sort },
+      update: { code: aud.code },
+      create: { name: aud.name, code: aud.code, sort: aud.sort },
     });
     for (let i = 0; i < aud.categories.length; i++) {
       await prisma.productCategory.upsert({

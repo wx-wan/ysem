@@ -255,6 +255,7 @@ model SalesPipeline {
 model ProductCraft {
   id        String   @id @default(uuid())
   name      String   @unique              // 搪胶 / 注塑 / 硅胶（基础工艺，可多选组合）
+  code      String?  @unique              // 编码（如 TJ / ZS / GJ），用于自动生成 SKU
   sort      Int      @default(0)
   status    Int      @default(1)          // 1 启用 / 0 停用
   products  Product[]                    // 多对多：一个产品可挂多个工艺
@@ -266,6 +267,7 @@ model ProductCraft {
 model ProductAudience {
   id         String   @id @default(uuid())
   name       String   @unique             // 儿童 / 宠物 / 配件 / 文具 / 家居
+  code       String?  @unique             // 编码（如 ET / CW / PJ / WJ / JJ），用于自动生成 SKU
   sort       Int      @default(0)
   status     Int      @default(1)
   categories ProductCategory[]            // 关联三级品类
@@ -304,7 +306,7 @@ model Product {
   category    ProductCategory? @relation(fields: [categoryId], references: [id])
 
   // ---- (定制)产品属性（必填）----
-  images      String?                      // 造型图片 URL，多图逗号分隔
+  images      String?                      // 产品图片 JSON 数组 [{url,name}]，第一张为主图
   sizeL       String?                      // 长 cm
   sizeW       String?                      // 宽 cm
   sizeH       String?                      // 高 cm
@@ -319,11 +321,13 @@ model Product {
   colorChange Boolean  @default(false)      // 变色
   sprayWater  Boolean  @default(false)      // 喷水
   colors      String?                      // 颜色（潘通色），逗号分隔
-  colorImage  String?                      // 颜色标注图片 URL
   packaging   String?                      // 产品包装（卡/盒/袋/桶）
 
   // ---- 供货定制模式（多选，由角色决定可选范围）----
   supplyModes String?  @default("")        // 逗号分隔：DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
+
+  // ---- 认证资质：关联现有证书，逗号分隔证书 id ----
+  certificationIds String? @default("")   // 逗号分隔证书 id
 
   // ---- 保留原有字段 ----
   spec        String?
@@ -379,3 +383,18 @@ model DailyExchangeRate {
 
   @@unique([date, currencyCode], name: "daily_rate_unique")
 }
+
+// ========== 证书管理 ==========
+model Certificate {
+  id          String   @id @default(cuid())
+  name        String   // 证书名称，如 CE 认证
+  code        String?  // 证书编号 / 标准代号，如 CE / FCC
+  issuer      String?  // 发证机构
+  category    String?  // 分类，如 安全 / 电磁兼容 / 环保
+  validUntil  DateTime? // 有效期至（可选）
+  status      Int      @default(1) // 1 启用 0 停用
+  remark      String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+

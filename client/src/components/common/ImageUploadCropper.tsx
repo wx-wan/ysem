@@ -1,9 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Modal, Button, Space, Upload, Spin, message } from 'antd';
-import { PlusOutlined, LoadingOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Cropper, ReactCropperElement } from 'react-cropper';
-import 'cropperjs/dist/cropper.css';
-import Compressor from 'compressorjs';
+import { Upload, Avatar, Button, Space, Modal, message } from 'antd';
+import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
 import './ImageUploadCropper.css';
 
 export interface ImageUploadCropperProps {
@@ -11,7 +8,7 @@ export interface ImageUploadCropperProps {
   value?: string;
   /** 值变化：返回压缩后的 Blob/File，方便交给上传接口 */
   onChange?: (file: Blob) => void;
-  /** 裁剪比例，默认 1（正方形头像）。传 NaN 表示自由比例 */
+  /** 裁剪比例（保留以兼容旧调用，无裁剪组件时不再使用） */
   aspect?: number;
   /** 压缩后最大体积（字节），默认 512KB */
   maxSize?: number;
@@ -27,7 +24,7 @@ export interface ImageUploadCropperProps {
   disabled?: boolean;
   /** 组件 id，用于 label htmlFor 关联 */
   id?: string;
-  /** 上传接口地址（baseURL 之外的完整路径或 /api 开头）；传入后确认时自动上传并返回 URL */
+  /** 上传接口地址（baseURL 之外的完整路径或 /api 开头）；传入后确认图片后自动上传并返回 URL */
   uploadUrl?: string;
   /** 上传成功后从响应里取 URL 的路径，默认取 data.url */
   urlField?: string;
@@ -37,25 +34,54 @@ export interface ImageUploadCropperProps {
 
 const DEFAULT_MAX_SIZE = 512 * 1024;
 
+/** 使用原生 canvas 等比压缩（最大边 2000px），并尽量逼近 maxSize */
 function compressImage(file: File, maxSize: number, quality: number): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    // eslint-disable-next-line no-new
-    new Compressor(file, {
-      quality,
-      maxWidth: 2000,
-      maxHeight: 2000,
-      // 在质量不达标时自动降低质量重试
-      success: (result) => {
-        if (result.size <= maxSize || quality <= 0.3) {
-          resolve(result);
-        } else {
-          compressImage(file, maxSize, quality - 0.1)
-            .then(resolve)
-            .catch(reject);
-        }
-      },
-      error: reject,
-    });
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      const maxEdge = 2000;
+      if (width > maxEdge || height > maxEdge) {
+        const ratio = Math.min(maxEdge / width, maxEdge / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error('canvas unavailable'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const tryQuality = (q: number, depth: number) => {
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(url);
+            if (!blob) {
+              reject(new Error('compress failed'));
+              return;
+            }
+            if (blob.size <= maxSize || depth >= 4) {
+              resolve(blob);
+            } else {
+              tryQuality(Math.max(0.3, q - 0.15), depth + 1);
+            }
+          },
+          'image/jpeg',
+          q,
+        );
+      };
+      tryQuality(quality, 0);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('load failed'));
+    };
+    img.src = url;
   });
 }
 
@@ -77,7 +103,6 @@ async function uploadFile(blob: Blob, uploadUrl: string, urlField: string): Prom
 export default function ImageUploadCropper({
   value,
   onChange,
-  aspect = 1,
   maxSize = DEFAULT_MAX_SIZE,
   quality = 0.8,
   shape = 'square',
@@ -89,74 +114,73 @@ export default function ImageUploadCropper({
   urlField = 'data.url',
   onUploaded,
 }: ImageUploadCropperProps) {
-  const cropperRef = useRef<ReactCropperElement>(null);
-  const [src, setSrc] = useState<string>();
-  const [open, setOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState<string>();
+  const [open, setOpen] = useState(false);
+  const selectedFileRef = useRef<File | null>(null);
 
   useEffect(() => {
     return () => {
-      if (src) URL.revokeObjectURL(src);
+      if (previewSrc) URL.revokeObjectURL(previewSrc);
     };
-  }, [src]);
+  }, [previewSrc]);
 
-  const beforeUpload = (file: File) => {
-    const isImg = file.type.startsWith('image/');
-    if (!isImg) {
-      message.error('请选择图片文件');
-      return Upload.LIST_IGNORE;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSrc(reader.result as string);
-      setOpen(true);
+  const openPicker = () => {
+    if (disabled || uploading) return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith('image/')) {
+        message.error('请选择图片文件');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (previewSrc) URL.revokeObjectURL(previewSrc);
+        selectedFileRef.current = file;
+        setPreviewSrc(reader.result as string);
+        setOpen(true);
+      };
+      reader.readAsDataURL(file);
     };
-    reader.readAsDataURL(file);
-    return Upload.LIST_IGNORE;
+    input.click();
   };
 
   const handleConfirm = async () => {
-    const cropper = cropperRef.current?.cropper;
-    if (!cropper) return;
-    const canvas = cropper.getCroppedCanvas({
-      maxWidth: 2000,
-      maxHeight: 2000,
-      imageSmoothingQuality: 'high',
-    });
-    canvas.toBlob(
-      async (blob) => {
-        if (!blob) return;
-        try {
-          const compressed = await compressImage(blob as File, maxSize, quality);
-          if (uploadUrl) {
-            setUploading(true);
-            const url = await uploadFile(compressed, uploadUrl, urlField);
-            onChange?.(compressed);
-            onUploaded?.(url);
-            setOpen(false);
-            setSrc(undefined);
-            message.success('上传成功');
-          } else {
-            onChange?.(compressed);
-            setOpen(false);
-            setSrc(undefined);
-          }
-        } catch {
-          message.error('处理失败，请重试');
-        } finally {
-          setUploading(false);
-        }
-      },
-      'image/jpeg',
-      1,
-    );
+    const file = selectedFileRef.current;
+    if (!file) return;
+    try {
+      setUploading(true);
+      const compressed = await compressImage(file, maxSize, quality);
+      onChange?.(compressed);
+      if (uploadUrl) {
+        const url = await uploadFile(compressed, uploadUrl, urlField);
+        onUploaded?.(url);
+        message.success('上传成功');
+      }
+    } catch {
+      message.error('处理失败，请重试');
+    } finally {
+      setUploading(false);
+      setOpen(false);
+      setPreviewSrc(undefined);
+      selectedFileRef.current = null;
+    }
+  };
+
+  const handleCancel = () => {
+    setOpen(false);
+    setPreviewSrc(undefined);
+    selectedFileRef.current = null;
   };
 
   const previewStyle: React.CSSProperties = {
     width: size,
     height: size,
     borderRadius: shape === 'circle' ? '50%' : 12,
-    backgroundImage: value ? `url(${value})` : undefined,
   };
 
   return (
@@ -165,11 +189,11 @@ export default function ImageUploadCropper({
         {value ? (
           <div
             className="iuc-preview"
-            style={previewStyle}
-            onClick={() => !disabled && setOpen(false)}
+            style={{ ...previewStyle, backgroundImage: `url(${value})`, backgroundSize: 'cover', backgroundPosition: 'center' }}
+            onClick={openPicker}
             role="button"
             tabIndex={disabled ? -1 : 0}
-            aria-label={value ? '更换图片' : '上传图片'}
+            aria-label="更换图片"
           >
             <div className="iuc-preview-mask">
               <Space direction="vertical" size={2}>
@@ -179,34 +203,29 @@ export default function ImageUploadCropper({
             </div>
           </div>
         ) : (
-          <Upload
-            accept="image/*"
-            showUploadList={false}
-            beforeUpload={beforeUpload}
-            disabled={disabled}
-            className="iuc-upload"
+          <div
+            className="iuc-add"
+            style={previewStyle}
+            onClick={openPicker}
+            role="button"
+            tabIndex={disabled ? -1 : 0}
+            aria-label="上传图片"
           >
-            <div className="iuc-add" style={{ width: size, height: size, borderRadius: shape === 'circle' ? '50%' : 12 }} role="button" tabIndex={disabled ? -1 : 0} aria-label="上传图片">
+            {shape === 'circle' ? (
+              <Avatar size={size - 12} icon={<UserOutlined />} />
+            ) : (
               <PlusOutlined style={{ fontSize: size * 0.2 }} />
-              {placeholder && <span className="iuc-placeholder">{placeholder}</span>}
-            </div>
-          </Upload>
+            )}
+            {placeholder && <span className="iuc-placeholder">{placeholder}</span>}
+          </div>
         )}
         {value && !disabled && (
           <Button
             type="link"
             size="small"
             className="iuc-replace"
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = 'image/*';
-              input.onchange = (e) => {
-                const f = (e.target as HTMLInputElement).files?.[0];
-                if (f) beforeUpload(f);
-              };
-              input.click();
-            }}
+            loading={uploading}
+            onClick={openPicker}
           >
             更换
           </Button>
@@ -214,39 +233,31 @@ export default function ImageUploadCropper({
       </div>
 
       <Modal
-        title="裁剪图片"
+        title="预览头像"
         open={open}
-        onCancel={() => setOpen(false)}
-        width={560}
+        onCancel={handleCancel}
+        width={480}
+        centered
         footer={[
-          <Button key="cancel" onClick={() => setOpen(false)}>
+          <Button key="cancel" onClick={handleCancel}>
             取消
           </Button>,
           <Button key="ok" type="primary" loading={uploading} onClick={handleConfirm}>
-            确认
+            确认使用
           </Button>,
         ]}
         destroyOnHidden
       >
-        <div className="iuc-cropper-wrap">
-          {src ? (
-            <Cropper
-              ref={cropperRef}
-              src={src}
-              style={{ height: 360, width: '100%' }}
-              aspectRatio={Number.isNaN(aspect) ? undefined : aspect}
-              viewMode={1}
-              background={false}
-              autoCropArea={1}
-              guides={false}
-              responsive
-            />
-          ) : (
-            <div className="iuc-loading">
-              <Spin indicator={<LoadingOutlined spin />} />
-            </div>
+        <div className="iuc-preview-wrap">
+          {previewSrc && (
+            shape === 'circle' ? (
+              <Avatar size={200} src={previewSrc} />
+            ) : (
+              <img className="iuc-preview-img" src={previewSrc} alt="预览" />
+            )
           )}
         </div>
+        <div className="iuc-preview-tip">确认后将自动上传并替换当前头像</div>
       </Modal>
     </>
   );

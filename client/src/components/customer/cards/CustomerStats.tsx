@@ -1,8 +1,9 @@
-import { Card, Row, Col, Popover, Progress } from 'antd';
+import { Popover, Progress } from 'antd';
 import { PieChart, Pie, Cell, Tooltip as ReTooltip } from 'recharts';
 import type { Customer, EstimatedBreakdownItem, ContractBreakdownItem } from '../../../api/customers';
 import { INTENT_ORDER } from '../shared/intentLevel';
 import Price from '../../common/Price';
+import StatCards from '../../common/page/StatCards';
 import {
   GlobalOutlined,
   DollarOutlined,
@@ -365,105 +366,20 @@ export default function CustomerStats({
   ];
 
   return (
-    <Row gutter={16} style={{ marginBottom: 24 }}>
-      {cards.map((c, i) => (
-        <Col xs={24} sm={8} key={i}>
-          <Card
-            style={{
-              borderRadius: 16,
-              border: 'none',
-              overflow: 'hidden',
-              position: 'relative',
-              background: `linear-gradient(135deg, ${c.from} 0%, ${c.to} 100%)`,
-            }}
-            styles={{ body: { padding: '24px 28px', position: 'relative' } }}
-          >
-            {/* 装饰圆 1 */}
-            <div
-              style={{
-                position: 'absolute',
-                top: -40,
-                right: -40,
-                width: 140,
-                height: 140,
-                borderRadius: '50%',
-                background: c.accent,
-                pointerEvents: 'none',
-                zIndex: 0,
-              }}
-            />
-            {/* 装饰圆 2 */}
-            <div
-              style={{
-                position: 'absolute',
-                bottom: -30,
-                right: 60,
-                width: 100,
-                height: 100,
-                borderRadius: '50%',
-                background: c.accent,
-                pointerEvents: 'none',
-                zIndex: 0,
-              }}
-            />
-
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                position: 'relative',
-                zIndex: 1,
-              }}
-            >
-              {/* 左侧文字 */}
-              <div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: 'rgba(255,255,255,0.75)',
-                    fontWeight: 500,
-                    lineHeight: 1,
-                  }}
-                >
-                  {c.label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 28,
-                    fontWeight: 700,
-                    color: '#fff',
-                    lineHeight: 1.2,
-                    marginTop: 8,
-                  }}
-                >
-                  {c.value}
-                </div>
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: 'rgba(255,255,255,0.65)',
-                    marginTop: 6,
-                  }}
-                >
-                  {c.sub}
-                </div>
-              </div>
-
-              {/* 右侧图标 */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {c.icon}
-              </div>
-            </div>
-          </Card>
-        </Col>
-      ))}
-    </Row>
+    <StatCards
+      items={cards.map((c, i) => ({
+        key: String(i),
+        label: c.label,
+        value: c.value,
+        sub: c.sub,
+        from: c.from,
+        to: c.to,
+        accent: c.accent,
+        icon: c.icon,
+      }))}
+      cols={{ xs: 24, sm: 12, md: 12, lg: 8 }}
+      gutter={[16, 16]}
+      style={{ marginBottom: 16 }}
+    />
   );
 }

@@ -17,6 +17,7 @@ import customerRoutes from './routes/customer.routes';
 import orderRoutes from './routes/order.routes';
 import productRoutes from './routes/product.routes';
 import taxonomyRoutes from './routes/productTaxonomy.routes';
+import certificateRoutes from './routes/certificate.routes';
 import uploadRoutes from './routes/upload.routes';
 import { UPLOAD_DIR } from './controllers/upload.controller';
 import path from 'path';
@@ -106,6 +107,7 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/product/taxonomy', taxonomyRoutes);
+app.use('/api/certificates', certificateRoutes);
 app.use('/api/upload', uploadRoutes);
 
 // 静态资源：上传的图片

@@ -50,6 +50,7 @@ const routeTitles: Record<string, string> = {
   '/system/dept': '部门管理',
   '/system/perm': '权限管理',
   '/system/product-taxonomy': '产品管理',
+  '/system/certificates': '证书管理',
 };
 
 export default function MainLayout() {
@@ -141,6 +142,7 @@ export default function MainLayout() {
               ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
               ...(hasPerm('product:taxonomy:view') ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }] : []),
+              ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <SafetyOutlined />, label: t('menu.systemCertificates') }] : []),
             ],
           },
         ]
