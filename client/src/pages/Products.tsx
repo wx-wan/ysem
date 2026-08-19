@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  EyeOutlined, ReloadOutlined, CheckCircleFilled,
+  EyeOutlined, ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
 } from '@ant-design/icons';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
@@ -136,6 +136,7 @@ export default function Products() {
   const [skuPreview, setSkuPreview] = useState<string>('');
   const watchedCraftIds = Form.useWatch('craftIds', form);
   const watchedAudienceId = Form.useWatch('audienceId', form);
+  const watchedCategoryId = Form.useWatch('categoryId', form);
   useEffect(() => {
     const craftsKey = (watchedCraftIds ?? []).map(String).sort().join(',');
     const audId = watchedAudienceId as string | undefined;
@@ -234,10 +235,28 @@ export default function Products() {
     if (record.audienceId) handleAudienceChange(record.audienceId);
   };
 
+  // 从主表单返回第一步重新选择 工艺/受众/品类
+  const backToStep = () => {
+    const v = form.getFieldsValue(['craftIds', 'audienceId', 'categoryId']);
+    setStepCrafts(crafts.filter((c) => (v.craftIds || []).includes(c.id)));
+    const aud = audiences.find((a) => a.id === v.audienceId);
+    setStepAudience(aud);
+    const cats = aud?.categories || [];
+    setCategories(cats);
+    setSelectedAudienceId(v.audienceId);
+    setStepCategory(cats.find((c) => c.id === v.categoryId));
+    setStepErr({});
+    setOpen(false);
+    setStepOpen(true);
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      // 工艺/受众/品类已移至第一步选择，未渲染 Form.Item，需从 store 显式取出并入提交数据
+      const extra = form.getFieldsValue(['craftIds', 'audienceId', 'categoryId']);
       const data = {
+        ...extra,
         ...values,
         supplyModes: Array.isArray(values.supplyModes) ? values.supplyModes.join(',') : '',
         certificationIds: Array.isArray(values.certificationIds) ? values.certificationIds.join(',') : '',
@@ -428,14 +447,25 @@ export default function Products() {
                 </>
               ) : 'SKU 待生成'}
             </span>
+            {(() => {
+              const cNames = (watchedCraftIds ?? [])
+                .map((id: string) => crafts.find((c) => c.id === id)?.name)
+                .filter(Boolean);
+              const aName = audiences.find((a) => a.id === watchedAudienceId)?.name;
+              const catName = categories.find((c) => c.id === watchedCategoryId)?.name
+                || audiences.find((a) => a.id === watchedAudienceId)?.categories?.find((c) => c.id === watchedCategoryId)?.name;
+              const str = [...cNames, aName, catName].filter(Boolean).join(' / ');
+              return str ? <span className="pm-taxonomy-str">{str}</span> : null;
+            })()}
           </div>
         }
         open={open}
         onCancel={() => setOpen(false)}
-        onOk={handleSubmit}
-        okText="保存"
-        cancelText="取消"
         width={1000}
+        footer={[
+          <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
+          <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
+        ]}
         // forceRender 让 form 常驻连接，打开时可直接 setFieldsValue，避免 useForm not connected 警告
         forceRender
         styles={{
@@ -444,93 +474,10 @@ export default function Products() {
       >
         <Form form={form} layout="vertical" className="pm-form">
           <Row gutter={24}>
-            {/* 左：基础信息栏 */}
-            <Col xs={24} xl={16} className="pm-col-stretch">
-              {/* 基础信息 */}
-              <Card title="基础信息" variant="outlined" className="pm-card">
-                <Row gutter={16}>
-                    <Col span={12}>
-                      <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}>
-                        <Input placeholder="输入产品名称" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={12}>
-                      <Form.Item name="supplyModes" label="供货模式">
-                        <Select
-                          mode="multiple"
-                          placeholder={supplyModesReadOnly ? '深度定制（默认）' : '选择一个供货模式'}
-                          allowClear={!supplyModesReadOnly}
-                          disabled={supplyModesReadOnly}
-                          maxCount={1}
-                          options={SUPPLY_MODES.filter((s) => allowedSupplyModes.includes(s.value))}
-                        />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Row gutter={16}>
-                    <Col span={8}>
-                      <Form.Item name="craftIds" label="工艺">
-                        <Select mode="multiple" placeholder="可多选，如 搪胶+注塑" allowClear
-                          options={crafts.map((c) => ({ label: c.name, value: c.id }))} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="audienceId" label="受众">
-                        <Select placeholder="选择受众" allowClear onChange={handleAudienceChange}
-                          options={audiences.map((a) => ({ label: a.name, value: a.id }))} />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="categoryId" label="品类">
-                        <Select placeholder="先选受众" allowClear disabled={!selectedAudienceId}
-                          options={categories.map((c) => ({ label: c.name, value: c.id }))} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-
-                  <Form.Item name="remark" label="商品描述">
-                    <Input.TextArea rows={2} placeholder="备注信息" />
-                  </Form.Item>
-
-                  <Divider className="pm-card-divider" />
-
-                  <Row gutter={10}>
-                    <Col span={8}>
-                      <Form.Item name="sizeL" label="长 (cm)">
-                        <Input placeholder="0" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="sizeW" label="宽 (cm)">
-                        <Input placeholder="0" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="sizeH" label="高 (cm)">
-                        <Input placeholder="0" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-                  <Row gutter={10}>
-                    <Col span={8}>
-                      <Form.Item name="weight" label="克重 (g)">
-                        <Input placeholder="0" />
-                      </Form.Item>
-                    </Col>
-                    <Col span={8}>
-                      <Form.Item name="unit" label="单位">
-                        <Select placeholder="选择" allowClear options={[{ label: '套', value: '套' }, { label: '个', value: '个' }]} />
-                      </Form.Item>
-                    </Col>
-                  </Row>
-              </Card>
-            </Col>
-
-            {/* 右：图片上传框（统一入口，第一张为主图） */}
-            <Col xs={24} xl={8} className="pm-col-stretch">
+            {/* 左：产品图片栏 */}
+            <Col xs={24} xl={{ flex: '3 1 0%' }} className="pm-col-stretch">
               <div className="pm-col-inner">
-                <Card title="产品图片" variant="outlined" className="pm-card pm-card-sticky">
+                <Card title="产品图片" variant="outlined" className="pm-card">
                   <Form.Item name="images" noStyle>
                     <ProductImageList uploadUrl="/upload" />
                   </Form.Item>
@@ -549,7 +496,81 @@ export default function Products() {
                 </Card>
               </div>
             </Col>
-            </Row>
+
+            {/* 右：基础信息栏（单列整行） */}
+            <Col xs={24} xl={{ flex: '2 1 0%' }} className="pm-col-stretch">
+              <Card title="基础信息" variant="outlined" className="pm-card">
+                <div className="pm-back-step">
+                  <Button type="link" size="small" icon={<ArrowLeftOutlined />} onClick={backToStep}>
+                    返回选择 工艺 / 受众 / 品类
+                  </Button>
+                </div>
+
+                {/* 工艺/受众/品类已移至第一步选择，此处保留隐藏 Form.Item 以维持字段注册，
+                   使 SKU 预览的 useWatch 能随 setFieldsValue 实时更新 */}
+                <Form.Item name="craftIds" hidden><Input /></Form.Item>
+                <Form.Item name="audienceId" hidden><Input /></Form.Item>
+                <Form.Item name="categoryId" hidden><Input /></Form.Item>
+
+                <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}>
+                  <Input placeholder="输入产品名称" />
+                </Form.Item>
+
+                <Form.Item name="supplyModes" label="供货模式">
+                  <Select
+                    mode="multiple"
+                    placeholder={supplyModesReadOnly ? '深度定制（默认）' : '选择一个供货模式'}
+                    allowClear={!supplyModesReadOnly}
+                    disabled={supplyModesReadOnly}
+                    maxCount={1}
+                    options={SUPPLY_MODES.filter((s) => allowedSupplyModes.includes(s.value))}
+                  />
+                </Form.Item>
+
+                {/* 尺寸：长宽高一行，置于商品描述上方 */}
+                <div className="pm-size-row">
+                  <div className="pm-size-row-title">尺寸 (cm)</div>
+                  <Row gutter={10}>
+                    <Col span={8}>
+                      <Form.Item name="sizeL" label="长" style={{ marginBottom: 0 }}>
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="sizeW" label="宽" style={{ marginBottom: 0 }}>
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                    <Col span={8}>
+                      <Form.Item name="sizeH" label="高" style={{ marginBottom: 0 }}>
+                        <Input placeholder="0" />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* 克重 + 单位 一行，置于尺寸栏下方 */}
+                <Row gutter={10} className="pm-size-row">
+                  <Col span={12}>
+                    <Form.Item name="weight" label="克重 (g)" style={{ marginBottom: 0 }}>
+                      <Input placeholder="0" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="unit" label="单位" style={{ marginBottom: 0 }}>
+                      <Select placeholder="选择" allowClear options={[{ label: '套', value: '套' }, { label: '个', value: '个' }]} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+
+                <Divider className="pm-card-divider" />
+
+                <Form.Item name="remark" label="商品描述">
+                  <Input.TextArea rows={2} placeholder="备注信息" />
+                </Form.Item>
+              </Card>
+            </Col>
+          </Row>
         </Form>
       </Modal>
 

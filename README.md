@@ -198,6 +198,23 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ## 更新日志
 
+### 2026-08-19 —— 产品图片上传与表单体验优化
+
+- **产品图片组件 (`ProductImageList`) 重构**：
+  - 预览改用 antd `Image.PreviewGroup`，支持点击图片预览、左右切换；移除手写 Modal 预览逻辑
+  - 多图批量上传：同一次多选的所有文件统一并发压缩 + 上传后一次性提交，避免闭包 `items` 互相覆盖
+  - 上传前用原生 canvas 等比压缩（最大边 2000px，质量 0.85），减小传输体积
+  - 修复 `Image is not a constructor` 报错：原 `import { Image } from 'antd'` 遮蔽了浏览器全局 `Image` 构造函数，改为 `Image as AntImage` + `new window.Image()`
+  - 修复 antd v6 静态 `message` 警告：改用 `App.useApp()` 获取 context 内的 `message` 实例（消除 "Static function can not consume context" 警告，主题生效）
+  - 上传错误细化提示：区分 401/403（登录过期）、网络异常、上传接口未返回 URL 等场景
+  - 添加按钮交互重设计（图标徽章 + hover 旋转 / 上传中旋转动画），空状态、内边距与边框层级样式修正
+- **产品表单 (`Products.tsx`) 布局调整**：
+  - 产品图片栏（60%）与基础信息栏（40%）左右换位，基础信息改为一行一个表单元素
+  - 工艺 / 受众 / 品类选择移至「选择工艺受众品类」步骤弹窗，基础信息内移除对应选择框，并在 SKU 编码旁以 `xx/xx/xxx` 形式展示已选分类
+  - 基础信息新增「返回选择」按钮回退到步骤弹窗；表单内放置隐藏 `Form.Item` 保证 `useWatch` 订阅、SKU 自动生成
+  - 尺寸（长/宽/高）三列一行置于商品描述上方，克重 + 单位一行紧随其后
+  - 移除弹窗右下角「上一步」按钮（保留基础信息内的返回入口）
+
 ### 2026-08-04（补充 4）—— 产品管理模块
 
 - **新增「产品管理」独立模块**（菜单入口位于销售管理之后）：

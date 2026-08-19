@@ -1,10 +1,95 @@
-/* 产品多图上传列表 */
+/* 产品多图上传列表 —— 堆叠展示（适配 antd v6） */
 .pil {
   width: 100%;
 }
 
-.pil-upload.ant-upload-wrapper .ant-upload-list {
-  margin-top: 0;
+/* 外层作为横向 flex 行，容纳图片列表与添加按钮 */
+.pil-upload {
+  display: flex !important;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+/* 图片列表本身也是横向 flex */
+.pil-upload .ant-upload-list {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  margin: 0 !important;
+}
+
+/* v6 item 外层容器：固定尺寸并向左重叠堆叠 */
+.pil-upload .ant-upload-list-item-container {
+  width: 88px !important;
+  height: 88px !important;
+  margin: 0 0 0 -36px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pil-upload .ant-upload-list-item-container:first-child {
+  margin-left: 0 !important;
+}
+
+/* hover 时抬升到最前并轻微放大 */
+.pil-upload .ant-upload-list-item-container:hover {
+  transform: translateY(-6px) scale(1.06);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  z-index: 10;
+}
+
+/* v6 内层 item 去默认边框/内边距 */
+.pil-upload .ant-upload-list-item {
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 10px;
+}
+
+/* 添加（上传）按钮作为独立入口，不加入堆叠流 */
+/* antd v6 实际类名是 .ant-upload-select（picture-card 包裹在 wrapper 上），
+   它本身带 1px dashed border + 浅灰底色，hover 改 borderColor，需全部清掉由 .pil-add 接管 */
+.pil-upload .ant-upload-select,
+.pil-upload .ant-upload-select-picture-card {
+  width: 88px !important;
+  height: 88px !important;
+  margin: 0 0 0 12px !important;
+  margin-bottom: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.pil-upload .ant-upload-select:hover,
+.pil-upload .ant-upload-select:focus,
+.pil-upload .ant-upload-select:active,
+.pil-upload .ant-upload-select-picture-card:hover,
+.pil-upload .ant-upload-select-picture-card:focus,
+.pil-upload .ant-upload-select-picture-card:active {
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+
+/* 空态：整行作为一个大的虚线拖拽/点击区。
+   使用更高特异性的选择器，避免被 antd v6 CSS-in-JS 的默认 picture-card 样式覆盖 */
+.pil-empty .pil-upload {
+  width: 100%;
+}
+.pil-empty .pil-upload .ant-upload-select,
+.pil-empty .pil-upload .ant-upload-select-picture-card {
+  width: 100% !important;
+  height: 120px !important;
+  margin: 0 !important;
 }
 
 /* 单张图片卡片 */
@@ -12,12 +97,29 @@
   position: relative;
   width: 100%;
   height: 100%;
+  border: 2px solid #fff;
   border-radius: 10px;
   overflow: hidden;
   cursor: zoom-in;
+  background: #f5f5f5;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .pil-card-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* antd Image 外层需填满卡片以承载预览点击 */
+.pil-card .ant-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pil-card .ant-image-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -38,6 +140,7 @@
   font-weight: 600;
 }
 
+/* 操作按钮默认隐藏，hover 卡片时显示 */
 .pil-card-ops {
   position: absolute;
   right: 0;
@@ -48,6 +151,12 @@
   padding: 2px 4px;
   background: rgba(0, 0, 0, 0.45);
   border-top-left-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.pil-card:hover .pil-card-ops {
+  opacity: 1;
 }
 
 .pil-card-ops .ant-btn {
@@ -63,25 +172,135 @@
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
-/* 添加按钮 */
+/* 添加按钮（有图态）：轻量幽灵方块，只保留一层干净虚线 */
 .pil-add {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 8px;
+  width: 100%;
   height: 100%;
-  color: var(--c-text-tertiary, #999);
-  font-size: 28px;
+  padding: 8px;
+  color: var(--c-text-secondary, #64748b);
+  border: 1.5px dashed var(--c-border-strong, #e2e8f0);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 3%, transparent);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.22s ease, color 0.22s ease,
+    background 0.22s ease, transform 0.18s ease, box-shadow 0.22s ease;
+}
+
+/* 图标徽标：圆形浅底，明确传达"添加"语义 */
+.pil-add-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--c-primary, #1677ff);
+  background: var(--c-surface, #fff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 22%, transparent),
+    0 2px 6px color-mix(in srgb, var(--c-primary, #1677ff) 14%, transparent);
+  transition: transform 0.22s ease, color 0.22s ease, background 0.22s ease,
+    box-shadow 0.22s ease;
 }
 
 .pil-add-text {
-  margin-top: 8px;
-  font-size: 13px;
-  line-height: 1;
+  font-size: 12px;
+  line-height: 1.3;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* hover / focus / active：抬升 + 主色填充 + 图标旋转微交互 */
+.pil-add:hover,
+.pil-add:focus,
+.pil-add:active {
+  border-color: var(--c-primary, #1677ff);
+  color: var(--c-primary, #1677ff);
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 8%, transparent);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  outline: none;
+}
+
+.pil-add:hover .pil-add-icon,
+.pil-add:focus .pil-add-icon,
+.pil-add:active .pil-add-icon {
+  color: #fff;
+  background: var(--c-primary, #1677ff);
+  transform: rotate(90deg) scale(1.06);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent),
+    0 4px 12px color-mix(in srgb, var(--c-primary, #1677ff) 32%, transparent);
+}
+
+/* 上传中：实线主色环 + 旋转图标，禁用抬升 */
+.pil-add.is-uploading {
+  cursor: default;
+  color: var(--c-primary, #1677ff);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 38%, transparent);
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 6%, transparent);
+}
+
+.pil-add.is-uploading .pil-add-icon {
+  color: #fff;
+  background: var(--c-primary, #1677ff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent);
+}
+
+.pil-add.is-uploading .pil-add-icon.is-spin {
+  animation: pil-spin 0.9s linear infinite;
+}
+
+@keyframes pil-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.pil-add.is-uploading:hover,
+.pil-add.is-uploading:focus,
+.pil-add.is-uploading:active {
+  transform: none;
+  box-shadow: none;
+}
+
+.pil-add.is-uploading:hover .pil-add-icon,
+.pil-add.is-uploading:focus .pil-add-icon,
+.pil-add.is-uploading:active .pil-add-icon {
+  transform: none;
+}
+
+/* 空态：整行大虚线拖拽/点击区，与主色呼应 */
+.pil-empty .pil-add {
+  flex-direction: row;
+  gap: 14px;
+  height: 100%;
+  border-width: 1.5px;
+  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 30%, var(--c-border-strong, #e2e8f0));
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 3%, transparent);
+}
+
+.pil-empty .pil-add .pil-add-icon {
+  width: 40px;
+  height: 40px;
+  font-size: 20px;
+}
+
+.pil-empty .pil-add .pil-add-text {
+  margin-top: 0;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .pil-tip {
-  margin-top: 8px;
+  margin-top: 12px;
   font-size: 12px;
   color: var(--c-text-tertiary, #999);
   text-align: left;
