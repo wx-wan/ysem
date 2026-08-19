@@ -6,7 +6,6 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   EyeOutlined, ReloadOutlined, CheckCircleFilled,
-  ArrowLeftOutlined, ArrowRightOutlined, CloseOutlined,
 } from '@ant-design/icons';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
@@ -22,7 +21,7 @@ const { Text } = Typography;
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
 // 工艺固定展示顺序（前端兜底，确保 搪胶→注塑→硅胶 在前）
-const CRAFT_ORDER = ['搪胶', '注塑', '硅胶'];
+
 
 // 供货模式选项
 export const SUPPLY_MODES = [
@@ -145,7 +144,8 @@ export default function Products() {
 
   const handleStepNext = async () => {
     const v = {
-      craftIds: stepCrafts.map((c) => c.id),
+      // craftIds 按系统排序（taxonomy 列表已按 sort 升序返回）
+      craftIds: crafts.filter((c) => stepCrafts.some((s) => s.id === c.id)).map((c) => c.id),
       audienceId: stepAudience?.id,
       categoryId: stepCategory?.id,
     };
@@ -398,10 +398,7 @@ export default function Products() {
             <Col span={8}>
               <Form.Item name="craftIds" label="工艺">
                 <Select mode="multiple" placeholder="可多选，如 搪胶+注塑" allowClear
-                  options={CRAFT_ORDER.filter((name) => crafts.some((c) => c.name === name))
-                    .concat(crafts.filter((c) => !CRAFT_ORDER.includes(c.name)).map((c) => c.name))
-                    .map((name) => crafts.find((c) => c.name === name)!)
-                    .map((c) => ({ label: c.name, value: c.id }))} />
+                  options={crafts.map((c) => ({ label: c.name, value: c.id }))} />
               </Form.Item>
             </Col>
             <Col span={8}>
@@ -542,7 +539,7 @@ export default function Products() {
           <div className="pm-step-bar">
             <div className={cx('pm-step-dot', stepCrafts.length && 'is-done')}>
               <span className="pm-step-idx">1</span>
-              <span className="pm-step-label">{stepCrafts.length ? stepCrafts.map((c) => c.name).join('+') : '工艺'}</span>
+              <span className="pm-step-label">{stepCrafts.length ? crafts.filter((c) => stepCrafts.some((s) => s.id === c.id)).map((c) => c.name).join('+') : '工艺'}</span>
             </div>
             <div className="pm-step-line" />
             <div className={cx('pm-step-dot', stepCrafts.length && 'is-active', stepAudience && 'is-done')}>
@@ -562,104 +559,61 @@ export default function Products() {
               工艺 <span className="pm-req">*</span>
             </label>
             <Row gutter={[10, 10]}>
-              {CRAFT_ORDER.filter((name) => crafts.some((c) => c.name === name))
-                .concat(crafts.filter((c) => !CRAFT_ORDER.includes(c.name)).map((c) => c.name))
-                .map((name) => crafts.find((c) => c.name === name)!)
-                .map((c) => {
-                  const checked = stepCrafts.some((s) => s.id === c.id);
-                  return (
-                    <Col span={8} key={c.id}>
-                      <button
-                        type="button"
-                        className={cx('pm-pick', checked && 'is-selected')}
-                        onClick={() => {
-                          setStepCrafts((prev) =>
-                            checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
-                          );
-                          setStepErr((e) => ({ ...e, craftId: undefined }));
-                        }}
-                      >
-                        <CheckCircleFilled className="pm-pick-check" />
-                        {checked && (
-                          <span className="pm-pick-badge">
-                            {stepCrafts.findIndex((s) => s.id === c.id) + 1}
-                          </span>
-                        )}
-                        <span className="pm-pick-name">{c.name}</span>
-                      </button>
-                    </Col>
-                  );
-                })}
+              {crafts.map((c) => {
+                const checked = stepCrafts.some((s) => s.id === c.id);
+                return (
+                  <Col span={8} key={c.id}>
+                    <button
+                      type="button"
+                      className={cx('pm-pick', checked && 'is-selected')}
+                      onClick={() => {
+                        setStepCrafts((prev) =>
+                          checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
+                        );
+                        setStepErr((e) => ({ ...e, craftId: undefined }));
+                      }}
+                    >
+                      <CheckCircleFilled className="pm-pick-check" />
+                      <span className="pm-pick-name">{c.name}</span>
+                    </button>
+                  </Col>
+                );
+              })}
             </Row>
-            {stepCrafts.length > 0 && (
-              <div className="pm-craft-sort">
-                <span className="pm-craft-sort-label">已选工艺（按顺序，可调）：</span>
-                {stepCrafts.map((c, i) => (
-                  <span key={c.id} className="pm-craft-chip">
-                    <span className="pm-craft-chip-idx">{i + 1}</span>
-                    <span className="pm-craft-chip-name">{c.name}</span>
-                    <button
-                      type="button"
-                      className="pm-craft-chip-btn"
-                      title="左移"
-                      disabled={i === 0}
-                      onClick={() => moveCraft(i, -1)}
-                    >
-                      <ArrowLeftOutlined />
-                    </button>
-                    <button
-                      type="button"
-                      className="pm-craft-chip-btn"
-                      title="右移"
-                      disabled={i === stepCrafts.length - 1}
-                      onClick={() => moveCraft(i, 1)}
-                    >
-                      <ArrowRightOutlined />
-                    </button>
-                    <button
-                      type="button"
-                      className="pm-craft-chip-btn pm-craft-chip-btn--del"
-                      title="移除"
-                      onClick={() => removeCraft(c.id)}
-                    >
-                      <CloseOutlined />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
             {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
           </div>
 
-          {/* 受众 */}
-          <div className="pm-form-row">
-            <label className="pm-form-row-label">
-              受众 <span className="pm-req">*</span>
-            </label>
-            <Row gutter={[10, 10]}>
-              {audiences.map((a) => (
-                <Col span={8} key={a.id}>
-                  <button
-                    type="button"
-                    className={cx('pm-pick', stepAudience?.id === a.id && 'is-selected')}
-                    onClick={() => {
-                      setStepAudience(a);
-                      setStepCategory(undefined);
-                      setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
-                      handleAudienceChange(a.id);
-                    }}
-                  >
-                    <CheckCircleFilled className="pm-pick-check" />
-                    <span className="pm-pick-name">{a.name}</span>
-                    {a.categories?.length ? (
-                      <span className="pm-pick-sub">{a.categories.length} 个品类</span>
-                    ) : null}
-                  </button>
-                </Col>
-              ))}
-            </Row>
-            {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
-          </div>
+          {/* 受众：选完工艺后出现 */}
+          {stepCrafts.length > 0 && (
+            <div className="pm-form-row">
+              <label className="pm-form-row-label">
+                受众 <span className="pm-req">*</span>
+              </label>
+              <Row gutter={[10, 10]}>
+                {audiences.map((a) => (
+                  <Col span={8} key={a.id}>
+                    <button
+                      type="button"
+                      className={cx('pm-pick', stepAudience?.id === a.id && 'is-selected')}
+                      onClick={() => {
+                        setStepAudience(a);
+                        setStepCategory(undefined);
+                        setStepErr((e) => ({ ...e, audienceId: undefined, categoryId: undefined }));
+                        handleAudienceChange(a.id);
+                      }}
+                    >
+                      <CheckCircleFilled className="pm-pick-check" />
+                      <span className="pm-pick-name">{a.name}</span>
+                      {a.categories?.length ? (
+                        <span className="pm-pick-sub">{a.categories.length} 个品类</span>
+                      ) : null}
+                    </button>
+                  </Col>
+                ))}
+              </Row>
+              {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
+            </div>
+          )}
 
           {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
