@@ -32,6 +32,8 @@ const productSchema = z.object({
   source: z.string().optional(),
   status: z.string().optional(),
   remark: z.string().optional(),
+  // 产品进度（打样/报价阶段多子任务并行），前端维护的 JSON 字符串
+  progress: z.string().optional(),
 });
 
 // 按「工艺代码 - 受众代码 - 序号」自动生成 SKU：

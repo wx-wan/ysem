@@ -71,6 +71,7 @@ export interface Product {
 
   // 产品要求
   sampleNo?: string | null;     // 打样单号
+  progress?: string | null;     // 产品进度 JSON（打样/报价阶段多子任务并行）
   logo?: boolean;               // 功能勾选
   sound?: boolean;              // 发声
   glow?: boolean;               // 发光

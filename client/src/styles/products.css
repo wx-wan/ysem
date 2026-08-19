@@ -6,6 +6,32 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  position: relative;
+  flex-wrap: nowrap;
+  min-height: 24px;
+  width: 100%;
+}
+
+/* 关闭按钮：紧贴标题栏最右，与「新建产品」文字垂直居中对齐 */
+.pm-modal-close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.pm-modal-close:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: rgba(0, 0, 0, 0.88);
 }
 .pm-sku-head {
   font-size: 13px;
@@ -23,6 +49,12 @@
   color: var(--c-text-secondary, #666);
   font-weight: 500;
   font-size: 13px;
+}
+
+/* 弹窗标题栏右侧的产品状态标签（flex 行内，位于关闭按钮左侧） */
+.pm-status-tag {
+  margin: 0 4px 0 12px;
+  font-weight: 600;
 }
 
 /* 基础信息：返回选择 工艺/受众/品类 */
@@ -258,17 +290,13 @@
   color: var(--c-text-tertiary, #94a3b8);
 }
 
-/* 分页 */
+/* 分页（与客户管理页统一：居中、无「条/页」下拉、保留跳至、显示总数） */
 .pm-grid-pager {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 20px;
-}
-.pm-grid-total {
-  font-size: 13px;
-  color: var(--c-text-secondary, #64748b);
+  justify-content: center;
+  margin-top: 24px;
+  padding-bottom: 8px;
 }
 
 /* 列表模式表格：对齐全局 .table-container 规范 */
@@ -429,7 +457,7 @@
   font-size: 13px;
   color: var(--c-text-tertiary, #94a3b8);
 }
-.pm-sku-preview .pm-sku-tag {
+.pm-sku-preview .pm-sku-status {
   flex: none;
   margin-inline-end: 0;
   font-family: inherit;

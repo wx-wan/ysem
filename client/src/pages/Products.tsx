@@ -6,6 +6,7 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   EyeOutlined, ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
@@ -13,6 +14,8 @@ import productApi, {
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
 import ProductImageList from '../components/common/ProductImageList';
+import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
+import { buildTablePagination } from '../components/common/tablePagination';
 import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
@@ -42,7 +45,7 @@ export default function Products() {
   const [list, setList] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(10);
+  const [pageSize] = useState(6);
   const [loading, setLoading] = useState(false);
 
   // 筛选
@@ -344,7 +347,7 @@ export default function Products() {
           <>
             <Row gutter={[16, 16]}>
               {list.map((r) => (
-                <Col key={r.id} xs={24} sm={12} md={12} lg={8} xl={6}>
+                <Col key={r.id} xs={24} sm={12} md={12} lg={8} xl={8}>
                   <div className="pm-prod-card">
                     {/* 渐变头 */}
                     <div className="pm-prod-cover">
@@ -410,13 +413,13 @@ export default function Products() {
             </Row>
 
             <div className="pm-grid-pager">
-              <span className="pm-grid-total">共 {total} 条</span>
               <Pagination
-                current={page}
-                pageSize={pageSize}
-                total={total}
-                showSizeChanger={false}
-                onChange={(p) => setPage(p)}
+                {...buildTablePagination({
+                  total,
+                  page,
+                  pageSize,
+                  onChange: (p) => setPage(p),
+                })}
               />
             </div>
           </>
@@ -438,14 +441,13 @@ export default function Products() {
       <Modal
         title={
           <div className="pm-modal-title">
-            <span>{editing ? '编辑产品' : '新建产品'}</span>
+            <span className="pm-modal-title-main">{editing ? '编辑产品' : '新建产品'}</span>
             <span className={cx('pm-sku-preview pm-sku-head', !skuPreview && 'is-empty')}>
-              {skuPreview ? (
-                <>
-                  <Tag color="processing" className="pm-sku-tag">自动</Tag>
-                  <span>{skuPreview}</span>
-                </>
-              ) : 'SKU 待生成'}
+              {(() => {
+                const { phase, label } = getProgressPhase(editing?.progress ?? null);
+                return <Tag color={STATUS_TAG_COLOR[phase]} className="pm-sku-status">{label}</Tag>;
+              })()}
+              {skuPreview ? <span>{skuPreview}</span> : 'SKU 待生成'}
             </span>
             {(() => {
               const cNames = (watchedCraftIds ?? [])
@@ -457,8 +459,17 @@ export default function Products() {
               const str = [...cNames, aName, catName].filter(Boolean).join(' / ');
               return str ? <span className="pm-taxonomy-str">{str}</span> : null;
             })()}
+            <button
+              type="button"
+              className="pm-modal-close"
+              aria-label="关闭"
+              onClick={() => setOpen(false)}
+            >
+              <CloseOutlined />
+            </button>
           </div>
         }
+        closeIcon={null}
         open={open}
         onCancel={() => setOpen(false)}
         width={1000}
@@ -470,6 +481,7 @@ export default function Products() {
         forceRender
         styles={{
           body: { paddingTop: 12 },
+          header: { paddingRight: 0 },
         }}
       >
         <Form form={form} layout="vertical" className="pm-form">
@@ -566,7 +578,7 @@ export default function Products() {
                 <Divider className="pm-card-divider" />
 
                 <Form.Item name="remark" label="商品描述">
-                  <Input.TextArea rows={2} placeholder="备注信息" />
+                  <Input.TextArea rows={3} placeholder="详细介绍商品特色、材质、核心功能卖点..." />
                 </Form.Item>
               </Card>
             </Col>

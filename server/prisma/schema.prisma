@@ -329,6 +329,11 @@ model Product {
   // ---- 认证资质：关联现有证书，逗号分隔证书 id ----
   certificationIds String? @default("")   // 逗号分隔证书 id
 
+  // ---- 产品进度（打样 / 报价 阶段多子任务并行）----
+  // JSON 结构：{ stages: { sampling: SamplingStage[], quoting: QuotingStage[] } }
+  // SamplingStage: { id, name, status('pending'|'active'|'done'), steps: { key, label, done }[] }
+  progress   String?   @default("{}")
+
   // ---- 保留原有字段 ----
   spec        String?
   description String?
