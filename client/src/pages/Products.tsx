@@ -6,6 +6,7 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   EyeOutlined, ReloadOutlined, CheckCircleFilled,
+  ArrowLeftOutlined, ArrowRightOutlined, CloseOutlined,
 } from '@ant-design/icons';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory,
@@ -118,6 +119,23 @@ export default function Products() {
     setStepErr({});
     setCategories([]);
     setSelectedAudienceId(undefined);
+  };
+
+  // 已选工艺排序：左移 / 右移（顺序即提交时 craftIds 顺序）
+  const moveCraft = (index: number, dir: -1 | 1) => {
+    setStepCrafts((prev) => {
+      const next = [...prev];
+      const j = index + dir;
+      if (j < 0 || j >= next.length) return prev;
+      [next[index], next[j]] = [next[j], next[index]];
+      return next;
+    });
+  };
+
+  // 移除单个已选工艺
+  const removeCraft = (id: string) => {
+    setStepCrafts((prev) => prev.filter((s) => s.id !== id));
+    setStepErr((e) => ({ ...e, craftId: undefined }));
   };
 
   const openCreate = () => {
@@ -562,12 +580,54 @@ export default function Products() {
                         }}
                       >
                         <CheckCircleFilled className="pm-pick-check" />
+                        {checked && (
+                          <span className="pm-pick-badge">
+                            {stepCrafts.findIndex((s) => s.id === c.id) + 1}
+                          </span>
+                        )}
                         <span className="pm-pick-name">{c.name}</span>
                       </button>
                     </Col>
                   );
                 })}
             </Row>
+            {stepCrafts.length > 0 && (
+              <div className="pm-craft-sort">
+                <span className="pm-craft-sort-label">已选工艺（按顺序，可调）：</span>
+                {stepCrafts.map((c, i) => (
+                  <span key={c.id} className="pm-craft-chip">
+                    <span className="pm-craft-chip-idx">{i + 1}</span>
+                    <span className="pm-craft-chip-name">{c.name}</span>
+                    <button
+                      type="button"
+                      className="pm-craft-chip-btn"
+                      title="左移"
+                      disabled={i === 0}
+                      onClick={() => moveCraft(i, -1)}
+                    >
+                      <ArrowLeftOutlined />
+                    </button>
+                    <button
+                      type="button"
+                      className="pm-craft-chip-btn"
+                      title="右移"
+                      disabled={i === stepCrafts.length - 1}
+                      onClick={() => moveCraft(i, 1)}
+                    >
+                      <ArrowRightOutlined />
+                    </button>
+                    <button
+                      type="button"
+                      className="pm-craft-chip-btn pm-craft-chip-btn--del"
+                      title="移除"
+                      onClick={() => removeCraft(c.id)}
+                    >
+                      <CloseOutlined />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
           </div>
 

@@ -448,6 +448,90 @@
   opacity: 1;
   transform: scale(1);
 }
+/* 选中序号徽标 */
+.pm-pick-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--c-primary, #1677ff);
+  box-shadow: 0 2px 6px rgba(22, 119, 255, 0.35);
+}
+/* 已选工艺排序条 */
+.pm-craft-sort {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pm-craft-sort-label {
+  font-size: 12px;
+  color: var(--c-text-secondary, #64748b);
+}
+.pm-craft-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px 3px 4px;
+  border-radius: var(--radius-pill);
+  background: var(--c-primary-bg, rgba(22, 119, 255, 0.08));
+  border: 1px solid rgba(22, 119, 255, 0.25);
+}
+.pm-craft-chip-idx {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--c-primary, #1677ff);
+}
+.pm-craft-chip-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text, #1a1a1a);
+  margin-right: 2px;
+}
+.pm-craft-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--c-text-tertiary, #94a3b8);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.pm-craft-chip-btn:hover:not(:disabled) {
+  background: var(--c-primary-bg, rgba(22, 119, 255, 0.12));
+  color: var(--c-primary, #1677ff);
+}
+.pm-craft-chip-btn--del:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+.pm-craft-chip-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
 .pm-pick-err {
   margin-top: 8px;
   font-size: 12px;
