@@ -387,6 +387,7 @@
 }
 .pm-step-dot.is-done .pm-step-label {
   color: var(--c-text, #1a1a1a);
+  font-weight: 600;
 }
 .pm-step-line {
   flex: 1;
