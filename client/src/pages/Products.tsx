@@ -160,27 +160,26 @@ export default function Products() {
     setStepOpen(false);
     setEditing(null);
     setOpen(true);
-    setTimeout(() => {
-      form.resetFields();
-      form.setFieldsValue({
-        ...v,
-        logo: false, sound: false, glow: false, colorChange: false, sprayWater: false,
-      });
-      if (v.audienceId) handleAudienceChange(v.audienceId);
-    }, 0);
+    // 主表单 Modal 已 forceRender，form 常驻连接，可直接初始化
+    form.resetFields();
+    form.setFieldsValue({
+      ...v,
+      logo: false, sound: false, glow: false, colorChange: false, sprayWater: false,
+    });
+    if (v.audienceId) handleAudienceChange(v.audienceId);
   };
 
   const openEdit = (record: Product) => {
     setEditing(record);
     setOpen(true);
-    setTimeout(() => {
-      form.setFieldsValue({
-        ...record,
-        craftIds: record.crafts?.map((c) => c.id) || [],
-        supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
-      });
-      if (record.audienceId) handleAudienceChange(record.audienceId);
-    }, 0);
+    // 主表单 Modal 已 forceRender，先重置再回填，避免残留上一次的值
+    form.resetFields();
+    form.setFieldsValue({
+      ...record,
+      craftIds: record.crafts?.map((c) => c.id) || [],
+      supplyModes: record.supplyModes ? record.supplyModes.split(',') : [],
+    });
+    if (record.audienceId) handleAudienceChange(record.audienceId);
   };
 
   const handleSubmit = async () => {
@@ -375,8 +374,8 @@ export default function Products() {
         okText="保存"
         cancelText="取消"
         width={860}
-        destroyOnHidden
-        forceRender={false}
+        // forceRender 让 form 常驻连接，打开时可直接 setFieldsValue，避免 useForm not connected 警告
+        forceRender
       >
         <Form form={form} layout="vertical" className="pm-form" style={{ marginTop: 16 }}>
           {/* 基础信息 */}
