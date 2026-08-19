@@ -566,7 +566,10 @@ export default function Products() {
                     <button
                       type="button"
                       className={cx('pm-pick', checked && 'is-selected')}
+                      title={checked && stepCrafts.length === 1 ? '至少保留一个工艺' : undefined}
                       onClick={() => {
+                        // 最后一个选中的工艺不可取消
+                        if (checked && stepCrafts.length === 1) return;
                         setStepCrafts((prev) =>
                           checked ? prev.filter((s) => s.id !== c.id) : [...prev, c],
                         );
