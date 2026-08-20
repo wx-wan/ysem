@@ -138,16 +138,9 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 
 ### 生产环境
 
-> ⚠️ **数据库 provider 差异（重要）**
-> 本地开发使用 **SQLite**（`server/prisma/schema.prisma` 中 `provider = "sqlite"`），
-> 而生产 `docker-compose.yml` 使用 **PostgreSQL**。发布前必须先把 schema 的 provider 切换为 postgresql，
-> 否则 `prisma` 命令会因 provider 不匹配而失败。
->
-> 切换方式（任选其一）：
-> - 临时改 `schema.prisma` 第 6 行：`provider = "postgresql"`（发布完可改回 sqlite 继续本地开发）；
-> - 或维护两份 schema（如 `schema.sqlite.prisma` / `schema.postgres.prisma`），通过 `prisma --schema=...` 指定。
->
-> 本文以「临时切换 provider」为例。
+> ✅ **统一数据库**：开发与生产均使用 **SQLite**（单一文件 `prisma/dev.db`），
+> 由 `docker-compose.yml` 通过 `server_data` 卷持久化，无需额外数据库容器。
+> `schema.prisma` 中 `provider` 保持 `sqlite`，发布时**无需切换**。
 
 #### 完整发布步骤
 
@@ -157,37 +150,23 @@ cd /Users/stra/CodeBuddy/ysem   # 项目根目录
 # ───── 1. 准备环境变量 ─────
 cp server/.env.production .env
 # 编辑 .env，至少修改以下项（务必使用强随机值）：
-#   DB_PASSWORD           数据库密码
 #   JWT_SECRET            Access Token 密钥（建议 32+ 位随机串）
 #   JWT_REFRESH_SECRET    刷新 Token 密钥（与上面不同）
 #   CORS_ORIGIN          前端正式域名，如 https://crm.your-domain.com
 # 可用以下命令生成随机密钥：
 #   openssl rand -base64 48
 
-# ───── 2. 切换 schema provider 到 postgresql ─────
-# 编辑 server/prisma/schema.prisma：
-#   datasource db { provider = "postgresql" ... }
-# （发布结束、回归本地开发时改回 "sqlite"）
-
-# ───── 3. 生成数据库迁移（首次发布才需要）─────
-# 首次发布：基于当前 schema 生成迁移文件（需能连到生产库）
-cd server
-npx prisma migrate dev --name init --env-file ../.env
-cd ..
-# 后续每次 schema 变更：先生成新迁移再发布
-#   npx prisma migrate dev --name <变更说明> --env-file ../.env
-
-# ───── 4. 构建并启动服务 ─────
+# ───── 2. 构建并启动服务 ─────
 docker-compose --env-file .env build
 docker-compose --env-file .env up -d
 
-# ───── 5. 在容器内执行迁移与种子 ─────
-# 生产环境用 migrate deploy（可重复、可回滚），不要用 db push
-docker exec -it ysem-server npx prisma migrate deploy
+# ───── 3. 在容器内同步数据库结构与种子 ─────
+# SQLite 单文件，直接用 db push 同步 schema（与开发期一致）
+docker exec -it ysem-server npx prisma db push
 # 仅首次需要初始化管理员与种子数据：
 docker exec -it ysem-server npx tsx prisma/seed.ts
 
-# ───── 6. 验证 ─────
+# ───── 4. 验证 ─────
 curl -f http://localhost:3000/api/health && echo " 后端健康"
 curl -f -o /dev/null -s http://localhost && echo " 前端可访问"
 docker-compose logs --tail=50 server
@@ -195,15 +174,15 @@ docker-compose logs --tail=50 server
 
 #### 数据库变更（schema 已修改时）
 
-- **开发期**：在本地连 SQLite 用 `prisma db push`（已做过）。
-- **生产期**：务必走 `prisma migrate dev`（生成迁移）→ 重新构建发布 → 容器内 `prisma migrate deploy`。
-  不要用 `db push` 管理生产库，避免丢失迁移历史、难以回滚。
+- 开发期与生产期**一致**：`prisma db push` 即可（单 SQLite 文件，无多实例并发迁移问题）。
+- 注意：生产库已挂 `server_data` 卷持久化，重复发布不会丢失数据；
+  但若新 schema 与旧数据不兼容（如删除字段），`db push` 可能需加 `--accept-data-loss`，请先备份。
 
 #### 回滚与备份
 
-- **数据备份**：生产库为 PostgreSQL，发布前先备份：
-  `docker exec -it ysem-db pg_dump -U postgres ysem > backup_$(date +%F).sql`
-- **回滚迁移**：`docker exec -it ysem-server npx prisma migrate rollback`
+- **数据备份**：生产库为 SQLite 单文件，直接拷贝卷内文件即可：
+  `docker cp ysem-server:/app/prisma/dev.db ./backup_$(date +%F).db`
+- **恢复**：`docker cp ./backup_$(date +%F).db ysem-server:/app/prisma/dev.db` 后重启 server。
 - **镜像回滚**：`docker-compose --env-file .env up -d --force-recreate` 配合旧版本镜像 tag。
 
 ## 云服务器部署建议
@@ -211,13 +190,13 @@ docker-compose logs --tail=50 server
 1. 复制项目到服务器（建议通过 Git 拉取固定版本 tag，避免直接传源码）
 2. 安装 Docker 和 Docker Compose
 3. 按上文「生产环境」流程操作，重点注意：
-   - 发布前把 `schema.prisma` 的 `provider` 切到 `postgresql`；
-   - 用 `prisma migrate dev`（生成迁移）+ `migrate deploy`（应用迁移），不要用 `db push`；
+   - `schema.prisma` 的 `provider` 保持 `sqlite`，**无需切换**；
+   - 数据库同步使用 `prisma db push`（开发/生产一致）；
    - 修改 `server/.env.production` 中的密钥（或用根目录 `.env`）；
    - 首次发布执行 `tsx prisma/seed.ts` 初始化管理员。
 4. 配置 Nginx 反向代理并启用 HTTPS（Let's Encrypt），将 80 跳转 443
-5. 配置防火墙，仅开放 80 / 443（数据库 5432 不对外暴露）
-6. 配置自动备份：定时 `pg_dump` 生产库并异地留存
+5. 配置防火墙，仅开放 80 / 443（数据库在容器内，不对外暴露）
+6. 配置自动备份：定时 `docker cp ysem-server:/app/prisma/dev.db` 异地留存
 
 ## API 接口
 
