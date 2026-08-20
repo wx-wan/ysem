@@ -1,10 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import * as path from "path";
 
-// 运行时服务实际读取的数据库是 prisma/dev.db（Prisma Client 以 schema 目录为基准解析相对路径）。
-// 直接指定绝对路径，确保 seed 写入与运行时同一个库，避免数据落进错误的 server/dev.db。
-process.env.DATABASE_URL = `file:${path.resolve(__dirname, "../../prisma/dev.db")}`;
-
+// 使用 .env 中的 DATABASE_URL（开发与生产统一指向 PostgreSQL）
 const prisma = new PrismaClient();
 
 // 品类关键词 -> 用于订单备注，便于概览「品类分布」识别

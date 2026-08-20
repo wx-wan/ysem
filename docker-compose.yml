@@ -1,22 +1,43 @@
 version: '3.8'
 
 services:
-  # 后端 API 服务（使用 SQLite，与本地开发一致的单一数据库文件）
+  # PostgreSQL 数据库（开发与生产统一）
+  db:
+    image: postgres:16-alpine
+    container_name: ysem-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ysem
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 后端 API 服务
   server:
     build:
       context: ./server
       dockerfile: ../Dockerfile.server
     container_name: ysem-server
     restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: "file:/app/prisma/dev.db"
+      DATABASE_URL: "postgresql://postgres:${DB_PASSWORD:-postgres}@db:5432/ysem?schema=public"
       JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me-too}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
     volumes:
-      - server_data:/app/prisma      # 持久化 SQLite 数据库文件
       - server_uploads:/app/uploads  # 持久化上传文件
     ports:
       - "3000:3000"
@@ -34,7 +55,7 @@ services:
       - "80:80"
 
 volumes:
-  server_data:
+  postgres_data:
     driver: local
   server_uploads:
     driver: local
