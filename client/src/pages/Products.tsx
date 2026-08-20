@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Button, Space, Input, Modal, Form, Select,
   Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Skeleton,
@@ -16,6 +16,7 @@ import { certificateApi, Certificate } from '../api/certificates';
 import ProductImageList from '../components/common/ProductImageList';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
+import { StepBar } from '../components/common/StepBar';
 import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
@@ -133,6 +134,8 @@ export default function Products() {
   const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
   const [stepCategory, setStepCategory] = useState<ProductCategory | undefined>();
+  // 从编辑弹窗「返回选择」时，暂存未提交的表单值与编辑态，重选后恢复
+  const draftRef = useRef<{ values: Record<string, unknown>; editing: Product | null } | null>(null);
   const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
 
   // SKU 自动预览：按「工艺-受众-序号」实时请求后端生成，无需人工录入
@@ -209,15 +212,32 @@ export default function Products() {
     if (Object.keys(err).length) return; // 校验失败：停留在第一步
 
     setStepOpen(false);
-    setEditing(null);
-    setOpen(true);
-    // 主表单 Modal 已 forceRender，form 常驻连接，可直接初始化
-    form.resetFields();
-    form.setFieldsValue({
-      ...v,
-      // 新建默认：管理员/采购取首个可用模式，业务默认深度定制
-      supplyModes: [allowedSupplyModes[0]],
-    });
+    const draft = draftRef.current;
+    if (draft?.editing) {
+      // 从编辑弹窗「返回重选」后回到编辑：保留未提交值与编辑态，仅用重选的工艺/品类覆盖
+      setOpen(true);
+      form.resetFields();
+      const resumeSupply = Array.isArray(draft.values.supplyModes) && (draft.values.supplyModes as string[]).length
+        ? (draft.values.supplyModes as string[])
+        : [allowedSupplyModes[0]];
+      form.setFieldsValue({
+        ...draft.values,
+        ...v,
+        supplyModes: resumeSupply,
+      });
+    } else {
+      // 新建流程：正常初始化
+      setEditing(null);
+      setOpen(true);
+      // 主表单 Modal 已 forceRender，form 常驻连接，可直接初始化
+      form.resetFields();
+      form.setFieldsValue({
+        ...v,
+        // 新建默认：管理员/采购取首个可用模式，业务默认深度定制
+        supplyModes: [allowedSupplyModes[0]],
+      });
+    }
+    draftRef.current = null;
     if (v.audienceId) handleAudienceChange(v.audienceId);
   };
 
@@ -249,6 +269,8 @@ export default function Products() {
     setSelectedAudienceId(v.audienceId);
     setStepCategory(cats.find((c) => c.id === v.categoryId));
     setStepErr({});
+    // 暂存当前编辑弹窗里未提交的值与编辑态，重选后恢复
+    draftRef.current = { values: form.getFieldsValue(true), editing };
     setOpen(false);
     setStepOpen(true);
   };
@@ -588,7 +610,7 @@ export default function Products() {
 
       {/* 第一步：选择工艺 / 受众 / 品类 */}
       <Modal
-        title="新建产品 · 选择分类"
+        title={draftRef.current?.editing ? '重选分类' : '新建产品 · 选择分类'}
         open={stepOpen}
         onCancel={() => setStepOpen(false)}
         onOk={handleStepNext}
@@ -598,12 +620,26 @@ export default function Products() {
         destroyOnHidden
         forceRender={false}
       >
-        <div className="pm-form" style={{ marginTop: 12 }}>
+        <div className="pm-step-flow">
+          <StepBar
+            embedded
+            current={!stepCrafts.length ? 0 : !stepAudience ? 1 : stepCategory?.id ? 3 : 2}
+            items={[
+              { title: '选择工艺', statusText: !stepCrafts.length ? '进行中' : '已完成' },
+              { title: '选择受众', statusText: stepCrafts.length && !stepAudience ? '进行中' : stepAudience ? '已完成' : '待处理' },
+              { title: '选择品类', statusText: stepAudience ? (stepCategory?.id ? '已完成' : '进行中') : '待处理' },
+            ]}
+          />
+          <div className="pm-step-flow__body">
+            <Form component={false} layout="vertical">
+            {/* 工艺 */}
           {/* 工艺 */}
-          <div className="pm-form-row">
-            <label className="pm-form-label">
-              工艺 <span className="pm-req">*</span>
-            </label>
+          <Form.Item
+            label="工艺"
+            required
+            validateStatus={stepErr.craftId ? 'error' : ''}
+            help={stepErr.craftId}
+          >
             <Row gutter={[10, 10]}>
               {crafts.map((c) => {
                 const checked = stepCrafts.some((s) => s.id === c.id);
@@ -629,15 +665,16 @@ export default function Products() {
                 );
               })}
             </Row>
-            {stepErr.craftId && <div className="pm-pick-err">{stepErr.craftId}</div>}
-          </div>
+          </Form.Item>
 
           {/* 受众：选完工艺后出现 */}
           {stepCrafts.length > 0 && (
-            <div className="pm-form-row">
-              <label className="pm-form-label">
-                受众 <span className="pm-req">*</span>
-              </label>
+            <Form.Item
+              label="受众"
+              required
+              validateStatus={stepErr.audienceId ? 'error' : ''}
+              help={stepErr.audienceId}
+            >
               <Row gutter={[10, 10]}>
                 {audiences.map((a) => (
                   <Col span={8} key={a.id}>
@@ -662,16 +699,17 @@ export default function Products() {
                   </Col>
                 ))}
               </Row>
-              {stepErr.audienceId && <div className="pm-pick-err">{stepErr.audienceId}</div>}
-            </div>
+            </Form.Item>
           )}
 
           {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
-            <div className="pm-form-row">
-              <label className="pm-form-label">
-                品类 <span className="pm-req">*</span>
-              </label>
+            <Form.Item
+              label="品类"
+              required
+              validateStatus={stepErr.categoryId ? 'error' : ''}
+              help={stepErr.categoryId}
+            >
               <Row gutter={[10, 10]}>
                 {categories.length ? categories.map((c) => (
                   <Col span={8} key={c.id}>
@@ -693,9 +731,10 @@ export default function Products() {
                   </Col>
                 )}
               </Row>
-              {stepErr.categoryId && <div className="pm-pick-err">{stepErr.categoryId}</div>}
-            </div>
+            </Form.Item>
           )}
+            </Form>
+          </div>
         </div>
       </Modal>
 

@@ -431,6 +431,23 @@
 .pm-form-row {
   margin-bottom: 18px;
 }
+/* 第一步弹窗：步骤条 + 选择模块 合并为同一整体面板 */
+.pm-step-flow {
+  border: 1px solid var(--c-border-secondary, #e2e8f0);
+  border-radius: var(--radius-md, 12px);
+  background: var(--c-bg, #ffffff);
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.pm-step-flow__body {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--c-border-secondary, #e2e8f0);
+}
+.pm-step-flow .pm-form-row:last-child {
+  margin-bottom: 0;
+}
 
 /* SKU 自动生成预览条 */
 .pm-sku-preview {
@@ -547,17 +564,13 @@
 }
 .pm-pick-check {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 18px;
-  height: 18px;
+  top: 10px;
+  right: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  font-size: 11px;
-  color: #fff;
-  background: var(--c-primary, #1677ff);
+  font-size: 18px;
+  color: var(--c-primary, #1677ff);
   opacity: 0;
   transform: scale(0.5);
   transition: opacity 0.15s ease, transform 0.15s ease;
@@ -569,11 +582,6 @@
 .pm-pick.is-selected .pm-pick-check {
   opacity: 1;
   transform: scale(1);
-}
-.pm-pick-err {
-  margin-top: 8px;
-  font-size: 12px;
-  color: #ff4d4f;
 }
 .pm-pick-empty {
   padding: 14px;
