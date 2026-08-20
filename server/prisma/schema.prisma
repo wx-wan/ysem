@@ -31,6 +31,8 @@ model User {
   refreshToken String?
   salesPipelines SalesPipeline[]
   customers      Customer[]
+  productVisibilities ProductVisibleUser[]
+  products    Product[]      @relation("ProductCreator")
 }
 
 
@@ -350,12 +352,29 @@ model Product {
   stock       Int?    @default(0)
   lowStockAlert Int?  @default(0)
   source      String   @default("MANUAL")
-  status      String   @default("ACTIVE")
+  // 产品可见性：PUBLIC 所有人可见；PRIVATE 仅指定用户可见（见 ProductVisibleUser）
+  visibility  String   @default("PUBLIC")
   remark      String?
 
+  visibleUsers ProductVisibleUser[]
   leadProducts LeadProduct[]
+  createdBy  String?                     // 创建人 id（不公开产品仅创建人 + 指定可见人可查看）
+  creator    User?    @relation("ProductCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// 产品可见人关联：visibility=PRIVATE 时，仅 listed 用户可见该产品
+model ProductVisibleUser {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([userId])
 }
 
 // 线索-产品关联（一条线索可包含多个产品，带数量）

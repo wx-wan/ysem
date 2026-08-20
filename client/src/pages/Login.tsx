@@ -4,6 +4,7 @@ import { Form, Input, Button, App } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { authApi } from '../api/auth';
+import { getMessage } from '../api/message-holder';
 import { useAuthStore } from '../stores/useAuthStore';
 
 export default function LoginPage() {
@@ -26,8 +27,11 @@ export default function LoginPage() {
       setAuth(user, accessToken, refreshToken);
       message.success(t('login.success'));
       navigate('/', { replace: true });
-    } catch {
-      // 错误已在拦截器中处理
+    } catch (err) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        t('login.error');
+      getMessage().error(msg);
     } finally {
       setLoading(false);
     }

@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
-  Button, Space, Input, Modal, Form, Select,
-  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Skeleton,
+  Button, Space, Input, Modal, Form, Select, Radio,
+  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Skeleton, Flex,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  EyeOutlined, ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
+  ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
   CloseOutlined,
 } from '@ant-design/icons';
 import productApi, {
@@ -13,6 +14,7 @@ import productApi, {
   taxonomyApi,
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
+import { userApi } from '../api/users';
 import ProductImageList from '../components/common/ProductImageList';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
@@ -43,6 +45,7 @@ const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
 const DEFAULT_SUPPLY_MODE = 'DEEP_CUSTOM';
 
 export default function Products() {
+  const { t } = useTranslation();
   const { message } = App.useApp();
   const cardGutter = useCardGutter();
   const [list, setList] = useState<Product[]>([]);
@@ -55,6 +58,10 @@ export default function Products() {
   const [keyword, setKeyword] = useState('');
   const [filterCraftId, setFilterCraftId] = useState<string | undefined>();
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
+  const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
+
+  // 用户列表（用于「不公开」产品指定可见人）
+  const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
 
   // 分类下拉数据
   const [crafts, setCrafts] = useState<ProductCraft[]>([]);
@@ -68,11 +75,14 @@ export default function Products() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
   const [form] = Form.useForm();
+  const visValue = Form.useWatch('visibility', form) as 'PUBLIC' | 'PRIVATE' | undefined;
+  const visibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [certificates, setCertificates] = useState<Certificate[]>([]);
 
   // 当前用户角色 → 供货模式可选范围（admin 全选 / purchaser 轻定制+现货 / 其他默认深度定制）
   const roleCode = useAuthStore((s) => s.user?.role?.code ?? '');
+  const canDelete = roleCode === 'admin' || roleCode === 'ADMIN';
   const allowedSupplyModes = SUPPLY_MODES_BY_ROLE[roleCode] ?? [DEFAULT_SUPPLY_MODE];
   const supplyModesReadOnly = allowedSupplyModes.length <= 1; // 仅一个可用项（业务等）→ 不可修改
 
@@ -83,6 +93,7 @@ export default function Products() {
         page, pageSize, keyword,
         craftIds: filterCraftId,
         audienceId: filterAudienceId,
+        visibility: filterVisibility,
       });
       if (res.data.code === 200 || res.data.code === 0) {
         setList(res.data.data.list);
@@ -112,7 +123,7 @@ export default function Products() {
 
   useEffect(() => { fetchTaxonomy(); }, []);
   useEffect(() => { fetchCertificates(); }, []);
-  useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId]);
+  useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId, filterVisibility]);
 
   // 受众变化时联动品类
   const handleAudienceChange = (audienceId?: string) => {
@@ -243,9 +254,28 @@ export default function Products() {
     if (v.audienceId) handleAudienceChange(v.audienceId);
   };
 
+  // 懒加载「指定可见人」候选用户：仅在编辑弹窗打开时按需拉取。
+  // 用轻量接口 /users/select（对所有登录用户开放，无需 system:user 权限），
+  // 业务员等角色也能正常获取候选列表，不会触发「权限不足」提示。
+  const loadUsers = useCallback(async () => {
+    try {
+      const r = await userApi.listForSelect();
+      if (r.data.code === 200 || r.data.code === 0) {
+        setUsers(r.data.data.map((u) => ({
+          id: u.id,
+          username: u.username,
+          realName: u.realName ?? undefined,
+        })));
+      }
+    } catch {
+      /* 失败保持 users 为空，「指定可见人」不可用即可 */
+    }
+  }, []);
+
   const openEdit = (record: Product) => {
     setEditing(record);
     setOpen(true);
+    loadUsers();
     // 主表单 Modal 已 forceRender，先重置再回填，避免残留上一次的值
     form.resetFields();
     // 供货模式按角色过滤（如采购不可含深度定制；业务固定深度定制）
@@ -256,6 +286,8 @@ export default function Products() {
       craftIds: record.crafts?.map((c) => c.id) || [],
       supplyModes: modes.length ? modes : [allowedSupplyModes[0]],
       certificationIds: record.certificationIds ? record.certificationIds.split(',') : [],
+      visibility: record.visibility || 'PUBLIC',
+      visibleUserIds: record.visibleUsers?.map((v) => v.userId) ?? [],
     });
     if (record.audienceId) handleAudienceChange(record.audienceId);
   };
@@ -277,16 +309,27 @@ export default function Products() {
     setStepOpen(true);
   };
 
+  // 将表单中未填产生的 null 转为 undefined，避免后端 Zod 对 z.string().optional() 报 "Expected string, received null"
+  const cleanNullValues = (obj: Record<string, unknown>): Record<string, unknown> => {
+    const out: Record<string, unknown> = {};
+    Object.entries(obj).forEach(([key, value]) => {
+      out[key] = value === null ? undefined : value;
+    });
+    return out;
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       // 工艺/受众/品类已移至第一步选择，未渲染 Form.Item，需从 store 显式取出并入提交数据
       const extra = form.getFieldsValue(['craftIds', 'audienceId', 'categoryId']);
       const data = {
-        ...extra,
-        ...values,
+        ...cleanNullValues(extra),
+        ...cleanNullValues(values),
         supplyModes: Array.isArray(values.supplyModes) ? values.supplyModes.join(',') : '',
         certificationIds: Array.isArray(values.certificationIds) ? values.certificationIds.join(',') : '',
+        // 公开产品不指定可见人：显式置空，确保后端清空已存在的可见人关联
+        visibleUserIds: values.visibility === 'PUBLIC' ? [] : (values.visibleUserIds ?? []),
       };
       if (editing) {
         await productApi.update(editing.id, data);
@@ -340,8 +383,19 @@ export default function Products() {
                 style={{ width: 110 }}
                 options={audiences.map((a) => ({ label: a.name, value: a.id }))}
               />
+              <Select
+                placeholder={t('product.visibility')}
+                value={filterVisibility}
+                onChange={(v) => { setFilterVisibility(v); setPage(1); }}
+                allowClear
+                style={{ width: 120 }}
+                options={[
+                  { label: t('product.visibilityPublic'), value: 'PUBLIC' },
+                  { label: t('product.visibilityPrivate'), value: 'PRIVATE' },
+                ]}
+              />
               <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setPage(1); }}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setPage(1); }}>重置</Button>
             </Space>
           </Col>
           <Col>
@@ -360,7 +414,32 @@ export default function Products() {
             {Array.from({ length: 8 }).map((_, i) => (
               <Col key={i} xs={24} sm={12} md={12} lg={8} xl={6}>
                 <div className="pm-prod-card pm-prod-card--skeleton">
-                  <Skeleton active paragraph={{ rows: 4 }} title={false} />
+                  <div className="pm-prod-cover">
+                    <div className="pm-prod-cover-head">
+                      <Skeleton.Avatar active shape="round" size={20} />
+                      <Skeleton.Avatar active shape="round" size={20} />
+                    </div>
+                  </div>
+                  <div className="pm-prod-body">
+                    <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
+                      <Skeleton.Input active size="small" style={{ width: '60%' }} />
+                      <Skeleton.Input active size="small" style={{ width: 48 }} />
+                    </Flex>
+                    <Row className="pm-prod-meta" gutter={0}>
+                      {[0, 1, 2].map((k) => (
+                        <Col key={k} xs={8} style={{ textAlign: 'center' }}>
+                          <Skeleton.Input active size="small" style={{ width: '70%' }} />
+                        </Col>
+                      ))}
+                    </Row>
+                    <div className="pm-prod-footer">
+                      <Skeleton.Input active size="small" style={{ width: '40%' }} />
+                      <Space size={8}>
+                        <Skeleton.Avatar active shape="circle" size={24} />
+                        <Skeleton.Avatar active shape="circle" size={24} />
+                      </Space>
+                    </div>
+                  </div>
                 </div>
               </Col>
             ))}
@@ -372,46 +451,60 @@ export default function Products() {
             <Row gutter={[16, 16]}>
               {list.map((r) => (
                 <Col key={r.id} xs={24} sm={12} md={12} lg={8} xl={8}>
-                  <div className="pm-prod-card">
+                  <div
+                    className="pm-prod-card"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => { setViewing(r); setDetailOpen(true); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewing(r); setDetailOpen(true); } }}
+                  >
                     {/* 渐变头 */}
                     <div className="pm-prod-cover">
                       {mainImageUrl(r.images) ? (
                         <img src={mainImageUrl(r.images)} alt="" />
                       ) : null}
-                      <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
-                      <span className={`pm-status pm-prod-status ${r.status === 'ACTIVE' ? 'pm-status--active' : 'pm-status--inactive'}`}>
-                        {r.status === 'ACTIVE' ? '启用' : '停用'}
-                      </span>
+                      <div className="pm-prod-cover-head">
+                        <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
+                        <span className={`pm-status pm-prod-status ${r.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
+                          {r.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
+                        </span>
+                      </div>
                     </div>
 
                     {/* 卡片体 */}
                     <div className="pm-prod-body">
-                      <div className="pm-prod-name" title={r.name}>{r.name}</div>
-                      <div className="pm-prod-tags">
-                        {r.crafts?.length
-                          ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
-                          : null}
-                        {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
-                        {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
-                      </div>
+                      <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
+                        <div className="pm-prod-name" title={r.name} style={{ flex: '1 1 auto', minWidth: 0 }}>{r.name}</div>
+                        <div className="pm-prod-tags">
+                          {r.crafts?.length
+                            ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
+                            : null}
+                          {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
+                          {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
+                        </div>
+                      </Flex>
 
-                      <div className="pm-prod-meta">
-                        <div className="pm-prod-meta-item">
-                          <span className="pm-prod-meta-label">尺寸</span>
-                          <span className="pm-prod-meta-val">
+                      <Row className="pm-prod-meta" gutter={0}>
+                        <Col span={8} style={{ textAlign: 'center' }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>尺寸</Typography.Text>
+                          <Typography.Text strong style={{ fontSize: 12.5 }}>
                             {[r.sizeL, r.sizeW, r.sizeH].filter(Boolean).join('×') || '-'}
                             {([r.sizeL, r.sizeW, r.sizeH].filter(Boolean).length ? ' cm' : '')}
-                          </span>
-                        </div>
-                        <div className="pm-prod-meta-item">
-                          <span className="pm-prod-meta-label">克重</span>
-                          <span className="pm-prod-meta-val">{r.weight || '-'}{r.weight ? ' g' : ''}</span>
-                        </div>
-                        <div className="pm-prod-meta-item">
-                          <span className="pm-prod-meta-label">单位</span>
-                          <span className="pm-prod-meta-val">{r.unit || '-'}</span>
-                        </div>
-                      </div>
+                          </Typography.Text>
+                        </Col>
+                        <Col span={8} style={{ textAlign: 'center' }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>克重</Typography.Text>
+                          <Typography.Text strong style={{ fontSize: 12.5 }}>
+                            {r.weight || '-'}{r.weight ? ' g' : ''}
+                          </Typography.Text>
+                        </Col>
+                        <Col span={8} style={{ textAlign: 'center' }}>
+                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>单位</Typography.Text>
+                          <Typography.Text strong style={{ fontSize: 12.5 }}>
+                            {r.unit || '-'}
+                          </Typography.Text>
+                        </Col>
+                      </Row>
 
                       <div className="pm-prod-foot">
                         <div className="pm-prod-modes">
@@ -422,12 +515,13 @@ export default function Products() {
                               })
                             : <span className="pm-prod-mode pm-prod-mode--ghost">未设模式</span>}
                         </div>
-                        <span className="pm-actions">
-                          <Button type="text" icon={<EyeOutlined />} onClick={() => { setViewing(r); setDetailOpen(true); }} />
+                        <span className="pm-actions" onClick={(e) => e.stopPropagation()}>
                           <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
-                          <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
-                            <Button type="text" danger icon={<DeleteOutlined />} />
-                          </Popconfirm>
+                          {canDelete ? (
+                            <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
+                              <Button type="text" danger icon={<DeleteOutlined />} />
+                            </Popconfirm>
+                          ) : null}
                         </span>
                       </div>
                     </div>
@@ -457,6 +551,7 @@ export default function Products() {
             onView={(r) => { setViewing(r); setDetailOpen(true); }}
             onEdit={openEdit}
             onDelete={handleDelete}
+            canDelete={canDelete}
           />
         )}
       </Card>
@@ -483,6 +578,41 @@ export default function Products() {
               const str = [...cNames, aName, catName].filter(Boolean).join(' / ');
               return str ? <span className="pm-taxonomy-str">{str}</span> : null;
             })()}
+            <div className="pm-modal-actions">
+              <div className="pm-vis-switch" role="group" aria-label={t('product.visibility')}>
+                <button
+                  type="button"
+                  className={cx('pm-vis-opt', visValue === 'PUBLIC' && 'is-active')}
+                  onClick={() => form.setFieldsValue({ visibility: 'PUBLIC' })}
+                >
+                  {t('product.visibilityPublic')}
+                </button>
+                <button
+                  type="button"
+                  className={cx('pm-vis-opt', visValue === 'PRIVATE' && 'is-active')}
+                  onClick={() => form.setFieldsValue({ visibility: 'PRIVATE' })}
+                >
+                  {t('product.visibilityPrivate')}
+                </button>
+              </div>
+              {visValue === 'PRIVATE' ? (
+                <Select
+                  mode="multiple"
+                  size="small"
+                  maxTagCount="responsive"
+                  allowClear
+                  placeholder={t('product.visibleUsersPlaceholder')}
+                  optionFilterProp="label"
+                  className="pm-vis-users"
+                  value={visibleUserIds ?? []}
+                  onChange={(next) => form.setFieldsValue({ visibleUserIds: next })}
+                  options={users.map((u) => ({
+                    label: u.realName || u.username,
+                    value: u.id,
+                  }))}
+                />
+              ) : null}
+            </div>
             <button
               type="button"
               className="pm-modal-close"
@@ -547,6 +677,21 @@ export default function Products() {
                 <Form.Item name="craftIds" hidden><Input /></Form.Item>
                 <Form.Item name="audienceId" hidden><Input /></Form.Item>
                 <Form.Item name="categoryId" hidden><Input /></Form.Item>
+
+                {/* 公开/不公开切换与「指定可见人」已上移至弹窗右上角操作区（pm-modal-actions） */}
+                <Form.Item name="visibility" hidden initialValue="PUBLIC"><Input /></Form.Item>
+                <Form.Item
+                  name="visibleUserIds"
+                  hidden
+                  rules={[
+                    ({ getFieldValue }) =>
+                      getFieldValue('visibility') === 'PRIVATE'
+                        ? { required: true, message: t('product.visibleUsersRequired') }
+                        : {},
+                  ]}
+                >
+                  <Select mode="multiple" />
+                </Form.Item>
 
                 <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}>
                   <Input placeholder="输入产品名称" />

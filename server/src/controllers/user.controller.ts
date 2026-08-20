@@ -64,6 +64,21 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<void> =
   }
 };
 
+// 轻量用户列表：仅返回 id/realName/username，供产品可见性等场景选择指定人。
+// 不要求 system:user 权限，所有登录用户均可访问。
+export const getUsersForSelect = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { status: { not: 'DISABLED' } },
+      select: { id: true, username: true, realName: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    success(res, users);
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};
+
 // 获取单个用户
 export const getUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

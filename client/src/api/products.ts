@@ -95,7 +95,10 @@ export interface Product {
   stock?: number | null;
   lowStockAlert?: number | null;
   source?: string;
-  status?: string;
+  // 可见性：PUBLIC 所有人可见；PRIVATE 仅指定用户可见
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  visibleUserIds?: string[];
+  visibleUsers?: { userId: string }[];
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -108,7 +111,7 @@ interface ProductListParams {
   craftIds?: string;
   audienceId?: string;
   categoryId?: string;
-  status?: string;
+  visibility?: string;
 }
 
 // 下拉选项类型（供销售单等引用）

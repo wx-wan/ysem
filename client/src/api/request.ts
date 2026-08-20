@@ -34,6 +34,12 @@ request.interceptors.response.use(
       return Promise.reject(error);
     }
     if (error.response?.status === 401) {
+      const isLoginRequest = error.config?.url?.includes('/auth/login');
+      if (isLoginRequest) {
+        // 登录接口本身的 401（账号或密码错误）：不跳转、不在此弹提示，
+        // 交由登录页 catch 处理，避免页面跳转冲掉提示或重复提示
+        return Promise.reject(error);
+      }
       // 尝试用 refreshToken 刷新
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken && error.config && !(error.config as unknown as Record<string, unknown>)._retry) {

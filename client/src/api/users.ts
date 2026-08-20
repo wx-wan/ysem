@@ -12,7 +12,15 @@ export interface User {
   department: string | null;
 }
 
+export interface UserSelectItem {
+  id: string;
+  username: string;
+  realName: string | null;
+}
+
 export const userApi = {
   list: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
     request.get<ApiResponse<{ list: User[]; total: number }>>('/users', { params }),
+  listForSelect: () =>
+    request.get<ApiResponse<UserSelectItem[]>>('/users/select'),
 };

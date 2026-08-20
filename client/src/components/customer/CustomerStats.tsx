@@ -294,7 +294,9 @@ export default function CustomerStats({
                     <Cell fill="#7c3aed" />
                     <Cell fill="#f59e0b" />
                   </Pie>
-                  <ReTooltip formatter={(value: number) => formatCurrency(value)} />
+                  <ReTooltip
+                    formatter={(value) => formatCurrency(Number(value))}
+                  />
                   <foreignObject x="50%" y="50%" width="1" height="1">
                     <div
                       style={{

@@ -4,7 +4,7 @@ import {
   UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../TagSelector';
-import { INTENT_LABEL } from './intentLevel';
+import { INTENT_LABEL } from './shared/intentLevel';
 import type { User } from '../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';

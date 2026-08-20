@@ -3,6 +3,7 @@ import {
   EyeOutlined, EditOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
+import { useTranslation } from 'react-i18next';
 import { buildTablePagination } from '../../common/tablePagination';
 import { SUPPLY_MODES } from '../../../pages/Products';
 import type { Product } from '../../../api/products';
@@ -17,12 +18,14 @@ interface ProductListProps {
   onView: (r: Product) => void;
   onEdit: (r: Product) => void;
   onDelete: (id: string) => void;
+  canDelete: boolean;
 }
 
 export default function ProductList({
-  data, total, page, pageSize, onPageChange, onView, onEdit, onDelete,
+  data, total, page, pageSize, onPageChange, onView, onEdit, onDelete, canDelete,
 }: ProductListProps) {
   const ds = useDs();
+  const { t } = useTranslation();
 
   const columns: ColumnsType<Product> = [
     { title: 'SKU', dataIndex: 'sku', width: 140, render: (v: string) => v || '-' },
@@ -45,14 +48,14 @@ export default function ProductList({
           : <span style={{ color: ds.textMuted }}>未设</span>,
     },
     {
-      title: '状态',
-      dataIndex: 'status',
+      title: t('product.visibility'),
+      dataIndex: 'visibility',
       width: 90,
       render: (v: string) =>
-        v === 'ACTIVE' ? (
-          <span className="pm-status pm-status--active">启用</span>
+        v === 'PRIVATE' ? (
+          <span className="pm-status pm-status--inactive">{t('product.visibilityPrivate')}</span>
         ) : (
-          <span className="pm-status pm-status--inactive">停用</span>
+          <span className="pm-status pm-status--active">{t('product.visibilityPublic')}</span>
         ),
     },
     {
@@ -64,9 +67,11 @@ export default function ProductList({
         <Space>
           <Button type="text" icon={<EyeOutlined />} onClick={() => onView(r)} />
           <Button type="text" icon={<EditOutlined />} onClick={() => onEdit(r)} />
-          <Popconfirm title="确定删除？" onConfirm={() => onDelete(r.id)}>
-            <Button type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {canDelete ? (
+            <Popconfirm title="确定删除？" onConfirm={() => onDelete(r.id)}>
+              <Button type="text" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          ) : null}
         </Space>
       ),
     },

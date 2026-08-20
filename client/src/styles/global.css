@@ -23,6 +23,7 @@
 
   /* 语义状态色 */
   --c-success: #10b981;
+  --c-success-bg: rgba(16, 185, 129, 0.12);
   --c-warning: #f59e0b;
   --c-error: #ef4444;
   --c-info: #1677ff;

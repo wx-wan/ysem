@@ -17,11 +17,12 @@ import FlagIcon from './FlagIcon';
 import KeyAccountStar from './KeyAccountStar';
 import TagSelector from './TagSelector';
 import { findCountry } from '../data/countries';
-import { getCustomerTypeLabel } from './customer/utils';
+import { getCustomerTypeLabel } from './customer/shared/utils';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { customerApi } from '../api/customers';
 import { salesApi, SalesItem } from '../api/sales';
-import type { Customer, Order, CustomerActivity, User } from '../types';
+import type { Customer, Order, CustomerActivity } from '../api/customers';
+import type { User } from '../api/users';
 
 const { Text } = Typography;
 
@@ -93,10 +94,10 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   const openEditPipeline = useCallback((item: SalesItem) => {
     setEditingPipeline(item);
     setPipelineForm({
-      name: item.name,
+      name: item.title,
       estimatedAmount: item.estimatedAmount ?? undefined,
-      closeProbability: item.closeProbability ?? undefined,
-      expectedCloseDate: item.expectedCloseDate ? dayjs(item.expectedCloseDate).format('YYYY-MM-DD') : '',
+      closeProbability: item.probability ? Number(item.probability) : undefined,
+      expectedCloseDate: item.estimatedCloseDate ? dayjs(item.estimatedCloseDate).format('YYYY-MM-DD') : '',
     });
     setPipelineModalOpen(true);
   }, []);
@@ -350,7 +351,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   <div style={{ marginTop: 4 }}>
                     <KeyAccountStar
                       isKeyAccount={editValues.isKeyAccount || false}
-                      customerId={customer?.id}
                       onToggle={() => setEditValues({ ...editValues, isKeyAccount: !editValues.isKeyAccount })}
                     />
                   </div>
@@ -403,7 +403,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   <Text type="secondary">重点客户</Text>
                   <KeyAccountStar
                     isKeyAccount={customer.isKeyAccount || false}
-                    customerId={customer.id}
                     onToggle={() => onRefresh(customer.id)}
                   />
                 </div>

@@ -1,10 +1,13 @@
 import { Router } from 'express';
-import { getUsers, getUser, createUser, updateUser, deleteUser, resetPassword } from '../controllers/user.controller';
+import { getUsers, getUsersForSelect, getUser, createUser, updateUser, deleteUser, resetPassword } from '../controllers/user.controller';
 import { authenticate, requirePerm } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authenticate);
+
+// 轻量用户列表（选人用）：对所有登录用户开放，无需 system:user 权限
+router.get('/select', getUsersForSelect);
 
 /**
  * @swagger
