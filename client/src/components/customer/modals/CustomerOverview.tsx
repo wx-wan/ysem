@@ -45,12 +45,9 @@ interface OverviewData {
   lastOrderDate: string | null;
   firstOrderDate: string | null;
   categoryBreakdown: { name: string; amount: number; percent: number }[];
-  /** 转化率 */
-  leadToOppRate: number | null;     // 线索→商机
-  oppToOrderRate: number | null;    // 商机→订单
-  leadToOrderRate: number | null;   // 线索→订单（综合）
-  sampleOrderCount: number;         // 样品单数
-  sampleOrderAmount: number;        // 样品单成交金额
+  sampleOrderCount: number;         // 下打样单数
+  sampleOrderAmount: number;        // 下打样单成交金额
+  sampleToOrderRate: number | null; // 样品到订单率（下打样单 → 出货）
 }
 
 // ============================================================
@@ -151,16 +148,6 @@ function computeOverview(customer: Customer): OverviewData {
     .map(([name, amount]) => ({ name, amount, percent: catTotal > 0 ? Math.round(amount / catTotal * 100) : 0 }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 管道转化率计算
-  const pipelines = customer.pipelines || [];
-  const totalPipelines = pipelines.length;
-  const oppCount = pipelines.filter(p => ['OPPORTUNITY', 'ORDER'].includes(p.stage)).length;
-  const orderPipelineCount = pipelines.filter(p => p.stage === 'ORDER').length;
-
-  const leadToOppRate = totalPipelines > 0 ? Math.round(oppCount / totalPipelines * 100) : null;
-  const oppToOrderRate = oppCount > 0 ? Math.round(orderPipelineCount / oppCount * 100) : null;
-  const leadToOrderRate = totalPipelines > 0 ? Math.round(orderPipelineCount / totalPipelines * 100) : null;
-
   // 下打样单阶段订单数（样品单融入订单流程）
   const sampleOrderCount = orders.filter(o => o.status === 'SAMPLE_ORDER').length;
 
@@ -168,6 +155,12 @@ function computeOverview(customer: Customer): OverviewData {
   const sampleOrderAmount = orders
     .filter(o => o.status === 'SAMPLE_ORDER')
     .reduce((sum, o) => sum + (o.amountCNY || 0), 0);
+
+  // 样品到订单率：下打样单 → 出货
+  const shippedCount = orders.filter(o => o.status === 'SHIPPED').length;
+  const sampleToOrderRate = sampleOrderCount > 0
+    ? Math.round((shippedCount / sampleOrderCount) * 100)
+    : null;
 
   return {
     totalAmount,
@@ -179,11 +172,9 @@ function computeOverview(customer: Customer): OverviewData {
     lastOrderDate,
     firstOrderDate,
     categoryBreakdown,
-    leadToOppRate,
-    oppToOrderRate,
-    leadToOrderRate,
     sampleOrderCount,
     sampleOrderAmount,
+    sampleToOrderRate,
   };
 }
 
@@ -513,8 +504,7 @@ interface CustomerOverviewProps {
  * 客户成交数据概览 —— 展示在详情弹窗「概览」tab 内。
  *
  * 包含：
- * - 4 个 KPI 统计卡片（累计订单 / 本年消费 / 平均客单价 / 最近购买）
- * - 4 个转化率统计卡片（线索/商机/综合转化率 / 样品单数）
+ * - 6 个指标卡片（2 行 × 3 栏：累计订单 / 本年消费 / 平均客单价 / 最近购买 / 下打样单数 / 样品到订单率）
  * - 采购趋势柱状图（实心=已成交订单，虚线=商机管道预估）
  * - 品类分布环形图
  */
@@ -538,8 +528,8 @@ const CustomerOverview: React.FC<CustomerOverviewProps> = ({ customer }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-      {/* ===== KPI 统计卡片 ===== */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
+      {/* ===== 指标卡片（上 3 栏 + 下 3 栏） ===== */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
         <StatCard
           title="累计订单"
           value={<Price value={data.totalAmount} />}
@@ -582,31 +572,6 @@ const CustomerOverview: React.FC<CustomerOverviewProps> = ({ customer }) => {
           icon={<CalendarOutlined />}
           color="#13c2c2"
         />
-      </div>
-
-      {/* ===== 转化率统计 ===== */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        <StatCard
-          title="线索转化率"
-          value={data.leadToOppRate != null ? `${data.leadToOppRate}%` : '\u2014'}
-          subtitle="线索 → 商机"
-          icon={<span style={{ fontSize: 12, fontWeight: 700 }}>→</span>}
-          color={ct.primary}
-        />
-        <StatCard
-          title="商机转化率"
-          value={data.oppToOrderRate != null ? `${data.oppToOrderRate}%` : '\u2014'}
-          subtitle="商机 → 订单"
-          icon={<span style={{ fontSize: 12, fontWeight: 700 }}>→</span>}
-          color={ct.primary}
-        />
-        <StatCard
-          title="综合转化率"
-          value={data.leadToOrderRate != null ? `${data.leadToOrderRate}%` : '\u2014'}
-          subtitle="线索 → 订单"
-          icon={<span style={{ fontSize: 12, fontWeight: 700 }}>→</span>}
-          color={ct.primary}
-        />
         <StatCard
           title="下打样单数"
           value={`${data.sampleOrderCount} 单`}
@@ -617,6 +582,13 @@ const CustomerOverview: React.FC<CustomerOverviewProps> = ({ customer }) => {
               ? <>成交金额 <Price value={data.sampleOrderAmount} /></>
               : undefined
           }
+        />
+        <StatCard
+          title="样品到订单率"
+          value={data.sampleToOrderRate != null ? `${data.sampleToOrderRate}%` : '\u2014'}
+          subtitle="下打样单 → 出货"
+          icon={<RiseOutlined />}
+          color={ct.primary}
         />
       </div>
 
