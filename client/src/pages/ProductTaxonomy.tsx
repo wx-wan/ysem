@@ -74,20 +74,6 @@ export default function ProductTaxonomy() {
     } catch { message.error('删除失败'); }
   };
 
-  // 排序：上移 / 下移（重排后统一写回 sort = 1..N）
-  const handleMove = async (index: number, dir: -1 | 1) => {
-    const list = ACTIVE_API.list;
-    const j = index + dir;
-    if (j < 0 || j >= list.length) return;
-    try {
-      const next = [...list];
-      [next[index], next[j]] = [next[j], next[index]];
-      await Promise.all(next.map((item, i) => ACTIVE_API.update(item.id, { sort: i + 1 })));
-      message.success('排序已更新');
-      fetchData();
-    } catch { message.error('排序失败'); }
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -114,7 +100,6 @@ export default function ProductTaxonomy() {
 
   const columns = [
     { title: '名称', dataIndex: 'name', key: 'name', ellipsis: true },
-    { title: '编码', dataIndex: 'code', key: 'code', width: 110, render: (c: string) => c || '-' },
     { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
@@ -137,17 +122,11 @@ export default function ProductTaxonomy() {
       },
     },
     {
-      title: t('common.operation') || '操作', key: 'action', width: 170, fixed: 'right' as const,
-      render: (_: unknown, record: any, index: number) => (
+      title: t('common.operation') || '操作', key: 'action', width: 120, fixed: 'right' as const,
+      render: (_: unknown, record: any) => (
         <span className="pm-actions">
           {hasPerm('product:taxonomy:update') && (
-            <>
-              <Button type="text" title="上移" icon={<ArrowUpOutlined />}
-                disabled={index === 0} onClick={() => handleMove(index, -1)} />
-              <Button type="text" title="下移" icon={<ArrowDownOutlined />}
-                disabled={index === ACTIVE_API.list.length - 1} onClick={() => handleMove(index, 1)} />
-              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-            </>
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           )}
           {hasPerm('product:taxonomy:delete') && (
             <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>
@@ -173,18 +152,9 @@ export default function ProductTaxonomy() {
       );
     }
     return (
-      <>
-        <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入' }]}>
-          <Input placeholder="输入名称" />
-        </Form.Item>
-        <Form.Item
-          name="code"
-          label="编码"
-          extra={activeTab === 'craft' ? '用于自动生成 SKU，如 搪胶=TJ、注塑=ZS、硅胶=GJ' : '用于自动生成 SKU，如 儿童=ET、宠物=CW、配件=PJ、文具=WJ、家居=JJ'}
-        >
-          <Input placeholder="输入编码，如 TJ" maxLength={10} />
-        </Form.Item>
-      </>
+      <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入' }]}>
+        <Input placeholder="输入名称" />
+      </Form.Item>
     );
   };
 

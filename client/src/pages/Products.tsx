@@ -17,6 +17,7 @@ import ProductImageList from '../components/common/ProductImageList';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
+import { useCardGutter } from '../components/common/tokens';
 import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
@@ -43,6 +44,7 @@ const DEFAULT_SUPPLY_MODE = 'DEEP_CUSTOM';
 
 export default function Products() {
   const { message } = App.useApp();
+  const cardGutter = useCardGutter();
   const [list, setList] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -507,7 +509,7 @@ export default function Products() {
         }}
       >
         <Form form={form} layout="vertical" className="pm-form">
-          <Row gutter={24}>
+          <Row gutter={cardGutter}>
             {/* 左：产品图片栏 */}
             <Col xs={24} xl={{ flex: '3 1 0%' }} className="pm-col-stretch">
               <div className="pm-col-inner">

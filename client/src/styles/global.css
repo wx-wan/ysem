@@ -1243,15 +1243,14 @@ html, body {
 .um-row:hover > td {
   background: var(--c-primary-bg) !important;
 }
-/* 修复：固定操作列必须始终有实色背景，否则会被相邻列 hover 透出 */
-.um-card .ant-table-tbody > tr > td.ant-table-cell-fix-right {
-  background: var(--c-surface) !important;
-  position: sticky;
-  z-index: 3;
+/* 固定列（antd 6 类名为 ant-table-cell-fix-end）原生已处理 sticky 与层级，
+   此处仅把背景对齐到主题 token，不改变 position / z-index。 */
+.um-card .ant-table-tbody > tr > td.ant-table-cell-fix-end,
+.um-card .ant-table-thead > tr > th.ant-table-cell-fix-end {
+  background: var(--c-surface);
 }
-.um-row:hover > td.ant-table-cell-fix-right {
-  background: var(--c-primary-bg) !important;
-  z-index: 3;
+.um-row:hover > td.ant-table-cell-fix-end {
+  background: var(--c-primary-bg);
 }
 
 .user-cell {
@@ -1319,6 +1318,12 @@ html, body {
 .user-actions {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
+  gap: 2px;
+}
+.um-op-cell .ant-table-cell-inner,
+.um-op-cell {
+  white-space: nowrap;
 }
 .action-btn.ant-btn {
   width: 30px;

@@ -44,39 +44,6 @@ interface CurrencyState {
 
 const STORAGE_KEY = 'ysem_currency';
 
-// 汇率缓存：一天只刷新一次，其余时间取 localStorage 缓存值
-const RATES_CACHE_KEY = 'ysem_exchange_rates';
-const RATES_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 小时（一天一次）
-
-interface CachedRates {
-  rates: Record<string, number>;
-  lastUpdated: string;
-}
-
-function loadCachedRates(): CachedRates | null {
-  try {
-    const raw = localStorage.getItem(RATES_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CachedRates;
-    if (!parsed?.rates || typeof parsed.lastUpdated !== 'string') return null;
-    if (Date.now() - new Date(parsed.lastUpdated).getTime() > RATES_CACHE_TTL) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveCachedRates(rates: Record<string, number>) {
-  try {
-    localStorage.setItem(
-      RATES_CACHE_KEY,
-      JSON.stringify({ rates, lastUpdated: new Date().toISOString() })
-    );
-  } catch {
-    /* 忽略存储异常 */
-  }
-}
-
 // 从 localStorage 恢复或默认 CNY
 function loadSavedCurrency(): CurrencyInfo {
   try {
@@ -104,16 +71,6 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   fetchRates: async () => {
-    // 命中有效缓存则直接复用，避免每次刷新都请求汇率接口
-    const cached = loadCachedRates();
-    if (cached) {
-      set({ rates: cached.rates, loading: false, lastUpdated: cached.lastUpdated });
-      return;
-    }
-
-    // 防止 StrictMode 双重挂载导致重复请求：若已有进行中的请求则跳过
-    if (get().loading) return;
-
     set({ loading: true });
     try {
       // 通过后端代理请求 Frankfurter，避免 CORS 问题
@@ -121,10 +78,11 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         params: { from: 'CNY' },
         timeout: 8000,
       });
-      const rates = data.data?.rates || {};
-      const lastUpdated = new Date().toISOString();
-      saveCachedRates(rates);
-      set({ rates, loading: false, lastUpdated });
+      set({
+        rates: data.data?.rates || {},
+        loading: false,
+        lastUpdated: new Date().toISOString(),
+      });
     } catch {
       // 降级：使用内置近似汇率
       set({
@@ -174,40 +132,5 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
       return `1 ${currency.code} ≈ ${toCNY.toFixed(4)} CNY`;
     }
     return `1 ${currency.code} ≈ ${toCNY.toFixed(3)} CNY`;
-  },
-
-  // 获取指定历史日期的相对 CNY 汇率表
-  fetchRatesForDate: async (date: string) => {
-    try {
-      const { data } = await axios.get('/api/ext/exchange', {
-        params: { from: 'CNY', date },
-        timeout: 8000,
-      });
-      return (data.data?.rates || {}) as Record<string, number>;
-    } catch {
-      return {};
-    }
-  },
-
-  // 按历史日期格式化金额（订单成交日期）
-  formatWithDate: async (amountCNY: number, date: string) => {
-    const { currency } = get();
-    if (currency.code === 'CNY') {
-      return `${currency.symbol}${amountCNY.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-    const rates = await get().fetchRatesForDate(date);
-    const rate = rates[currency.code];
-    if (!rate) return get().format(amountCNY);
-    const converted = amountCNY * rate;
-    if (currency.code === 'JPY' || currency.code === 'KRW') {
-      return `${currency.symbol}${Math.round(converted).toLocaleString()}`;
-    }
-    return `${currency.symbol}${converted.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`;
   },
 }));

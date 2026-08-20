@@ -28,6 +28,7 @@
     "locked": "锁定",
     "active": "正常",
     "noData": "-",
+    "all": "全部",
     "total": "共 {{count}} 条",
     "pleaseSelect": "请选择",
     "pleaseInput": "请输入",

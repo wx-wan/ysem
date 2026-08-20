@@ -28,6 +28,7 @@
     "locked": "Locked",
     "active": "Active",
     "noData": "-",
+    "all": "All",
     "total": "Total {{count}} records",
     "pleaseSelect": "Please select",
     "pleaseInput": "Please input",

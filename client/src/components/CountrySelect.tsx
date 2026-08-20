@@ -61,7 +61,7 @@ export default function CountrySelect({
       allowClear
       filterOption={(input, option) => {
         const children = (option?.children as unknown as string) || '';
-        return children?.toLowerCase().indexOf(input.toLowerCase()) >= 0;
+        return children.toLowerCase().indexOf((input ?? '').toLowerCase()) >= 0;
       }}
       optionRender={({ value: optValue, label }) => {
         const info = findCountry(optValue as string);

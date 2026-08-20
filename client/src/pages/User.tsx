@@ -145,7 +145,7 @@ export default function UserPage() {
         </div>
       ),
     },
-    { title: t('user.email'), dataIndex: 'email', width: 200, ellipsis: true, render: (v: string) => v || <span className="cell-muted">{t('common.noData')}</span> },
+    { title: t('user.email'), dataIndex: 'email', width: 200, render: (v: string) => v || <span className="cell-muted">{t('common.noData')}</span> },
     { title: t('user.phone'), dataIndex: 'phone', width: 140, render: (v: string) => v || <span className="cell-muted">{t('common.noData')}</span> },
     {
       title: t('user.role'),
@@ -179,12 +179,14 @@ export default function UserPage() {
       title: t('user.lastLogin'),
       dataIndex: 'lastLoginAt',
       width: 170,
+      ellipsis: true,
       render: (v: string) => v ? new Date(v).toLocaleString('zh-CN') : <span className="cell-muted">{t('user.neverLogin')}</span>,
     },
     {
       title: t('common.operation'),
-      width: 132,
+      width: 150,
       fixed: 'right',
+      className: 'um-op-cell',
       render: (_, record) => (
         <Space size={0} className="user-actions">
           {hasPerm('system:user:edit') && (
@@ -264,10 +266,9 @@ export default function UserPage() {
           columns={columns}
           dataSource={users}
           loading={loading}
-          scroll={{ x: 1080 }}
+          scroll={{ x: 1300 }}
           pagination={false}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('user.empty')} /> }}
-          rowClassName={() => 'um-row'}
         />
       </div>
 

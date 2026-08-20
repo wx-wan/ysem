@@ -26,7 +26,7 @@
 |------|------|
 | 前端 | React 18 + TypeScript + Vite + Ant Design 6 + Zustand + React Router 6 + i18next |
 | 后端 | Node.js + Express + TypeScript + Prisma ORM |
-| 数据库 | PostgreSQL（开发/生产统一，docker-compose 起容器） |
+| 数据库 | PostgreSQL（开发/生产统一；开发可用 Docker 容器或本机 brew 安装，生产用 docker-compose） |
 | 认证 | JWT (Access Token + Refresh Token) |
 | 部署 | Docker + Docker Compose + Nginx |
 
@@ -88,12 +88,43 @@ cd client && npm install
 
 ### 2. 初始化数据库
 
+项目使用 **PostgreSQL**，开发期有两种起库方式，**任选其一**：
+
+#### 方式 A：本机用 Homebrew 安装（推荐，无需 Docker）
+
 ```bash
+# 1. 安装并启动 PostgreSQL（与 docker-compose 同为 16 主版本）
+brew install postgresql@16
+brew services start postgresql@16      # 开机自启；停止用 brew services stop postgresql@16
+
+# 2. 创建与 .env / docker-compose 对齐的账号与库
+#    （postgres 用户密码 postgres，库名 ysem，端口 5432）
+psql -d postgres -c "CREATE ROLE postgres SUPERUSER LOGIN PASSWORD 'postgres';" 2>/dev/null || true
+createdb -O postgres ysem 2>/dev/null || true
+
+# 3. 生成并应用迁移 + 种子数据
 cd server
 npx prisma generate                    # 生成 Prisma Client（输出至 node_modules/.prisma/client）
 npx prisma migrate dev --name init     # 生成并应用迁移，初始化 PostgreSQL 结构
-npx tsx prisma/seed.ts                 # 初始化种子数据
+npx prisma db seed                     # 初始化种子数据（等效 tsx prisma/seed.ts）
 ```
+
+> 重置/重建本地库（清空所有表后重新应用迁移并 seed）：`npx prisma migrate reset --force`
+
+#### 方式 B：使用 Docker 容器
+
+```bash
+docker run -d --name ysem-db -p 5432:5432 \
+  -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=ysem \
+  postgres:16-alpine
+cd server
+npx prisma generate
+npx prisma migrate dev --name init
+npx prisma db seed
+```
+
+> 两种方式连接串一致（见 `server/.env` 的 `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ysem`），
+> 切换方式无需改代码。生产环境统一用 docker-compose（见下文）。
 
 ### 2.1 类型检查与代码规范
 
