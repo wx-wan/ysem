@@ -75,6 +75,8 @@ export interface CustomerListRes {
   totalContractAmount?: number;
   estimatedBreakdown?: EstimatedBreakdownItem[];
   contractBreakdown?: ContractBreakdownItem[];
+  noOrderBreakdown?: Record<string, number>;
+  doneBreakdown?: Record<string, number>;
 }
 
 export interface AllCustomersRes extends CustomerListRes {

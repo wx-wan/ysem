@@ -21,6 +21,8 @@ export interface ListCacheEntry {
   totalContractAmount: number;
   estimatedBreakdown: any[];
   contractBreakdown: any[];
+  noOrderBreakdown: Record<string, number>;
+  doneBreakdown: Record<string, number>;
 }
 
 const listCache = new Map<string, ListCacheEntry>();

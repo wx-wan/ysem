@@ -103,9 +103,9 @@ export default function ReportsPage() {
     { title: '订单数', value: stats.pipelineOrderCount, color: C.error, icon: <FileDoneOutlined /> },
     // 第二行
     { title: '老客户数', value: stats.oldCustomerCount, color: C.info, icon: <TeamOutlined /> },
-    { title: '老客户订单金额', value: <Price value={stats.oldCustomerAmount} />, color: C.primary, icon: <DollarOutlined /> },
+    { title: '老客户订单金额', value: stats.oldCustomerAmount, color: C.primary, icon: <DollarOutlined /> },
     { title: '新客户数', value: stats.newCustomerCount, color: C.purple, icon: <FireOutlined /> },
-    { title: '新客户成交金额', value: <Price value={stats.newCustomerAmount} />, color: C.purple, icon: <DollarOutlined /> },
+    { title: '新客户成交金额', value: stats.newCustomerAmount, color: C.purple, icon: <DollarOutlined /> },
     // 第三行
     { title: '线索→商机转化率', value: stats.leadToOpportunity, color: C.warning, icon: <PercentageOutlined />, suffix: '%' },
     { title: '商机→订单流转率', value: stats.opportunityToNext, color: C.warning, icon: <RiseOutlined />, suffix: '%' },

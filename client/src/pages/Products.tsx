@@ -121,7 +121,7 @@ export default function Products() {
       // 回填/联动时：仅当当前品类不属于新受众的品类列表时才清空（aud 未加载时保留现值）
       try {
         const cur = form.getFieldValue('categoryId');
-        if (cur && aud && !aud.categories.some((c) => c.id === cur)) form.setFieldValue('categoryId', undefined);
+        if (cur && aud && !aud.categories?.some((c) => c.id === cur)) form.setFieldValue('categoryId', undefined);
       } catch { /* 主表单未挂载时忽略 */ }
     } else {
       setCategories([]);

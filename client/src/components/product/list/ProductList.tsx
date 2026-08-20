@@ -16,7 +16,7 @@ interface ProductListProps {
   onPageChange: (page: number, pageSize: number) => void;
   onView: (r: Product) => void;
   onEdit: (r: Product) => void;
-  onDelete: (id: number) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function ProductList({

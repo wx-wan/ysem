@@ -64,8 +64,9 @@ interface CustomerDetailModalProps {
 }
 
 /** 真实商机记录（来自 getById 的 pipelines，非模拟数据） */
-interface RealPipeline {
+export interface RealPipeline {
   id: string;
+  pipelineNumber?: string;
   title?: string;
   stage?: string;
   companyName?: string;

@@ -30,19 +30,19 @@ export interface ProductAudience {
 
 export const taxonomyApi = {
   // 工艺
-  getCrafts: () => request.get<ProductCraft[]>('/product/taxonomy/crafts'),
+  getCrafts: () => request.get<ApiResponse<ProductCraft[]>>('/product/taxonomy/crafts'),
   createCraft: (data: Partial<ProductCraft>) => request.post('/product/taxonomy/crafts', data),
   updateCraft: (id: string, data: Partial<ProductCraft>) => request.put(`/product/taxonomy/crafts/${id}`, data),
   deleteCraft: (id: string) => request.delete(`/product/taxonomy/crafts/${id}`),
 
   // 受众
-  getAudiences: () => request.get<ProductAudience[]>('/product/taxonomy/audiences'),
+  getAudiences: () => request.get<ApiResponse<ProductAudience[]>>('/product/taxonomy/audiences'),
   createAudience: (data: Partial<ProductAudience>) => request.post('/product/taxonomy/audiences', data),
   updateAudience: (id: string, data: Partial<ProductAudience>) => request.put(`/product/taxonomy/audiences/${id}`, data),
   deleteAudience: (id: string) => request.delete(`/product/taxonomy/audiences/${id}`),
 
   // 品类
-  getCategories: () => request.get<ProductCategory[]>('/product/taxonomy/categories'),
+  getCategories: () => request.get<ApiResponse<ProductCategory[]>>('/product/taxonomy/categories'),
   createCategory: (data: Partial<ProductCategory>) => request.post('/product/taxonomy/categories', data),
   updateCategory: (id: string, data: Partial<ProductCategory>) => request.put(`/product/taxonomy/categories/${id}`, data),
   deleteCategory: (id: string) => request.delete(`/product/taxonomy/categories/${id}`),
@@ -120,10 +120,10 @@ export interface ProductOption {
 
 const productApi = {
   getList: (params?: ProductListParams) =>
-    request.get<{ list: Product[]; total: number; page: number; pageSize: number }>('/products', { params }),
+    request.get<ApiResponse<{ list: Product[]; total: number; page: number; pageSize: number }>>('/products', { params }),
   getById: (id: string) => request.get<Product>(`/products/${id}`),
   // 兼容旧接口：获取产品下拉选项（仅 id/name/sku）
-  options: () => request.get<ProductOption[]>('/products/options'),
+  options: () => request.get<ApiResponse<ProductOption[]>>('/products/options'),
   // SKU 预览：按 工艺-受众 返回下一个自动生成的 SKU（不落库）
   skuPreview: (params: { craftIds?: string; audienceId?: string; excludeId?: string }) =>
     request.get<ApiResponse<{ sku: string | null }>>('/products/sku-preview', { params }),

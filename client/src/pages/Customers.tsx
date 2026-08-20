@@ -15,7 +15,7 @@ import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
-import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
+import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
 import ResponsiveCardGrid from '../components/common/page/ResponsiveCardGrid';
 import EmptyState from '../components/common/page/EmptyState';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
@@ -80,7 +80,7 @@ export default function CustomersPage() {
 
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
-  const [convertPipeline, setConvertPipeline] = useState<SalesItem | null>(null);
+  const [convertPipeline, setConvertPipeline] = useState<RealPipeline | null>(null);
 
   // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
   const [detailVersion, setDetailVersion] = useState(0);
@@ -218,9 +218,11 @@ export default function CustomersPage() {
   // 用 next 覆盖 prev 的变化字段，但保留 prev 上 list 接口的聚合字段（next 没有时不清空）
   const mergeKeepAgg = useCallback((prev: Customer | null, next: Customer): Customer => {
     if (!prev || prev.id !== next.id) return next;
-    const merged = { ...prev, ...next };
+    const merged: Customer = { ...prev, ...next };
     for (const f of AGG_FIELDS) {
-      if (next[f] === undefined) merged[f] = prev[f];
+      if (next[f] === undefined) {
+        (merged as Record<keyof Customer, unknown>)[f] = prev[f];
+      }
     }
     return merged;
   }, []);

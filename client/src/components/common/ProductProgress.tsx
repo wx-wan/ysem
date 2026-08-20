@@ -220,7 +220,7 @@ const ProductProgress: React.FC<ProductProgressProps> = ({ value, onChange, edit
 
         {/* 阶段流程条：新建 → 打样 → 报价 → 完成 */}
         <div className="pp-flow">
-          <span className={`pp-flow-node ${phase === 'new' ? 'active' : phase !== 'new' ? 'passed' : ''}`}>
+          <span className={`pp-flow-node ${phase === 'new' ? 'active' : 'passed'}`}>
             新建
           </span>
           <span className="pp-flow-line" />
