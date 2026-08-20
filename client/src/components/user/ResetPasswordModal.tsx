@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, Form, Input, App, Alert } from 'antd';
+import { Modal, Form, Input, App } from 'antd';
 
 interface UserRecord {
   id: string;
@@ -57,28 +57,30 @@ const ResetPasswordModal: React.FC<Props> = React.memo(({ open, targetUser, onCl
       zIndex={2000}
       forceRender
     >
-      {targetUser && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 16 }}
-          message={`${t('user.resetPwdFor')} ${targetUser.realName || targetUser.username}（${targetUser.username}）`}
-        />
-      )}
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        {targetUser && (
+          <Form.Item label={t('user.username')} style={{ marginBottom: 16 }}>
+            <Input
+              value={targetUser.username}
+              readOnly
+              autoComplete="username"
+              style={{ background: 'transparent', borderColor: 'transparent', paddingLeft: 0, color: 'inherit' }}
+            />
+          </Form.Item>
+        )}
         <Form.Item
           name="password"
           label={t('user.resetPwdNew')}
           rules={[{ required: true, min: 6, message: t('user.resetPwdRequired') }]}
         >
-          <Input.Password placeholder={t('user.resetPwdNewPlaceholder')} />
+          <Input.Password autoComplete="new-password" placeholder={t('user.resetPwdNewPlaceholder')} />
         </Form.Item>
         <Form.Item
           name="confirm"
           label={t('user.resetPwdConfirm')}
           rules={[{ required: true, message: t('user.resetPwdConfirmPlaceholder') }]}
         >
-          <Input.Password placeholder={t('user.resetPwdConfirmPlaceholder')} />
+          <Input.Password autoComplete="new-password" placeholder={t('user.resetPwdConfirmPlaceholder')} />
         </Form.Item>
       </Form>
     </Modal>

@@ -234,7 +234,12 @@ export default function UserPage() {
           prefix={<SearchOutlined />}
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          onPressEnter={() => { setPage(1); fetchUsers(); }}
+          onKeyDown={(e) => {
+            if (!e.key || e.key.toLowerCase() !== 'enter') return;
+            e.preventDefault();
+            setPage(1);
+            fetchUsers();
+          }}
           allowClear
         />
         <Segmented

@@ -95,11 +95,11 @@ const UserFormModal: React.FC<Props> = React.memo(({ open, editingUser, roles, d
           />
         </Form.Item>
         <Form.Item name="username" label={t('user.username')} rules={[{ required: true, message: t('user.usernameRequired') }]}>
-          <Input disabled={!!editingUser} placeholder={t('user.usernamePlaceholder')} />
+          <Input disabled={!!editingUser} autoComplete="username" placeholder={t('user.usernamePlaceholder')} />
         </Form.Item>
         {!editingUser && (
           <Form.Item name="password" label={t('user.password')} rules={[{ required: true, min: 6, message: t('user.passwordRequired') }]}>
-            <Input.Password placeholder={t('user.passwordPlaceholder')} />
+            <Input.Password autoComplete="new-password" placeholder={t('user.passwordPlaceholder')} />
           </Form.Item>
         )}
         <Form.Item name="realName" label={t('user.realName')} rules={[{ required: true, message: t('user.realNameRequired') }]}>

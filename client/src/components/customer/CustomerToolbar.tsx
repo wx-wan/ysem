@@ -143,7 +143,7 @@ export default function CustomerToolbar({
             style={{ width: 160, borderRadius: 8 }}
             showSearch
             filterOption={(input: string, option: any) =>
-              option?.label?.toLowerCase().includes(input.toLowerCase())
+              (option?.label?.toLowerCase() ?? '').includes((input ?? '').toLowerCase())
             }
             options={userList
               .filter((u: User) => u.status === 'ACTIVE')

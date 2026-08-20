@@ -45,10 +45,10 @@ export default function LoginPage() {
           initialValues={{ username: 'admin', password: 'admin123' }}
         >
           <Form.Item name="username" rules={[{ required: true, message: t('login.usernameRequired') }]}>
-            <Input prefix={<UserOutlined />} placeholder={t('login.usernamePlaceholder')} />
+            <Input prefix={<UserOutlined />} autoComplete="username" placeholder={t('login.usernamePlaceholder')} />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, message: t('login.passwordRequired') }]}>
-            <Input.Password prefix={<LockOutlined />} placeholder={t('login.passwordPlaceholder')} />
+            <Input.Password prefix={<LockOutlined />} autoComplete="current-password" placeholder={t('login.passwordPlaceholder')} />
           </Form.Item>
           <Form.Item>
             <Button type="primary" htmlType="submit" block loading={loading}>
