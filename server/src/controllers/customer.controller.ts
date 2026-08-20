@@ -147,7 +147,7 @@ const getSubFilterCounts = async (baseWhere: any) => {
 // ========== 获取我的私海客户 ==========
 export const listMy = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
+    const userId = req.userId!;
     const { keyword, type, country, page = "1", pageSize = "20" } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
@@ -603,8 +603,8 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
 // ========== 创建客户 ==========
 export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
-    const username = req.username;
+    const userId = req.userId!;
+    const username = req.username!;
     const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount } =
       req.body;
 
@@ -655,8 +655,8 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
 export const update = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const username = req.username;
-    const userId = req.userId;
+    const username = req.username!;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
       req.body;
@@ -729,7 +729,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
 export const remove = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const userId = req.userId;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
@@ -749,8 +749,8 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
 // ========== 认领客户（公海 → 私海） ==========
 export const claim = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
-    const username = req.username;
+    const userId = req.userId!;
+    const username = req.username!;
     const { id } = req.params;
 
     const customer = await prisma.customer.findUnique({ where: { id } });
@@ -785,8 +785,8 @@ export const claim = async (req: AuthRequest, res: Response, next: NextFunction)
 // ========== 释放客户（私海 → 公海） ==========
 export const release = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const username = req.username;
-    const userId = req.userId;
+    const username = req.username!;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const { id } = req.params;
 
@@ -830,8 +830,8 @@ export const transfer = async (req: AuthRequest, res: Response, next: NextFuncti
   try {
     const { id } = req.params;
     const { newOwnerId } = req.body;
-    const username = req.username;
-    const userId = req.userId;
+    const username = req.username!;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
 
     const customer = await prisma.customer.findUnique({
@@ -908,7 +908,7 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       首次下单日期: "firstOrderDate",
     };
 
-    const username = req.username;
+    const username = req.username!;
     let created = 0;
     let failed = 0;
 
@@ -965,8 +965,8 @@ export const getCountries = async (_req: Request, res: Response, next: NextFunct
 export const updateTags = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const username = req.username;
-    const userId = req.userId;
+    const username = req.username!;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const { tags } = req.body;
 
@@ -1007,7 +1007,7 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
 
 export const getReportStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const isAdmin = roleCode === "admin" || roleCode === "ADMIN";
 

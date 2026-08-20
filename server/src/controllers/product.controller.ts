@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
@@ -151,7 +152,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.parse(req.body);
     const { craftIds, sku: _ignored, ...rest } = parsed;
-    const data: Record<string, unknown> = { ...rest };
+    const data: Prisma.ProductCreateInput = { ...rest };
     if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
     // SKU 无需人工录入：按「工艺-受众-序号」自动生成
     const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
@@ -173,7 +174,7 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.partial().parse(req.body);
     const { craftIds, sku: _ignored, ...rest } = parsed;
-    const data: Record<string, unknown> = { ...rest };
+    const data: Prisma.ProductUpdateInput = { ...rest };
     if (craftIds !== undefined) {
       data.crafts = craftIds?.length ? { set: craftIds.map((id) => ({ id })) } : { set: [] };
     }

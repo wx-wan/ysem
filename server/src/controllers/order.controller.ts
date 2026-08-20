@@ -7,7 +7,7 @@ import prisma from "../lib/prisma";
 // ========== 订单列表 ==========
 export const list = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
+    const userId = req.userId!;
     const userRole = req.roleCode;
     const {
       keyword,
@@ -93,7 +93,7 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
 // ========== 创建订单 ==========
 export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = req.userId;
+    const userId = req.userId!;
     const roleCode = req.roleCode;
     const {
       customerId,
@@ -151,7 +151,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
     }
 
     // 记录到客户活动日志 & 全局操作日志
-    const username = req.username;
+    const username = req.username!;
     await activityLogger.log({
       userId,
       username,
@@ -209,8 +209,8 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     if (amountCNY !== undefined && Number(amountCNY) !== existing.amountCNY) changes.push('金额');
     if (status && status !== existing.status) changes.push('状态');
     if (changes.length > 0) {
-      const username = req.username;
-      const userId = req.userId;
+      const username = req.username!;
+      const userId = req.userId!;
       await activityLogger.log({
         userId,
         username,
@@ -253,8 +253,8 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
     await prisma.order.delete({ where: { id } });
 
     // 记录活动日志
-    const username = req.username;
-    const userId = req.userId;
+    const username = req.username!;
+    const userId = req.userId!;
     await activityLogger.log({
       userId,
       username,

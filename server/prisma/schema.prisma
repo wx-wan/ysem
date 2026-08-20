@@ -209,6 +209,7 @@ model Order {
 // ========== 销售管道 ==========
 model SalesPipeline {
   id          String      @id @default(uuid())
+  pipelineNumber String?  @unique // 商机编号：BO-YYYYMMDD-序号
   stage       String      @default("LEAD") // LEAD → OPPORTUNITY → ORDER
 
   // 关联客户
@@ -241,6 +242,12 @@ model SalesPipeline {
   paymentTerms      String?  // 付款条件
   orderStatus       String?  // 订单阶段已统一到 Order 模型（DEPOSIT/SAMPLE_ORDER/DESIGN/MOLD/SAMPLE_SENT/PRODUCTION/SHIPPED）
   orderNotes        String?
+
+  // 样品单阶段信息（导入兼容）
+  sampleType        String?
+  sampleStatus      String?
+  sampleQuantity    Int?
+  sampleNotes       String?
 
   // 系统字段
   assignedTo String?

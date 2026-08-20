@@ -64,7 +64,6 @@ export const getDailyRates = async (req: Request, res: Response, next: NextFunct
       try {
         await prisma.dailyExchangeRate.createMany({
           data: entries,
-          skipDuplicates: true,
         });
       } catch {
         // Ignore duplicate errors

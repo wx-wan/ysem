@@ -2,12 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 
-// 经过 authenticate 中间件后，以下字段必然存在
+// 经过 authenticate 中间件后，以下字段必然存在（处理函数内用 req.userId! 断言）
 export interface AuthRequest extends Request {
-  userId: string;
-  username: string;
-  roleCode: string;
-  userPermissions: string[];
+  userId?: string;
+  username?: string;
+  roleCode?: string;
+  userPermissions?: string[];
   file?: Express.Multer.File;
 }
 
