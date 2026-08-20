@@ -1,15 +1,14 @@
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
 import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
-
-const prisma = new PrismaClient();
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../lib/prisma";
 
 // ========== 订单列表 ==========
-export const list = async (req: Request, res: Response, next: NextFunction) => {
+export const list = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
-    const userRole = (req as any).roleCode;
+    const userId = req.userId;
+    const userRole = req.roleCode;
     const {
       keyword,
       status,
@@ -76,7 +75,7 @@ export const list = async (req: Request, res: Response, next: NextFunction) => {
 };
 
 // ========== 订单详情 ==========
-export const getById = async (req: Request, res: Response, next: NextFunction) => {
+export const getById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
@@ -92,10 +91,10 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
 };
 
 // ========== 创建订单 ==========
-export const create = async (req: Request, res: Response, next: NextFunction) => {
+export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const {
       customerId,
       orderNo,
@@ -152,7 +151,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
     }
 
     // 记录到客户活动日志 & 全局操作日志
-    const username = (req as any).username;
+    const username = req.username;
     await activityLogger.log({
       userId,
       username,
@@ -171,7 +170,7 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 更新订单 ==========
-export const update = async (req: Request, res: Response, next: NextFunction) => {
+export const update = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const {
@@ -210,8 +209,8 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
     if (amountCNY !== undefined && Number(amountCNY) !== existing.amountCNY) changes.push('金额');
     if (status && status !== existing.status) changes.push('状态');
     if (changes.length > 0) {
-      const username = (req as any).username;
-      const userId = (req as any).userId;
+      const username = req.username;
+      const userId = req.userId;
       await activityLogger.log({
         userId,
         username,
@@ -245,7 +244,7 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 删除订单 ==========
-export const remove = async (req: Request, res: Response, next: NextFunction) => {
+export const remove = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const existing = await prisma.order.findUnique({ where: { id } });
@@ -254,8 +253,8 @@ export const remove = async (req: Request, res: Response, next: NextFunction) =>
     await prisma.order.delete({ where: { id } });
 
     // 记录活动日志
-    const username = (req as any).username;
-    const userId = (req as any).userId;
+    const username = req.username;
+    const userId = req.userId;
     await activityLogger.log({
       userId,
       username,
@@ -284,7 +283,7 @@ export const remove = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 某客户的订单列表 ==========
-export const listByCustomer = async (req: Request, res: Response, next: NextFunction) => {
+export const listByCustomer = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { customerId } = req.params;
     const orders = await prisma.order.findMany({

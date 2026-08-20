@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
 import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
+import { AuthRequest } from "../middleware/auth";
+import prisma from "../lib/prisma";
 import * as XLSX from "xlsx";
-
-const prisma = new PrismaClient();
 
 // 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
 const generateCustomerCode = async (): Promise<string> => {
@@ -47,6 +46,7 @@ const getPipelineAggregates = async (customerIds: string[]): Promise<Record<stri
   });
   const map: Record<string, PipelineAgg> = {};
   for (const row of agg) {
+    if (!row.customerId) continue;
     map[row.customerId] = {
       pipelineAmount: row._sum.estimatedAmount || 0,
     };
@@ -145,9 +145,9 @@ const getSubFilterCounts = async (baseWhere: any) => {
 };
 
 // ========== 获取我的私海客户 ==========
-export const listMy = async (req: Request, res: Response, next: NextFunction) => {
+export const listMy = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
+    const userId = req.userId;
     const { keyword, type, country, page = "1", pageSize = "20" } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
@@ -300,7 +300,7 @@ export const listMy = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 获取公海客户 ==========
-export const listPublic = async (req: Request, res: Response, next: NextFunction) => {
+export const listPublic = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { keyword, country, page = "1", pageSize = "20" } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
@@ -355,7 +355,7 @@ export const listPublic = async (req: Request, res: Response, next: NextFunction
 };
 
 // ========== 管理员：查看所有客户（按业务员分组） ==========
-export const listAll = async (req: Request, res: Response, next: NextFunction) => {
+export const listAll = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { keyword, ownerId, type, country, page = "1", pageSize = "20" } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
@@ -576,7 +576,7 @@ export const listAll = async (req: Request, res: Response, next: NextFunction) =
 };
 
 // ========== 客户详情（含订单列表） ==========
-export const getById = async (req: Request, res: Response, next: NextFunction) => {
+export const getById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const customer = await prisma.customer.findUnique({
       where: { id: req.params.id },
@@ -601,10 +601,10 @@ export const getById = async (req: Request, res: Response, next: NextFunction) =
 };
 
 // ========== 创建客户 ==========
-export const create = async (req: Request, res: Response, next: NextFunction) => {
+export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
-    const username = (req as any).username;
+    const userId = req.userId;
+    const username = req.username;
     const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount } =
       req.body;
 
@@ -652,12 +652,12 @@ export const create = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 更新客户 ==========
-export const update = async (req: Request, res: Response, next: NextFunction) => {
+export const update = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const username = (req as any).username;
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const username = req.username;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
       req.body;
 
@@ -726,11 +726,11 @@ export const update = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 删除客户 ==========
-export const remove = async (req: Request, res: Response, next: NextFunction) => {
+export const remove = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
 
@@ -747,10 +747,10 @@ export const remove = async (req: Request, res: Response, next: NextFunction) =>
 };
 
 // ========== 认领客户（公海 → 私海） ==========
-export const claim = async (req: Request, res: Response, next: NextFunction) => {
+export const claim = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
-    const username = (req as any).username;
+    const userId = req.userId;
+    const username = req.username;
     const { id } = req.params;
 
     const customer = await prisma.customer.findUnique({ where: { id } });
@@ -783,11 +783,11 @@ export const claim = async (req: Request, res: Response, next: NextFunction) => 
 };
 
 // ========== 释放客户（私海 → 公海） ==========
-export const release = async (req: Request, res: Response, next: NextFunction) => {
+export const release = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const username = (req as any).username;
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const username = req.username;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const { id } = req.params;
 
     const customer = await prisma.customer.findUnique({ where: { id } });
@@ -826,13 +826,13 @@ export const release = async (req: Request, res: Response, next: NextFunction) =
 };
 
 // ========== 转交客户（管理员操作） ==========
-export const transfer = async (req: Request, res: Response, next: NextFunction) => {
+export const transfer = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const { newOwnerId } = req.body;
-    const username = (req as any).username;
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const username = req.username;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
 
     const customer = await prisma.customer.findUnique({
       where: { id },
@@ -877,9 +877,9 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
 };
 
 // ========== Excel 导入 ==========
-export const importExcel = async (req: Request, res: Response, next: NextFunction) => {
+export const importExcel = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const file = (req as any).file;
+    const file = req.file;
     if (!file) return error(res, "请上传文件", 400);
 
     const workbook = XLSX.read(file.buffer, { type: "buffer" });
@@ -908,7 +908,7 @@ export const importExcel = async (req: Request, res: Response, next: NextFunctio
       首次下单日期: "firstOrderDate",
     };
 
-    const username = (req as any).username;
+    const username = req.username;
     let created = 0;
     let failed = 0;
 
@@ -962,12 +962,12 @@ export const getCountries = async (_req: Request, res: Response, next: NextFunct
 // ========== 报告统计 ==========
 
 // ========== 更新客户标签 ==========
-export const updateTags = async (req: Request, res: Response, next: NextFunction) => {
+export const updateTags = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
-    const username = (req as any).username;
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const username = req.username;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const { tags } = req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
@@ -1005,10 +1005,10 @@ export const updateTags = async (req: Request, res: Response, next: NextFunction
 
 // ========== 报告统计 ==========
 
-export const getReportStats = async (req: Request, res: Response, next: NextFunction) => {
+export const getReportStats = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const userId = (req as any).userId;
-    const roleCode = (req as any).roleCode;
+    const userId = req.userId;
+    const roleCode = req.roleCode;
     const isAdmin = roleCode === "admin" || roleCode === "ADMIN";
 
     // 销售管道权限

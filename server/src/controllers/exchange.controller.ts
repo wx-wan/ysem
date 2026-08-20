@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
 import { success, error } from "../utils/response";
-
-const prisma = new PrismaClient();
+import prisma from "../lib/prisma";
 
 // Supported currencies for daily rate storage
 const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "KRW", "AUD", "CAD", "CHF"];
@@ -18,7 +16,7 @@ async function fetchRatesFromAPI(date: string): Promise<Record<string, number>> 
   
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Frankfurter API error: ${res.status}`);
-  const data = await res.json();
+  const data = (await res.json()) as { rates?: Record<string, number> };
   return data.rates || {};
 }
 

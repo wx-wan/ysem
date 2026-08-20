@@ -90,9 +90,21 @@ cd client && npm install
 
 ```bash
 cd server
-npx prisma generate      # 生成 Prisma Client
-npx prisma db push       # 同步数据库
+npx prisma generate      # 生成 Prisma Client（输出至 node_modules/.prisma/client）
+npx prisma db push       # 同步数据库结构（开发环境，无需迁移）
 npx tsx prisma/seed.ts   # 初始化种子数据
+```
+
+### 2.1 类型检查与代码规范
+
+```bash
+# 后端（TypeScript 编译检查）
+cd server && npm run build    # tsc 类型检查
+cd server && npm run lint     # eslint 代码规范
+
+# 前端（Vite 构建 + 类型检查）
+cd client && npm run build
+cd client && npm run lint
 ```
 
 ### 3. 启动开发服务器
@@ -194,6 +206,12 @@ docker exec -it ysem-server npx tsx prisma/seed.ts
 | 销售 | PUT | /api/sales/:id | 更新销售记录 |
 | 销售 | DELETE | /api/sales/:id | 删除销售记录 |
 | 汇率 | GET | /api/exchange | 获取汇率数据 |
+| 产品 | GET | /api/products/options | 产品下拉选项 |
+| 产品 | GET | /api/products/sku-preview | SKU 预览 |
+| 产品 | GET | /api/products | 产品列表（关键词/类型/来源筛选） |
+| 产品 | POST | /api/products | 创建产品 |
+| 产品 | PUT | /api/products/:id | 更新产品 |
+| 产品 | DELETE | /api/products/:id | 删除产品 |
 | 健康 | GET | /api/health | 健康检查 |
 
 ## 更新日志
