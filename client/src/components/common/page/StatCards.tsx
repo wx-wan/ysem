@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Col, Row } from 'antd';
+import { useCardGutter } from '../tokens';
 
 export interface StatCardItem {
   key: string;
@@ -23,7 +24,7 @@ interface StatCardsProps {
   items: StatCardItem[];
   /** 响应式列配置，默认 xs=24 sm=12 md=8（1 / 2 / 3 列） */
   cols?: { xs?: number; sm?: number; md?: number; lg?: number; xl?: number };
-  /** 卡片间距，默认 [16, 16] */
+  /** 卡片间距，默认随断点响应式（手机 12 / 默认 16 / 宽屏 20） */
   gutter?: [number, number] | number;
   /** 容器额外样式（如控制与下方区块的间距） */
   style?: CSSProperties;
@@ -36,11 +37,12 @@ interface StatCardsProps {
 export default function StatCards({
   items,
   cols = { xs: 24, sm: 12, md: 12, lg: 8 },
-  gutter = [16, 16],
+  gutter,
   style,
 }: StatCardsProps) {
+  const cardGutter = useCardGutter();
   return (
-    <Row gutter={gutter} style={style}>
+    <Row gutter={gutter ?? cardGutter} style={style}>
       {items.map((item) => (
         <Col key={item.key} {...cols}>
           <div

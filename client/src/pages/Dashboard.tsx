@@ -1,5 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
+import { useCardGutter } from "../components/common/tokens";
 import {
   Row,
   Col,
@@ -78,6 +79,7 @@ const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const { token } = theme.useToken();
+  const cardGutter = useCardGutter();
 
   // 配色锁：图表/品牌蓝统一用 token.colorPrimary，状态用语义色 token
   const PALETTE: Record<string, string> = {
@@ -140,7 +142,7 @@ const Dashboard: React.FC = () => {
   return (
     <div>
       {/* ===== 顶部三列卡片（欢迎 / 倒计时 / 导出） ===== */}
-      <Row gutter={[16, 16]} className="dashboard-welcome-row">
+      <Row gutter={cardGutter} className="dashboard-welcome-row">
         {/* 欢迎 */}
         <Col xs={24} md={8}>
           <Card className="welcome-card" variant="borderless">
@@ -175,7 +177,7 @@ const Dashboard: React.FC = () => {
       </Row>
 
       {/* ===== 统计卡片 ===== */}
-      <Row gutter={[16, 16]} className="stats-row">
+      <Row gutter={cardGutter} className="stats-row">
         <Col xs={12} sm={12} md={6}>
           <Card className="stat-card" variant="borderless">
             <div className="stat-card-header">
@@ -238,7 +240,7 @@ const Dashboard: React.FC = () => {
       </Row>
 
       {/* ===== 收入趋势 + 近期订单 ===== */}
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+      <Row gutter={cardGutter} style={{ marginBottom: 16 }}>
         {/* 图表 */}
         <Col xs={24} lg={15}>
           <Card
@@ -303,7 +305,7 @@ const Dashboard: React.FC = () => {
       </Row>
 
       {/* ===== 销售概览 + 产品列表 ===== */}
-      <Row gutter={[16, 16]}>
+      <Row gutter={cardGutter}>
         <Col xs={24} md={14}>
           <Card
             className="sales-overview-card"

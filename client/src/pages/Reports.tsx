@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Row, Col, Card, Statistic, Table, Tag, Spin, Typography, theme, Space } from 'antd';
+import { useCardGutter } from '../components/common/tokens';
 import {
   TeamOutlined, ShoppingCartOutlined, FireOutlined, RiseOutlined,
   UserOutlined, AimOutlined, ExperimentOutlined,
@@ -27,6 +28,7 @@ interface ReportStats {
 }
 
 export default function ReportsPage() {
+  const cardGutter = useCardGutter();
   const { token } = theme.useToken();
   const [loading, setLoading] = useState(true);
   const [report, setReport] = useState<ReportStats | null>(null);
@@ -116,7 +118,7 @@ export default function ReportsPage() {
       <Title level={4} style={{ marginBottom: 16 }}>业务报告</Title>
 
       {[0, 4, 8].map((start, rowIdx) => (
-        <Row key={rowIdx} gutter={16} style={{ marginBottom: 16 }} align="stretch">
+        <Row key={rowIdx} gutter={cardGutter} style={{ marginBottom: 16 }} align="stretch">
           {statCards.slice(start, start + 4).map((item) => (
             <Col span={6} key={`${rowIdx}-${item.title}`}>
               <Card size="small" style={cardStyle(item.color)}>
@@ -147,7 +149,7 @@ export default function ReportsPage() {
         </Row>
       ))}
 
-      <Row gutter={16}>
+      <Row gutter={cardGutter}>
         <Col span={12}>
           <Card size="small" title={<Space><ShoppingCartOutlined style={{ color: token.colorPrimary }} />近期订单</Space>}>
             <Table
