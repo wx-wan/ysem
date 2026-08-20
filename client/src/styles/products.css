@@ -252,8 +252,8 @@
   -webkit-backdrop-filter: blur(4px);
 }
 .pm-prod-status::before { background: #fff; }
-/* 私密：在封面渐变上用更深的实色点替白色点，保持同等语义但更稳妥（仍可辨识） */
-.pm-prod-status.pm-status--inactive::before { background: #fff; }
+/* 私密：封面上的点点也用主题色，保持与正文私密状态一致 */
+.pm-prod-status.pm-status--inactive::before { background: var(--c-primary, #1677ff); }
 
 /* 卡片体 */
 .pm-prod-body {
@@ -477,6 +477,26 @@
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px dashed var(--c-border-secondary, #e2e8f0);
+}
+
+/* 品类左侧只读供货模式（前端不再选择，由后续逻辑决定） */
+.pm-supply-readonly {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm, 8px);
+  background: var(--c-fill-tertiary, #f1f5f9);
+}
+.pm-supply-readonly__label {
+  font-size: 12px;
+  color: var(--c-text-tertiary, #64748b);
+}
+.pm-supply-readonly__value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-primary, #1677ff);
 }
 .pm-step-flow .pm-form-row:last-child {
   margin-bottom: 0;

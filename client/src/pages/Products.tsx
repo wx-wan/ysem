@@ -231,8 +231,8 @@ export default function Products() {
       setOpen(true);
       form.resetFields();
       const resumeSupply = Array.isArray(draft.values.supplyModes) && (draft.values.supplyModes as string[]).length
-        ? (draft.values.supplyModes as string[])
-        : [allowedSupplyModes[0]];
+        ? (draft.values.supplyModes as string[])[0]
+        : allowedSupplyModes[0];
       form.setFieldsValue({
         ...draft.values,
         ...v,
@@ -247,7 +247,7 @@ export default function Products() {
       form.setFieldsValue({
         ...v,
         // 新建默认：管理员/采购取首个可用模式，业务默认深度定制
-        supplyModes: [allowedSupplyModes[0]],
+        supplyModes: allowedSupplyModes[0],
       });
     }
     draftRef.current = null;
@@ -284,7 +284,7 @@ export default function Products() {
     form.setFieldsValue({
       ...record,
       craftIds: record.crafts?.map((c) => c.id) || [],
-      supplyModes: modes.length ? modes : [allowedSupplyModes[0]],
+      supplyModes: modes.length ? modes[0] : allowedSupplyModes[0],
       certificationIds: record.certificationIds ? record.certificationIds.split(',') : [],
       visibility: record.visibility || 'PUBLIC',
       visibleUserIds: record.visibleUsers?.map((v) => v.userId) ?? [],
@@ -326,7 +326,8 @@ export default function Products() {
       const data = {
         ...cleanNullValues(extra),
         ...cleanNullValues(values),
-        supplyModes: Array.isArray(values.supplyModes) ? values.supplyModes.join(',') : '',
+        // 供货模式由后续逻辑决定，前端不再选择，提交时取当前角色默认模式
+        supplyModes: allowedSupplyModes[0],
         certificationIds: Array.isArray(values.certificationIds) ? values.certificationIds.join(',') : '',
         // 公开产品不指定可见人：显式置空，确保后端清空已存在的可见人关联
         visibleUserIds: values.visibility === 'PUBLIC' ? [] : (values.visibleUserIds ?? []),
@@ -464,10 +465,10 @@ export default function Products() {
                         <img src={mainImageUrl(r.images)} alt="" />
                       ) : null}
                       <div className="pm-prod-cover-head">
-                        <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
                         <span className={`pm-status pm-prod-status ${r.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
                           {r.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
                         </span>
+                        <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
                       </div>
                     </div>
 
@@ -516,7 +517,6 @@ export default function Products() {
                             : <span className="pm-prod-mode pm-prod-mode--ghost">未设模式</span>}
                         </div>
                         <span className="pm-actions" onClick={(e) => e.stopPropagation()}>
-                          <Button type="text" icon={<EditOutlined />} onClick={() => openEdit(r)} />
                           {canDelete ? (
                             <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
                               <Button type="text" danger icon={<DeleteOutlined />} />
@@ -697,17 +697,6 @@ export default function Products() {
                   <Input placeholder="输入产品名称" />
                 </Form.Item>
 
-                <Form.Item name="supplyModes" label="供货模式">
-                  <Select
-                    mode="multiple"
-                    placeholder={supplyModesReadOnly ? '深度定制（默认）' : '选择一个供货模式'}
-                    allowClear={!supplyModesReadOnly}
-                    disabled={supplyModesReadOnly}
-                    maxCount={1}
-                    options={SUPPLY_MODES.filter((s) => allowedSupplyModes.includes(s.value))}
-                  />
-                </Form.Item>
-
                 {/* 尺寸：长宽高一行，置于商品描述上方 */}
                 <div className="pm-size-row">
                   <div className="pm-size-row-title">尺寸 (cm)</div>
@@ -851,12 +840,20 @@ export default function Products() {
 
           {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
-            <Form.Item
-              label="品类"
-              required
-              validateStatus={stepErr.categoryId ? 'error' : ''}
-              help={stepErr.categoryId}
-            >
+            <>
+              {/* 供货模式：由后续逻辑决定，前端只读展示在品类左侧上方 */}
+              <div className="pm-supply-readonly">
+                <span className="pm-supply-readonly__label">供货模式</span>
+                <span className="pm-supply-readonly__value">
+                  {SUPPLY_MODES.find((s) => s.value === allowedSupplyModes[0])?.label || allowedSupplyModes[0]}
+                </span>
+              </div>
+              <Form.Item
+                label="品类"
+                required
+                validateStatus={stepErr.categoryId ? 'error' : ''}
+                help={stepErr.categoryId}
+              >
               <Row gutter={[10, 10]}>
                 {categories.length ? categories.map((c) => (
                   <Col span={8} key={c.id}>
@@ -879,6 +876,7 @@ export default function Products() {
                 )}
               </Row>
             </Form.Item>
+            </>
           )}
             </Form>
           </div>

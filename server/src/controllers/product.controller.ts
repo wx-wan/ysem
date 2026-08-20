@@ -115,9 +115,10 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     if (categoryId) where.categoryId = categoryId;
     if (visibility) where.visibility = visibility;
 
-    // 可见性过滤：公开产品所有人可见；不公开产品仅「创建人」或「被指定可见人」可见
+    // 可见性过滤：管理员可查看全部产品；其余用户仅见公开产品或自己可见的私密产品
     const uid = req.userId;
-    if (uid) {
+    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
+    if (uid && !isAdmin) {
       where.OR = [
         { visibility: 'PUBLIC' },
         { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
@@ -157,8 +158,9 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
       },
     });
     if (!product) { fail(res, 404, '产品不存在'); return; }
-    // 不公开产品：仅创建人 + 指定可见人可查看，其余人返回 403
-    if (product.visibility === 'PRIVATE') {
+    // 管理员可查看任意产品；其余用户仅创建人 + 指定可见人可查看私密产品
+    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
+    if (product.visibility === 'PRIVATE' && !isAdmin) {
       const uid = req.userId;
       const isCreator = product.createdBy === uid;
       const isVisibleUser = product.visibleUsers.some((v) => v.userId === uid);
