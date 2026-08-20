@@ -216,9 +216,11 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     // 工艺或受众变化时，SKU 按新组合自动重新生成；未变化则保留原 SKU
     const existing = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { crafts: { select: { id: true } } },
+      include: { crafts: { select: { id: true } }, visibleUsers: { select: { userId: true } } },
     });
-    if (existing) {
+    if (!existing) { fail(res, 404, '产品不存在'); return; }
+    // 可见即可编辑：能查看到该产品即允许修改（列表/详情已按可见性过滤），不再单独校验修改权限
+    {
       const oldCraftIds = existing.crafts.map((c) => c.id).sort().join(',');
       const newCraftIds = !Array.isArray(craftIds) ? null : [...craftIds].sort().join(',');
       const oldAudienceId = existing.audienceId ?? '';

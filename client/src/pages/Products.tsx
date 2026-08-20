@@ -37,10 +37,10 @@ export const SUPPLY_MODES = [
   { label: '成品现货', value: 'STOCK' },
 ];
 
-// 供货模式按角色可选范围：admin 全选 / purchaser 仅轻定制+成品现货 / 其他（业务等）默认深度定制、不可修改
+// 供货模式按角色可选范围：admin 全选 / purchaser 含深度定制+轻定制+现货 / 其他（业务等）默认深度定制、不可修改
 const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
   admin: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
-  purchaser: ['LIGHT_CUSTOM', 'STOCK'],
+  purchaser: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
 };
 const DEFAULT_SUPPLY_MODE = 'DEEP_CUSTOM';
 
@@ -326,8 +326,11 @@ export default function Products() {
       const data = {
         ...cleanNullValues(extra),
         ...cleanNullValues(values),
-        // 供货模式由后续逻辑决定，前端不再选择，提交时取当前角色默认模式
-        supplyModes: allowedSupplyModes[0],
+        // 供货模式由后续逻辑决定，前端不再选择：
+        // 编辑时保留该产品原有模式（若当前角色允许），新建时取当前角色默认模式
+        supplyModes: editing?.supplyModes && allowedSupplyModes.includes(editing.supplyModes)
+          ? editing.supplyModes
+          : allowedSupplyModes[0],
         certificationIds: Array.isArray(values.certificationIds) ? values.certificationIds.join(',') : '',
         // 公开产品不指定可见人：显式置空，确保后端清空已存在的可见人关联
         visibleUserIds: values.visibility === 'PUBLIC' ? [] : (values.visibleUserIds ?? []),
@@ -341,7 +344,15 @@ export default function Products() {
       }
       setOpen(false);
       fetchList();
-    } catch { /* validation */ }
+    } catch (err: unknown) {
+      const e = err as { errorFields?: unknown[]; response?: { data?: { message?: string } }; message?: string };
+      if (e && Array.isArray(e.errorFields)) {
+        message.error('请检查表单必填项');
+      } else {
+        const msg = e?.response?.data?.message || e?.message || '保存失败';
+        message.error(msg);
+      }
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -683,12 +694,6 @@ export default function Products() {
                 <Form.Item
                   name="visibleUserIds"
                   hidden
-                  rules={[
-                    ({ getFieldValue }) =>
-                      getFieldValue('visibility') === 'PRIVATE'
-                        ? { required: true, message: t('product.visibleUsersRequired') }
-                        : {},
-                  ]}
                 >
                   <Select mode="multiple" />
                 </Form.Item>
