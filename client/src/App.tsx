@@ -24,6 +24,7 @@ import PermPage from './pages/Perm';
 import ProductTaxonomyPage from './pages/ProductTaxonomy';
 import CertificatePage from './pages/Certificate';
 import NotFoundPage from './pages/NotFound';
+import ForbiddenPage from './pages/Forbidden';
 
 // 路由守卫 — 登录校验
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -33,9 +34,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 // 路由守卫 — 权限校验（按页面所需的 permission code）
+// 无权限时展示无权限页，而不是静默重定向
 function PermRoute({ perm, children }: { perm: string; children: React.ReactNode }) {
   const { hasPerm } = usePermission();
-  if (!hasPerm(perm)) return <Navigate to="/dashboard" replace />;
+  if (!hasPerm(perm)) return <ForbiddenPage />;
   return <>{children}</>;
 }
 
@@ -67,7 +69,7 @@ function App() {
         <Route path="orders" element={<OrdersPage />} />
         <Route path="production" element={<ProductionPage />} />
         <Route path="shipment" element={<ShipmentPage />} />
-        <Route path="customers" element={<CustomersPage />} />
+        <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="system/user" element={<PermRoute perm="system:user"><UserPage /></PermRoute>} />
         <Route path="system/role" element={<PermRoute perm="system:role"><RolePage /></PermRoute>} />

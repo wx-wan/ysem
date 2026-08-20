@@ -227,6 +227,7 @@
   },
   "error": {
     "pageNotFound": "抱歉，您访问的页面不存在",
+    "forbidden": "抱歉，您没有权限访问该页面",
     "networkError": "网络错误，请稍后重试"
   },
   "product": {

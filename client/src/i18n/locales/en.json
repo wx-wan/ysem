@@ -227,6 +227,7 @@
   },
   "error": {
     "pageNotFound": "Sorry, the page you visited does not exist.",
+    "forbidden": "Sorry, you don't have permission to access this page.",
     "networkError": "Network error, please try again later."
   },
   "product": {

@@ -358,6 +358,7 @@ model Product {
 
   visibleUsers ProductVisibleUser[]
   leadProducts LeadProduct[]
+  activities   ProductActivity[]         // 产品操作记录（时间线）
   createdBy  String?                     // 创建人 id（不公开产品仅创建人 + 指定可见人可查看）
   creator    User?    @relation("ProductCreator", fields: [createdBy], references: [id])
   createdAt   DateTime @default(now())
@@ -388,6 +389,23 @@ model LeadProduct {
   createdAt DateTime @default(now())
 
   @@unique([leadId, productId])
+}
+
+// ========== 产品操作记录 ==========
+model ProductActivity {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // 操作类型：CREATE / UPDATE / DELETE / STAGE / STATUS 等
+  action    String
+  // 操作详情（JSON 字符串，记录前后变化或备注）
+  detail    String?
+  // 操作人（冗余存储姓名，便于展示）
+  operator  String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([productId])
 }
 
 // ========== 销售活动日志 ==========

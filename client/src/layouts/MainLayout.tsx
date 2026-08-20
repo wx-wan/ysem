@@ -69,8 +69,11 @@ export default function MainLayout() {
     if (!user && !profileFetched.current) {
       profileFetched.current = true;
       authApi.getProfile().then((res) => {
+        const profile = res.data.data;
+        // getProfile 返回 role.permissions（嵌套），需提取为顶层 permissions 数组，避免 setAuth 把权限清空
+        const permissions = profile?.role?.permissions?.map((rp: { permission: { code: string } }) => rp.permission.code) ?? [];
         useAuthStore.getState().setAuth(
-          res.data.data,
+          { ...profile, permissions },
           localStorage.getItem('accessToken') || '',
           localStorage.getItem('refreshToken') || '',
         );

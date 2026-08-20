@@ -7,10 +7,11 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
-  CloseOutlined,
+  CloseOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import productApi, {
-  Product, ProductCraft, ProductAudience, ProductCategory,
+  Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
   taxonomyApi,
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
@@ -433,23 +434,18 @@ export default function Products() {
                     </div>
                   </div>
                   <div className="pm-prod-body">
-                    <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
-                      <Skeleton.Input active size="small" style={{ width: '60%' }} />
-                      <Skeleton.Input active size="small" style={{ width: 48 }} />
-                    </Flex>
-                    <Row className="pm-prod-meta" gutter={0}>
+                    <Skeleton.Input active size="small" style={{ width: '60%' }} />
+                    <Skeleton.Input active size="small" style={{ width: '80%' }} />
+                    <div className="pm-prod-meta">
                       {[0, 1, 2].map((k) => (
-                        <Col key={k} xs={8} style={{ textAlign: 'center' }}>
+                        <div key={k} className="pm-prod-meta__item">
                           <Skeleton.Input active size="small" style={{ width: '70%' }} />
-                        </Col>
+                        </div>
                       ))}
-                    </Row>
-                    <div className="pm-prod-footer">
+                    </div>
+                    <div className="pm-prod-foot">
                       <Skeleton.Input active size="small" style={{ width: '40%' }} />
-                      <Space size={8}>
-                        <Skeleton.Avatar active shape="circle" size={24} />
-                        <Skeleton.Avatar active shape="circle" size={24} />
-                      </Space>
+                      <Skeleton.Avatar active shape="circle" size={22} />
                     </div>
                   </div>
                 </div>
@@ -470,7 +466,7 @@ export default function Products() {
                     onClick={() => { setViewing(r); setDetailOpen(true); }}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewing(r); setDetailOpen(true); } }}
                   >
-                    {/* 渐变头 */}
+                    {/* 左侧：正方形主图 + 状态/SKU 覆盖 */}
                     <div className="pm-prod-cover">
                       {mainImageUrl(r.images) ? (
                         <img src={mainImageUrl(r.images)} alt="" />
@@ -479,44 +475,44 @@ export default function Products() {
                         <span className={`pm-status pm-prod-status ${r.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
                           {r.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
                         </span>
-                        <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
                       </div>
+                      <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
                     </div>
 
-                    {/* 卡片体 */}
+                    {/* 右侧：产品信息 */}
                     <div className="pm-prod-body">
                       <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
                         <div className="pm-prod-name" title={r.name} style={{ flex: '1 1 auto', minWidth: 0 }}>{r.name}</div>
-                        <div className="pm-prod-tags">
-                          {r.crafts?.length
-                            ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
-                            : null}
-                          {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
-                          {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
-                        </div>
                       </Flex>
+                      <div className="pm-prod-tags">
+                        {r.crafts?.length
+                          ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
+                          : null}
+                        {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
+                        {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
+                      </div>
 
-                      <Row className="pm-prod-meta" gutter={0}>
-                        <Col span={8} style={{ textAlign: 'center' }}>
-                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>尺寸</Typography.Text>
-                          <Typography.Text strong style={{ fontSize: 12.5 }}>
+                      <div className="pm-prod-meta">
+                        <div className="pm-prod-meta__item">
+                          <span className="pm-prod-meta__label">尺寸</span>
+                          <span className="pm-prod-meta__value">
                             {[r.sizeL, r.sizeW, r.sizeH].filter(Boolean).join('×') || '-'}
                             {([r.sizeL, r.sizeW, r.sizeH].filter(Boolean).length ? ' cm' : '')}
-                          </Typography.Text>
-                        </Col>
-                        <Col span={8} style={{ textAlign: 'center' }}>
-                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>克重</Typography.Text>
-                          <Typography.Text strong style={{ fontSize: 12.5 }}>
+                          </span>
+                        </div>
+                        <div className="pm-prod-meta__item">
+                          <span className="pm-prod-meta__label">克重</span>
+                          <span className="pm-prod-meta__value">
                             {r.weight || '-'}{r.weight ? ' g' : ''}
-                          </Typography.Text>
-                        </Col>
-                        <Col span={8} style={{ textAlign: 'center' }}>
-                          <Typography.Text type="secondary" style={{ fontSize: 11, display: 'block' }}>单位</Typography.Text>
-                          <Typography.Text strong style={{ fontSize: 12.5 }}>
+                          </span>
+                        </div>
+                        <div className="pm-prod-meta__item">
+                          <span className="pm-prod-meta__label">单位</span>
+                          <span className="pm-prod-meta__value">
                             {r.unit || '-'}
-                          </Typography.Text>
-                        </Col>
-                      </Row>
+                          </span>
+                        </div>
+                      </div>
 
                       <div className="pm-prod-foot">
                         <div className="pm-prod-modes">
@@ -938,6 +934,33 @@ export default function Products() {
                   })
                 : '-'}
             </p>
+
+            {/* 操作记录时间线 */}
+            <Divider style={{ margin: '16px 0 12px' }} />
+            <div className="pm-activity">
+              <div className="pm-activity__title">
+                <ClockCircleOutlined /> 操作记录
+              </div>
+              {(!viewing.activities || viewing.activities.length === 0) && (
+                <p className="pm-activity__empty">暂无操作记录</p>
+              )}
+              <ul className="pm-activity__list">
+                {(viewing.activities || []).map((act: ProductActivity) => (
+                  <li key={act.id} className="pm-activity__item">
+                    <span className={`pm-activity__badge pm-activity__badge--${act.action.toLowerCase()}`}>
+                      {act.action === 'CREATE' ? '创建' : act.action === 'UPDATE' ? '更新' : act.action === 'DELETE' ? '删除' : act.action}
+                    </span>
+                    <span className="pm-activity__meta">
+                      {act.operator ? `${act.operator} · ` : ''}
+                      {act.createdAt ? dayjs(act.createdAt).format('YYYY-MM-DD HH:mm') : ''}
+                    </span>
+                    {act.detail && (
+                      <span className="pm-activity__detail">{act.detail}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </Modal>

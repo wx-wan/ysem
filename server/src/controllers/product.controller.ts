@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { activityLogger } from '../lib/activity-logger';
 
 const productSchema = z.object({
   name: z.string().min(1, '产品名称不能为空'),
@@ -155,6 +156,7 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
         audience: { include: { categories: true } },
         category: true,
         visibleUsers: { select: { userId: true } },
+        activities: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!product) { fail(res, 404, '产品不存在'); return; }
@@ -192,6 +194,16 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     }
     data.sku = sku;
     const product = await prisma.product.create({ data });
+    void activityLogger.log({
+      userId: req.userId || '',
+      username: req.username || '',
+      action: 'CREATE',
+      module: 'product',
+      targetId: product.id,
+      target: product.name,
+      detail: JSON.stringify({ name: product.name, sku: product.sku }),
+      productId: product.id,
+    });
     created(res, product);
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
@@ -242,6 +254,16 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       where: { id: req.params.id },
       data,
     });
+    void activityLogger.log({
+      userId: req.userId || '',
+      username: req.username || '',
+      action: 'UPDATE',
+      module: 'product',
+      targetId: product.id,
+      target: product.name,
+      detail: JSON.stringify({ name: product.name, sku: product.sku }),
+      productId: product.id,
+    });
     success(res, product, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
@@ -256,7 +278,19 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
       fail(res, 403, '仅管理员可删除产品');
       return;
     }
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    if (!product) { fail(res, 404, '产品不存在'); return; }
     await prisma.product.delete({ where: { id: req.params.id } });
+    void activityLogger.log({
+      userId: req.userId || '',
+      username: req.username || '',
+      action: 'DELETE',
+      module: 'product',
+      targetId: product.id,
+      target: product.name,
+      detail: JSON.stringify({ name: product.name, sku: product.sku }),
+      productId: product.id,
+    });
     success(res, null, '删除成功');
   } catch { fail(res, 500, '服务器错误'); }
 };

@@ -3,7 +3,7 @@ import prisma from './prisma';
 // ============================================================
 // 统一活动日志服务
 // 所有模块的增删改操作统一通过此服务记录
-// 写入路径：OperationLog（全局审计） + CustomerActivity（客户时间线）
+// 写入路径：OperationLog（全局审计） + CustomerActivity（客户时间线） + ProductActivity（产品时间线）
 // ============================================================
 
 export interface LogEntry {
@@ -17,6 +17,8 @@ export interface LogEntry {
   ip?: string;
   /** 如果提供了 customerId，同步写入客户活动时间线 */
   customerId?: string;
+  /** 如果提供了 productId，同步写入产品操作记录时间线 */
+  productId?: string;
 }
 
 class ActivityLogger {
@@ -24,6 +26,7 @@ class ActivityLogger {
    * 记录一条操作日志
    * - 始终写入 OperationLog（全局审计日志）
    * - 如果提供了 customerId，同步写入 CustomerActivity（客户详情时间线）
+   * - 如果提供了 productId，同步写入 ProductActivity（产品详情时间线）
    */
   async log(entry: LogEntry): Promise<void> {
     const writes: Promise<unknown>[] = [];
@@ -52,6 +55,21 @@ class ActivityLogger {
             action: entry.action,
             detail: entry.detail,
             createdBy: entry.username,
+          },
+        })
+      );
+    }
+
+    // 3. 产品操作记录时间线
+    if (entry.productId) {
+      writes.push(
+        prisma.productActivity.create({
+          data: {
+            productId: entry.productId,
+            action: entry.action,
+            detail: entry.detail,
+            operator: entry.username,
+            createdBy: entry.userId,
           },
         })
       );

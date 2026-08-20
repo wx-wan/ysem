@@ -50,6 +50,16 @@ export const taxonomyApi = {
 
 // ============ 产品 Product ============
 
+export interface ProductActivity {
+  id: string;
+  productId: string;
+  action: string;        // CREATE / UPDATE / DELETE
+  detail?: string | null;
+  operator?: string | null;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -99,6 +109,7 @@ export interface Product {
   visibility?: 'PUBLIC' | 'PRIVATE';
   visibleUserIds?: string[];
   visibleUsers?: { userId: string }[];
+  activities?: ProductActivity[];
   remark?: string | null;
   createdAt: string;
   updatedAt: string;

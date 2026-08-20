@@ -155,8 +155,9 @@ async function main() {
     }
   }
 
-  // 为采购人员分配业务菜单权限（与业务人员相同）
-  for (const code of businessMenuCodes) {
+  // 为采购人员分配业务菜单权限（与业务人员相同，但不含「客户管理」）
+  const purchaserMenuCodes = businessMenuCodes.filter((c) => c !== 'customers');
+  for (const code of purchaserMenuCodes) {
     const perm = await prisma.permission.findUnique({ where: { code } });
     if (perm) {
       await prisma.rolePermission.upsert({

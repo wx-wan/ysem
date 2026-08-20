@@ -156,7 +156,7 @@
   font-size: 14px;
 }
 
-/* 骨架屏卡片：结构与真实卡片一致（封面贴顶，body 自带内边距） */
+/* 骨架屏卡片：结构与真实卡片一致（左图右文） */
 .pm-prod-card--skeleton {
   height: auto;
   padding: 0;
@@ -166,14 +166,28 @@
   box-shadow: var(--shadow-rest);
   transition: none;
   cursor: default;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  overflow: hidden;
 }
 .pm-prod-card--skeleton:hover {
   transform: none;
   box-shadow: var(--shadow-rest);
   border-color: var(--c-border, #eef2f7);
 }
+.pm-prod-card--skeleton .pm-prod-cover {
+  flex: 0 0 132px;
+  width: 132px;
+  min-height: 132px;
+  background: linear-gradient(135deg, #1677ff 0%, #4f9bff 55%, #8ec5ff 100%);
+}
+.pm-prod-card--skeleton .pm-prod-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
-/* 产品卡片：形状锁 16 圆角，阴影两级 */
+/* 产品卡片：左右结构，形状锁 16 圆角，阴影两级 */
 .pm-prod-card {
   height: 100%;
   background: var(--c-surface, #fff);
@@ -183,8 +197,11 @@
   box-shadow: var(--shadow-rest);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   cursor: pointer;
+  container-type: inline-size;
+  container-name: prod-card;
 }
 .pm-prod-card:hover {
   transform: translateY(-3px);
@@ -192,29 +209,34 @@
   border-color: var(--c-primary, #1677ff);
 }
 
-/* 渐变头（主色锁 #1677ff） */
+/* 左侧：正方形主图（主色锁 #1677ff 渐变兜底） */
 .pm-prod-cover {
   position: relative;
-  height: 132px;
-  padding: 14px 16px;
+  flex: 0 0 160px;
+  width: 160px;
+  align-self: stretch;
+  min-height: 160px;
   background: linear-gradient(135deg, #1677ff 0%, #4f9bff 55%, #8ec5ff 100%);
   overflow: hidden;
 }
 .pm-prod-cover-head {
-  position: relative;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
   z-index: 1;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
   gap: 8px;
 }
 .pm-prod-cover::after {
   content: '';
   position: absolute;
-  right: -40px;
-  top: -40px;
-  width: 140px;
-  height: 140px;
+  right: -36px;
+  bottom: -36px;
+  width: 120px;
+  height: 120px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.16);
 }
@@ -226,9 +248,10 @@
   object-fit: cover;
 }
 .pm-prod-sku {
-  position: relative;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
   z-index: 1;
-  align-self: flex-start;
   display: inline-flex;
   align-items: center;
   font-size: 12px;
@@ -255,9 +278,10 @@
 /* 私密：封面上的点点也用主题色，保持与正文私密状态一致 */
 .pm-prod-status.pm-status--inactive::before { background: var(--c-primary, #1677ff); }
 
-/* 卡片体 */
+/* 右侧：产品信息 */
 .pm-prod-body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -292,9 +316,58 @@
 
 /* 模块内次级分隔：虚线 */
 .pm-prod-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 4px;
   padding: 10px 0;
   border-top: 1px dashed var(--c-border-secondary, #eef2f7);
   border-bottom: 1px dashed var(--c-border-secondary, #eef2f7);
+}
+.pm-prod-meta__item {
+  flex: 1 1 0;
+  min-width: 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  padding: 0 4px;
+}
+.pm-prod-meta__label {
+  font-size: clamp(10px, 1vw, 11px);
+  color: var(--c-text-secondary, #64748b);
+  line-height: 1.3;
+}
+.pm-prod-meta__value {
+  font-size: clamp(11.5px, 1.1vw, 13px);
+  font-weight: 600;
+  color: var(--c-text, #1a1a1a);
+  line-height: 1.3;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 卡片较窄（左图+body 放不下三栏并排）时：每个指标各占一行（尺寸 / 克重 / 单位 纵向排列） */
+@container prod-card (max-width: 400px) {
+  .pm-prod-meta {
+    gap: 4px;
+  }
+  .pm-prod-meta__item {
+    flex: 1 1 100%;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0;
+  }
+  .pm-prod-meta__label {
+    flex: 0 0 auto;
+    text-align: left;
+  }
+  .pm-prod-meta__value {
+    text-align: left;
+  }
 }
 
 .pm-prod-foot {
@@ -302,7 +375,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-top: 2px;
+  margin-top: auto;
 }
 .pm-prod-modes {
   display: flex;
@@ -579,6 +652,65 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* ========== 产品操作记录时间线 ========== */
+.pm-activity {
+  font-size: 13px;
+}
+.pm-activity__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-text, #1a1a1a);
+  margin-bottom: 12px;
+}
+.pm-activity__empty {
+  color: var(--c-text-secondary, #999);
+  font-size: 13px;
+  margin: 0;
+}
+.pm-activity__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pm-activity__item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pm-activity__badge {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #fff;
+}
+.pm-activity__badge--create { background: #1677ff; }
+.pm-activity__badge--update { background: #52c41a; }
+.pm-activity__badge--delete { background: #ff4d4f; }
+.pm-activity__meta {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--c-text-secondary, #888);
+}
+.pm-activity__detail {
+  flex: 1 1 100%;
+  font-size: 12px;
+  color: var(--c-text-secondary, #666);
+  background: var(--c-surface-alt, #f7f9fc);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  word-break: break-all;
 }
 
 /* ========== 第一步卡片式选择 ========== */
