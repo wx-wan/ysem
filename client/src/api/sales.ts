@@ -34,7 +34,18 @@ export interface SalesItem {
   leadProducts?: LeadProduct[];
   createdAt: string;
   updatedAt: string;
+  // 按产品聚合时后端附加字段
+  status?: string;
+  updateTime?: string;
+  quantity?: number;
 }
+
+/** 销售阶段（线索/商机/订单）中文与配色 */
+export const STAGE_META: Record<string, { label: string; color: string }> = {
+  LEAD: { label: '线索', color: '#1677ff' },
+  OPPORTUNITY: { label: '商机', color: '#d97706' },
+  ORDER: { label: '订单', color: '#16a34a' },
+};
 
 export interface LeadProduct {
   id: string;
@@ -109,4 +120,8 @@ export const salesApi = {
   // 按客户查询商机记录
   listByCustomer: (customerId: string) =>
     axios.get<{ data: SalesItem[] }>(`/sales/by-customer/${customerId}`),
+
+  // 按产品查询商机记录
+  listByProduct: (productId: string) =>
+    axios.get<{ data: { list: SalesItem[]; total: number } }>(`/sales/by-product/${productId}`),
 };

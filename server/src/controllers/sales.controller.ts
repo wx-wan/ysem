@@ -179,6 +179,56 @@ export const getPipeline = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+// ============ 按产品查询商机/线索 ============
+
+export const getByProduct = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { productId } = req.params;
+
+    const where: Record<string, unknown> = {
+      leadProducts: { some: { productId } },
+    };
+    // 非 admin 用户只看自己或未分配
+    if (req.roleCode !== 'admin') {
+      where.OR = [{ assignedTo: req.userId }, { assignedTo: null }];
+    }
+
+    const pipelines = await prisma.salesPipeline.findMany({
+      where,
+      include: {
+        assignee: { select: { id: true, realName: true, username: true } },
+        leadProducts: {
+          where: { productId },
+          select: { quantity: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+
+    // 仅保留该产品自身的关联数量
+    const list = pipelines.map((p) => ({
+      id: p.id,
+      pipelineNumber: p.pipelineNumber,
+      title: p.title,
+      companyName: p.companyName,
+      contactName: p.contactName,
+      stage: p.stage,
+      status: p.status,
+      estimatedAmount: p.estimatedAmount,
+      amountCNY: p.amountCNY,
+      updateTime: p.updatedAt,
+      quantity: p.leadProducts.reduce((s, lp) => s + (lp.quantity || 0), 0),
+      assignee: p.assignee,
+    }));
+
+    success(res, { list, total: list.length });
+  } catch (e) {
+    console.error(e);
+    fail(res, 500, '服务器错误');
+  }
+};
+
 // ============ 创建 ============
 
 export const createPipeline = async (req: AuthRequest, res: Response): Promise<void> => {

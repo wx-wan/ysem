@@ -5,7 +5,7 @@ import {
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { buildTablePagination } from '../../common/tablePagination';
-import { SUPPLY_MODES } from '../../../pages/Products';
+import { SUPPLY_MODES } from '../../../config/product';
 import type { Product } from '../../../api/products';
 import { useDs } from '../../customer/shared/ds';
 

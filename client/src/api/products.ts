@@ -138,9 +138,6 @@ const productApi = {
   getById: (id: string) => request.get<Product>(`/products/${id}`),
   // 兼容旧接口：获取产品下拉选项（仅 id/name/sku）
   options: () => request.get<ApiResponse<ProductOption[]>>('/products/options'),
-  // SKU 预览：按 工艺-受众 返回下一个自动生成的 SKU（不落库）
-  skuPreview: (params: { craftIds?: string; audienceId?: string; excludeId?: string }) =>
-    request.get<ApiResponse<{ sku: string | null }>>('/products/sku-preview', { params }),
   create: (data: Partial<Product>) => request.post('/products', data),
   update: (id: string, data: Partial<Product>) => request.put(`/products/${id}`, data),
   delete: (id: string) => request.delete(`/products/${id}`),

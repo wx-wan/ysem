@@ -40,52 +40,7 @@ const productSchema = z.object({
   progress: z.string().nullish(),
 });
 
-// 按「工艺代码 - 受众代码 - 序号」自动生成 SKU：
-// 多工艺时主工艺在括号外，其余用 + 连接，如 TJ(ZS)-ET-001；序号按同组合递增 3 位补零。
-// 缺少工艺或受众（含缺 code）时返回 null，由调用方决定提示。
-async function buildSkuCode(
-  craftIds: string[],
-  audienceId: string | null,
-  excludeId?: string,
-): Promise<string | null> {
-  if (!craftIds.length || !audienceId) return null;
-  const crafts = await prisma.productCraft.findMany({ where: { id: { in: craftIds } } });
-  const craftCodes = craftIds
-    .map((id) => crafts.find((c) => c.id === id)?.code)
-    .filter((c): c is string => Boolean(c));
-  if (craftCodes.length !== craftIds.length) return null; // 有工艺未配置 code
-  const audience = await prisma.productAudience.findUnique({ where: { id: audienceId } });
-  if (!audience?.code) return null;
-
-  const craftPart = craftCodes.length > 1
-    ? `${craftCodes[0]}(${craftCodes.slice(1).join('+')})`
-    : craftCodes[0];
-  const prefix = `${craftPart}-${audience.code}-`;
-
-  const existing = await prisma.product.findMany({
-    where: { sku: { startsWith: prefix }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { sku: true },
-  });
-  let max = 0;
-  for (const p of existing) {
-    if (!p.sku) continue;
-    const n = Number(p.sku.slice(prefix.length));
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}${String(max + 1).padStart(3, '0')}`;
-}
-
-// 预览接口：按当前工艺/受众返回下一个 SKU（不落库），供表单实时展示
-export const previewProductSku = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const craftIds = (req.query.craftIds as string | undefined)?.split(',').filter(Boolean) ?? [];
-    const audienceId = (req.query.audienceId as string | undefined) ?? null;
-    const excludeId = (req.query.excludeId as string | undefined) ?? undefined;
-    const sku = await buildSkuCode(craftIds, audienceId, excludeId);
-    success(res, { sku });
-  } catch { fail(res, 500, '服务器错误'); }
-};
-
+// SKU 统一使用产品 id（cuid），不再按「工艺-受众-序号」自动生成。
 export const getProductOptions = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const list = await prisma.product.findMany({
@@ -185,15 +140,9 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     if (visibleUserIds?.length) {
       data.visibleUsers = { create: visibleUserIds.map((userId) => ({ userId })) };
     }
-    // SKU 无需人工录入：按「工艺-受众-序号」自动生成
-    const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
-    const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
-    if (hasFullContext && sku === null) {
-      fail(res, 400, '工艺或受众缺少编码，请先在分类管理中补充代码');
-      return;
-    }
-    data.sku = sku;
+    // SKU 统一使用产品 id：创建后再回填
     const product = await prisma.product.create({ data });
+    await prisma.product.update({ where: { id: product.id }, data: { sku: product.id } });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -228,28 +177,11 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     // 工艺或受众变化时，SKU 按新组合自动重新生成；未变化则保留原 SKU
     const existing = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { crafts: { select: { id: true } }, visibleUsers: { select: { userId: true } } },
+      include: { visibleUsers: { select: { userId: true } } },
     });
     if (!existing) { fail(res, 404, '产品不存在'); return; }
-    // 可见即可编辑：能查看到该产品即允许修改（列表/详情已按可见性过滤），不再单独校验修改权限
-    {
-      const oldCraftIds = existing.crafts.map((c) => c.id).sort().join(',');
-      const newCraftIds = !Array.isArray(craftIds) ? null : [...craftIds].sort().join(',');
-      const oldAudienceId = existing.audienceId ?? '';
-      const newAudienceId = parsed.audienceId === undefined ? oldAudienceId : (parsed.audienceId ?? '');
-      const craftsChanged = newCraftIds !== null && newCraftIds !== oldCraftIds;
-      const audienceChanged = newAudienceId !== oldAudienceId;
-      if (craftsChanged || audienceChanged) {
-        const finalCraftIds = Array.isArray(craftIds) ? craftIds : existing.crafts.map((c) => c.id);
-        const finalAudienceId = parsed.audienceId === undefined ? existing.audienceId : parsed.audienceId;
-        const sku = await buildSkuCode(finalCraftIds, finalAudienceId, existing.id);
-        if (sku === null && (finalCraftIds.length && finalAudienceId)) {
-          fail(res, 400, '工艺或受众缺少编码，请先在分类管理中补充代码');
-          return;
-        }
-        data.sku = sku;
-      }
-    }
+    // SKU 统一使用产品 id：若历史数据未对齐则补全
+    if (existing.sku !== existing.id) data.sku = existing.id;
     const product = await prisma.product.update({
       where: { id: req.params.id },
       data,

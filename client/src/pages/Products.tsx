@@ -7,7 +7,8 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
-  CloseOutlined, ClockCircleOutlined,
+  CloseOutlined, ClockCircleOutlined, ShoppingOutlined,
+  FileTextOutlined, TagsOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
@@ -16,6 +17,7 @@ import productApi, {
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
+import { salesApi, SalesItem, STAGE_META } from '../api/sales';
 import ProductImageList from '../components/common/ProductImageList';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
@@ -24,6 +26,8 @@ import { useCardGutter } from '../components/common/tokens';
 import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
+import ProductCard, { ProductCardSkeleton } from '../components/product/cards/ProductCard';
+import SegmentedTabBar from '../components/common/SegmentedTabBar';
 import { useAuthStore } from '../stores/useAuthStore';
 
 const { Text } = Typography;
@@ -31,12 +35,8 @@ const { Text } = Typography;
 // 类名拼接工具
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
-// 供货模式选项
-export const SUPPLY_MODES = [
-  { label: '深度定制', value: 'DEEP_CUSTOM' },
-  { label: '轻定制', value: 'LIGHT_CUSTOM' },
-  { label: '成品现货', value: 'STOCK' },
-];
+// 供货模式选项（共享配置）
+import { SUPPLY_MODES } from '../config/product';
 
 // 供货模式按角色可选范围：admin 全选 / purchaser 含深度定制+轻定制+现货 / 其他（业务等）默认深度定制、不可修改
 const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
@@ -75,6 +75,9 @@ export default function Products() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
+  const [detailTab, setDetailTab] = useState<'overview' | 'sales' | 'activity'>('overview');
+  const [salesList, setSalesList] = useState<SalesItem[]>([]);
+  const [salesLoading, setSalesLoading] = useState(false);
   const [form] = Form.useForm();
   const visValue = Form.useWatch('visibility', form) as 'PUBLIC' | 'PRIVATE' | undefined;
   const visibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
@@ -86,6 +89,21 @@ export default function Products() {
   const canDelete = roleCode === 'admin' || roleCode === 'ADMIN';
   const allowedSupplyModes = SUPPLY_MODES_BY_ROLE[roleCode] ?? [DEFAULT_SUPPLY_MODE];
   const supplyModesReadOnly = allowedSupplyModes.length <= 1; // 仅一个可用项（业务等）→ 不可修改
+
+  // 打开产品详情：重置 Tab 并加载销售记录
+  const openDetail = (r: Product) => {
+    setViewing(r);
+    setDetailTab('overview');
+    setDetailOpen(true);
+    setSalesLoading(true);
+    salesApi.listByProduct(r.id)
+      .then((res) => {
+        if (res.data?.data?.list) setSalesList(res.data.data.list);
+        else setSalesList([]);
+      })
+      .catch(() => setSalesList([]))
+      .finally(() => setSalesLoading(false));
+  };
 
   const fetchList = async () => {
     setLoading(true);
@@ -152,32 +170,9 @@ export default function Products() {
   const draftRef = useRef<{ values: Record<string, unknown>; editing: Product | null } | null>(null);
   const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
 
-  // SKU 自动预览：按「工艺-受众-序号」实时请求后端生成，无需人工录入
-  const [skuPreview, setSkuPreview] = useState<string>('');
   const watchedCraftIds = Form.useWatch('craftIds', form);
   const watchedAudienceId = Form.useWatch('audienceId', form);
   const watchedCategoryId = Form.useWatch('categoryId', form);
-  useEffect(() => {
-    const craftsKey = (watchedCraftIds ?? []).map(String).sort().join(',');
-    const audId = watchedAudienceId as string | undefined;
-    if (!craftsKey || !audId) { setSkuPreview(''); return; }
-    // 编辑模式且工艺/受众未变化：保留原 SKU，不重新请求（避免序号 +1）
-    if (editing) {
-      const origCraftsKey = (editing.crafts ?? []).map((c) => c.id).sort().join(',');
-      if (craftsKey === origCraftsKey && audId === editing.audienceId) {
-        setSkuPreview(editing.sku || '');
-        return;
-      }
-    }
-    const t = setTimeout(async () => {
-      try {
-        const res = await productApi.skuPreview({ craftIds: craftsKey, audienceId: audId, excludeId: editing?.id });
-        const d = res.data?.data;
-        setSkuPreview(d?.sku || '');
-      } catch { /* 预览失败静默，保存时由后端生成 */ }
-    }, 300);
-    return () => clearTimeout(t);
-  }, [watchedCraftIds, watchedAudienceId, editing]);
 
   const resetStep = () => {
     setStepCrafts([]);
@@ -426,29 +421,7 @@ export default function Products() {
           <Row gutter={[16, 16]}>
             {Array.from({ length: 8 }).map((_, i) => (
               <Col key={i} xs={24} sm={12} md={12} lg={8} xl={6}>
-                <div className="pm-prod-card pm-prod-card--skeleton">
-                  <div className="pm-prod-cover">
-                    <div className="pm-prod-cover-head">
-                      <Skeleton.Avatar active shape="round" size={20} />
-                      <Skeleton.Avatar active shape="round" size={20} />
-                    </div>
-                  </div>
-                  <div className="pm-prod-body">
-                    <Skeleton.Input active size="small" style={{ width: '60%' }} />
-                    <Skeleton.Input active size="small" style={{ width: '80%' }} />
-                    <div className="pm-prod-meta">
-                      {[0, 1, 2].map((k) => (
-                        <div key={k} className="pm-prod-meta__item">
-                          <Skeleton.Input active size="small" style={{ width: '70%' }} />
-                        </div>
-                      ))}
-                    </div>
-                    <div className="pm-prod-foot">
-                      <Skeleton.Input active size="small" style={{ width: '40%' }} />
-                      <Skeleton.Avatar active shape="circle" size={22} />
-                    </div>
-                  </div>
-                </div>
+                <ProductCardSkeleton />
               </Col>
             ))}
           </Row>
@@ -459,84 +432,15 @@ export default function Products() {
             <Row gutter={[16, 16]}>
               {list.map((r) => (
                 <Col key={r.id} xs={24} sm={12} md={12} lg={8} xl={8}>
-                  <div
-                    className="pm-prod-card"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => { setViewing(r); setDetailOpen(true); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewing(r); setDetailOpen(true); } }}
-                  >
-                    {/* 左侧：正方形主图 + 状态/SKU 覆盖 */}
-                    <div className="pm-prod-cover">
-                      {mainImageUrl(r.images) ? (
-                        <img src={mainImageUrl(r.images)} alt="" />
-                      ) : null}
-                      <div className="pm-prod-cover-head">
-                        <span className={`pm-status pm-prod-status ${r.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
-                          {r.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
-                        </span>
-                      </div>
-                      <span className="pm-prod-sku">{r.sku || 'SKU —'}</span>
-                    </div>
-
-                    {/* 右侧：产品信息 */}
-                    <div className="pm-prod-body">
-                      <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
-                        <div className="pm-prod-name" title={r.name} style={{ flex: '1 1 auto', minWidth: 0 }}>{r.name}</div>
-                      </Flex>
-                      <div className="pm-prod-tags">
-                        {r.crafts?.length
-                          ? r.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
-                          : null}
-                        {r.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.audience.name}</span> : null}
-                        {r.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{r.category.name}</span> : null}
-                      </div>
-
-                      <div className="pm-prod-meta">
-                        <div className="pm-prod-meta__item">
-                          <span className="pm-prod-meta__label">尺寸</span>
-                          <span className="pm-prod-meta__value">
-                            {[r.sizeL, r.sizeW, r.sizeH].filter(Boolean).join('×') || '-'}
-                            {([r.sizeL, r.sizeW, r.sizeH].filter(Boolean).length ? ' cm' : '')}
-                          </span>
-                        </div>
-                        <div className="pm-prod-meta__item">
-                          <span className="pm-prod-meta__label">克重</span>
-                          <span className="pm-prod-meta__value">
-                            {r.weight || '-'}{r.weight ? ' g' : ''}
-                          </span>
-                        </div>
-                        <div className="pm-prod-meta__item">
-                          <span className="pm-prod-meta__label">单位</span>
-                          <span className="pm-prod-meta__value">
-                            {r.unit || '-'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="pm-prod-foot">
-                        <div className="pm-prod-modes">
-                          {r.supplyModes
-                            ? r.supplyModes.split(',').map((m: string) => {
-                                const f = SUPPLY_MODES.find((s) => s.value === m);
-                                return f ? <span key={m} className="pm-prod-mode">{f.label}</span> : null;
-                              })
-                            : <span className="pm-prod-mode pm-prod-mode--ghost">未设模式</span>}
-                        </div>
-                        <span className="pm-actions" onClick={(e) => e.stopPropagation()}>
-                          {canDelete ? (
-                            <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
-                              <Button type="text" danger icon={<DeleteOutlined />} />
-                            </Popconfirm>
-                          ) : null}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                  <ProductCard
+                    product={r}
+                    onOpenDetail={openDetail}
+                    onDelete={handleDelete}
+                    canDelete={canDelete}
+                  />
                 </Col>
               ))}
             </Row>
-
             <div className="pm-grid-pager">
               <Pagination
                 {...buildTablePagination({
@@ -555,7 +459,7 @@ export default function Products() {
             page={page}
             pageSize={pageSize}
             onPageChange={(p) => setPage(p)}
-            onView={(r) => { setViewing(r); setDetailOpen(true); }}
+            onView={(r) => openDetail(r)}
             onEdit={openEdit}
             onDelete={handleDelete}
             canDelete={canDelete}
@@ -568,12 +472,12 @@ export default function Products() {
         title={
           <div className="pm-modal-title">
             <span className="pm-modal-title-main">{editing ? '编辑产品' : '新建产品'}</span>
-            <span className={cx('pm-sku-preview pm-sku-head', !skuPreview && 'is-empty')}>
+            <span className="pm-sku-head">
               {(() => {
                 const { phase, label } = getProgressPhase(editing?.progress ?? null);
                 return <Tag color={STATUS_TAG_COLOR[phase]} className="pm-sku-status">{label}</Tag>;
               })()}
-              {skuPreview ? <span>{skuPreview}</span> : 'SKU 待生成'}
+              <span className="pm-sku-preview">{editing?.id || '新建后生成'}</span>
             </span>
             {(() => {
               const cNames = (watchedCraftIds ?? [])
@@ -679,8 +583,7 @@ export default function Products() {
                   </Button>
                 </div>
 
-                {/* 工艺/受众/品类已移至第一步选择，此处保留隐藏 Form.Item 以维持字段注册，
-                   使 SKU 预览的 useWatch 能随 setFieldsValue 实时更新 */}
+                {/* 工艺/受众/品类已移至第一步选择，此处保留隐藏 Form.Item 以维持字段注册 */}
                 <Form.Item name="craftIds" hidden><Input /></Form.Item>
                 <Form.Item name="audienceId" hidden><Input /></Form.Item>
                 <Form.Item name="categoryId" hidden><Input /></Form.Item>
@@ -886,80 +789,186 @@ export default function Products() {
 
       {/* 详情弹窗 */}
       <Modal
-        title={`产品详情 - ${viewing?.name || ''}`}
         open={detailOpen}
         onCancel={() => setDetailOpen(false)}
-        footer={[
-          <Button key="close" onClick={() => setDetailOpen(false)}>关闭</Button>,
-          <Button key="edit" type="primary" icon={<EditOutlined />}
-            onClick={() => { setDetailOpen(false); openEdit(viewing!); }}>编辑</Button>,
-        ]}
-        width={800}
+        footer={null}
+        width={920}
         destroyOnHidden
+        styles={{ body: { padding: 0 } }}
       >
         {viewing && (
           <div className="pm-detail">
-            <Row gutter={24}>
-              <Col span={12}>
-                <div className="pm-detail-section">
-                  <h4>产品属性</h4>
-                  {parseImages(viewing.images).length > 0 && (
-                    <div className="pm-detail-images">
-                      {parseImages(viewing.images).map((img, i) => (
-                        <div key={i} className="pm-detail-img-item">
-                          <img src={img.url} alt={img.name} />
-                          <span>{img.name}{i === 0 ? '（主图）' : ''}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  <p><Text type="secondary">尺寸：</Text>{[viewing.sizeL, viewing.sizeW, viewing.sizeH].filter(Boolean).join(' × ') || '-'}</p>
-                  <p><Text type="secondary">克重：</Text>{viewing.weight || '-'} g</p>
-                  <p><Text type="secondary">单位：</Text>{viewing.unit || '-'}</p>
+            {/* 左侧：彩色信息栏 */}
+            <div className="pm-detail-aside">
+              {mainImageUrl(viewing.images) ? (
+                <img
+                  className="pm-detail-aside__avatar"
+                  src={mainImageUrl(viewing.images)}
+                  alt={viewing.name}
+                />
+              ) : (
+                <div className="pm-detail-aside__avatar-fallback">
+                  {(viewing.name || '·').slice(0, 1).toUpperCase()}
                 </div>
-              </Col>
-            </Row>
-            <Divider />
-            <Row gutter={16}>
-              <Col span={8}><Text type="secondary">工艺：</Text>{viewing.crafts?.length ? viewing.crafts.map((c) => c.name).join(' + ') : '-'}</Col>
-              <Col span={8}><Text type="secondary">受众：</Text>{viewing.audience?.name || '-'}</Col>
-              <Col span={8}><Text type="secondary">品类：</Text>{viewing.category?.name || '-'}</Col>
-            </Row>
-            <p style={{ marginTop: 8 }}>
-              <Text type="secondary">供货模式：</Text>
-              {viewing.supplyModes
-                ? viewing.supplyModes.split(',').map((m) => {
-                    const f = SUPPLY_MODES.find((s) => s.value === m);
-                    return f ? <Tag key={m}>{f.label}</Tag> : null;
-                  })
-                : '-'}
-            </p>
-
-            {/* 操作记录时间线 */}
-            <Divider style={{ margin: '16px 0 12px' }} />
-            <div className="pm-activity">
-              <div className="pm-activity__title">
-                <ClockCircleOutlined /> 操作记录
-              </div>
-              {(!viewing.activities || viewing.activities.length === 0) && (
-                <p className="pm-activity__empty">暂无操作记录</p>
               )}
-              <ul className="pm-activity__list">
-                {(viewing.activities || []).map((act: ProductActivity) => (
-                  <li key={act.id} className="pm-activity__item">
-                    <span className={`pm-activity__badge pm-activity__badge--${act.action.toLowerCase()}`}>
-                      {act.action === 'CREATE' ? '创建' : act.action === 'UPDATE' ? '更新' : act.action === 'DELETE' ? '删除' : act.action}
-                    </span>
-                    <span className="pm-activity__meta">
-                      {act.operator ? `${act.operator} · ` : ''}
-                      {act.createdAt ? dayjs(act.createdAt).format('YYYY-MM-DD HH:mm') : ''}
-                    </span>
-                    {act.detail && (
-                      <span className="pm-activity__detail">{act.detail}</span>
+              <h3 className="pm-detail-aside__name">{viewing.name}</h3>
+              <Text className="pm-detail-aside__sku">SKU: {viewing.sku || '\u2014'}</Text>
+
+              <div className="pm-detail-aside__tags">
+                {viewing.crafts?.length ? viewing.crafts.map((c) => (
+                  <Tag key={c.id} className="pm-detail-aside__tag">{c.name}</Tag>
+                )) : <span className="pm-detail-aside__muted">无工艺</span>}
+              </div>
+
+              <div className="pm-detail-aside__rows">
+                <div className="pm-detail-aside__row">
+                  <span className="pm-detail-aside__label">受众</span>
+                  <span>{viewing.audience?.name || '\u2014'}</span>
+                </div>
+                <div className="pm-detail-aside__row">
+                  <span className="pm-detail-aside__label">品类</span>
+                  <span>{viewing.category?.name || '\u2014'}</span>
+                </div>
+                <div className="pm-detail-aside__row">
+                  <span className="pm-detail-aside__label">供货模式</span>
+                  <span>
+                    {viewing.supplyModes
+                      ? viewing.supplyModes.split(',').map((m) => {
+                          const f = SUPPLY_MODES.find((s) => s.value === m);
+                          return f ? <span key={m} className="pm-detail-aside__chip">{f.label}</span> : null;
+                        })
+                      : '\u2014'}
+                  </span>
+                </div>
+                <div className="pm-detail-aside__row">
+                  <span className="pm-detail-aside__label">可见性</span>
+                  <span>{viewing.visibility === 'PRIVATE' ? '私密' : '公开'}</span>
+                </div>
+              </div>
+
+              <div className="pm-detail-aside__actions">
+                <Button type="primary" icon={<EditOutlined />} block
+                  onClick={() => { setDetailOpen(false); openEdit(viewing); }}>编辑资料</Button>
+                <Button icon={<CloseOutlined />} block style={{ marginTop: 8 }}
+                  onClick={() => setDetailOpen(false)}>关闭</Button>
+              </div>
+            </div>
+
+            {/* 右侧：Tab 内容区 */}
+            <div className="pm-detail-main">
+              <SegmentedTabBar
+                value={detailTab}
+                onChange={(k) => setDetailTab(k as 'overview' | 'sales' | 'activity')}
+                options={[
+                  { key: 'overview', label: '概览' },
+                  { key: 'sales', label: '销售记录', count: salesList.length },
+                  { key: 'activity', label: '操作记录', count: viewing.activities?.length || 0 },
+                ]}
+              />
+              <div className="pm-detail-content">
+                {detailTab === 'overview' && (
+                  <div className="pm-detail-section">
+                    {parseImages(viewing.images).length > 0 && (
+                      <div className="pm-detail-images">
+                        {parseImages(viewing.images).map((img, i) => (
+                          <div key={i} className="pm-detail-img-item">
+                            <img src={img.url} alt={img.name} />
+                            <span>{img.name}{i === 0 ? '（主图）' : ''}</span>
+                          </div>
+                        ))}
+                      </div>
                     )}
-                  </li>
-                ))}
-              </ul>
+
+                    <div className="pm-detail-group">
+                      <h4 className="pm-detail-h4"><TagsOutlined /> 产品属性</h4>
+                      <div className="pm-detail-props">
+                        <div><span className="pm-detail-props__label">尺寸</span><b>{[viewing.sizeL, viewing.sizeW, viewing.sizeH].filter(Boolean).join(' × ') || '\u2014'}</b></div>
+                        <div><span className="pm-detail-props__label">克重</span><b>{viewing.weight || '\u2014'} g</b></div>
+                        <div><span className="pm-detail-props__label">单位</span><b>{viewing.unit || '\u2014'}</b></div>
+                      </div>
+                    </div>
+
+                    <div className="pm-detail-group">
+                      <h4 className="pm-detail-h4"><FileTextOutlined /> 产品要求</h4>
+                      <div className="pm-detail-props">
+                        <div><span className="pm-detail-props__label">LOGO 定制</span><b>{viewing.hasLogo ? '是' : '否'}</b></div>
+                        <div><span className="pm-detail-props__label">发声</span><b>{viewing.hasSound ? '是' : '否'}</b></div>
+                        <div><span className="pm-detail-props__label">发光</span><b>{viewing.hasLight ? '是' : '否'}</b></div>
+                        <div><span className="pm-detail-props__label">变色</span><b>{viewing.hasColorChange ? '是' : '否'}</b></div>
+                        <div><span className="pm-detail-props__label">喷水</span><b>{viewing.hasWater ? '是' : '否'}</b></div>
+                        <div><span className="pm-detail-props__label">潘通色号</span><b>{viewing.pantoneNo || '\u2014'}</b></div>
+                        <div><span className="pm-detail-props__label">包装方式</span><b>{viewing.packageType || '\u2014'}</b></div>
+                        <div><span className="pm-detail-props__label">打样单号</span><b>{viewing.sampleNo || '\u2014'}</b></div>
+                      </div>
+                    </div>
+
+                    {(viewing.remark || viewing.desc) && (
+                      <div className="pm-detail-group">
+                        <h4 className="pm-detail-h4">备注 / 描述</h4>
+                        <p className="pm-detail-remark">{viewing.remark || viewing.desc || '无'}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {detailTab === 'sales' && (
+                  <div className="pm-detail-section">
+                    {salesLoading ? (
+                      <div className="pm-detail-empty">加载中…</div>
+                    ) : salesList.length === 0 ? (
+                      <div className="pm-detail-empty">暂无销售记录</div>
+                    ) : (
+                      <ul className="pm-sales-list">
+                        {salesList.map((s) => (
+                          <li key={s.id} className="pm-sales-item">
+                            <div className="pm-sales-item__head">
+                              <span className="pm-sales-item__company">{s.companyName || s.title}</span>
+                              <Tag color={STAGE_META[s.stage]?.color || 'default'}>
+                                {STAGE_META[s.stage]?.label || s.stage}
+                              </Tag>
+                            </div>
+                            <div className="pm-sales-item__meta">
+                              <span>商机号：<b>{s.pipelineNumber}</b></span>
+                              <span>数量：<b>{(s as any).quantity ?? '\u2014'}</b></span>
+                              <span>负责人：<b>{s.assignee?.realName || s.assignee?.username || '\u2014'}</b></span>
+                              <span>更新：<b>{s.updateTime ? dayjs(s.updateTime).format('YYYY-MM-DD') : '\u2014'}</b></span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+
+                {detailTab === 'activity' && (
+                  <div className="pm-detail-section">
+                    <div className="pm-activity">
+                      <div className="pm-activity__title">
+                        <ClockCircleOutlined /> 操作记录
+                      </div>
+                      {(!viewing.activities || viewing.activities.length === 0) && (
+                        <p className="pm-activity__empty">暂无操作记录</p>
+                      )}
+                      <ul className="pm-activity__list">
+                        {(viewing.activities || []).map((act: ProductActivity) => (
+                          <li key={act.id} className="pm-activity__item">
+                            <span className={`pm-activity__badge pm-activity__badge--${act.action.toLowerCase()}`}>
+                              {act.action === 'CREATE' ? '创建' : act.action === 'UPDATE' ? '更新' : act.action === 'DELETE' ? '删除' : act.action}
+                            </span>
+                            <span className="pm-activity__meta">
+                              {act.operator ? `${act.operator} · ` : ''}
+                              {act.createdAt ? dayjs(act.createdAt).format('YYYY-MM-DD HH:mm') : ''}
+                            </span>
+                            {act.detail && (
+                              <span className="pm-activity__detail">{act.detail}</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
