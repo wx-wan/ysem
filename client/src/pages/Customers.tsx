@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  App, Spin, theme, Row, Col, Pagination, Modal, Radio,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty, Button,
 } from 'antd';
+import { InboxOutlined } from '@ant-design/icons';
 import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { salesApi, SalesItem } from '../api/sales';
@@ -17,7 +18,6 @@ import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
 import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
 import ResponsiveCardGrid from '../components/common/page/ResponsiveCardGrid';
-import EmptyState from '../components/common/page/EmptyState';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
@@ -527,7 +527,22 @@ export default function CustomersPage() {
       {/* 内容区 */}
       <Spin spinning={loading}>
         {viewMode === 'card' ? renderCardView : renderListView}
-        {list.length === 0 && !loading && <EmptyState title="暂无客户数据" />}
+        {list.length === 0 && !loading && (
+          <Empty
+            image={
+              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <InboxOutlined style={{ fontSize: 120, color: 'rgba(0,0,0,0.25)' }} />
+              </div>
+            }
+            styles={{ image: { height: 120 } }}
+            description="暂无客户数据"
+            style={{ padding: '64px 0' }}
+          >
+            <Button type="primary" onClick={openCreate}>
+              新建客户
+            </Button>
+          </Empty>
+        )}
       </Spin>
 
       {/* 分页 */}

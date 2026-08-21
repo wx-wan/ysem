@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Input, DatePicker, App, theme } from 'antd';
-import { CloseOutlined, SaveOutlined } from '@ant-design/icons';
+import { Input, DatePicker, App, theme, Form } from 'antd';
+import { CloseOutlined, SaveOutlined, MailOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
@@ -14,17 +14,6 @@ interface CustomerEditDrawerProps {
   customer: Customer | null;
   onClose: () => void;
   onSaved?: (customer: Customer) => void;
-}
-
-/** 表单字段标签样式；仅 required 为 true 时显示红色星号 */
-function FieldLabel({ children, required }: { children: React.ReactNode; required?: boolean }) {
-  const { token } = theme.useToken();
-  return (
-    <span style={{ fontSize: 13, color: token.colorTextSecondary, marginBottom: 6, display: 'block', lineHeight: 1.5 }}>
-      {children}
-      {required && <span style={{ color: '#ff4d4f', marginLeft: 2 }}>*</span>}
-    </span>
-  );
 }
 
 /** 表单行：两列布局 */
@@ -42,18 +31,16 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
   const { token } = theme.useToken();
   const ds = useDs();
   const { message: msg } = App.useApp();
-
-  // 表单状态
-  const [form, setForm] = useState<Partial<Customer>>({});
+  const [antForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
 
   // 内容容器 ref，用于让 antd 浮层挂载在抽屉内、避免被层级遮挡
   const contentRef = React.useRef<HTMLDivElement>(null);
 
-  // 打开时初始化表单
+  // 打开时填充表单（antd Form 托管所有字段）
   useEffect(() => {
     if (open && customer) {
-      setForm({
+      antForm.setFieldsValue({
         companyName: customer.companyName,
         contactName: customer.contactName,
         englishName: customer.englishName,
@@ -65,27 +52,22 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         region: customer.region,
         notes: customer.notes,
         tags: customer.tags || '',
-        firstOrderDate: customer.firstOrderDate,
+        firstOrderDate: customer.firstOrderDate ? dayjs(customer.firstOrderDate) : undefined,
       });
     }
-  }, [open, customer]);
+  }, [open, customer, antForm]);
 
-  /** 更新单个字段 */
-  const updateField = <K extends keyof Partial<Customer>>(field: K, value: Customer[K]) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  /** 保存 */
+  /** 保存：先走 antd 校验，再提交 */
   const handleSave = async () => {
     if (!customer) return;
-    if (!form.contactName?.trim()) {
-      msg.warning('请输入姓名');
-      return;
-    }
-
-    setSaving(true);
     try {
-      const { data } = await customerApi.update(customer.id, form);
+      const values = await antForm.validateFields();
+      const payload: Record<string, any> = { ...customer, ...values };
+      if (payload.firstOrderDate && dayjs.isDayjs(payload.firstOrderDate)) {
+        payload.firstOrderDate = payload.firstOrderDate.format('YYYY-MM-DD');
+      }
+      setSaving(true);
+      const { data } = await customerApi.update(customer.id, payload);
       // update 不返回 pipelines，重新拉取完整数据
       const detail = await customerApi.getById(customer.id);
       const updated = detail.data?.data ?? data.data;
@@ -93,6 +75,10 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
       onSaved?.(updated);
       onClose();
     } catch (e: any) {
+      if (e?.errorFields) {
+        // antd 校验失败，错误已显示在字段下方
+        return;
+      }
       const errMsg = e?.response?.data?.message || e?.message || '保存失败，请重试';
       msg.error(errMsg);
     } finally {
@@ -167,127 +153,72 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
           </button>
         </div>
 
-        {/* 表单内容区（可滚动） */}
+        {/* 表单内容区（可滚动，真实 DOM 容器给 popup 挂载） */}
         <div ref={contentRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-          {/* 姓名/联系人 — 唯一必填项 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel required>姓名</FieldLabel>
-            <Input
-              size="large"
-              placeholder="请输入联系人姓名"
-              value={form.contactName ?? ''}
-              onChange={(e) => updateField('contactName', e.target.value)}
-              style={{ borderRadius: ds.radius }}
-            />
-          </div>
+          <Form
+            form={antForm}
+            component="div"
+            layout="vertical"
+            style={{ width: '100%' }}
+          >
+            <Form.Item key="company" name="companyName" label="公司" rules={[{ required: true, message: '请输入公司' }]}>
+              <Input size="large" placeholder="请输入公司名称" style={{ borderRadius: ds.radius }} />
+            </Form.Item>
 
-          {/* 公司 + 职位 */}
-          <FormRow>
-            <div style={{ marginBottom: 16 }}>
-              <FieldLabel>公司</FieldLabel>
+            <FormRow>
+              <Form.Item key="contact" name="contactName" label="联系人">
+                <Input size="large" placeholder="请输入联系人姓名" style={{ borderRadius: ds.radius }} />
+              </Form.Item>
+              <Form.Item key="position" name="position" label="职位">
+                <Input size="large" placeholder="请输入职位" style={{ borderRadius: ds.radius }} />
+              </Form.Item>
+            </FormRow>
+
+            <Form.Item name="country" label="所在地区">
+              <CountrySelect placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
+            </Form.Item>
+
+            <Form.Item name="email" label="邮箱">
               <Input
                 size="large"
-                placeholder="请输入公司名称"
-                value={form.companyName ?? ''}
-                onChange={(e) => updateField('companyName', e.target.value)}
+                placeholder="请输入邮箱地址"
+                prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
                 style={{ borderRadius: ds.radius }}
               />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <FieldLabel>职位</FieldLabel>
-              <Input
+            </Form.Item>
+
+            <FormRow>
+              <Form.Item key="phone" name="phone" label="电话">
+                <Input size="large" placeholder="请输入联系电话" style={{ borderRadius: ds.radius }} />
+              </Form.Item>
+              <Form.Item key="wechat" name="wechat" label="微信">
+                <Input size="large" placeholder="请输入微信号" style={{ borderRadius: ds.radius }} />
+              </Form.Item>
+            </FormRow>
+
+            <Form.Item name="firstOrderDate" label="首次合作日期">
+              <DatePicker
                 size="large"
-                placeholder="请输入职位"
-                value={form.position ?? ''}
-                onChange={(e) => updateField('position', e.target.value)}
-                style={{ borderRadius: ds.radius }}
+                style={{ width: '100%', borderRadius: ds.radius, fontSize: 16 }}
+                placeholder="请选择首次合作日期"
+                getPopupContainer={createPopupContainer(contentRef)}
               />
-            </div>
-          </FormRow>
+            </Form.Item>
 
-          {/* 所在地区 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel>所在地区</FieldLabel>
-            <CountrySelect
-              value={(form.country as string) || undefined}
-              onChange={(v) => updateField('country', v as string)}
-              placeholder="请选择国家/地区"
-              style={{ borderRadius: ds.radius }}
-              getPopupContainer={createPopupContainer(contentRef)}
-            />
-          </div>
+            <Form.Item name="notes" label="备注">
+              <TextArea size="large" rows={3} placeholder="请输入备注信息" style={{ borderRadius: 8, fontSize: 16 }} />
+            </Form.Item>
 
-          {/* 联系方式 — 邮箱 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel>联系方式</FieldLabel>
-            <Input
-              size="large"
-              placeholder="请输入邮箱地址"
-              value={form.email ?? ''}
-              onChange={(e) => updateField('email', e.target.value)}
-              prefix={<span style={{ color: token.colorTextTertiary, marginRight: 6 }}>✉</span>}
-              style={{ borderRadius: ds.radius }}
-            />
-          </div>
-
-          {/* 电话 + 微信 */}
-          <FormRow>
-            <div style={{ marginBottom: 16 }}>
-              <FieldLabel>电话</FieldLabel>
-              <Input
-                size="large"
-                placeholder="请输入联系电话"
-                value={form.phone ?? ''}
-                onChange={(e) => updateField('phone', e.target.value)}
-                style={{ borderRadius: ds.radius }}
-              />
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <FieldLabel>微信</FieldLabel>
-              <Input
-                size="large"
-                placeholder="请输入微信号"
-                value={form.wechat ?? ''}
-                onChange={(e) => updateField('wechat', e.target.value)}
-                style={{ borderRadius: ds.radius }}
-              />
-            </div>
-          </FormRow>
-
-          {/* 首次合作日期 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel>首次合作日期</FieldLabel>
-            <DatePicker
-              size="large"
-              style={{ width: '100%', borderRadius: ds.radius }}
-              placeholder="请选择首次合作日期"
-              value={form.firstOrderDate ? dayjs(form.firstOrderDate) : null}
-              onChange={(date) => updateField('firstOrderDate', date ? date.format('YYYY-MM-DD') : undefined)}
-              getPopupContainer={createPopupContainer(contentRef)}
-            />
-          </div>
-
-          {/* 备注 */}
-          <div style={{ marginBottom: 16 }}>
-            <FieldLabel>备注</FieldLabel>
-            <TextArea
-              rows={3}
-              placeholder="请输入备注信息"
-              value={form.notes ?? ''}
-              onChange={(e) => updateField('notes', e.target.value)}
-              style={{ borderRadius: 8, fontSize: 14 }}
-            />
-          </div>
-
-          {/* 历史备注（只读展示） */}
-          {customer.notes && (
-            <div style={{ marginTop: 8, padding: 12, background: token.colorFillQuaternary, borderRadius: 8 }}>
-              <span style={{ fontSize: 12, color: token.colorTextTertiary, display: 'block', marginBottom: 6 }}>历史备注</span>
-              <p style={{ margin: 0, fontSize: 13, color: token.colorTextHeading, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                {customer.notes}
-              </p>
-            </div>
-          )}
+            {/* 历史备注（只读展示） */}
+            {customer.notes && (
+              <div style={{ marginTop: 8, padding: 12, background: token.colorFillQuaternary, borderRadius: 8 }}>
+                <span style={{ fontSize: 14, color: token.colorTextTertiary, display: 'block', marginBottom: 6 }}>历史备注</span>
+                <p style={{ margin: 0, fontSize: 14, color: token.colorTextHeading, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
+                  {customer.notes}
+                </p>
+              </div>
+            )}
+          </Form>
         </div>
 
         {/* 底部操作栏 */}

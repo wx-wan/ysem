@@ -519,43 +519,45 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 </h2>
 
                 {/* 国家（与卡片视图一致：旗帜 + 名称·缩写）+ 右：编辑/删除 左右分布 */}
-                {customer.country && (
-                  <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <span style={{ fontSize: 13, color: headerTextSub, letterSpacing: '0.01em' }}>
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <span style={{ fontSize: 13, color: headerTextSub, letterSpacing: '0.01em' }}>
+                    {customer.country ? (
                       <CountrySelect readOnly value={customer.country} style={{ color: 'inherit' }} />
-                    </span>
-                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                      <button
-                        type="button"
-                        title="编辑"
-                        onClick={() => setEditDrawerOpen(true)}
-                        style={panelBtnStyle}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.34)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
-                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
-                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                        onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
-                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                      >
-                        <EditOutlined />
-                      </button>
-                      <button
-                        type="button"
-                        title="删除"
-                        onClick={handleDelete}
-                        style={panelBtnStyle}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,99,102,0.9)'; e.currentTarget.style.borderColor = 'rgba(255,99,102,0.9)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
-                        onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
-                        onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                        onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,99,102,0.45)'; }}
-                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                      >
-                        <DeleteOutlined />
-                      </button>
-                    </div>
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>未填写国家</span>
+                    )}
+                  </span>
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      title="编辑"
+                      onClick={() => setEditDrawerOpen(true)}
+                      style={panelBtnStyle}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.34)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
+                      onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <EditOutlined />
+                    </button>
+                    <button
+                      type="button"
+                      title="删除"
+                      onClick={handleDelete}
+                      style={panelBtnStyle}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,99,102,0.9)'; e.currentTarget.style.borderColor = 'rgba(255,99,102,0.9)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)'; }}
+                      onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
+                      onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                      onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,99,102,0.45)'; }}
+                      onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+                    >
+                      <DeleteOutlined />
+                    </button>
                   </div>
-                )}
+                </div>
 
                 {/* 联系人信息：联系人 / 职位 / 邮箱 / 电话 / 微信（带 icon） */}
                 <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.16)', display: 'flex', flexDirection: 'column', gap: 9 }}>
