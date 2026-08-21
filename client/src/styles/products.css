@@ -552,50 +552,19 @@
   border-top: 1px dashed var(--c-border-secondary, #e2e8f0);
 }
 
-/* 品类左侧只读供货模式（前端不再选择，由后续逻辑决定） */
-.pm-supply-readonly {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm, 8px);
-  background: var(--c-fill-tertiary, #f1f5f9);
-}
-.pm-supply-readonly__label {
-  font-size: 12px;
-  color: var(--c-text-tertiary, #64748b);
-}
-.pm-supply-readonly__value {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--c-primary, #1677ff);
-}
 .pm-step-flow .pm-form-row:last-child {
   margin-bottom: 0;
 }
 
-/* SKU 自动生成预览条 */
+/* SKU 自动生成预览：纯文本展示，避免像可编辑输入框 */
 .pm-sku-preview {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid var(--c-border-secondary, #e2e8f0);
-  border-radius: 8px;
-  background: var(--c-bg-subtle, #f8fafc);
-  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
   font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.2px;
   color: var(--c-text-secondary, #64748b);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .pm-sku-preview.is-empty {
-  font-family: inherit;
   font-weight: 400;
   font-size: 13px;
   color: var(--c-text-tertiary, #94a3b8);

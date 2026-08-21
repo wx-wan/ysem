@@ -35,9 +35,6 @@ const { Text } = Typography;
 // 类名拼接工具
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
-// 供货模式选项（共享配置）
-import { SUPPLY_MODES } from '../config/product';
-
 // 供货模式按角色可选范围：admin 全选 / purchaser 含深度定制+轻定制+现货 / 其他（业务等）默认深度定制、不可修改
 const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
   admin: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
@@ -170,9 +167,32 @@ export default function Products() {
   const draftRef = useRef<{ values: Record<string, unknown>; editing: Product | null } | null>(null);
   const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
 
+  // SKU 自动预览：按「工艺-受众-序号」实时请求后端生成，无需人工录入
+  const [skuPreview, setSkuPreview] = useState<string>('');
   const watchedCraftIds = Form.useWatch('craftIds', form);
   const watchedAudienceId = Form.useWatch('audienceId', form);
   const watchedCategoryId = Form.useWatch('categoryId', form);
+  useEffect(() => {
+    const craftsKey = (watchedCraftIds ?? []).map(String).sort().join(',');
+    const audId = watchedAudienceId as string | undefined;
+    if (!craftsKey || !audId) { setSkuPreview(''); return; }
+    // 编辑模式且工艺/受众未变化：保留原 SKU，不重新请求（避免序号 +1）
+    if (editing) {
+      const origCraftsKey = (editing.crafts ?? []).map((c) => c.id).sort().join(',');
+      if (craftsKey === origCraftsKey && audId === editing.audienceId) {
+        setSkuPreview(editing.sku || '');
+        return;
+      }
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await productApi.skuPreview({ craftIds: craftsKey, audienceId: audId, excludeId: editing?.id });
+        const d = res.data?.data;
+        setSkuPreview(d?.sku || '');
+      } catch { /* 预览失败静默，保存时由后端生成 */ }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [watchedCraftIds, watchedAudienceId, editing]);
 
   const resetStep = () => {
     setStepCrafts([]);
@@ -477,7 +497,9 @@ export default function Products() {
                 const { phase, label } = getProgressPhase(editing?.progress ?? null);
                 return <Tag color={STATUS_TAG_COLOR[phase]} className="pm-sku-status">{label}</Tag>;
               })()}
-              <span className="pm-sku-preview">{editing?.id || '新建后生成'}</span>
+              <span className={cx('pm-sku-preview', !skuPreview && 'is-empty')}>
+                {skuPreview ? skuPreview : 'SKU 待生成'}
+              </span>
             </span>
             {(() => {
               const cNames = (watchedCraftIds ?? [])
@@ -745,13 +767,6 @@ export default function Products() {
           {/* 品类：选完受众后出现 */}
           {selectedAudienceId && (
             <>
-              {/* 供货模式：由后续逻辑决定，前端只读展示在品类左侧上方 */}
-              <div className="pm-supply-readonly">
-                <span className="pm-supply-readonly__label">供货模式</span>
-                <span className="pm-supply-readonly__value">
-                  {SUPPLY_MODES.find((s) => s.value === allowedSupplyModes[0])?.label || allowedSupplyModes[0]}
-                </span>
-              </div>
               <Form.Item
                 label="品类"
                 required
@@ -828,17 +843,6 @@ export default function Products() {
                 <div className="pm-detail-aside__row">
                   <span className="pm-detail-aside__label">品类</span>
                   <span>{viewing.category?.name || '\u2014'}</span>
-                </div>
-                <div className="pm-detail-aside__row">
-                  <span className="pm-detail-aside__label">供货模式</span>
-                  <span>
-                    {viewing.supplyModes
-                      ? viewing.supplyModes.split(',').map((m) => {
-                          const f = SUPPLY_MODES.find((s) => s.value === m);
-                          return f ? <span key={m} className="pm-detail-aside__chip">{f.label}</span> : null;
-                        })
-                      : '\u2014'}
-                  </span>
                 </div>
                 <div className="pm-detail-aside__row">
                   <span className="pm-detail-aside__label">可见性</span>
