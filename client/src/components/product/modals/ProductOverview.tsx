@@ -93,8 +93,8 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
 
   const metrics = [
     {
-      icon: <ShoppingCartOutlined />, label: '累计订单金额', value: <Price value={stats.totalAmount} />,
-      sub: '已成交订单合计', color: '#1677ff',
+      icon: <ShoppingCartOutlined />, label: '累积成交金额', value: <Price value={stats.totalAmount} />,
+      sub: '单产品历史成交金额', color: '#1677ff',
     },
     {
       icon: <DollarOutlined />, label: '本年销量', value: <Price value={stats.thisYearAmount} />,

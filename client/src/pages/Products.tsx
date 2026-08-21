@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button, Space, Input, Modal, Form, Select, Radio,
@@ -57,6 +58,7 @@ export default function Products() {
 
   // 筛选
   const [keyword, setKeyword] = useState('');
+  const navigate = useNavigate();
   const [filterCraftId, setFilterCraftId] = useState<string | undefined>();
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
   const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
@@ -106,6 +108,17 @@ export default function Products() {
   };
   const closeEdit = () => { popLayer('edit'); setOpen(false); };
   const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
+
+  // 基于此产品创建报价（销售线索）
+  const handleCreateQuote = (record: Product) => {
+    closeDetail();
+    navigate(`/sales?productId=${record.id}`);
+  };
+  // 基于此产品申请打样（打样订单）
+  const handleApplySample = (record: Product) => {
+    closeDetail();
+    navigate(`/sales/orders?productId=${record.id}&orderType=SAMPLE`);
+  };
 
   // 打开产品详情：重置 Tab 并加载销售记录
   const openDetail = (r: Product) => {
@@ -871,6 +884,8 @@ export default function Products() {
         open={detailOpen}
         onClose={closeDetail}
         onEdit={openEdit}
+        onCreateQuote={handleCreateQuote}
+        onApplySample={handleApplySample}
         onDelete={() => {
           if (viewing) {
             closeDetail();

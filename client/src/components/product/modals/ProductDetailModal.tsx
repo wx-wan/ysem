@@ -24,6 +24,8 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onEdit: (product: Product) => void;
   onDelete: () => void;
+  onCreateQuote?: (product: Product) => void;
+  onApplySample?: (product: Product) => void;
   canDelete?: boolean;
   salesList: SalesItem[];
   salesLoading: boolean;
@@ -32,7 +34,7 @@ interface ProductDetailModalProps {
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
-  product, open, onClose, onEdit, onDelete, canDelete = true,
+  product, open, onClose, onEdit, onDelete, onCreateQuote, onApplySample, canDelete = true,
   salesList, salesLoading, activities, userMap,
 }) => {
   const { token } = theme.useToken();
@@ -126,8 +128,25 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     outline: 'none',
   });
 
+  const textBtnStyle: React.CSSProperties = {
+    flex: 1,
+    height: 36,
+    borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.45)',
+    background: 'rgba(255,255,255,0.16)',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: 13,
+    fontWeight: 600,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    transition: 'all 0.18s ease',
+    outline: 'none',
+  };
+
   const renderSales = () => {
-    if (salesLoading) {
       return <div className="pdm-empty-state">加载中…</div>;
     }
     if (!salesList.length) {
@@ -288,6 +307,36 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </button>
                 </Popconfirm>
               )}
+            </div>
+
+            {/* 业务操作：创建报价 / 申请打样 */}
+            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => onCreateQuote?.(product)}
+                style={textBtnStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
+                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+              >
+                <FileTextOutlined /> 基于此产品创建报价
+              </button>
+              <button
+                type="button"
+                onClick={() => onApplySample?.(product)}
+                style={textBtnStyle}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
+                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)'; }}
+                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
+                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+              >
+                <HomeOutlined /> 申请打样
+              </button>
             </div>
 
             {/* 产品名 */}
