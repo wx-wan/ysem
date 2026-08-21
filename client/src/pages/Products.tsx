@@ -1,14 +1,14 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Button, Space, Input, Modal, Form, Select, Radio,
-  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Skeleton, Flex,
+  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Spin,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
   CloseOutlined, ClockCircleOutlined, ShoppingOutlined,
-  FileTextOutlined, TagsOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
@@ -23,12 +23,15 @@ import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/Product
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
 import { useCardGutter } from '../components/common/tokens';
-import { parseImages, mainImageUrl } from '../utils/productImages';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
-import ProductCard, { ProductCardSkeleton } from '../components/product/cards/ProductCard';
-import SegmentedTabBar from '../components/common/SegmentedTabBar';
+import ProductCard from '../components/product/cards/ProductCard';
 import { useAuthStore } from '../stores/useAuthStore';
+import ProductDetailModal from '../components/product/modals/ProductDetailModal';
+import {
+  listCacheKey, getListCache, setListCache,
+  setDetailCache, installCacheLifecycle, invalidateAll,
+} from '../utils/productCache';
 
 const { Text } = Typography;
 
@@ -60,6 +63,10 @@ export default function Products() {
 
   // 用户列表（用于「不公开」产品指定可见人）
   const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
+  const userMap = useMemo(
+    () => Object.fromEntries(users.map((u) => [u.id, u])),
+    [users],
+  );
 
   // 分类下拉数据
   const [crafts, setCrafts] = useState<ProductCraft[]>([]);
@@ -72,7 +79,6 @@ export default function Products() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
-  const [detailTab, setDetailTab] = useState<'overview' | 'sales' | 'activity'>('overview');
   const [salesList, setSalesList] = useState<SalesItem[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [form] = Form.useForm();
@@ -82,16 +88,31 @@ export default function Products() {
   const [certificates, setCertificates] = useState<Certificate[]>([]);
 
   // 当前用户角色 → 供货模式可选范围（admin 全选 / purchaser 轻定制+现货 / 其他默认深度定制）
-  const roleCode = useAuthStore((s) => s.user?.role?.code ?? '');
+  const { user: currentUser } = useAuthStore();
+  const roleCode = currentUser?.role?.code ?? '';
   const canDelete = roleCode === 'admin' || roleCode === 'ADMIN';
   const allowedSupplyModes = SUPPLY_MODES_BY_ROLE[roleCode] ?? [DEFAULT_SUPPLY_MODE];
   const supplyModesReadOnly = allowedSupplyModes.length <= 1; // 仅一个可用项（业务等）→ 不可修改
 
+  // 弹窗层级栈：detail → edit → step。用于判断「整组弹窗都关完」时才回源刷新列表。
+  const modalStack = useRef<('detail' | 'edit' | 'step')[]>([]);
+  const pushLayer = (layer: 'detail' | 'edit' | 'step') => {
+    if (!modalStack.current.includes(layer)) modalStack.current.push(layer);
+  };
+  // 关闭某一层：先出栈，若栈变空（最底层详情关闭 / 从最上层一路关到底）则刷新列表
+  const popLayer = (layer: 'detail' | 'edit' | 'step') => {
+    modalStack.current = modalStack.current.filter((l) => l !== layer);
+    if (modalStack.current.length === 0) fetchList();
+  };
+  const closeEdit = () => { popLayer('edit'); setOpen(false); };
+  const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
+
   // 打开产品详情：重置 Tab 并加载销售记录
   const openDetail = (r: Product) => {
     setViewing(r);
-    setDetailTab('overview');
+    pushLayer('detail');
     setDetailOpen(true);
+    loadUsers();
     setSalesLoading(true);
     salesApi.listByProduct(r.id)
       .then((res) => {
@@ -102,22 +123,44 @@ export default function Products() {
       .finally(() => setSalesLoading(false));
   };
 
-  const fetchList = async () => {
+  const fetchList = useCallback(async () => {
+    const query = {
+      page, pageSize, keyword: keyword || undefined,
+      craftIds: filterCraftId,
+      audienceId: filterAudienceId,
+      visibility: filterVisibility,
+    };
+    const key = listCacheKey(query);
+    const cached = getListCache(key);
+    if (cached) {
+      setList(cached.list);
+      setTotal(cached.total);
+      setLoading(false);
+      // 缓存命中后仍在后台静默回源，保证数据新鲜
+      Promise.resolve().then(async () => {
+        try {
+          const res = await productApi.getList(query);
+          if (res.data.code === 200 || res.data.code === 0) {
+            setListCache(key, { list: res.data.data.list, total: res.data.data.total });
+            setList(res.data.data.list);
+            setTotal(res.data.data.total);
+          }
+        } catch { /* 静默 */ }
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const res = await productApi.getList({
-        page, pageSize, keyword,
-        craftIds: filterCraftId,
-        audienceId: filterAudienceId,
-        visibility: filterVisibility,
-      });
+      const res = await productApi.getList(query);
       if (res.data.code === 200 || res.data.code === 0) {
+        setListCache(key, { list: res.data.data.list, total: res.data.data.total });
         setList(res.data.data.list);
         setTotal(res.data.data.total);
       }
     } catch { message.error('加载失败'); }
     finally { setLoading(false); }
-  };
+  }, [page, pageSize, keyword, filterCraftId, filterAudienceId, filterVisibility]);
 
   const fetchTaxonomy = async () => {
     try {
@@ -139,6 +182,7 @@ export default function Products() {
 
   useEffect(() => { fetchTaxonomy(); }, []);
   useEffect(() => { fetchCertificates(); }, []);
+  useEffect(() => { installCacheLifecycle(); }, []);
   useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId, filterVisibility]);
 
   // 受众变化时联动品类
@@ -222,6 +266,7 @@ export default function Products() {
 
   const openCreate = () => {
     resetStep();
+    pushLayer('step');
     setStepOpen(true);
   };
 
@@ -241,9 +286,11 @@ export default function Products() {
     if (Object.keys(err).length) return; // 校验失败：停留在第一步
 
     setStepOpen(false);
+    popLayer('step');
     const draft = draftRef.current;
     if (draft?.editing) {
       // 从编辑弹窗「返回重选」后回到编辑：保留未提交值与编辑态，仅用重选的工艺/品类覆盖
+      pushLayer('edit');
       setOpen(true);
       form.resetFields();
       const resumeSupply = Array.isArray(draft.values.supplyModes) && (draft.values.supplyModes as string[]).length
@@ -257,6 +304,7 @@ export default function Products() {
     } else {
       // 新建流程：正常初始化
       setEditing(null);
+      pushLayer('edit');
       setOpen(true);
       // 主表单 Modal 已 forceRender，form 常驻连接，可直接初始化
       form.resetFields();
@@ -277,19 +325,23 @@ export default function Products() {
     try {
       const r = await userApi.listForSelect();
       if (r.data.code === 200 || r.data.code === 0) {
-        setUsers(r.data.data.map((u) => ({
-          id: u.id,
-          username: u.username,
-          realName: u.realName ?? undefined,
-        })));
+        // 排除创建人（当前登录用户）：私密指定人不能是创建者本人
+        setUsers(r.data.data
+          .filter((u) => u.id !== currentUser?.id)
+          .map((u) => ({
+            id: u.id,
+            username: u.username,
+            realName: u.realName ?? undefined,
+          })));
       }
     } catch {
       /* 失败保持 users 为空，「指定可见人」不可用即可 */
     }
-  }, []);
+  }, [currentUser?.id]);
 
   const openEdit = (record: Product) => {
     setEditing(record);
+    pushLayer('edit');
     setOpen(true);
     loadUsers();
     // 主表单 Modal 已 forceRender，先重置再回填，避免残留上一次的值
@@ -321,7 +373,9 @@ export default function Products() {
     setStepErr({});
     // 暂存当前编辑弹窗里未提交的值与编辑态，重选后恢复
     draftRef.current = { values: form.getFieldsValue(true), editing };
+    popLayer('edit');
     setOpen(false);
+    pushLayer('step');
     setStepOpen(true);
   };
 
@@ -352,13 +406,21 @@ export default function Products() {
         visibleUserIds: values.visibility === 'PUBLIC' ? [] : (values.visibleUserIds ?? []),
       };
       if (editing) {
-        await productApi.update(editing.id, data);
+        const res = await productApi.update(editing.id, data);
+        const updated = res.data?.data ?? (res.data as unknown as Product);
         message.success('更新成功');
+        // 同步更新详情弹窗（若仍打开）与详情缓存，避免保存后详情显示旧数据
+        if (detailOpen) {
+          const next = { ...viewing, ...updated };
+          setViewing(next);
+          setDetailCache(next);
+        }
       } else {
         await productApi.create(data);
         message.success('创建成功');
       }
       setOpen(false);
+      invalidateAll(); // 写后失效，下次进入重新拉取最新数据
       fetchList();
     } catch (err: unknown) {
       const e = err as { errorFields?: unknown[]; response?: { data?: { message?: string } }; message?: string };
@@ -375,6 +437,7 @@ export default function Products() {
     try {
       await productApi.delete(id);
       message.success('删除成功');
+      invalidateAll(); // 删除后失效，下次重新拉取
       fetchList();
     } catch { message.error('删除失败'); }
   };
@@ -438,13 +501,9 @@ export default function Products() {
       {/* 数据卡片网格 */}
       <Card className="pm-grid-card" styles={{ body: { padding: 20 } }}>
         {loading ? (
-          <Row gutter={[16, 16]}>
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Col key={i} xs={24} sm={12} md={12} lg={8} xl={6}>
-                <ProductCardSkeleton />
-              </Col>
-            ))}
-          </Row>
+          <div style={{ padding: '64px 0', textAlign: 'center' }}>
+            <Spin size="large" />
+          </div>
         ) : list.length === 0 ? (
           <div className="pm-grid-empty">暂无产品，点击右上角「新建产品」开始添加</div>
         ) : viewMode === 'card' ? (
@@ -538,7 +597,9 @@ export default function Products() {
                   optionFilterProp="label"
                   className="pm-vis-users"
                   value={visibleUserIds ?? []}
-                  onChange={(next) => form.setFieldsValue({ visibleUserIds: next })}
+                  onChange={(next) =>
+                    form.setFieldsValue({ visibleUserIds: Array.isArray(next) ? next : [] })
+                  }
                   options={users.map((u) => ({
                     label: u.realName || u.username,
                     value: u.id,
@@ -550,7 +611,7 @@ export default function Products() {
               type="button"
               className="pm-modal-close"
               aria-label="关闭"
-              onClick={() => setOpen(false)}
+              onClick={closeEdit}
             >
               <CloseOutlined />
             </button>
@@ -558,10 +619,11 @@ export default function Products() {
         }
         closeIcon={null}
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={closeEdit}
         width={1000}
+        zIndex={1100}
         footer={[
-          <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
+          <Button key="cancel" onClick={closeEdit}>取消</Button>,
           <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
         ]}
         // forceRender 让 form 常驻连接，打开时可直接 setFieldsValue，避免 useForm not connected 警告
@@ -674,13 +736,14 @@ export default function Products() {
       <Modal
         title={draftRef.current?.editing ? '重选分类' : '新建产品 · 选择分类'}
         open={stepOpen}
-        onCancel={() => setStepOpen(false)}
+        onCancel={() => { popLayer('step'); setStepOpen(false); }}
         onOk={handleStepNext}
         okText="下一步"
         cancelText="取消"
         width={680}
         destroyOnHidden
         forceRender={false}
+        zIndex={1200}
       >
         <div className="pm-step-flow">
           <StepBar
@@ -802,181 +865,24 @@ export default function Products() {
         </div>
       </Modal>
 
-      {/* 详情弹窗 */}
-      <Modal
+      {/* 详情弹窗（使用项目自有 AppModal 组件，UI 参考客户详情） */}
+      <ProductDetailModal
+        product={viewing}
         open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
-        footer={null}
-        width={920}
-        destroyOnHidden
-        styles={{ body: { padding: 0 } }}
-      >
-        {viewing && (
-          <div className="pm-detail">
-            {/* 左侧：彩色信息栏 */}
-            <div className="pm-detail-aside">
-              {mainImageUrl(viewing.images) ? (
-                <img
-                  className="pm-detail-aside__avatar"
-                  src={mainImageUrl(viewing.images)}
-                  alt={viewing.name}
-                />
-              ) : (
-                <div className="pm-detail-aside__avatar-fallback">
-                  {(viewing.name || '·').slice(0, 1).toUpperCase()}
-                </div>
-              )}
-              <h3 className="pm-detail-aside__name">{viewing.name}</h3>
-              <Text className="pm-detail-aside__sku">SKU: {viewing.sku || '\u2014'}</Text>
-
-              <div className="pm-detail-aside__tags">
-                {viewing.crafts?.length ? viewing.crafts.map((c) => (
-                  <Tag key={c.id} className="pm-detail-aside__tag">{c.name}</Tag>
-                )) : <span className="pm-detail-aside__muted">无工艺</span>}
-              </div>
-
-              <div className="pm-detail-aside__rows">
-                <div className="pm-detail-aside__row">
-                  <span className="pm-detail-aside__label">受众</span>
-                  <span>{viewing.audience?.name || '\u2014'}</span>
-                </div>
-                <div className="pm-detail-aside__row">
-                  <span className="pm-detail-aside__label">品类</span>
-                  <span>{viewing.category?.name || '\u2014'}</span>
-                </div>
-                <div className="pm-detail-aside__row">
-                  <span className="pm-detail-aside__label">可见性</span>
-                  <span>{viewing.visibility === 'PRIVATE' ? '私密' : '公开'}</span>
-                </div>
-              </div>
-
-              <div className="pm-detail-aside__actions">
-                <Button type="primary" icon={<EditOutlined />} block
-                  onClick={() => { setDetailOpen(false); openEdit(viewing); }}>编辑资料</Button>
-                <Button icon={<CloseOutlined />} block style={{ marginTop: 8 }}
-                  onClick={() => setDetailOpen(false)}>关闭</Button>
-              </div>
-            </div>
-
-            {/* 右侧：Tab 内容区 */}
-            <div className="pm-detail-main">
-              <SegmentedTabBar
-                value={detailTab}
-                onChange={(k) => setDetailTab(k as 'overview' | 'sales' | 'activity')}
-                options={[
-                  { key: 'overview', label: '概览' },
-                  { key: 'sales', label: '销售记录', count: salesList.length },
-                  { key: 'activity', label: '操作记录', count: viewing.activities?.length || 0 },
-                ]}
-              />
-              <div className="pm-detail-content">
-                {detailTab === 'overview' && (
-                  <div className="pm-detail-section">
-                    {parseImages(viewing.images).length > 0 && (
-                      <div className="pm-detail-images">
-                        {parseImages(viewing.images).map((img, i) => (
-                          <div key={i} className="pm-detail-img-item">
-                            <img src={img.url} alt={img.name} />
-                            <span>{img.name}{i === 0 ? '（主图）' : ''}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    <div className="pm-detail-group">
-                      <h4 className="pm-detail-h4"><TagsOutlined /> 产品属性</h4>
-                      <div className="pm-detail-props">
-                        <div><span className="pm-detail-props__label">尺寸</span><b>{[viewing.sizeL, viewing.sizeW, viewing.sizeH].filter(Boolean).join(' × ') || '\u2014'}</b></div>
-                        <div><span className="pm-detail-props__label">克重</span><b>{viewing.weight || '\u2014'} g</b></div>
-                        <div><span className="pm-detail-props__label">单位</span><b>{viewing.unit || '\u2014'}</b></div>
-                      </div>
-                    </div>
-
-                    <div className="pm-detail-group">
-                      <h4 className="pm-detail-h4"><FileTextOutlined /> 产品要求</h4>
-                      <div className="pm-detail-props">
-                        <div><span className="pm-detail-props__label">LOGO 定制</span><b>{viewing.hasLogo ? '是' : '否'}</b></div>
-                        <div><span className="pm-detail-props__label">发声</span><b>{viewing.hasSound ? '是' : '否'}</b></div>
-                        <div><span className="pm-detail-props__label">发光</span><b>{viewing.hasLight ? '是' : '否'}</b></div>
-                        <div><span className="pm-detail-props__label">变色</span><b>{viewing.hasColorChange ? '是' : '否'}</b></div>
-                        <div><span className="pm-detail-props__label">喷水</span><b>{viewing.hasWater ? '是' : '否'}</b></div>
-                        <div><span className="pm-detail-props__label">潘通色号</span><b>{viewing.pantoneNo || '\u2014'}</b></div>
-                        <div><span className="pm-detail-props__label">包装方式</span><b>{viewing.packageType || '\u2014'}</b></div>
-                        <div><span className="pm-detail-props__label">打样单号</span><b>{viewing.sampleNo || '\u2014'}</b></div>
-                      </div>
-                    </div>
-
-                    {(viewing.remark || viewing.desc) && (
-                      <div className="pm-detail-group">
-                        <h4 className="pm-detail-h4">备注 / 描述</h4>
-                        <p className="pm-detail-remark">{viewing.remark || viewing.desc || '无'}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'sales' && (
-                  <div className="pm-detail-section">
-                    {salesLoading ? (
-                      <div className="pm-detail-empty">加载中…</div>
-                    ) : salesList.length === 0 ? (
-                      <div className="pm-detail-empty">暂无销售记录</div>
-                    ) : (
-                      <ul className="pm-sales-list">
-                        {salesList.map((s) => (
-                          <li key={s.id} className="pm-sales-item">
-                            <div className="pm-sales-item__head">
-                              <span className="pm-sales-item__company">{s.companyName || s.title}</span>
-                              <Tag color={STAGE_META[s.stage]?.color || 'default'}>
-                                {STAGE_META[s.stage]?.label || s.stage}
-                              </Tag>
-                            </div>
-                            <div className="pm-sales-item__meta">
-                              <span>商机号：<b>{s.pipelineNumber}</b></span>
-                              <span>数量：<b>{(s as any).quantity ?? '\u2014'}</b></span>
-                              <span>负责人：<b>{s.assignee?.realName || s.assignee?.username || '\u2014'}</b></span>
-                              <span>更新：<b>{s.updateTime ? dayjs(s.updateTime).format('YYYY-MM-DD') : '\u2014'}</b></span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
-
-                {detailTab === 'activity' && (
-                  <div className="pm-detail-section">
-                    <div className="pm-activity">
-                      <div className="pm-activity__title">
-                        <ClockCircleOutlined /> 操作记录
-                      </div>
-                      {(!viewing.activities || viewing.activities.length === 0) && (
-                        <p className="pm-activity__empty">暂无操作记录</p>
-                      )}
-                      <ul className="pm-activity__list">
-                        {(viewing.activities || []).map((act: ProductActivity) => (
-                          <li key={act.id} className="pm-activity__item">
-                            <span className={`pm-activity__badge pm-activity__badge--${act.action.toLowerCase()}`}>
-                              {act.action === 'CREATE' ? '创建' : act.action === 'UPDATE' ? '更新' : act.action === 'DELETE' ? '删除' : act.action}
-                            </span>
-                            <span className="pm-activity__meta">
-                              {act.operator ? `${act.operator} · ` : ''}
-                              {act.createdAt ? dayjs(act.createdAt).format('YYYY-MM-DD HH:mm') : ''}
-                            </span>
-                            {act.detail && (
-                              <span className="pm-activity__detail">{act.detail}</span>
-                            )}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </Modal>
+        onClose={closeDetail}
+        onEdit={openEdit}
+        onDelete={() => {
+          if (viewing) {
+            closeDetail();
+            handleDelete(viewing.id);
+          }
+        }}
+        canDelete={canDelete}
+        salesList={salesList}
+        salesLoading={salesLoading}
+        activities={viewing?.activities || []}
+        userMap={userMap}
+      />
     </div>
   );
 }

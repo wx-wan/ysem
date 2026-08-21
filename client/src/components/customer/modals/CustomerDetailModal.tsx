@@ -681,7 +681,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               {/* 卡片列表区域：固定高度，使各 tab 切换时弹窗高度一致，数据过多内部滚动 */}
               <div style={{ flex: 1, padding: '20px 16px 0', overflow: 'auto', height: 520 }}>
                 {activeTab === 'pipeline' && customer ? (
-                  <div style={{ background: token.colorFillQuaternary, borderRadius: 16, padding: '4px 4px 8px', marginBottom: 8 }}>
+                  <div style={{ borderRadius: 16, padding: '4px 4px 8px', marginBottom: 8 }}>
                     <CustomerOverview customer={customer} />
                   </div>
                 ) : !detailLoaded ? (

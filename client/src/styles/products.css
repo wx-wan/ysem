@@ -276,7 +276,11 @@
 }
 .pm-prod-status::before { background: #fff; }
 /* 私密：封面上的点点也用主题色，保持与正文私密状态一致 */
-.pm-prod-status.pm-status--inactive::before { background: var(--c-primary, #1677ff); }
+.pm-prod-status.pm-status--inactive::before { background: var(--c-warning, #f59e0b); }
+.pm-prod-status.pm-status--inactive {
+  color: #fff;
+  background: rgba(245, 158, 11, 0.32);
+}
 
 /* 右侧：产品信息 */
 .pm-prod-body {
@@ -448,8 +452,8 @@
   background: var(--c-success-bg, rgba(16, 185, 129, 0.12));
 }
 .pm-status--inactive {
-  color: var(--c-primary, #1677ff);
-  background: var(--c-primary-bg, rgba(22, 119, 255, 0.1));
+  color: var(--c-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.12);
 }
 
 /* 操作图标按钮 */
@@ -1035,4 +1039,115 @@
   .pm-sales-item__meta {
     grid-template-columns: 1fr;
   }
+}
+
+/* ========== 产品详情弹窗（与客户详情弹窗保持一致） ========== */
+.pdm-empty-state {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--c-text-tertiary, #94a3b8);
+  font-size: 13px;
+}
+
+/* 销售记录（新版卡片） */
+.pm-sales-item {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 16px;
+}
+.pm-sales-item-main {
+  min-width: 0;
+  flex: 1;
+}
+.pm-sales-item-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.pm-sales-customer {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--c-text, #1e293b);
+}
+.pm-sales-item-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  font-size: 12px;
+  color: var(--c-text-secondary, #64748b);
+}
+.pm-sales-item-remark {
+  margin-top: 5px;
+  font-size: 12px;
+  color: var(--c-text-tertiary, #94a3b8);
+}
+.pm-sales-item-right {
+  flex: 0 0 auto;
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+.pm-sales-amount-label {
+  font-size: 11px;
+  color: var(--c-text-tertiary, #94a3b8);
+}
+.pm-sales-amount {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--c-primary, #1677ff);
+}
+
+/* 跟进动态（圆圈时间线） */
+.pm-activity {
+  position: relative;
+  padding-left: 8px;
+}
+.pm-activity-item {
+  position: relative;
+  padding: 0 0 16px 24px;
+  border-left: 1px solid var(--c-border-strong, #e2e8f0);
+}
+.pm-activity-item:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+.pm-activity-dot {
+  position: absolute;
+  left: -5px;
+  top: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--c-surface, #fff);
+}
+.pm-activity-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pm-activity-tag {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+.pm-activity-operator {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-text, #1e293b);
+}
+.pm-activity-desc {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--c-text-secondary, #475569);
+}
+.pm-activity-time {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--c-text-tertiary, #94a3b8);
 }

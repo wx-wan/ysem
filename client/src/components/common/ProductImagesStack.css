@@ -1,0 +1,72 @@
+.pis-wrap {
+  position: relative;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+.pis-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border-radius: 10px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  background: #f1f5f9;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+.pis-img .ant-image-img,
+.pis-img img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  display: block;
+}
+
+/* hover 时向右轻推，增强层次感 */
+.pis-wrap.is-hover .pis-img {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.pis-overflow {
+  position: absolute;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(15, 23, 42, 0.7);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.pis-count-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 99;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.78);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.pis-empty {
+  border-radius: 10px;
+  border: 1px dashed #cbd5e1;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 12px;
+}

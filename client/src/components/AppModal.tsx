@@ -103,7 +103,7 @@ const AppModal: React.FC<AppModalProps> = ({
     ...style,
   };
 
-  const showHeader = title !== undefined || closable || extra;
+  const showHeader = (title !== undefined && title !== null) || closable || extra;
   const showFooter = footer !== undefined && footer !== null;
 
   const content = (
