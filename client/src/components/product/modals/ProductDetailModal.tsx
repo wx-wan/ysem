@@ -147,6 +147,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   const renderSales = () => {
+    if (salesLoading) {
       return <div className="pdm-empty-state">加载中…</div>;
     }
     if (!salesList.length) {
