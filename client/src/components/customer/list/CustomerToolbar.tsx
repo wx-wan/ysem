@@ -7,7 +7,7 @@ import TagSelector from '../../TagSelector';
 import { INTENT_LABEL } from '../shared/intentLevel';
 import ViewModeSwitch from '../../common/ViewModeSwitch';
 import PageToolbar from '../../common/page/PageToolbar';
-import FilterCapsules from '../../common/page/FilterCapsules';
+import CapsuleSwitch from '../../common/CapsuleSwitch';
 import type { User } from '../../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
@@ -97,10 +97,11 @@ export default function CustomerToolbar({
       }
       extra={
         (showNoOrderSub || showDoneSub) ? (
-          <FilterCapsules
+          <CapsuleSwitch
             tone="sub"
             value={subFilterType}
             onChange={handleSubFilterChange}
+            activeColor="#1677ff"
             options={(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => ({
               key: opt.key,
               label: opt.label,
@@ -122,9 +123,11 @@ export default function CustomerToolbar({
         allowClear
       />
 
-      <FilterCapsules
+      <CapsuleSwitch<FilterType>
         value={filterType}
         onChange={handleFilterChange}
+        activeColor="#1677ff"
+        showCount={false}
         options={MAIN_FILTERS.map((opt) => ({
           key: opt.key,
           label: opt.key === 'all' && isAdmin ? '团队客户' : opt.label,

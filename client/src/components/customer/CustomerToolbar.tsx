@@ -4,6 +4,7 @@ import {
   UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../TagSelector';
+import CapsuleSwitch from '../common/CapsuleSwitch';
 import { INTENT_LABEL } from './shared/intentLevel';
 import type { User } from '../../api/users';
 
@@ -90,42 +91,16 @@ export default function CustomerToolbar({
         />
 
         {/* 主筛选胶囊 */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            background: '#f1f5f9',
-            borderRadius: 24,
-            padding: '3px 4px',
-          }}
-        >
-          {MAIN_FILTERS.map((opt) => {
-            const active = filterType === opt.key;
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleFilterChange(opt.key)}
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '5px 12px',
-                  borderRadius: 20,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.25s ease',
-                  background: active ? '#1677ff' : 'transparent',
-                  color: active ? '#fff' : '#64748b',
-                  boxShadow: active ? '0 2px 8px rgba(22,119,255,0.3)' : 'none',
-                }}
-              >
-                {opt.key === 'all' && isAdmin ? '团队客户' : opt.label}
-              </button>
-            );
-          })}
-        </div>
+        <CapsuleSwitch<FilterType>
+          value={filterType}
+          onChange={handleFilterChange}
+          activeColor="#1677ff"
+          showCount={false}
+          options={MAIN_FILTERS.map((opt) => ({
+            key: opt.key,
+            label: opt.key === 'all' && isAdmin ? '团队客户' : opt.label,
+          }))}
+        />
 
         <TagSelector
           value={filterTags}
@@ -211,42 +186,15 @@ export default function CustomerToolbar({
 
       {/* 子筛选栏 */}
       {(showNoOrderSub || showDoneSub) && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 2,
-            marginTop: 10,
-            background: '#f8fafc',
-            borderRadius: 20,
-            padding: '3px 4px',
-            width: 'fit-content',
-          }}
-        >
-          {(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => {
-            const active = subFilterType === opt.key;
-            return (
-              <button
-                key={opt.key}
-                onClick={() => handleSubFilterChange(opt.key)}
-                style={{
-                  border: 'none',
-                  outline: 'none',
-                  cursor: 'pointer',
-                  padding: '4px 10px',
-                  borderRadius: 16,
-                  fontSize: 12,
-                  fontWeight: active ? 600 : 500,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s ease',
-                  background: active ? '#e0e7ff' : 'transparent',
-                  color: active ? '#1677ff' : '#94a3b8',
-                }}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+        <div style={{ marginTop: 10 }}>
+          <CapsuleSwitch
+            tone="sub"
+            value={subFilterType}
+            onChange={handleSubFilterChange}
+            activeColor="#1677ff"
+            showCount={false}
+            options={showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS}
+          />
         </div>
       )}
     </div>
