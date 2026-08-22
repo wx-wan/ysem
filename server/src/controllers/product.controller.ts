@@ -290,6 +290,67 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+// 批量新建产品：一产品一 SKU，不做聚合；逐条校验，返回成功/失败明细
+export const batchCreateProducts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const body = z.object({ rows: z.array(z.any()).min(1, '请至少提供一条产品数据') }).parse(req.body);
+    const rows = body.rows as unknown[];
+    const created: any[] = [];
+    const failed: { index: number; name?: string; reason: string }[] = [];
+
+    // 逐条处理，单条失败不影响其余（记录失败明细）
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] as Record<string, unknown>;
+      try {
+        const parsed = productSchema.parse(row);
+        const { craftIds, sku: _ignored, visibleUserIds, unit, ...rest } = parsed;
+        const data: Prisma.ProductCreateInput = { ...rest };
+        // 单位默认「个」，移除套逻辑
+        data.unit = unit && unit !== '套' ? unit : '个';
+        data.createdBy = req.userId;
+        if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
+        if (visibleUserIds?.length) {
+          data.visibleUsers = { create: visibleUserIds.map((userId) => ({ userId })) };
+        }
+        const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
+        const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
+        if (hasFullContext && sku === null) {
+          failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
+          continue;
+        }
+        data.sku = sku;
+        const product = await prisma.product.create({ data });
+        void activityLogger.log({
+          userId: req.userId || '',
+          username: req.username || '',
+          realName: req.realName,
+          action: 'CREATE',
+          module: 'product',
+          targetId: product.id,
+          target: product.name,
+          detail: `批量创建了产品「${product.name}」`,
+          productId: product.id,
+        });
+        created.push(product);
+      } catch (err) {
+        const reason = err instanceof z.ZodError ? err.errors.map((e) => e.message).join(', ') : '服务器错误';
+        failed.push({ index: i, name: (row?.name as string) ?? undefined, reason });
+      }
+    }
+
+    success(res, {
+      total: rows.length,
+      successCount: created.length,
+      failCount: failed.length,
+      created,
+      failed,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
+    fail(res, 500, '服务器错误');
+  }
+};
+
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = productSchema.partial().parse(req.body);

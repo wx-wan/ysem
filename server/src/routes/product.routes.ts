@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   getProductOptions, getProducts, getProductById, createProduct, updateProduct, deleteProduct,
-  previewProductSku,
+  previewProductSku, batchCreateProducts,
 } from '../controllers/product.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -14,6 +14,7 @@ router.get('/sku-preview', previewProductSku);
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 router.post('/', createProduct);
+router.post('/batch', batchCreateProducts);
 router.put('/:id', updateProduct);
 router.delete('/:id', deleteProduct);
 

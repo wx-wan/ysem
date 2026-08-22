@@ -39,6 +39,7 @@ const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
   '/sales': '销售管理',
   '/sales/products': '产品',
+  '/sales/product-groups': '产品组',
   '/sales/leads': '线索',
   '/sales/opportunities': '商机',
   '/sales/orders': '订单',
@@ -124,6 +125,7 @@ export default function MainLayout() {
             label: t('menu.sales'),
             children: [
               ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
+              ...(hasPerm('sales:products') ? [{ key: '/sales/product-groups', icon: <ApartmentOutlined />, label: '产品组' }] : []),
               ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
               ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
               ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),

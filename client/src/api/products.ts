@@ -160,3 +160,111 @@ const productApi = {
 
 export { productApi };
 export default productApi;
+
+// ============ 批量新建产品 ============
+export interface BatchProductRow {
+  name: string;
+  craftIds?: string[];
+  audienceId?: string;
+  categoryId?: string;
+  weight?: string;
+  unit?: string;
+  supplyModes?: string;
+  description?: string;
+  remark?: string;
+  visibility?: 'PUBLIC' | 'PRIVATE';
+  visibleUserIds?: string[];
+  [key: string]: unknown;
+}
+
+export interface BatchCreateResult {
+  total: number;
+  successCount: number;
+  failCount: number;
+  created: Product[];
+  failed: { index: number; name?: string; reason: string }[];
+}
+
+// ============ 产品组 ProductGroup ============
+export interface ProductGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  ownerId: string;
+  productIds: string;
+  productCount?: number;
+  products?: { id: string; name: string; sku?: string | null; unit?: string | null; weight?: string | null }[];
+  status: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProductGroupListResult {
+  list: ProductGroup[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// ============ 打样申请 SampleApply ============
+export interface SampleApply {
+  id: string;
+  targetType: 'PRODUCT' | 'GROUP';
+  targetId: string;
+  applicantId: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DONE';
+  remark?: string | null;
+  createdAt: string;
+}
+
+// ============ 报价单 Quote ============
+export interface Quote {
+  id: string;
+  title: string;
+  targetType: 'PRODUCT' | 'GROUP';
+  targetId: string;
+  productIds: string;
+  ownerId: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  remark?: string | null;
+  items?: string | null;
+  products?: { id: string; name: string; sku?: string | null; unit?: string | null; weight?: string | null }[];
+  createdAt: string;
+}
+
+// ---- 接口封装 ----
+export const batchProductApi = {
+  create: (rows: BatchProductRow[]) => request.post<ApiResponse<BatchCreateResult>>('/products/batch', { rows }),
+};
+
+export const productGroupApi = {
+  getList: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
+    request.get<ApiResponse<ProductGroupListResult>>('/product-groups', { params }),
+  getById: (id: string) => request.get<ApiResponse<ProductGroup>>(`/product-groups/${id}`),
+  create: (data: { name: string; description?: string; productIds?: string[] }) =>
+    request.post<ApiResponse<ProductGroup>>('/product-groups', data),
+  update: (id: string, data: { name?: string; description?: string; productIds?: string[] }) =>
+    request.put(`/product-groups/${id}`, data),
+  remove: (id: string) => request.delete(`/product-groups/${id}`),
+  updateProducts: (id: string, productIds: string[], mode: 'add' | 'remove' = 'add') =>
+    request.post(`/product-groups/${id}/products?mode=${mode}`, { productIds }),
+};
+
+export const sampleApi = {
+  apply: (data: { targetType: 'PRODUCT' | 'GROUP'; targetId: string; remark?: string }) =>
+    request.post<ApiResponse<SampleApply>>('/sample-applies', data),
+  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string }) =>
+    request.get<ApiResponse<{ list: SampleApply[]; total: number }>>('/sample-applies', { params }),
+  updateStatus: (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DONE') =>
+    request.put(`/sample-applies/${id}/status`, { status }),
+};
+
+export const quoteApi = {
+  create: (data: { title: string; targetType: 'PRODUCT' | 'GROUP'; targetId: string; remark?: string; items?: string }) =>
+    request.post<ApiResponse<Quote>>('/quotes', data),
+  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string }) =>
+    request.get<ApiResponse<{ list: Quote[]; total: number }>>('/quotes', { params }),
+  getById: (id: string) => request.get<ApiResponse<Quote>>(`/quotes/${id}`),
+  updateStatus: (id: string, status: 'SUBMITTED' | 'APPROVED' | 'REJECTED') =>
+    request.put(`/quotes/${id}/status`, { status }),
+};

@@ -7,14 +7,14 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
+  ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined, UploadOutlined,
   CloseOutlined, ClockCircleOutlined, ShoppingOutlined,
   FileTextOutlined, InfoCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
-  taxonomyApi,
+  taxonomyApi, quoteApi, sampleApi,
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
@@ -29,6 +29,7 @@ import ProductList from '../components/product/list/ProductList';
 import ProductCard from '../components/product/cards/ProductCard';
 import { useAuthStore } from '../stores/useAuthStore';
 import ProductDetailModal from '../components/product/modals/ProductDetailModal';
+import BatchCreateProductModal from '../components/product/modals/BatchCreateProductModal';
 import {
   listCacheKey, getListCache, setListCache,
   setDetailCache, installCacheLifecycle, invalidateAll,
@@ -109,15 +110,30 @@ export default function Products() {
   const closeEdit = () => { popLayer('edit'); setOpen(false); };
   const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
 
-  // 基于此产品创建报价（销售线索）
-  const handleCreateQuote = (record: Product) => {
-    closeDetail();
-    navigate(`/sales?productId=${record.id}`);
+  // 基于此产品创建报价（真实报价单接口，基于单品）
+  const handleCreateQuote = async (record: Product) => {
+    try {
+      const res = await quoteApi.create({ targetType: 'PRODUCT', targetId: record.id, title: `${record.name} 报价单` });
+      if (res.data?.data) {
+        message.success('报价单已创建');
+        closeDetail();
+        navigate(`/sales?productId=${record.id}`);
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || '创建报价单失败');
+    }
   };
-  // 基于此产品申请打样（打样订单）
-  const handleApplySample = (record: Product) => {
-    closeDetail();
-    navigate(`/sales/orders?productId=${record.id}&orderType=SAMPLE`);
+  // 基于此产品申请打样（真实打样申请接口，基于单品）
+  const handleApplySample = async (record: Product) => {
+    try {
+      const res = await sampleApi.apply({ targetType: 'PRODUCT', targetId: record.id });
+      if (res.data?.data) {
+        message.success('打样申请已提交');
+        closeDetail();
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || '提交打样申请失败');
+    }
   };
 
   // 打开产品详情：重置 Tab、拉取完整产品（含操作记录）并加载销售记录
@@ -223,6 +239,7 @@ export default function Products() {
   };
 
   // 第一步卡片式选择的状态
+  const [batchOpen, setBatchOpen] = useState(false);
   const [stepOpen, setStepOpen] = useState(false);
   const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
@@ -513,6 +530,7 @@ export default function Products() {
             <Space>
               <ViewModeSwitch value={viewMode} onChange={setViewMode} />
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品</Button>
+              <Button icon={<UploadOutlined />} onClick={() => setBatchOpen(true)}>批量新建</Button>
             </Space>
           </Col>
         </Row>
@@ -746,8 +764,8 @@ export default function Products() {
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name="unit" label="单位" style={{ marginBottom: 0 }}>
-                      <Select placeholder="选择" allowClear options={[{ label: '套', value: '套' }, { label: '个', value: '个' }]} />
+                    <Form.Item name="unit" label="单位" initialValue="个" style={{ marginBottom: 0 }}>
+                      <Select disabled options={[{ label: '个', value: '个' }]} />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -915,6 +933,13 @@ export default function Products() {
         salesLoading={salesLoading}
         activities={viewing?.activities || []}
         userMap={userMap}
+      />
+
+      {/* 批量新建产品 */}
+      <BatchCreateProductModal
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        onSuccess={() => { setBatchOpen(false); fetchList(); }}
       />
     </div>
   );

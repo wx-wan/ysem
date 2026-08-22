@@ -10,6 +10,7 @@ import SalesPage from './pages/Sales';
 import CustomersPage from './pages/Customers';
 import SalesLayout from './layouts/SalesLayout';
 import ProductsPage from './pages/Products';
+import ProductGroupsPage from './pages/ProductGroups';
 import SalesLeadsPage from './pages/SalesLeads';
 import SalesOpportunitiesPage from './pages/SalesOpportunities';
 import SalesOrdersPage from './pages/SalesOrders';
@@ -63,6 +64,7 @@ function App() {
         <Route path="sales" element={<SalesLayout />}>
           <Route index element={<SalesPage />} />
           <Route path="products" element={<ProductsPage />} />
+          <Route path="product-groups" element={<PermRoute perm="sales:products"><ProductGroupsPage /></PermRoute>} />
           <Route path="leads" element={<SalesLeadsPage />} />
           <Route path="opportunities" element={<SalesOpportunitiesPage />} />
           <Route path="orders" element={<SalesOrdersPage />} />

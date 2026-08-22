@@ -33,6 +33,9 @@ model User {
   customers      Customer[]
   productVisibilities ProductVisibleUser[]
   products    Product[]      @relation("ProductCreator")
+  productGroups ProductGroup[] @relation("ProductGroupOwner")
+  sampleApplies SampleApply[]  @relation("SampleApplicant")
+  quotes       Quote[]         @relation("QuoteOwner")
 }
 
 
@@ -327,7 +330,7 @@ model Product {
   sizeW       String?                      // 宽 cm
   sizeH       String?                      // 高 cm
   weight      String?                      // 克重 g
-  unit        String?                      // 产品单位（套/个）
+  unit        String   @default("个")       // 产品单位（仅计量，默认「个」，不再有「套」聚合）
 
   // ---- (深/轻)产品要求（打样单号）----
   sampleNo    String?                      // 打样单号
@@ -458,4 +461,47 @@ model Certificate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// ============ 产品组（用于批量报价 / 打样 / 集合管理）============
+model ProductGroup {
+  id          String   @id @default(cuid())
+  name        String   // 产品组名称
+  description String?  // 备注
+  ownerId     String   // 创建人
+  owner       User     @relation("ProductGroupOwner", fields: [ownerId], references: [id])
+  productIds  String   @default("") // 逗号分隔的产品 id 列表
+  status      Int      @default(1)  // 1 启用 0 停用
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============ 打样申请 ============
+model SampleApply {
+  id          String   @id @default(cuid())
+  targetType  String   @default("PRODUCT") // PRODUCT | GROUP
+  targetId    String   // 产品 id 或产品组 id
+  applicantId String   // 申请人
+  applicant   User     @relation("SampleApplicant", fields: [applicantId], references: [id])
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
+  remark      String?  // 申请说明
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ============ 报价单 ============
+model Quote {
+  id          String   @id @default(cuid())
+  title       String   // 报价单标题
+  targetType  String   @default("PRODUCT") // PRODUCT | GROUP
+  targetId    String   // 产品 id 或产品组 id
+  productIds  String   @default("") // 关联产品 id（逗号分隔）
+  ownerId     String   // 创建人
+  owner       User     @relation("QuoteOwner", fields: [ownerId], references: [id])
+  status      String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
+  remark      String?
+  items       String?  // 报价明细 JSON（前端可编辑）
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 
