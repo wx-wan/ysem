@@ -21,6 +21,7 @@ interface OpLog {
 
 const MODULE_LABELS: Record<string, string> = {
   product: '产品', 'product-group': '产品组', 'sample-apply': '打样',
+  quote: '报价',
   customer: '客户', sales: '商机', order: '订单',
   user: '用户', certificate: '资质',
 };
