@@ -503,11 +503,6 @@ export default function Products() {
         <Row gutter={12} align="middle" wrap>
           <Col flex="auto">
             <Space wrap>
-              <CapsuleSwitch
-                value={view}
-                options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-                onChange={(v) => { setView(v); setPage(1); }}
-                />
                 <Input
                 placeholder="搜索产品名称 / SKU"
                 prefix={<SearchOutlined />}
@@ -567,6 +562,13 @@ export default function Products() {
             </Space>
           </Col>
         </Row>
+        <div style={{ marginTop: 12 }}>
+          <CapsuleSwitch
+            value={view}
+            options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
+            onChange={(v) => { setView(v); setPage(1); }}
+          />
+        </div>
       </Card>
       )}
 
