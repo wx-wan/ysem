@@ -253,17 +253,19 @@
   align-items: center;
   gap: 8px;
 }
+/* 编号：嵌入卡片的低调文本（非 tag 样式） */
 .pm-prod-sku {
   display: inline-flex;
   align-items: center;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: var(--c-text, #1f2937);
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: var(--c-fill, #f1f5f9);
-  border: 1px solid var(--c-border, #eef2f7);
+  color: rgba(15, 23, 42, 0.55);
+  font-family: 'SF Mono', 'Roboto Mono', Menlo, Consolas, monospace;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.04);
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 /* 右上角的状态药丸：用常规状态色（去掉封面上的半透明深色覆盖） */
 .pm-prod-topbar .pm-prod-status {
