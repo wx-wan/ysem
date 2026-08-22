@@ -20,7 +20,8 @@ interface OpLog {
 }
 
 const MODULE_LABELS: Record<string, string> = {
-  product: '产品', customer: '客户', sales: '商机', order: '订单',
+  product: '产品', 'product-group': '产品组', 'sample-apply': '打样',
+  customer: '客户', sales: '商机', order: '订单',
   user: '用户', certificate: '资质',
 };
 const ACTION_LABELS: Record<string, string> = {
@@ -140,8 +141,9 @@ export default function OperationLogs() {
     {
       title: '对象',
       dataIndex: 'target',
-      width: 160,
-      render: (v: string | null) => v || '—',
+      width: 260,
+      ellipsis: true,
+      render: (v: string | null) => (v ? <span title={v}>{v}</span> : '—'),
     },
     {
       title: '操作内容与变更',
