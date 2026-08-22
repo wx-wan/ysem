@@ -23,7 +23,7 @@ const OPTIONS: Option[] = [
   {
     key: 'PRODUCT',
     title: '单品',
-    desc: '新建一个独立产品（单位可设为 个 / 套）',
+    desc: '新建一个独立产品',
     icon: <AppstoreOutlined />,
   },
   {
@@ -42,7 +42,7 @@ const OPTIONS: Option[] = [
 export default function CreateTypeModal({ open, onCancel, onSelect }: Props) {
   return (
     <Modal
-      title="新建什么"
+      title="新建产品"
       open={open}
       onCancel={onCancel}
       footer={null}

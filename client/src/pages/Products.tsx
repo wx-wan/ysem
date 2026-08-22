@@ -458,6 +458,8 @@ export default function Products() {
       const data = {
         ...cleanNullValues(extra),
         ...cleanNullValues(values),
+        // 界面用「供货方式（单品/组合）」表述，提交时映射为后端 unit（单品→个，组合→套）
+        unit: values.productType === 'GROUP' ? '套' : '个',
         // 供货模式由后续逻辑决定，前端不再选择：
         // 编辑时保留该产品原有模式（若当前角色允许），新建时取当前角色默认模式
         supplyModes: editing?.supplyModes && allowedSupplyModes.includes(editing.supplyModes)
@@ -467,6 +469,8 @@ export default function Products() {
         // 公开产品不指定可见人：显式置空，确保后端清空已存在的可见人关联
         visibleUserIds: values.visibility === 'PUBLIC' ? [] : (values.visibleUserIds ?? []),
       };
+      // 移除界面专用字段，避免提交冗余/未知属性
+      delete (data as Record<string, unknown>).productType;
       if (editing) {
         const res = await productApi.update(editing.id, data);
         const updated = res.data?.data ?? (res.data as unknown as Product);
@@ -568,19 +572,8 @@ export default function Products() {
                   { label: t('product.visibilityPrivate'), value: 'PRIVATE' },
                 ]}
               />
-              <Select
-                placeholder="单位"
-                value={filterUnit}
-                onChange={(v) => { setFilterUnit(v); setPage(1); }}
-                allowClear
-                style={{ width: 100 }}
-                options={[
-                  { label: '个', value: '个' },
-                  { label: '套', value: '套' },
-                ]}
-              />
               <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterUnit(undefined); setFilterType('ALL'); setPage(1); }}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterType('ALL'); setPage(1); }}>重置</Button>
               <CapsuleSwitch
                 value={filterType}
                 options={[
@@ -831,7 +824,7 @@ export default function Products() {
                   </Row>
                 </div>
 
-                {/* 克重 + 单位 一行，置于尺寸栏下方 */}
+                {/* 克重 + 供货方式（单品/组合）一行，置于尺寸栏下方 */}
                 <Row gutter={10} className="pm-size-row">
                   <Col span={12}>
                     <Form.Item name="weight" label="克重 (g)" style={{ marginBottom: 0 }}>
@@ -839,8 +832,13 @@ export default function Products() {
                     </Form.Item>
                   </Col>
                   <Col span={12}>
-                    <Form.Item name="unit" label="单位" initialValue="个" style={{ marginBottom: 0 }}>
-                      <Select options={[{ label: '个', value: '个' }, { label: '套', value: '套' }]} />
+                    <Form.Item name="productType" label="供货方式" initialValue="PRODUCT" style={{ marginBottom: 0 }}>
+                      <Select
+                        options={[
+                          { label: '单品', value: 'PRODUCT' },
+                          { label: '组合', value: 'GROUP' },
+                        ]}
+                      />
                     </Form.Item>
                   </Col>
                 </Row>

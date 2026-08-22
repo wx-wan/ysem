@@ -107,7 +107,7 @@ const ProductCard = memo(function ProductCard({
           <div className="pm-prod-meta__item">
             <span className="pm-prod-meta__label">单位</span>
             <span className="pm-prod-meta__value">
-              {product.unit || '-'}
+              {product.unit === '套' ? '组合' : '单品'}
             </span>
           </div>
         </div>

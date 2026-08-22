@@ -36,8 +36,8 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
   const [rows, setRows] = useState<RowState[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ successCount: number; failCount: number; failed: { index: number; name?: string; reason: string }[] } | null>(null);
-  // 批量建产品统一单位（个 / 套）
-  const [batchUnit, setBatchUnit] = useState<string>('个');
+  // 批量建产品统一供货方式（单品 / 组合）
+  const [batchUnit, setBatchUnit] = useState<string>('PRODUCT');
 
   // 公共分类（应用到全部行）
   const [commonCraftIds, setCommonCraftIds] = useState<string[]>([]);
@@ -103,7 +103,7 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
       supplyModes: r.supplyModes || 'DEEP_CUSTOM',
       description: r.description,
       remark: r.remark,
-      unit: batchUnit,
+      unit: batchUnit === 'GROUP' ? '套' : '个',
       visibility: 'PUBLIC',
       visibleUserIds: [],
     }));
@@ -254,12 +254,12 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
           粘贴说明
         </Button>
         <span>
-          单位
+          供货方式
           <Select
             value={batchUnit}
             onChange={setBatchUnit}
-            style={{ width: 90, marginLeft: 6 }}
-            options={[{ label: '个', value: '个' }, { label: '套', value: '套' }]}
+            style={{ width: 110, marginLeft: 6 }}
+            options={[{ label: '单品', value: 'PRODUCT' }, { label: '组合', value: 'GROUP' }]}
           />
         </span>
         <Tag>一产品一 SKU，不做聚合</Tag>
