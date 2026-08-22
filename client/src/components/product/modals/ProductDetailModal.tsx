@@ -206,7 +206,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             minWidth: 296,
             display: 'flex',
             flexDirection: 'column',
-            gap: 14,
+            gap: 16,
             padding: 16,
             borderRadius: '20px 0 0 20px',
             overflow: 'hidden',
@@ -222,7 +222,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div
             style={{
               background: headerGradient,
-              padding: '22px 22px 20px',
+              padding: 16,
               display: 'flex',
               flexDirection: 'column',
               position: 'relative',
@@ -309,7 +309,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               background: token.colorBgContainer,
               borderRadius: 16,
               border: `1px solid ${token.colorBorderSecondary}`,
-              padding: '18px 18px 20px',
+              padding: 16,
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -350,7 +350,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         {/* ==================== 右侧：内容区 ==================== */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {/* 右上操作栏：tab + 创建人 + 关闭 */}
-          <div style={{ padding: '20px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
+          <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
             <SegmentedTabBar
               value={tab}
               onChange={(k) => setTab(k as TabKey)}
@@ -419,7 +419,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
 
           {/* 内容区 */}
-          <div style={{ flex: 1, padding: '20px 16px 0', overflow: 'auto', height: 520 }}>
+          <div style={{ flex: 1, minHeight: 0, padding: 16, overflow: 'auto' }}>
             {tab === 'overview' && <ProductOverview product={product} salesList={salesList} loading={salesLoading} />}
             {tab === 'sales' && renderSales()}
             {tab === 'activity' && renderActivity()}

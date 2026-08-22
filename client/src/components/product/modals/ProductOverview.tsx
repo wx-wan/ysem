@@ -87,7 +87,7 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
   const cardBase: React.CSSProperties = {
     border: `1px solid ${token.colorBorderSecondary}`,
     borderRadius: 16,
-    padding: '16px 18px',
+    padding: 16,
     background: token.colorBgContainer,
   };
 
@@ -119,7 +119,7 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
   ];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16, height: '100%' }}>
       {/* 指标卡 3×2 */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {metrics.map((m) => (
@@ -145,18 +145,18 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
       </div>
 
       {/* 趋势 + 分布 */}
-      <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
-        <div style={{ ...cardBase, flex: 1.6, minWidth: 0 }}>
+      <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
+        <div style={{ ...cardBase, flex: 1.6, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <span style={{ width: 3, height: 13, borderRadius: 2, background: token.colorPrimary, display: 'inline-block' }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: token.colorTextSecondary }}>销售趋势</span>
             <LineChartOutlined style={{ color: token.colorTextTertiary, fontSize: 13 }} />
           </div>
           {loading ? (
-            <div style={{ height: 240, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextTertiary }}>加载中…</div>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextTertiary }}>加载中…</div>
           ) : trendData.some((d) => d.销售金额 > 0 || d.预估金额 > 0) ? (
-            <div style={{ height: 240, width: '100%' }}>
-              <ResponsiveContainer>
+            <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={token.colorBorderSecondary} />
                   <XAxis dataKey="month" tick={{ fontSize: 12, fill: token.colorTextTertiary }} axisLine={{ stroke: token.colorBorderSecondary }} tickLine={false} />
@@ -172,25 +172,27 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
               </ResponsiveContainer>
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无销售数据" style={{ padding: '48px 0' }} />
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={null} />
+            </div>
           )}
         </div>
 
-        <div style={{ ...cardBase, flex: 1, minWidth: 0 }}>
+        <div style={{ ...cardBase, flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
             <span style={{ width: 3, height: 13, borderRadius: 2, background: token.colorPrimary, display: 'inline-block' }} />
             <span style={{ fontSize: 13, fontWeight: 700, color: token.colorTextSecondary }}>阶段分布</span>
           </div>
           {distData.some((d) => d.value > 0) ? (
-            <div style={{ height: 240 }}>
-              <ResponsiveContainer>
+            <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
                     data={distData}
                     dataKey="value"
                     nameKey="name"
-                    innerRadius={52}
-                    outerRadius={86}
+                    innerRadius="52%"
+                    outerRadius="80%"
                     paddingAngle={3}
                     label={(entry: any) => `${entry.name} ${entry.value}`}
                     labelLine={false}
@@ -205,14 +207,13 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
               </ResponsiveContainer>
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无销售记录" style={{ padding: '48px 0' }} />
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={null} />
+            </div>
           )}
         </div>
       </div>
 
-      {!product.activities?.length && !salesList.length && (
-        <Text type="secondary" style={{ fontSize: 12 }}>该产品暂无销售与活动记录，指标与图表为空属正常。</Text>
-      )}
     </div>
   );
 };
