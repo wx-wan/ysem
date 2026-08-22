@@ -85,9 +85,8 @@ const ProductCard = memo(function ProductCard({
         </div>
 
         {product.category ? (
-          <div className="pm-prod-category">
-            <span className="pm-prod-category__label">品类</span>
-            <span className="pm-prod-category__value">{product.category.name}</span>
+          <div className="pm-prod-category-row">
+            <span className="pm-prod-tag pm-prod-tag--ghost">{product.category.name}</span>
           </div>
         ) : null}
 
