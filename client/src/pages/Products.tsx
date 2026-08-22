@@ -21,6 +21,7 @@ import { userApi } from '../api/users';
 import { salesApi, SalesItem, STAGE_META } from '../api/sales';
 import ProductImageList from '../components/common/ProductImageList';
 import CreateTypeModal from '../components/common/CreateTypeModal';
+import GroupCreateModal from '../components/product/modals/GroupCreateModal';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
@@ -87,6 +88,7 @@ export default function Products() {
   // 弹窗/表单
   const [open, setOpen] = useState(false);
   const [createTypeOpen, setCreateTypeOpen] = useState(false);
+  const [groupCreateOpen, setGroupCreateOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
@@ -319,11 +321,11 @@ export default function Products() {
     setCreateTypeOpen(true);
   };
 
-  // 引导弹窗选择结果：单品走现有新建逻辑，组合直接创建空组合并打开管理弹窗
+  // 引导弹窗选择结果：单品走现有新建流程；组合进入组合创建弹窗（多单品 + 组合名称）
   const handleCreateTypeSelect = (target: 'PRODUCT' | 'GROUP') => {
     setCreateTypeOpen(false);
     if (target === 'GROUP') {
-      handleCreateGroup();
+      setGroupCreateOpen(true);
       return;
     }
     // 单品：进入现有新建流程（工艺/受众/品类 → 主表单）
@@ -514,19 +516,6 @@ export default function Products() {
       message.success('已删除产品组');
       fetchList();
     } catch { message.error('删除失败'); }
-  };
-
-  const handleCreateGroup = async () => {
-    try {
-      const res = await productGroupApi.create({ name: '新组合', productIds: [] });
-      const id = res?.data?.data?.id;
-      if (id) {
-        setGroupManageId(id);
-        setGroupManageOpen(true);
-      }
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || '创建失败');
-    }
   };
 
   return (
@@ -1027,6 +1016,18 @@ export default function Products() {
         open={createTypeOpen}
         onCancel={() => setCreateTypeOpen(false)}
         onSelect={handleCreateTypeSelect}
+      />
+
+      {/* 组合创建：多单品 + 独立组合名称（与单品一套字段逻辑） */}
+      <GroupCreateModal
+        open={groupCreateOpen}
+        onClose={() => setGroupCreateOpen(false)}
+        onCreated={() => { setPage(1); fetchList(); }}
+        crafts={crafts}
+        audiences={audiences}
+        categories={categories}
+        users={users}
+        certificates={certificates}
       />
     </div>
   );
