@@ -3,7 +3,6 @@ import { Skeleton, Popconfirm, Button, Flex } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Product } from '../../../api/products';
-import { SUPPLY_MODES } from '../../../config/product';
 import { mainImageUrl } from '../../../utils/productImages';
 
 interface ProductCardProps {
@@ -71,9 +70,8 @@ const ProductCard = memo(function ProductCard({
       <div className="pm-prod-body">
         <Flex className="pm-prod-title-row" align="center" justify="space-between" gap={8}>
           <div className="pm-prod-name" title={product.name} style={{ flex: '1 1 auto', minWidth: 0 }}>{product.name}</div>
-          {/* 右上角：编号在前 + 公开状态在后，与名称水平居中对齐 */}
+          {/* 右上角：公开状态，与名称水平居中对齐 */}
           <div className="pm-prod-topbar">
-            <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
             <span className={`pm-status pm-prod-status ${product.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
               {product.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
             </span>
@@ -110,14 +108,7 @@ const ProductCard = memo(function ProductCard({
         </div>
 
         <div className="pm-prod-foot">
-          <div className="pm-prod-modes">
-            {product.supplyModes
-              ? product.supplyModes.split(',').map((m: string) => {
-                  const f = SUPPLY_MODES.find((s) => s.value === m);
-                  return f ? <span key={m} className="pm-prod-mode">{f.label}</span> : null;
-                })
-              : <span className="pm-prod-mode pm-prod-mode--ghost">未设模式</span>}
-          </div>
+          <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
           <span className="pm-actions" onClick={(e) => e.stopPropagation()}>
             {canDelete && onDelete ? (
               <Popconfirm title="确定删除？" onConfirm={() => onDelete(product.id)}>
