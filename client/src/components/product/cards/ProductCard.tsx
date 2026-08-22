@@ -20,7 +20,7 @@ export const ProductCardSkeleton = memo(function ProductCardSkeleton() {
   return (
     <div className="pm-prod-card pm-prod-card--skeleton">
       <div className="pm-prod-cover">
-        <div className="pm-prod-cover-head">
+        <div className="pm-prod-skeleton-head">
           <Skeleton.Avatar active shape="round" size={20} />
           <Skeleton.Avatar active shape="round" size={20} />
         </div>
@@ -60,17 +60,19 @@ const ProductCard = memo(function ProductCard({
       onClick={() => onOpenDetail?.(product)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail?.(product); } }}
     >
-      {/* 左侧：正方形主图 + 状态/SKU 覆盖 */}
+      {/* 右上角：公开状态 + 编号 排列展示 */}
+      <div className="pm-prod-topbar">
+        <span className={`pm-status pm-prod-status ${product.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
+          {product.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
+        </span>
+        <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
+      </div>
+
+      {/* 左侧：正方形主图 */}
       <div className="pm-prod-cover">
         {mainImageUrl(product.images) ? (
           <img src={mainImageUrl(product.images)} alt="" />
         ) : null}
-        <div className="pm-prod-cover-head">
-          <span className={`pm-status pm-prod-status ${product.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
-            {product.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
-          </span>
-        </div>
-        <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
       </div>
 
       {/* 右侧：产品信息 */}

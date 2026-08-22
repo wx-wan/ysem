@@ -182,6 +182,15 @@
   min-height: 132px;
   background: linear-gradient(135deg, #1677ff 0%, #4f9bff 55%, #8ec5ff 100%);
 }
+.pm-prod-skeleton-head {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .pm-prod-card--skeleton .pm-prod-body {
   flex: 1 1 auto;
   min-width: 0;
@@ -189,6 +198,7 @@
 
 /* 产品卡片：左右结构，形状锁 16 圆角，阴影两级 */
 .pm-prod-card {
+  position: relative;
   height: 100%;
   background: var(--c-surface, #fff);
   border: 1px solid var(--c-border, #eef2f7);
@@ -219,17 +229,6 @@
   background: linear-gradient(135deg, #1677ff 0%, #4f9bff 55%, #8ec5ff 100%);
   overflow: hidden;
 }
-.pm-prod-cover-head {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  z-index: 1;
-  display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
-  gap: 8px;
-}
 .pm-prod-cover::after {
   content: '';
   position: absolute;
@@ -247,36 +246,41 @@
   height: 100%;
   object-fit: cover;
 }
-.pm-prod-sku {
+/* 卡片右上角：公开状态 + 编号 横向排列展示 */
+.pm-prod-topbar {
   position: absolute;
+  top: 10px;
   right: 10px;
-  bottom: 10px;
-  z-index: 1;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pm-prod-sku {
   display: inline-flex;
   align-items: center;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.4px;
-  color: #fff;
+  color: var(--c-text, #1f2937);
   padding: 3px 10px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.42);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  background: var(--c-fill, #f1f5f9);
+  border: 1px solid var(--c-border, #eef2f7);
 }
-/* 封面上的状态药丸：复用 .pm-status 体系，叠加半透明深色保证在渐变封面上的可读性 */
-.pm-prod-status {
+/* 右上角的状态药丸：用常规状态色（去掉封面上的半透明深色覆盖） */
+.pm-prod-topbar .pm-prod-status {
   position: relative;
   z-index: 1;
   color: #fff;
-  background: rgba(15, 23, 42, 0.28);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: var(--c-success, #22c55e);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
-.pm-prod-status::before { background: #fff; }
-/* 私密：封面上的点点也用主题色，保持与正文私密状态一致 */
-.pm-prod-status.pm-status--inactive::before { background: var(--c-warning, #f59e0b); }
+.pm-prod-topbar .pm-prod-status.pm-status--inactive {
+  background: var(--c-warning, #f59e0b);
+}
+.pm-prod-topbar .pm-prod-status::before { background: #fff; }
 .pm-prod-status.pm-status--inactive {
   color: #fff;
   background: rgba(245, 158, 11, 0.32);
