@@ -153,7 +153,7 @@ export default function CertificatePage() {
         onOk={handleSubmit}
         okText="保存"
         cancelText="取消"
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="证书名称" rules={[{ required: true, message: '请输入证书名称' }]}>
