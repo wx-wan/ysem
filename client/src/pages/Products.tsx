@@ -570,7 +570,7 @@ export default function Products() {
           <>
             <Row gutter={[16, 16]}>
               {list.map((r) => (
-                <Col key={r.id} xs={24} sm={12} md={12} lg={8} xl={8}>
+                <Col key={r.id} xs={24} sm={12} md={12} lg={6} xl={6}>
                   <ProductCard
                     product={r}
                     onOpenDetail={openDetail}
