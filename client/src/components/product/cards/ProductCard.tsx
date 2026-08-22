@@ -60,14 +60,6 @@ const ProductCard = memo(function ProductCard({
       onClick={() => onOpenDetail?.(product)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpenDetail?.(product); } }}
     >
-      {/* 右上角：公开状态 + 编号 排列展示 */}
-      <div className="pm-prod-topbar">
-        <span className={`pm-status pm-prod-status ${product.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
-          {product.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
-        </span>
-        <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
-      </div>
-
       {/* 左侧：正方形主图 */}
       <div className="pm-prod-cover">
         {mainImageUrl(product.images) ? (
@@ -77,8 +69,15 @@ const ProductCard = memo(function ProductCard({
 
       {/* 右侧：产品信息 */}
       <div className="pm-prod-body">
-        <Flex className="pm-prod-title-row" align="center" wrap gap={8}>
+        <Flex className="pm-prod-title-row" align="center" justify="space-between" gap={8}>
           <div className="pm-prod-name" title={product.name} style={{ flex: '1 1 auto', minWidth: 0 }}>{product.name}</div>
+          {/* 右上角：编号在前 + 公开状态在后，与名称水平居中对齐 */}
+          <div className="pm-prod-topbar">
+            <span className="pm-prod-sku">{product.sku || 'SKU —'}</span>
+            <span className={`pm-status pm-prod-status ${product.visibility === 'PRIVATE' ? 'pm-status--inactive' : 'pm-status--active'}`}>
+              {product.visibility === 'PRIVATE' ? t('product.visibilityPrivate') : t('product.visibilityPublic')}
+            </span>
+          </div>
         </Flex>
         <div className="pm-prod-tags">
           {product.crafts?.length

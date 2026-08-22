@@ -246,12 +246,9 @@
   height: 100%;
   object-fit: cover;
 }
-/* 卡片右上角：公开状态 + 编号 横向排列展示 */
+/* 标题行右侧：编号在前 + 公开状态在后，与名称水平居中对齐 */
 .pm-prod-topbar {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 3;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 8px;
