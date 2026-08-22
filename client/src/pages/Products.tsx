@@ -552,6 +552,11 @@ export default function Products() {
               />
               <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
               <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterUnit(undefined); setPage(1); }}>重置</Button>
+              <CapsuleSwitch
+                value={view}
+                options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
+                onChange={(v) => { setView(v); setPage(1); }}
+              />
             </Space>
           </Col>
           <Col>
@@ -562,13 +567,6 @@ export default function Products() {
             </Space>
           </Col>
         </Row>
-        <div style={{ marginTop: 12 }}>
-          <CapsuleSwitch
-            value={view}
-            options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-            onChange={(v) => { setView(v); setPage(1); }}
-          />
-        </div>
       </Card>
       )}
 
