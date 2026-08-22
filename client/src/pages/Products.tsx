@@ -67,6 +67,8 @@ export default function Products() {
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
   const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
   const [filterUnit, setFilterUnit] = useState<string | undefined>();
+  // 列表内类型筛选：全部 / 产品 / 组合（同列表混排）
+  const [filterType, setFilterType] = useState<'ALL' | 'PRODUCT' | 'GROUP'>('ALL');
 
   // 用户列表（用于「不公开」产品指定可见人）
   const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
@@ -246,8 +248,6 @@ export default function Products() {
 
   // 第一步卡片式选择的状态
   const [batchOpen, setBatchOpen] = useState(false);
-  // 列表内类型筛选：全部 / 产品 / 组合（同列表混排）
-  const [filterType, setFilterType] = useState<'ALL' | 'PRODUCT' | 'GROUP'>('ALL');
   // 组合管理弹窗
   const [groupManageId, setGroupManageId] = useState<string | null>(null);
   const [groupManageOpen, setGroupManageOpen] = useState(false);
