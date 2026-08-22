@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import AppModal from '../../AppModal';
-import { Avatar, Empty, Tag, theme, Tooltip, Popconfirm } from 'antd';
+import { Avatar, Button, Empty, Tag, theme, Tooltip } from 'antd';
 import {
-  EditOutlined, DeleteOutlined, CloseOutlined,
+  EditOutlined, CloseOutlined,
   ProfileOutlined, ArrowsAltOutlined, ColumnHeightOutlined,
   ColumnWidthOutlined, HomeOutlined, FileTextOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
@@ -15,6 +15,7 @@ import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import ProductImagesStack from '../../common/ProductImagesStack';
 import dayjs from 'dayjs';
+import './ProductDetailModal.css';
 
 type TabKey = 'overview' | 'sales' | 'activity';
 
@@ -34,7 +35,7 @@ interface ProductDetailModalProps {
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
-  product, open, onClose, onEdit, onDelete, onCreateQuote, onApplySample, canDelete = true,
+  product, open, onClose, onEdit, onCreateQuote, onApplySample,
   salesList, salesLoading, activities, userMap,
 }) => {
   const { token } = theme.useToken();
@@ -74,9 +75,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   if (!product) return null;
 
-  const headerGradient = `linear-gradient(135deg, ${token.colorPrimary} 0%, ${token.colorPrimaryActive} 100%)`;
-  const headerText = '#fff';
-  const headerTextSub = 'rgba(255,255,255,0.85)';
+  const headerGradient = 'linear-gradient(135deg, #f0f7ff 0%, #e0efff 100%)';
+  const headerText = 'var(--c-text)';
+  const headerTextSub = 'var(--c-text-secondary)';
 
   const classifyValue = [
     product.crafts?.length ? product.crafts.map((c) => c.name).join('、') : null,
@@ -98,22 +99,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     { icon: <HomeOutlined style={{ fontSize: 14 }} />, label: '模式', value: supplyLabels.join('、') || '未设置' },
   ];
 
-  const panelBtnStyle: React.CSSProperties = {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.35)',
-    background: 'rgba(255,255,255,0.18)',
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: 15,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.18s ease',
-    outline: 'none',
-  };
-
   const circleBtnStyle = (bg: string): React.CSSProperties => ({
     width: 34,
     height: 34,
@@ -127,24 +112,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     transition: 'all 0.18s ease',
     outline: 'none',
   });
-
-  const textBtnStyle: React.CSSProperties = {
-    flex: 1,
-    height: 36,
-    borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.45)',
-    background: 'rgba(255,255,255,0.16)',
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: 13,
-    fontWeight: 600,
-    display: 'inline-flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    transition: 'all 0.18s ease',
-    outline: 'none',
-  };
 
   const renderSales = () => {
     if (salesLoading) {
@@ -262,92 +229,14 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               borderRadius: 16,
             }}
           >
-            {/* 右上角：编辑/删除 单独占一行 */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button
-                type="button"
-                title="编辑"
-                onClick={() => onEdit(product)}
-                style={panelBtnStyle}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.34)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.18)'; }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
-                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-              >
-                <EditOutlined />
-              </button>
-              {canDelete && (
-                <Popconfirm
-                  title="删除产品"
-                  description={`确认删除「${product.name}」？此操作不可恢复。`}
-                  okText="删除"
-                  okButtonProps={{ danger: true }}
-                  cancelText="取消"
-                  onConfirm={onDelete}
-                >
-                  <button
-                    type="button"
-                    title="删除"
-                    style={panelBtnStyle}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,99,102,0.9)';
-                      e.currentTarget.style.borderColor = 'rgba(255,99,102,0.9)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.18)';
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.35)';
-                    }}
-                    onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.92)'; }}
-                    onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                    onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,99,102,0.45)'; }}
-                    onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                  >
-                    <DeleteOutlined />
-                  </button>
-                </Popconfirm>
-              )}
-            </div>
-
-            {/* 业务操作：创建报价 / 申请打样 */}
-            <div style={{ display: 'flex', gap: 10, marginTop: 14 }}>
-              <button
-                type="button"
-                onClick={() => onCreateQuote?.(product)}
-                style={textBtnStyle}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
-                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-              >
-                <FileTextOutlined /> 基于此产品创建报价
-              </button>
-              <button
-                type="button"
-                onClick={() => onApplySample?.(product)}
-                style={textBtnStyle}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.16)'; }}
-                onMouseDown={(e) => { e.currentTarget.style.transform = 'scale(0.97)'; }}
-                onMouseUp={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
-                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.4)'; }}
-                onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-              >
-                <HomeOutlined /> 申请打样
-              </button>
-            </div>
-
             {/* 产品名 */}
             <h2
               style={{
-                margin: '16px 0 0',
-                fontSize: 21,
+                margin: '10px 0 0',
+                fontSize: 17,
                 fontWeight: 800,
                 color: headerText,
-                lineHeight: 1.32,
+                lineHeight: 1.3,
                 wordBreak: 'break-word',
                 letterSpacing: '0.01em',
               }}
@@ -356,7 +245,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             </h2>
 
             {/* 分类 */}
-            <div style={{ marginTop: 10, fontSize: 13, color: headerTextSub, letterSpacing: '0.01em' }}>
+            <div style={{ marginTop: 6, fontSize: 13, color: headerTextSub, letterSpacing: '0.01em' }}>
               {classifyValue}
             </div>
 
@@ -365,20 +254,51 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               style={{
                 marginTop: 18,
                 paddingTop: 16,
-                borderTop: '1px solid rgba(255,255,255,0.16)',
+                borderTop: '1px solid rgba(22,119,255,0.12)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 9,
               }}
             >
               {infoRows.map((row, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'rgba(255,255,255,0.92)', fontSize: 13 }}>
-                  <span style={{ opacity: 0.8, display: 'inline-flex' }}>{row.icon}</span>
-                  <span style={{ opacity: 0.7 }}>{row.label}</span>
+                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--c-text)', fontSize: 13 }}>
+                  <span style={{ opacity: 0.7, display: 'inline-flex', color: 'var(--c-primary)' }}>{row.icon}</span>
+                  <span style={{ opacity: 0.6 }}>{row.label}</span>
                   <span style={{ opacity: row.value === '未设置' || row.value === '未填写' ? 0.6 : 1 }}>{row.value}</span>
                 </div>
               ))}
             </div>
+
+            {/* 操作栏：位于模式下方（层级/位置不变，仅重做按钮样式） */}
+            <div className="pdm-op-bar">
+              <Button
+                block
+                className="pdm-op-primary"
+                onClick={() => onCreateQuote?.(product)}
+                icon={<FileTextOutlined />}
+              >
+                基于此产品创建报价
+              </Button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <Button
+                  block
+                  className="pdm-op-ghost"
+                  onClick={() => onEdit(product)}
+                  icon={<EditOutlined />}
+                >
+                  编辑产品
+                </Button>
+                <Button
+                  block
+                  className="pdm-op-ghost"
+                  onClick={() => onApplySample?.(product)}
+                  icon={<HomeOutlined />}
+                >
+                  申请打样
+                </Button>
+              </div>
+            </div>
+
           </div>
 
           {/* 下半：产品备注 */}
@@ -421,7 +341,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               {product.remark?.trim() || product.description?.trim() ? (
                 product.remark || product.description
               ) : (
-                <span style={{ color: token.colorTextTertiary }}>暂无备注</span>
+                <span style={{ color: token.colorTextTertiary, fontSize: 13 }}>暂无</span>
               )}
             </div>
           </div>

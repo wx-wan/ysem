@@ -1,0 +1,48 @@
+/* 产品详情弹窗：概览卡片操作栏按钮 */
+.pdm-op-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.pdm-op-bar .ant-btn {
+  height: 38px;
+  border-radius: 10px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 12px;
+  transition: all 0.18s ease;
+}
+
+.pdm-op-bar .ant-btn > .anticon {
+  font-size: 15px;
+}
+
+/* 主操作：实心主色 */
+.pdm-op-bar .ant-btn.pdm-op-primary {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: #fff;
+}
+
+.pdm-op-bar .ant-btn.pdm-op-primary:hover {
+  background: var(--c-primary-hover);
+  border-color: var(--c-primary-hover);
+  color: #fff;
+}
+
+/* 次操作：主色描边 */
+.pdm-op-bar .ant-btn.pdm-op-ghost {
+  background: transparent;
+  border-color: var(--c-primary);
+  color: var(--c-primary);
+}
+
+.pdm-op-bar .ant-btn.pdm-op-ghost:hover {
+  background: var(--c-primary-bg);
+  border-color: var(--c-primary-hover);
+  color: var(--c-primary-hover);
+}

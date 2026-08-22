@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button, Space, Input, Modal, Form, Select, Radio,
-  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Spin,
+  Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Spin, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined,
   CloseOutlined, ClockCircleOutlined, ShoppingOutlined,
-  FileTextOutlined,
+  FileTextOutlined, InfoCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
@@ -651,7 +651,18 @@ export default function Products() {
             {/* 左：产品图片栏 */}
             <Col xs={24} xl={{ flex: '3 1 0%' }} className="pm-col-stretch">
               <div className="pm-col-inner">
-                <Card title="产品图片" variant="outlined" className="pm-card">
+                <Card
+                  title={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      产品图片
+                      <Tooltip title="支持批量选择图片，第一张将作为主图；点击图片可预览（支持左右切换），也可通过星标重新设为主图。">
+                        <InfoCircleOutlined style={{ color: 'var(--c-text-tertiary)', cursor: 'help' }} />
+                      </Tooltip>
+                    </span>
+                  }
+                  variant="outlined"
+                  className="pm-card"
+                >
                   <Form.Item name="images" noStyle>
                     <ProductImageList uploadUrl="/upload" />
                   </Form.Item>

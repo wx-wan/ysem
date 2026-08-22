@@ -12,9 +12,13 @@
   border: 2px solid #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   background: #f1f5f9;
-  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  transition: transform 0.25s ease, box-shadow 0.25s ease, opacity 0.3s ease;
   cursor: zoom-in;
   overflow: hidden;
+  opacity: 0;
+}
+.pis-img.is-loaded {
+  opacity: 1;
 }
 .pis-img .ant-image-img,
 .pis-img img {
@@ -40,23 +44,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
-}
-.pis-count-badge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  z-index: 99;
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.78);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 20px;
-  white-space: nowrap;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
   pointer-events: none;
 }
 

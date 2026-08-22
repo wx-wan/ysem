@@ -28,6 +28,7 @@ export default function ProductImagesStack({
 }: ProductImagesStackProps) {
   const items = itemsProp ?? parseImages(images);
   const [hovered, setHovered] = useState(false);
+  const [loaded, setLoaded] = useState<Record<number, boolean>>({});
 
   if (!items.length) {
     return <div className="pis-empty" style={{ width: size, height: size }}>暂无图片</div>;
@@ -56,10 +57,11 @@ export default function ProductImagesStack({
           return (
             <AntImage
               key={it.url + i}
-              className="pis-img"
+              className={`pis-img ${loaded[i] ? 'is-loaded' : ''}`}
               src={it.url}
               alt={it.name}
               preview={{ mask: null }}
+              onLoad={() => setLoaded((s) => ({ ...s, [i]: true }))}
               style={{
                 width: imgSize,
                 height: imgSize,
@@ -94,7 +96,6 @@ export default function ProductImagesStack({
           })()
         )}
       </AntImage.PreviewGroup>
-      <span className="pis-count-badge">{items.length} 张</span>
     </div>
   );
 }

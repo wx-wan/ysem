@@ -243,8 +243,6 @@ export default function ProductImageList({
           )}
         </Upload>
       </AntImage.PreviewGroup>
-
-      <div className="pil-tip">支持批量选择，第一张为主图，点击图片可预览（支持左右切换），星标设为主图</div>
     </div>
   );
 }

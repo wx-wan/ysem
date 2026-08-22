@@ -2,6 +2,16 @@ import React, { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '../zIndex';
 
+const overlayBase: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: Z_INDEX.modalMask,
+  display: 'flex',
+  background: 'rgba(15, 23, 42, 0.45)',
+  padding: 24,
+  boxSizing: 'border-box',
+};
+
 export interface AppModalProps {
   open: boolean;
   onClose: () => void;
@@ -32,16 +42,6 @@ export interface AppModalProps {
   bodyStyle?: React.CSSProperties;
 }
 
-const overlayBase: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  zIndex: Z_INDEX.modalMask,
-  display: 'flex',
-  background: 'rgba(15, 23, 42, 0.45)',
-  padding: 24,
-  boxSizing: 'border-box',
-};
-
 const AppModal: React.FC<AppModalProps> = ({
   open,
   onClose,
@@ -62,15 +62,31 @@ const AppModal: React.FC<AppModalProps> = ({
   const panelRef = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = React.useState(false);
 
+  // 打开时重置关闭态
+  useEffect(() => {
+    if (open) setClosing(false);
+  }, [open]);
+
+  // 触发退出动画后再通知父级卸载
+  const requestClose = React.useCallback(() => {
+    if (destroyOnHidden && !closing) {
+      setClosing(true);
+      const t = setTimeout(() => onClose(), 180);
+      return () => clearTimeout(t);
+    }
+    onClose();
+    return undefined;
+  }, [closing, destroyOnHidden, onClose]);
+
   // ESC 关闭
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') requestClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, requestClose]);
 
   // 锁定 body 滚动
   useEffect(() => {
@@ -86,7 +102,7 @@ const AppModal: React.FC<AppModalProps> = ({
   if (destroyOnHidden && closing) return null;
 
   const handleMaskClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget && maskClosable) onClose();
+    if (e.target === e.currentTarget && maskClosable) requestClose();
   };
 
   const panelStyle: React.CSSProperties = {
@@ -107,8 +123,12 @@ const AppModal: React.FC<AppModalProps> = ({
   const showFooter = footer !== undefined && footer !== null;
 
   const content = (
-    <div style={{ ...overlayBase, alignItems: centered ? 'center' : 'flex-start', justifyContent: 'center' }} onClick={handleMaskClick}>
-      <div ref={panelRef} className={className} style={panelStyle} onClick={(e) => e.stopPropagation()}>
+    <div
+      className="app-modal-overlay"
+      style={{ ...overlayBase, alignItems: centered ? 'center' : 'flex-start', justifyContent: 'center' }}
+      onClick={handleMaskClick}
+    >
+      <div ref={panelRef} className={`${className ?? ''} app-modal-panel${closing ? ' is-closing' : ''}`} style={panelStyle} onClick={(e) => e.stopPropagation()}>
         {showHeader && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(0,0,0,0.06)', flex: '0 0 auto' }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>{title}</div>
@@ -117,7 +137,7 @@ const AppModal: React.FC<AppModalProps> = ({
               {closable && (
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={requestClose}
                   aria-label="关闭"
                   style={{
                     border: 'none',
@@ -150,5 +170,48 @@ const AppModal: React.FC<AppModalProps> = ({
 
   return createPortal(content, document.body);
 };
+
+const styles = `
+.app-modal-overlay {
+  animation: app-modal-fade-in 0.2s ease both;
+}
+.app-modal-overlay.is-closing {
+  animation: app-modal-fade-out 0.18s ease both;
+}
+.app-modal-panel {
+  animation: app-modal-zoom-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: center;
+}
+.app-modal-panel.is-closing {
+  animation: app-modal-zoom-out 0.18s ease both;
+}
+@keyframes app-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes app-modal-fade-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes app-modal-zoom-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes app-modal-zoom-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(8px) scale(0.97); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-modal-overlay, .app-modal-panel, .app-modal-overlay.is-closing, .app-modal-panel.is-closing {
+    animation-duration: 0.01ms;
+  }
+}
+`;
+if (typeof document !== 'undefined' && !document.getElementById('app-modal-styles')) {
+  const el = document.createElement('style');
+  el.id = 'app-modal-styles';
+  el.textContent = styles;
+  document.head.appendChild(el);
+}
 
 export default AppModal;
