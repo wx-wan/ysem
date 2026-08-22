@@ -1,18 +1,14 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
-  Card, Button, Table, Tag, Space, Modal, Form, Input, Select, App, Popconfirm, Divider, Typography, Row, Col,
+  Button, Table, Tag, Space, Modal, Form, Input, Select, App, Popconfirm, Divider, Typography,
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons';
-import { productGroupApi, ProductGroup, productApi, Product } from '../api/products';
-import { sampleApi } from '../api/products';
-import { quoteApi } from '../api/products';
+import { productGroupApi, ProductGroup, productApi, Product } from '../../api/products';
+import { sampleApi, quoteApi } from '../../api/products';
 
 const { Text } = Typography;
 
-const STATUS_COLOR: Record<string, string> = { DRAFT: 'default', SUBMITTED: 'blue', APPROVED: 'green', REJECTED: 'red', PENDING: 'gold', DONE: 'green' };
-const STATUS_LABEL: Record<string, string> = { DRAFT: '草稿', SUBMITTED: '已提交', APPROVED: '已通过', REJECTED: '已驳回', PENDING: '待处理', DONE: '已完成' };
-
-export default function ProductGroups() {
+export default function ProductGroupView({ onShowGroups }: { onShowGroups: () => void }) {
   const { message } = App.useApp();
   const [list, setList] = useState<ProductGroup[]>([]);
   const [total, setTotal] = useState(0);
@@ -113,7 +109,6 @@ export default function ProductGroups() {
   const saveMembers = async () => {
     if (!currentGroup) return;
     try {
-      // 用 add/remove 增量更新：先移除全部再添加当前选择
       const current = (currentGroup.productIds || '').split(',').filter(Boolean);
       const toRemove = current.filter((id) => !memberSelected.includes(id));
       const toAdd = memberSelected.filter((id) => !current.includes(id));
@@ -196,13 +191,10 @@ export default function ProductGroups() {
 
   return (
     <div>
-      <Card
-        title="产品组"
-        extra={<Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品组</Button>}
-        styles={{ body: { padding: 16 } }}
-      >
-        <Table rowKey="id" loading={loading} columns={columns as any} dataSource={list} pagination={{ current: page, pageSize, total, onChange: setPage }} />
-      </Card>
+      <div style={{ marginBottom: 12 }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品组</Button>
+      </div>
+      <Table rowKey="id" loading={loading} columns={columns as any} dataSource={list} pagination={{ current: page, pageSize, total, onChange: setPage }} />
 
       {/* 新建 / 编辑 */}
       <Modal title={editing ? '编辑产品组' : '新建产品组'} open={open} onCancel={() => setOpen(false)} onOk={submit} width={640} okText="保存">

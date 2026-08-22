@@ -30,6 +30,7 @@ import ProductCard from '../components/product/cards/ProductCard';
 import { useAuthStore } from '../stores/useAuthStore';
 import ProductDetailModal from '../components/product/modals/ProductDetailModal';
 import BatchCreateProductModal from '../components/product/modals/BatchCreateProductModal';
+import ProductGroupView from '../components/product/ProductGroupView';
 import {
   listCacheKey, getListCache, setListCache,
   setDetailCache, installCacheLifecycle, invalidateAll,
@@ -240,6 +241,7 @@ export default function Products() {
 
   // 第一步卡片式选择的状态
   const [batchOpen, setBatchOpen] = useState(false);
+  const [view, setView] = useState<'product' | 'group'>('product');
   const [stepOpen, setStepOpen] = useState(false);
   const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
@@ -482,6 +484,39 @@ export default function Products() {
   return (
     <div className="pm-container">
       {/* 工具条 */}
+      {/* 产品 / 组合 胶囊切换 */}
+      <div
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 2,
+          background: '#f1f5f9', borderRadius: 24, padding: '3px 4px', marginBottom: 12,
+        }}
+      >
+        {([{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }] as const).map((opt) => {
+          const active = view === opt.key;
+          return (
+            <button
+              key={opt.key}
+              onClick={() => setView(opt.key)}
+              style={{
+                border: 'none', outline: 'none', cursor: 'pointer',
+                padding: '5px 18px', borderRadius: 20, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
+                transition: 'all 0.25s ease',
+                background: active ? '#1677ff' : 'transparent',
+                color: active ? '#fff' : '#64748b',
+                boxShadow: active ? '0 2px 8px rgba(22,119,255,0.3)' : 'none',
+              }}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {view === 'group' ? (
+        <Card className="pm-toolbar" styles={{ body: { padding: 20 } }}>
+          <ProductGroupView onShowGroups={() => setView('group')} />
+        </Card>
+      ) : (
       <Card className="pm-toolbar" styles={{ body: { padding: '12px 16px' } }}>
         <Row gutter={12} align="middle" wrap>
           <Col flex="auto">
@@ -535,8 +570,10 @@ export default function Products() {
           </Col>
         </Row>
       </Card>
+      )}
 
-      {/* 数据卡片网格 */}
+      {/* 产品数据区（仅「产品」视图显示） */}
+      {view === 'product' && (
       <Card className="pm-grid-card" styles={{ body: { padding: 20 } }}>
         {loading ? (
           <div style={{ padding: '64px 0', textAlign: 'center' }}>
@@ -583,6 +620,7 @@ export default function Products() {
           />
         )}
       </Card>
+      )}
 
       {/* 新建 / 编辑弹窗 */}
       <Modal
