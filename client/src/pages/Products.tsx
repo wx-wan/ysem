@@ -227,7 +227,7 @@ export default function Products() {
   useEffect(() => { fetchTaxonomy(); }, []);
   useEffect(() => { fetchCertificates(); }, []);
   useEffect(() => { installCacheLifecycle(); }, []);
-  useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId, filterVisibility]);
+  useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId, filterVisibility, filterType]);
 
   // 受众变化时联动品类
   const handleAudienceChange = (audienceId?: string) => {
@@ -571,7 +571,7 @@ export default function Products() {
                 value={filterType}
                 options={[
                   { key: 'ALL', label: '全部' },
-                  { key: 'PRODUCT', label: '产品' },
+                  { key: 'PRODUCT', label: '单品' },
                   { key: 'GROUP', label: '组合' },
                 ]}
                 onChange={(v) => { setFilterType(v); setPage(1); }}
