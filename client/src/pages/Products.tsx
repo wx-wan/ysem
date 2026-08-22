@@ -20,6 +20,7 @@ import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
 import { salesApi, SalesItem, STAGE_META } from '../api/sales';
 import ProductImageList from '../components/common/ProductImageList';
+import CreateTypeModal from '../components/common/CreateTypeModal';
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
@@ -85,6 +86,7 @@ export default function Products() {
 
   // 弹窗/表单
   const [open, setOpen] = useState(false);
+  const [createTypeOpen, setCreateTypeOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
@@ -312,7 +314,19 @@ export default function Products() {
     setStepErr((e) => ({ ...e, craftId: undefined }));
   };
 
+  // 打开「新建」引导弹窗（第一步：选择 单品 / 组合）
   const openCreate = () => {
+    setCreateTypeOpen(true);
+  };
+
+  // 引导弹窗选择结果：单品走现有新建逻辑，组合直接创建空组合并打开管理弹窗
+  const handleCreateTypeSelect = (target: 'PRODUCT' | 'GROUP') => {
+    setCreateTypeOpen(false);
+    if (target === 'GROUP') {
+      handleCreateGroup();
+      return;
+    }
+    // 单品：进入现有新建流程（工艺/受众/品类 → 主表单）
     resetStep();
     pushLayer('step');
     setStepOpen(true);
@@ -581,9 +595,8 @@ export default function Products() {
           <Col>
             <Space>
               <ViewModeSwitch value={viewMode} onChange={setViewMode} />
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品</Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建</Button>
               <Button icon={<UploadOutlined />} onClick={() => setBatchOpen(true)}>批量新建</Button>
-              <Button icon={<TeamOutlined />} onClick={handleCreateGroup}>新建组合</Button>
             </Space>
           </Col>
         </Row>
@@ -1010,6 +1023,12 @@ export default function Products() {
         open={groupManageOpen}
         onClose={() => setGroupManageOpen(false)}
         onChanged={() => fetchList()}
+      />
+      {/* 新建引导弹窗：选择 单品 / 组合 */}
+      <CreateTypeModal
+        open={createTypeOpen}
+        onCancel={() => setCreateTypeOpen(false)}
+        onSelect={handleCreateTypeSelect}
       />
     </div>
   );
