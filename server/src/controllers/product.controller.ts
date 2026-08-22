@@ -183,6 +183,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     const audienceId = req.query.audienceId as string | undefined;
     const categoryId = req.query.categoryId as string | undefined;
     const visibility = req.query.visibility as string | undefined;
+    const unit = req.query.unit as string | undefined;
 
     const where: Record<string, unknown> = {};
     if (keyword) where.OR = [
@@ -193,6 +194,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     if (audienceId) where.audienceId = audienceId;
     if (categoryId) where.categoryId = categoryId;
     if (visibility) where.visibility = visibility;
+    if (unit) where.unit = unit;
 
     // 可见性过滤：管理员可查看全部产品；其余用户仅见公开产品或自己可见的私密产品
     const uid = req.userId;
@@ -305,8 +307,8 @@ export const batchCreateProducts = async (req: AuthRequest, res: Response): Prom
         const parsed = productSchema.parse(row);
         const { craftIds, sku: _ignored, visibleUserIds, unit, ...rest } = parsed;
         const data: Prisma.ProductCreateInput = { ...rest };
-        // 单位默认「个」，移除套逻辑
-        data.unit = unit && unit !== '套' ? unit : '个';
+        // 单位默认「个」，允许「套」
+        data.unit = unit || '个';
         data.createdBy = req.userId;
         if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
         if (visibleUserIds?.length) {

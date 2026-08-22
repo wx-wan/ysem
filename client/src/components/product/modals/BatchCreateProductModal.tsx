@@ -36,6 +36,8 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
   const [rows, setRows] = useState<RowState[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ successCount: number; failCount: number; failed: { index: number; name?: string; reason: string }[] } | null>(null);
+  // 批量建产品统一单位（个 / 套）
+  const [batchUnit, setBatchUnit] = useState<string>('个');
 
   // 公共分类（应用到全部行）
   const [commonCraftIds, setCommonCraftIds] = useState<string[]>([]);
@@ -101,7 +103,7 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
       supplyModes: r.supplyModes || 'DEEP_CUSTOM',
       description: r.description,
       remark: r.remark,
-      unit: '个',
+      unit: batchUnit,
       visibility: 'PUBLIC',
       visibleUserIds: [],
     }));
@@ -251,7 +253,15 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
         <Button icon={<UploadOutlined />} onClick={() => message.info('选中下方输入框可直接粘贴 Excel 多行（第一列=名称，第二列=克重）')}>
           粘贴说明
         </Button>
-        <Tag color="blue">单位统一为「个」</Tag>
+        <span>
+          单位
+          <Select
+            value={batchUnit}
+            onChange={setBatchUnit}
+            style={{ width: 90, marginLeft: 6 }}
+            options={[{ label: '个', value: '个' }, { label: '套', value: '套' }]}
+          />
+        </span>
         <Tag>一产品一 SKU，不做聚合</Tag>
       </Space>
 

@@ -65,6 +65,7 @@ export default function Products() {
   const [filterCraftId, setFilterCraftId] = useState<string | undefined>();
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
   const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
+  const [filterUnit, setFilterUnit] = useState<string | undefined>();
 
   // 用户列表（用于「不公开」产品指定可见人）
   const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
@@ -167,6 +168,7 @@ export default function Products() {
       craftIds: filterCraftId,
       audienceId: filterAudienceId,
       visibility: filterVisibility,
+      unit: filterUnit,
     };
     const key = listCacheKey(query);
     const cached = getListCache(key);
@@ -542,8 +544,19 @@ export default function Products() {
                   { label: t('product.visibilityPrivate'), value: 'PRIVATE' },
                 ]}
               />
+              <Select
+                placeholder="单位"
+                value={filterUnit}
+                onChange={(v) => { setFilterUnit(v); setPage(1); }}
+                allowClear
+                style={{ width: 100 }}
+                options={[
+                  { label: '个', value: '个' },
+                  { label: '套', value: '套' },
+                ]}
+              />
               <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setPage(1); }}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterUnit(undefined); setPage(1); }}>重置</Button>
             </Space>
           </Col>
           <Col>
@@ -788,7 +801,7 @@ export default function Products() {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="unit" label="单位" initialValue="个" style={{ marginBottom: 0 }}>
-                      <Select disabled options={[{ label: '个', value: '个' }]} />
+                      <Select options={[{ label: '个', value: '个' }, { label: '套', value: '套' }]} />
                     </Form.Item>
                   </Col>
                 </Row>

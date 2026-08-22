@@ -135,6 +135,7 @@ interface ProductListParams {
   audienceId?: string;
   categoryId?: string;
   visibility?: string;
+  unit?: string;
 }
 
 // 下拉选项类型（供销售单等引用）
