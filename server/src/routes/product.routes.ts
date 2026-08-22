@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import {
   getProductOptions, getProducts, getProductById, createProduct, updateProduct, deleteProduct,
-  previewProductSku, batchCreateProducts,
+  previewProductSku, batchCreateProducts, getMixedProducts,
 } from '../controllers/product.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -11,6 +11,7 @@ router.use(authenticate);
 
 router.get('/options', getProductOptions);
 router.get('/sku-preview', previewProductSku);
+router.get('/mixed', getMixedProducts);
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 router.post('/', createProduct);

@@ -441,3 +441,97 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
     success(res, null, '删除成功');
   } catch { fail(res, 500, '服务器错误'); }
 };
+
+/**
+ * 产品 / 组合 混合列表：同一列表内按类型（ALL/PRODUCT/GROUP）混排。
+ * 产品筛选项（工艺/受众/可见性/单位）仅作用于产品；组合仅受关键词 + 类型影响。
+ * 返回条目形如 { type: 'PRODUCT'|'GROUP', data: <原始记录> }，前端据此分派卡片。
+ */
+export const getMixedProducts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 8));
+    const keyword = ((req.query.keyword as string) || '').trim();
+    const type = ((req.query.type as string) || 'ALL').toUpperCase();
+    const craftIds = ((req.query.craftIds as string) || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const audienceId = req.query.audienceId as string | undefined;
+    const visibility = req.query.visibility as string | undefined;
+    const unit = req.query.unit as string | undefined;
+
+    const entries: Array<{ type: 'PRODUCT' | 'GROUP'; data: Record<string, unknown> }> = [];
+
+    // 产品部分
+    if (type !== 'GROUP') {
+      const and: Record<string, unknown>[] = [];
+      if (keyword) {
+        and.push({
+          OR: [
+            { name: { contains: keyword } },
+            { sku: { contains: keyword } },
+          ],
+        });
+      }
+      if (craftIds.length) and.push({ crafts: { some: { id: { in: craftIds } } } });
+      if (audienceId) and.push({ audienceId });
+      if (visibility) and.push({ visibility });
+      if (unit) and.push({ unit });
+
+      const uid = req.userId;
+      const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
+      if (uid && !isAdmin) {
+        and.push({
+          OR: [
+            { visibility: 'PUBLIC' },
+            { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
+            { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
+          ],
+        });
+      }
+
+      const where: Record<string, unknown> = and.length ? { AND: and } : {};
+      const products = await prisma.product.findMany({
+        where,
+        include: {
+          crafts: { select: { id: true, name: true } },
+          audience: { select: { id: true, name: true } },
+          category: { select: { id: true, name: true } },
+          visibleUsers: { select: { userId: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      products.forEach((p) => entries.push({ type: 'PRODUCT', data: p as unknown as Record<string, unknown> }));
+    }
+
+    // 组合部分
+    if (type !== 'PRODUCT') {
+      const where: Record<string, unknown> = {};
+      if (keyword) where.name = { contains: keyword };
+
+      const groupsRaw = await prisma.productGroup.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      });
+      const groups = await Promise.all(
+        groupsRaw.map(async (g) => {
+          const ids = (g.productIds || '').split(',').map((s) => s.trim()).filter(Boolean);
+          const products = ids.length
+            ? await prisma.product.findMany({
+                where: { id: { in: ids } },
+                select: { id: true, name: true, sku: true, unit: true },
+              })
+            : [];
+          return { ...g, productCount: products.length, products };
+        }),
+      );
+      groups.forEach((g) => entries.push({ type: 'GROUP', data: g as unknown as Record<string, unknown> }));
+    }
+
+    // 合并排序 + 分页（按创建时间倒序混合）
+    entries.sort((a, b) => new Date(b.data.createdAt as string).getTime() - new Date(a.data.createdAt as string).getTime());
+    const total = entries.length;
+    const list = entries.slice((page - 1) * pageSize, page * pageSize);
+    success(res, { list, total, page, pageSize });
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};

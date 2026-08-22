@@ -9,12 +9,12 @@ import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
   ReloadOutlined, CheckCircleFilled, ArrowLeftOutlined, UploadOutlined,
   CloseOutlined, ClockCircleOutlined, ShoppingOutlined,
-  FileTextOutlined, InfoCircleOutlined,
+  FileTextOutlined, InfoCircleOutlined, TeamOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
-  taxonomyApi, quoteApi, sampleApi,
+  MixedItem, taxonomyApi, quoteApi, sampleApi, productGroupApi,
 } from '../api/products';
 import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
@@ -27,10 +27,11 @@ import { useCardGutter } from '../components/common/tokens';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
 import ProductList from '../components/product/list/ProductList';
 import ProductCard from '../components/product/cards/ProductCard';
+import ProductGroupCard from '../components/product/cards/ProductGroupCard';
+import ProductGroupManageModal from '../components/product/ProductGroupManageModal';
 import { useAuthStore } from '../stores/useAuthStore';
 import ProductDetailModal from '../components/product/modals/ProductDetailModal';
 import BatchCreateProductModal from '../components/product/modals/BatchCreateProductModal';
-import ProductGroupView from '../components/product/ProductGroupView';
 import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import {
   listCacheKey, getListCache, setListCache,
@@ -53,7 +54,7 @@ export default function Products() {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const cardGutter = useCardGutter();
-  const [list, setList] = useState<Product[]>([]);
+  const [list, setList] = useState<MixedItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize] = useState(8);
@@ -169,6 +170,7 @@ export default function Products() {
       audienceId: filterAudienceId,
       visibility: filterVisibility,
       unit: filterUnit,
+      type: filterType,
     };
     const key = listCacheKey(query);
     const cached = getListCache(key);
@@ -179,7 +181,7 @@ export default function Products() {
       // 缓存命中后仍在后台静默回源，保证数据新鲜
       Promise.resolve().then(async () => {
         try {
-          const res = await productApi.getList(query);
+          const res = await productApi.getMixed(query);
           if (res.data.code === 200 || res.data.code === 0) {
             setListCache(key, { list: res.data.data.list, total: res.data.data.total });
             setList(res.data.data.list);
@@ -192,7 +194,7 @@ export default function Products() {
 
     setLoading(true);
     try {
-      const res = await productApi.getList(query);
+      const res = await productApi.getMixed(query);
       if (res.data.code === 200 || res.data.code === 0) {
         setListCache(key, { list: res.data.data.list, total: res.data.data.total });
         setList(res.data.data.list);
@@ -200,7 +202,7 @@ export default function Products() {
       }
     } catch { message.error('加载失败'); }
     finally { setLoading(false); }
-  }, [page, pageSize, keyword, filterCraftId, filterAudienceId, filterVisibility]);
+  }, [page, pageSize, keyword, filterCraftId, filterAudienceId, filterVisibility, filterType]);
 
   const fetchTaxonomy = async () => {
     try {
@@ -244,7 +246,11 @@ export default function Products() {
 
   // 第一步卡片式选择的状态
   const [batchOpen, setBatchOpen] = useState(false);
-  const [view, setView] = useState<'product' | 'group'>('product');
+  // 列表内类型筛选：全部 / 产品 / 组合（同列表混排）
+  const [filterType, setFilterType] = useState<'ALL' | 'PRODUCT' | 'GROUP'>('ALL');
+  // 组合管理弹窗
+  const [groupManageId, setGroupManageId] = useState<string | null>(null);
+  const [groupManageOpen, setGroupManageOpen] = useState(false);
   const [stepOpen, setStepOpen] = useState(false);
   const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
   const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
@@ -484,21 +490,30 @@ export default function Products() {
     } catch { message.error('删除失败'); }
   };
 
+  const handleDeleteGroup = async (id: string) => {
+    try {
+      await productGroupApi.remove(id);
+      message.success('已删除产品组');
+      fetchList();
+    } catch { message.error('删除失败'); }
+  };
+
+  const handleCreateGroup = async () => {
+    try {
+      const res = await productGroupApi.create({ name: '新组合', productIds: [] });
+      const id = res?.data?.data?.id;
+      if (id) {
+        setGroupManageId(id);
+        setGroupManageOpen(true);
+      }
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || '创建失败');
+    }
+  };
+
   return (
     <div className="pm-container">
-      {/* 产品 / 组合 胶囊切换（内联，不占满整行） */}
-      {view === 'group' ? (
-        <Card className="pm-toolbar" styles={{ body: { padding: 20 } }}>
-          <div style={{ marginBottom: 12 }}>
-            <CapsuleSwitch
-              value={view}
-              options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-              onChange={(v) => { setView(v); setPage(1); }}
-            />
-          </div>
-          <ProductGroupView onShowGroups={() => setView('group')} />
-        </Card>
-      ) : (
+      {/* 筛选栏 */}
       <Card className="pm-toolbar" styles={{ body: { padding: '12px 16px' } }}>
         <Row gutter={12} align="middle" wrap>
           <Col flex="auto">
@@ -551,11 +566,15 @@ export default function Products() {
                 ]}
               />
               <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterUnit(undefined); setPage(1); }}>重置</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterUnit(undefined); setFilterType('ALL'); setPage(1); }}>重置</Button>
               <CapsuleSwitch
-                value={view}
-                options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-                onChange={(v) => { setView(v); setPage(1); }}
+                value={filterType}
+                options={[
+                  { key: 'ALL', label: '全部' },
+                  { key: 'PRODUCT', label: '产品' },
+                  { key: 'GROUP', label: '组合' },
+                ]}
+                onChange={(v) => { setFilterType(v); setPage(1); }}
               />
             </Space>
           </Col>
@@ -564,32 +583,40 @@ export default function Products() {
               <ViewModeSwitch value={viewMode} onChange={setViewMode} />
               <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建产品</Button>
               <Button icon={<UploadOutlined />} onClick={() => setBatchOpen(true)}>批量新建</Button>
+              <Button icon={<TeamOutlined />} onClick={handleCreateGroup}>新建组合</Button>
             </Space>
           </Col>
         </Row>
       </Card>
-      )}
 
-      {/* 产品数据区（仅「产品」视图显示） */}
-      {view === 'product' && (
+      {/* 产品 / 组合 混合数据区（同列表混排） */}
       <Card className="pm-grid-card" styles={{ body: { padding: 20 } }}>
         {loading ? (
           <div style={{ padding: '64px 0', textAlign: 'center' }}>
             <Spin size="large" />
           </div>
         ) : list.length === 0 ? (
-          <div className="pm-grid-empty">暂无产品，点击右上角「新建产品」开始添加</div>
+          <div className="pm-grid-empty">暂无数据，点击右上角「新建产品」或「新建组合」开始添加</div>
         ) : viewMode === 'card' ? (
           <>
             <Row gutter={[16, 16]}>
-              {list.map((r) => (
-                <Col key={r.id} xs={24} sm={12} md={12} lg={6} xl={6}>
-                  <ProductCard
-                    product={r}
-                    onOpenDetail={openDetail}
-                    onDelete={handleDelete}
-                    canDelete={canDelete}
-                  />
+              {list.map((item) => (
+                <Col key={`${item.type}-${item.data.id}`} xs={24} sm={12} md={12} lg={6} xl={6}>
+                  {item.type === 'PRODUCT' ? (
+                    <ProductCard
+                      product={item.data}
+                      onOpenDetail={openDetail}
+                      onDelete={handleDelete}
+                      canDelete={canDelete}
+                    />
+                  ) : (
+                    <ProductGroupCard
+                      group={item.data}
+                      canDelete={canDelete}
+                      onOpenManage={(g) => { setGroupManageId(g.id); setGroupManageOpen(true); }}
+                      onDelete={handleDeleteGroup}
+                    />
+                  )}
                 </Col>
               ))}
             </Row>
@@ -606,7 +633,7 @@ export default function Products() {
           </>
         ) : (
           <ProductList
-            data={list}
+            data={list.filter((i) => i.type === 'PRODUCT').map((i) => (i as { type: 'PRODUCT'; data: Product }).data)}
             total={total}
             page={page}
             pageSize={pageSize}
@@ -976,6 +1003,14 @@ export default function Products() {
         open={batchOpen}
         onClose={() => setBatchOpen(false)}
         onSuccess={() => { setBatchOpen(false); fetchList(); }}
+      />
+
+      {/* 组合集中管理（成员 / 打样 / 报价 / 编辑 / 删除） */}
+      <ProductGroupManageModal
+        groupId={groupManageId}
+        open={groupManageOpen}
+        onClose={() => setGroupManageOpen(false)}
+        onChanged={() => fetchList()}
       />
     </div>
   );

@@ -138,6 +138,11 @@ interface ProductListParams {
   unit?: string;
 }
 
+/** 产品 / 组合 混合列表条目 */
+export type MixedItem =
+  | { type: 'PRODUCT'; data: Product }
+  | { type: 'GROUP'; data: ProductGroup };
+
 // 下拉选项类型（供销售单等引用）
 export interface ProductOption {
   id: string;
@@ -148,6 +153,9 @@ export interface ProductOption {
 const productApi = {
   getList: (params?: ProductListParams) =>
     request.get<ApiResponse<{ list: Product[]; total: number; page: number; pageSize: number }>>('/products', { params }),
+  // 产品 / 组合 混合列表（同列表混排）
+  getMixed: (params?: ProductListParams & { type?: string }) =>
+    request.get<ApiResponse<{ list: MixedItem[]; total: number; page: number; pageSize: number }>>('/products/mixed', { params }),
   getById: (id: string) => request.get<Product>(`/products/${id}`),
   // 兼容旧接口：获取产品下拉选项（仅 id/name/sku）
   options: () => request.get<ApiResponse<ProductOption[]>>('/products/options'),
