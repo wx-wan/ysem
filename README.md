@@ -282,6 +282,26 @@ docker-compose logs --tail=50 server
 
 ## 更新日志
 
+### 2026-08-22 —— 统一操作日志（全局留痕 + 字段级差异）
+
+- **目标**：建立全系统统一的操作留痕机制，记录「谁（姓名+用户名）、什么时间、做了什么、改了哪些字段」，并在前端以 Tag 形式展示差异，后续客户/商机/订单/用户等模块均复用同一套逻辑。
+- **数据模型扩展**（`prisma/schema.prisma`，已 `prisma db push` 同步）：
+  - `OperationLog`（全局审计）新增 `realName`、`summary`、`diff`、`targetId`
+  - `ProductActivity` / `CustomerActivity`（实体时间线）新增 `realName`、`summary`、`diff`
+- **认证层**（`middleware/auth.ts` + `auth.controller.ts`）：JWT 与 `AuthRequest` 现携带 `realName`，操作人姓名随请求上下文可用。
+- **通用差异内核**（`server/src/lib/operation-diff.ts`）：
+  - `computeDiff(before, after, { labels, formatters, fields, ignore })` 异步比对提交前后，产出结构化 `[{ field, label, beforeText, afterText }]`；支持 id→名称（如工艺/受众/认证/可见成员）与枚举（如供货模式）的格式化器。
+  - 配套 `serializeDiff` / `parseDiff` 负责 JSON 序列化与解析。
+- **统一日志服务**（`server/src/lib/activity-logger.ts`）：`log()` 一次写入全局 + 各实体时间线，接受 `realName` / `summary` / `diff`。
+- **产品模块接入（参考实现）**（`server/src/controllers/product.controller.ts`）：
+  - `CREATE`：记录姓名 + 「创建了产品「X」」
+  - `UPDATE`：服务端比对「原记录 vs 提交体」自动产出 diff（含关联名称解析、供货模式枚举映射），摘要形如「修改了产品「X」（N 处变更）」
+- **全局操作日志接口**：新增 `GET /api/operations`（路由 `server/src/routes/operationLog.routes.ts`），支持模块 / 动作 / 操作人 / 关键字 / 日期范围筛选与分页。
+- **前端展示（Tag 形式）**：
+  - 新增通用组件 `client/src/components/common/DiffTags.tsx`，全系统复用：`字段：旧值 → 新值`（旧值删除线、新值主色），超出折叠。
+  - 产品详情时间线（`ProductDetailModal.tsx`）：操作记录展示 `<姓名>(@用户名) 于 时间 动作` + diff Tag。
+  - 新增**全局操作日志页** `client/src/pages/OperationLogs.tsx`（路由 `/system/operation-logs`，侧边栏「系统 → 操作日志」），表格展示时间/操作人/模块/动作/对象/操作内容与变更 Tag，支持多维筛选。
+
 ### 2026-08-19（补充）—— 产品状态 / 进度栏
 
 - 新增「产品状态」栏，位于产品图片卡片下方，展示产品当前所处阶段与打样 / 报价进度

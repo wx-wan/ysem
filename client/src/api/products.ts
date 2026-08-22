@@ -50,12 +50,24 @@ export const taxonomyApi = {
 
 // ============ 产品 Product ============
 
+export interface DiffItem {
+  field: string;
+  label: string;
+  before: unknown;
+  after: unknown;
+  beforeText: string;
+  afterText: string;
+}
+
 export interface ProductActivity {
   id: string;
   productId: string;
   action: string;        // CREATE / UPDATE / DELETE
   detail?: string | null;
+  summary?: string | null;
+  diff?: string | DiffItem[] | null; // 服务端存储为 JSON 字符串
   operator?: string | null;
+  realName?: string | null;
   createdBy?: string | null;
   createdAt: string;
 }

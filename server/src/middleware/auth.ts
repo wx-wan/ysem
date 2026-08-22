@@ -6,6 +6,7 @@ import prisma from '../lib/prisma';
 export interface AuthRequest extends Request {
   userId?: string;
   username?: string;
+  realName?: string;
   roleCode?: string;
   userPermissions?: string[];
   file?: Express.Multer.File;
@@ -14,6 +15,7 @@ export interface AuthRequest extends Request {
 export interface JwtPayload {
   userId: string;
   username: string;
+  realName?: string;
   roleCode: string;
 }
 
@@ -30,6 +32,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload;
     req.userId = decoded.userId;
     req.username = decoded.username;
+    req.realName = decoded.realName;
     req.roleCode = decoded.roleCode;
     // 解析当前用户的权限 code 列表（admin 视为拥有全部权限，由 requirePerm 放行）
     if (decoded.roleCode !== 'admin') {

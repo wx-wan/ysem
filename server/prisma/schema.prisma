@@ -116,10 +116,14 @@ model OperationLog {
   id        String   @id @default(uuid())
   userId    String
   username  String
+  realName  String? // 操作人姓名（昵称）
   action    String
   module    String
   target    String?
-  detail    String?
+  targetId  String?
+  detail    String? // 人类可读摘要（如「创建了产品」）
+  summary   String? // 同 detail，统一字段名
+  diff      String? // 结构化变更 JSON：[{field,label,beforeText,afterText}]
   ip        String?
   createdAt DateTime @default(now())
 }
@@ -173,6 +177,9 @@ model CustomerActivity {
   customerId String
   action     String   // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
   detail     String?
+  summary    String?
+  diff       String?
+  realName   String?
   createdBy  String
   createdAt  DateTime @default(now())
 
@@ -400,8 +407,13 @@ model ProductActivity {
   action    String
   // 操作详情（JSON 字符串，记录前后变化或备注）
   detail    String?
+  // 摘要（人类可读的「做了什么」）
+  summary   String?
+  // 结构化变更 JSON：[{field,label,beforeText,afterText}]
+  diff      String?
   // 操作人（冗余存储姓名，便于展示）
   operator  String?
+  realName  String? // 操作人姓名（昵称），与 operator 区分：realName 优先展示
   createdBy String?
   createdAt DateTime @default(now())
 

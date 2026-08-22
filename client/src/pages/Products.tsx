@@ -120,12 +120,19 @@ export default function Products() {
     navigate(`/sales/orders?productId=${record.id}&orderType=SAMPLE`);
   };
 
-  // 打开产品详情：重置 Tab 并加载销售记录
+  // 打开产品详情：重置 Tab、拉取完整产品（含操作记录）并加载销售记录
   const openDetail = (r: Product) => {
     setViewing(r);
     pushLayer('detail');
     setDetailOpen(true);
     loadUsers();
+    // 拉取完整产品详情，确保 activities（操作记录）等字段齐全
+    productApi.getById(r.id)
+      .then((res) => {
+        const full = (res.data as any)?.data ?? res.data;
+        if (full) setViewing(full);
+      })
+      .catch(() => {});
     setSalesLoading(true);
     salesApi.listByProduct(r.id)
       .then((res) => {

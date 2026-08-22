@@ -60,6 +60,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const payload: JwtPayload = {
       userId: user.id,
       username: user.username,
+      realName: user.realName,
       roleCode: user.role?.code || 'user',
     };
 

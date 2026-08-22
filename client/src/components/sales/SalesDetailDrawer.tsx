@@ -8,6 +8,19 @@ import Price from '../common/Price';
 
 const STAGES = SALES_STAGES;
 
+const SALES_ACTIVITY_ACTION: Record<string, string> = {
+  CREATE: '创建',
+  CREATED: '创建',
+  UPDATE: '更新',
+  UPDATED: '更新',
+  DELETE: '删除',
+  PIPELINE_CREATED: '创建商机',
+  PIPELINE_UPDATED: '更新商机',
+  PIPELINE_DELETED: '删除商机',
+  PIPELINE_STAGE_CHANGE: '商机阶段变更',
+  STAGE_CHANGE: '阶段变更',
+};
+
 interface Props {
   open: boolean;
   detailItem: SalesItem | null;
@@ -85,7 +98,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
         <Card title="活动记录" size="small" style={{ marginTop: 16 }}>
           {detailItem.activities.map((a) => (
             <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-              <Tag color="blue" style={{ marginRight: 8 }}>{a.action}</Tag>
+              <Tag color="blue" style={{ marginRight: 8 }}>{SALES_ACTIVITY_ACTION[a.action] || a.action}</Tag>
               {a.fromStage && <span>{STAGE_LABELS[a.fromStage]} <RightOutlined /> {STAGE_LABELS[a.toStage || '']}</span>}
               <span style={{ marginLeft: 12, color: '#94a3b8', fontSize: 11 }}>{new Date(a.createdAt).toLocaleString('zh-CN')}</span>
             </div>

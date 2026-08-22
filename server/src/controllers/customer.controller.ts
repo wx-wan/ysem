@@ -637,7 +637,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
     await activityLogger.log({
       userId,
       username,
-      action: "CREATED",
+      action: "CREATE",
       module: "customer",
       targetId: customer.id,
       target: companyName,
@@ -710,7 +710,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       await activityLogger.log({
         userId,
         username,
-        action: "UPDATED",
+        action: "UPDATE",
         module: "customer",
         targetId: id,
         target: existing.companyName,
@@ -862,7 +862,7 @@ export const transfer = async (req: AuthRequest, res: Response, next: NextFuncti
     await activityLogger.log({
       userId,
       username,
-      action: "TRANSFERRED",
+      action: "TRANSFER",
       module: "customer",
       targetId: id,
       target: customer.companyName,
@@ -988,7 +988,7 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
       await activityLogger.log({
         userId,
         username,
-        action: "UPDATED",
+        action: "UPDATE",
         module: "customer",
         targetId: id,
         target: existing.companyName,

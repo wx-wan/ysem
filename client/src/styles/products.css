@@ -1141,6 +1141,19 @@
   font-weight: 600;
   color: var(--c-text, #1e293b);
 }
+.pm-activity-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-text, #1e293b);
+}
+.pm-activity-verb {
+  font-size: 13px;
+  color: var(--c-text-secondary, #475569);
+}
+.pm-activity-time-inline {
+  font-size: 12px;
+  color: var(--c-text-tertiary, #94a3b8);
+}
 .pm-activity-desc {
   margin-top: 3px;
   font-size: 13px;

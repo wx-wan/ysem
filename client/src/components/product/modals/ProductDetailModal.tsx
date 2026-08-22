@@ -14,6 +14,7 @@ import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import ProductImagesStack from '../../common/ProductImagesStack';
+import DiffTags from '../../common/DiffTags';
 import dayjs from 'dayjs';
 import './ProductDetailModal.css';
 
@@ -62,16 +63,21 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       .filter((a) => a.action === 'CREATE' && (a.operator || a.createdBy))
       .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))[0];
     if (createAct) {
+      const createdById = createAct.createdBy || '';
+      // 优先使用活动冗余存储的昵称/用户名，其次 userMap / 当前登录用户解析
+      const resolved =
+        userMap?.[createdById] ||
+        (user?.id === createdById ? { id: user.id, username: user.username, realName: user.realName } : undefined);
       return {
-        name: createAct.operator || createAct.createdBy || '',
-        account: createAct.createdBy || createAct.operator || '',
+        name: createAct.realName || resolved?.realName || createAct.operator || createdById || '系统管理员',
+        account: createAct.operator || resolved?.username || createdById || 'admin',
       };
     }
     return {
       name: user?.realName || user?.username || '系统管理员',
       account: user?.username || user?.role?.code || 'admin',
     };
-  }, [activities, user]);
+  }, [activities, user, userMap]);
 
   if (!product) return null;
 
@@ -159,26 +165,35 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
   const renderActivity = () => {
     if (!activities.length) {
-      return <Empty description="暂无跟进动态" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+      return <Empty description="暂无操作记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
     }
     return (
       <div className="pm-activity">
         {activities.map((act) => {
           const meta = ACTIVITY_META[act.action] || { label: act.action, color: token.colorPrimary };
+          // 优先使用记录中冗余存储的姓名，其次 userMap 反查，最后回退到 operator/未知
+          const resolvedUser =
+            (act.createdBy && userMap?.[act.createdBy]) || null;
+          const operatorName =
+            act.realName || resolvedUser?.realName || act.operator || resolvedUser?.username || '未知用户';
+          const operatorAccount = act.operator || resolvedUser?.username || (act.createdBy ? '' : '');
           return (
             <div className="pm-activity-item" key={act.id}>
               <div className="pm-activity-dot" style={{ background: meta.color }} />
               <div className="pm-activity-content">
                 <div className="pm-activity-title">
-                  <span className="pm-activity-tag" style={{ color: meta.color, background: `${meta.color}14` }}>
-                    {meta.label}
+                  <span className="pm-activity-name">{operatorName}</span>
+                  {operatorAccount && (
+                    <span className="pm-activity-account">@{operatorAccount}</span>
+                  )}
+                  <span className="pm-activity-verb">于</span>
+                  <span className="pm-activity-time-inline">
+                    {dayjs(act.createdAt).format('YYYY-MM-DD HH:mm')}
                   </span>
-                  {act.operator && <span className="pm-activity-operator">{act.operator}</span>}
+                  <span className="pm-activity-verb">{meta.label}</span>
                 </div>
-                {act.detail && <div className="pm-activity-desc">{act.detail}</div>}
-                <div className="pm-activity-time">
-                  <ClockCircleOutlined /> {dayjs(act.createdAt).format('YYYY-MM-DD HH:mm')}
-                </div>
+                {act.summary && <div className="pm-activity-desc">{act.summary}</div>}
+                {act.action === 'UPDATE' && <DiffTags diff={act.diff} />}
               </div>
             </div>
           );
@@ -358,7 +373,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               options={[
                 { key: 'overview', label: '概览' },
                 { key: 'sales', label: '销售记录', count: salesList.length },
-                { key: 'activity', label: '跟进动态', count: activities.length },
+                { key: 'activity', label: '操作记录', count: activities.length },
               ]}
             />
 
@@ -398,7 +413,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     {creator.name || '系统管理员'}
                   </div>
                   <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                    {creator.account || 'admin'}
+                    {userMap?.[creator.account]?.username
+                      || (user?.id === creator.account ? user.username : undefined)
+                      || creator.account
+                      || 'admin'}
                   </div>
                 </div>
               </div>

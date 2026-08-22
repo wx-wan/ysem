@@ -439,7 +439,19 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // ---- 活动记录项渲染（真实数据） ----
   const ACTIVITY_ACTION: Record<string, string> = {
-    CLAIM: '认领', RELEASE: '释放到公海', CREATED: '创建', UPDATED: '更新', KEY_TOGGLE: '重点客户切换', INTENT_CHANGE: '意向变更',
+    CREATE: '创建',
+    UPDATE: '更新',
+    DELETE: '删除',
+    CLAIM: '认领',
+    RELEASE: '释放到公海',
+    TRANSFER: '转移',
+    KEY_TOGGLE: '重点客户切换',
+    INTENT_CHANGE: '意向变更',
+    STATUS: '状态变更',
+    // 兼容旧数据
+    CREATED: '创建',
+    UPDATED: '更新',
+    TRANSFERRED: '转移',
   };
   const renderActivityItem = (item: CustomerActivity) => (
     <div

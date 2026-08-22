@@ -46,3 +46,11 @@
   border-color: var(--c-primary-hover);
   color: var(--c-primary-hover);
 }
+
+/* 操作记录：账号(@username) 弱化展示 */
+.pm-activity-account {
+  font-size: 12px;
+  color: var(--c-text-secondary);
+  margin-left: 2px;
+  font-weight: 400;
+}
