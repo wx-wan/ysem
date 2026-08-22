@@ -56,7 +56,7 @@ export default function Products() {
   const [list, setList] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(6);
+  const [pageSize] = useState(8);
   const [loading, setLoading] = useState(false);
 
   // 筛选
@@ -491,7 +491,7 @@ export default function Products() {
             <CapsuleSwitch
               value={view}
               options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-              onChange={setView}
+              onChange={(v) => { setView(v); setPage(1); }}
             />
           </div>
           <ProductGroupView onShowGroups={() => setView('group')} />
@@ -504,9 +504,9 @@ export default function Products() {
               <CapsuleSwitch
                 value={view}
                 options={[{ key: 'product', label: '产品' }, { key: 'group', label: '组合' }]}
-                onChange={setView}
-              />
-              <Input
+                onChange={(v) => { setView(v); setPage(1); }}
+                />
+                <Input
                 placeholder="搜索产品名称 / SKU"
                 prefix={<SearchOutlined />}
                 value={keyword}
@@ -585,7 +585,7 @@ export default function Products() {
                 {...buildTablePagination({
                   total,
                   page,
-                  pageSize,
+                  pageSize: 8,
                   onChange: (p) => setPage(p),
                 })}
               />
