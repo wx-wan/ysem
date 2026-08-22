@@ -82,8 +82,14 @@ const ProductCard = memo(function ProductCard({
             ? product.crafts.map((c) => <span key={c.id} className="pm-prod-tag">{c.name}</span>)
             : null}
           {product.audience ? <span className="pm-prod-tag pm-prod-tag--ghost">{product.audience.name}</span> : null}
-          {product.category ? <span className="pm-prod-tag pm-prod-tag--ghost">{product.category.name}</span> : null}
         </div>
+
+        {product.category ? (
+          <div className="pm-prod-category">
+            <span className="pm-prod-category__label">品类</span>
+            <span className="pm-prod-category__value">{product.category.name}</span>
+          </div>
+        ) : null}
 
         <div className="pm-prod-meta">
           <div className="pm-prod-meta__item">
