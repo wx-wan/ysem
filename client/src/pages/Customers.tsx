@@ -1,1592 +1,710 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  Button, Modal, Form, Input, Select, Tag, Space, Card,
-  Row, Col, App, Popconfirm, Upload, Drawer, Segmented,
-  Typography, Avatar, Spin, theme, Table, Badge,
-  Popover,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty, Button,
 } from 'antd';
-import { PieChart, Pie, Cell } from 'recharts';
-import {
-  PlusOutlined, SearchOutlined, ReloadOutlined, UploadOutlined,
-  UserSwitchOutlined, TeamOutlined, StarFilled,
-  PhoneOutlined, MailOutlined, ShoppingCartOutlined,
-  InboxOutlined, UserAddOutlined,
-  GlobalOutlined, AppstoreOutlined, UnorderedListOutlined,
-  ArrowRightOutlined, SwapOutlined,
-} from '@ant-design/icons';
-import { useTranslation } from 'react-i18next';
-import { customerApi, Customer, CustomerActivity } from '../api/customers';
-import { orderApi, Order } from '../api/customers';
+import { InboxOutlined } from '@ant-design/icons';
+import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
-import dayjs from 'dayjs';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
+import { salesApi, SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
-import KeyAccountStar from '../components/KeyAccountStar';
-
-const { Text } = Typography;
-const { Dragger } = Upload;
-
-// ========== 国家组件 ==========
-import CountrySelect from '../components/CountrySelect';
-import CountryDisplay from '../components/CountryDisplay';
-import { getCountryFlag, findCountry } from '../data/countries';
-
-// ========== 状态色值映射 ==========
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  lead:    { label: '线索',    color: '#1677ff', bg: '#e6f4ff', dot: '#1677ff' },
-  prospect:{ label: '商机',    color: '#52c41a', bg: '#f6ffed', dot: '#52c41a' },
-  sample:  { label: '样品单',   color: '#fa8c16', bg: '#fff7e6', dot: '#fa8c16' },
-  order:   { label: '已订单',   color: '#f5222d', bg: '#fff1f0', dot: '#f5222d' },
-};
-
-// ========== 采购意向配置 ==========
-const INTENT_OPTIONS = [
-  { value: 'LOW', label: '低意向', color: '#8b8fa3' },
-  { value: 'MEDIUM', label: '中意向', color: '#f0a500' },
-  { value: 'HIGH', label: '高意向', color: '#f57c00' },
-  { value: 'READY', label: '准成交', color: '#e74c3c' },
-];
-
-const INTENT_MAP: Record<string, { label: string; color: string }> = {};
-INTENT_OPTIONS.forEach((o) => (INTENT_MAP[o.value] = o));
-
-// ========== 客户等级（A/B/C/D 四级 + 红/橙/黄/绿 颜色区分） ==========
-const getGrade = (customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; color: string; bg: string } => {
-  if (customer.isKeyAccount && customer.intentLevel === 'HIGH') {
-    return { grade: 'A', color: '#fff', bg: '#e74c3c' }; // 红色：重点客户
-  }
-  if (customer.isKeyAccount || customer.intentLevel === 'HIGH') {
-    return { grade: 'B', color: '#fff', bg: '#fa8c16' }; // 橙色：重要/高意向客户
-  }
-  if (customer.intentLevel === 'MEDIUM') {
-    return { grade: 'C', color: '#fff', bg: '#f0a500' }; // 黄色：中等意向客户
-  }
-  return { grade: 'D', color: '#fff', bg: '#52c41a' }; // 绿色：普通/低意向客户
-};
-
-// ========== 客户标签生成 ==========
-const getCustomerTags = (customer: Customer): string[] => {
-  const tags: string[] = [];
-  if (customer.isKeyAccount) tags.push('重点客户');
-  if (customer.intentLevel === 'HIGH') tags.push('高意向');
-  if (customer.intentLevel === 'MEDIUM') tags.push('中意向');
-  if (customer.status === 'order') tags.push('年框协议');
-  if (customer.source === 'EXCEL') tags.push('批量导入');
-  else if (customer.source && customer.source !== 'MANUAL') tags.push(customer.source);
-  if (tags.length === 0) {
-    if (customer._count?.orders && customer._count.orders > 0) tags.push('长期合作');
-    else tags.push('潜在客户');
-  }
-  return tags.slice(0, 3);
-};
-
-// ========== 金额格式化（使用 store 的 format 方法） ==========
-// Note: formatAmount/formatAmountFull 已被 useCurrencyStore.format 替代
-
-// ========== 客户类型筛选 ==========
-const TYPE_OPTIONS = [
-  { value: '', label: '全部' },
-  { value: 'new', label: '新客户' },
-  { value: 'old', label: '老客户' },
-  { value: 'key', label: '重点客户' },
-  { value: 'noOrder', label: '无订单客户' },
-];
-
-// ========== 标签颜色配置 ==========
-const TAG_PRESET_COLORS = [
-  '#f50', '#2db7f5', '#87d068', '#108ee9',
-  '#ff4d4f', '#faad14', '#52c41a', '#722ed1',
-];
-
-// 解析单个标签字符串：支持 "name#color" 和 "name" 两种格式
-function parseTag(tagStr: string): { name: string; color?: string } {
-  const idx = tagStr.lastIndexOf('#');
-  if (idx > 0) {
-    return { name: tagStr.slice(0, idx), color: tagStr.slice(idx + 1) };
-  }
-  return { name: tagStr };
-}
-
-// 将 tags 字符串解析为标签数组
-function tagsToArray(tags?: string): { name: string; color?: string }[] {
-  if (!tags) return [];
-  return tags.split(',').filter(Boolean).map(parseTag);
-}
-
-// 将标签数组序列化为 tags 字符串
-function tagsArrayToString(tags: { name: string; color?: string }[]): string {
-  return tags.map(t => t.color ? `${t.name}#${t.color}` : t.name).join(',');
-}
-
-// 标签颜色编辑器组件
-function TagColorEditor({ value, onChange }: { value?: string; onChange?: (v: string) => void }) {
-  const tags = tagsToArray(value);
-  const [inputValue, setInputValue] = useState('');
-  const [selectedColor, setSelectedColor] = useState(TAG_PRESET_COLORS[0]);
-
-  const addTag = () => {
-    const name = inputValue.trim();
-    if (!name) return;
-    if (tags.some(t => t.name === name)) {
-      setInputValue('');
-      return;
-    }
-    const newTags = [...tags, { name, color: selectedColor }];
-    onChange?.(tagsArrayToString(newTags));
-    setInputValue('');
-  };
-
-  const removeTag = (index: number) => {
-    const newTags = tags.filter((_, i) => i !== index);
-    onChange?.(tagsArrayToString(newTags));
-  };
-
-  return (
-    <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
-        <Input
-          value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onPressEnter={addTag}
-          placeholder="输入标签名称"
-          style={{ flex: 1 }}
-        />
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, alignItems: 'center' }}>
-          {TAG_PRESET_COLORS.map(c => (
-            <div
-              key={c}
-              onClick={() => setSelectedColor(c)}
-              style={{
-                width: selectedColor === c ? 26 : 22,
-                height: selectedColor === c ? 26 : 22,
-                borderRadius: '50%',
-                backgroundColor: c,
-                cursor: 'pointer',
-                border: selectedColor === c ? '2px solid #fff' : '2px solid transparent',
-                boxShadow: selectedColor === c ? `0 0 0 2px ${c}` : 'none',
-                boxSizing: 'border-box',
-                transition: 'all 0.15s ease',
-                flexShrink: 0,
-              }}
-            />
-          ))}
-        </div>
-        <Button type="primary" size="small" onClick={addTag}>添加</Button>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        {tags.map((tag, i) => (
-          <Tag
-            key={tag.name}
-            color={tag.color}
-            closable
-            onClose={() => removeTag(i)}
-            style={{ borderRadius: 10, margin: 0 }}
-          >
-            {tag.name}
-          </Tag>
-        ))}
-      </div>
-    </div>
-  );
-}
+import { compareCustomers } from '../components/customer/shared/utils';
+import { diffList } from '../utils/diff';
+import {
+  listCacheKey, getListCache, setListCache, invalidateAll, invalidateDetail, setDetailCache, installCacheLifecycle,
+} from '../utils/customerCache';
+import CustomerStats from '../components/customer/cards/CustomerStats';
+import CustomerToolbar from '../components/customer/list/CustomerToolbar';
+import CustomerCard from '../components/customer/cards/CustomerCard';
+import CustomerList from '../components/customer/list/CustomerList';
+import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
+import ResponsiveCardGrid from '../components/common/page/ResponsiveCardGrid';
+import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
+import TransferModal from '../components/customer/modals/TransferModal';
+import ImportModal from '../components/customer/modals/ImportModal';
+import OrderFormModal from '../components/customer/modals/OrderFormModal';
+import SalesFormModal from '../components/sales/SalesFormModal';
+import { buildTablePagination } from '../components/common/tablePagination';
 
 export default function CustomersPage() {
-  const { t: tRaw } = useTranslation();
-  const t = (k: string) => tRaw(k.startsWith('sales.') ? k : `sales.${k}`);
   const { token } = theme.useToken();
-  const { message } = App.useApp();
-  const { format: formatCurrency } = useCurrencyStore();
+  const { message, modal } = App.useApp();
 
   // ========== 状态 ==========
-  const [activeTab, setActiveTab] = useState<'private' | 'public'>('private');
-  const [customerType, setCustomerType] = useState('');
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Customer[]>([]);
   const [total, setTotal] = useState(0);
+  const [estimatedAmount, setEstimatedAmount] = useState(0);
+  const [estimatedBreakdown, setEstimatedBreakdown] = useState<any[]>([]);
+  const [contractBreakdown, setContractBreakdown] = useState<any[]>([]);
+  const [totalContractAmount, setTotalContractAmount] = useState(0);
+  const [noOrderBreakdown, setNoOrderBreakdown] = useState<Record<string, number>>({});
+  const [doneBreakdown, setDoneBreakdown] = useState<Record<string, number>>({});
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
-  const [stats, setStats] = useState<any>({});
-  const [ownerStats, setOwnerStats] = useState<any[]>([]);
-  const [publicCount, setPublicCount] = useState(0);
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
+  const [filterTags, setFilterTags] = useState('');
+  const [filterType, setFilterType] = useState<'all' | 'noOrder' | 'done' | 'key' | 'public'>('all');
+  const [subFilterType, setSubFilterType] = useState<string>(''); // 未成交: 'A'|'B'|'C'|'D'，已成交: 'new'|'old'
 
   // 弹窗
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-  const [form] = Form.useForm();
 
-  // 详情抽屉
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  // 详情弹窗（居中大弹窗，替代抽屉）
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
-  const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
-  const [detailLoading, setDetailLoading] = useState(false);
-  const [showAllActivities, setShowAllActivities] = useState(false);
-  const [drawerEditing, setDrawerEditing] = useState(false);
-  const [drawerSaving, setDrawerSaving] = useState(false);
-  const [drawerEditValues, setDrawerEditValues] = useState<Record<string, any>>({});
+
+  // 转交
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
+  const [userList, setUserList] = useState<User[]>([]);
 
   // 导入
   const [importOpen, setImportOpen] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
-  const [importing, setImporting] = useState(false);
 
   // 订单弹窗
   const [orderModalOpen, setOrderModalOpen] = useState(false);
-  const [orderCustomerId, setOrderCustomerId] = useState('');
-  const [orderForm] = Form.useForm();
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [orderCustomer, setOrderCustomer] = useState<Customer | null>(null);
+
+  // 商机编辑弹窗
+  const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
+  const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
+  const [newPipelineStage, setNewPipelineStage] = useState<string>('LEAD');
+  // 从详情新建时携带的客户（公司名称固定、基础信息带出、负责人锁当前用户）
+  const [newPipelineCustomer, setNewPipelineCustomer] = useState<Customer | null>(null);
+
+  // 新建销售记录：类型选择弹窗（线索 / 商机 / 订单）
+  const [newTypeOpen, setNewTypeOpen] = useState(false);
+  const [newTypeCustomer, setNewTypeCustomer] = useState<Customer | null>(null);
+
+  // 转化订单弹窗
+  const [convertModalOpen, setConvertModalOpen] = useState(false);
+  const [convertPipeline, setConvertPipeline] = useState<RealPipeline | null>(null);
+
+  // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
+  const [detailVersion, setDetailVersion] = useState(0);
 
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role?.code === 'admin';
 
-  const pageSize = 12;
+  // 当前详情客户是否可操作（归属人本人 或 管理员）
+  // 注：此逻辑已移至 CustomerDetailDrawer 组件内部
+
+  const pageSize = 6;
+  const API_PAGE_SIZE = 1000; // 服务端全量拉取，客户端排序分页
+
+  // 客户端排序：采购意向 A→B→C→D → 商机金额降序 → 新客优先 → 成交金额降序 → 创建时间倒序
+  // 排序规则统一收口到 shared/utils 的 compareCustomers（标签与排序逻辑一致，已不含重点/公海）
+  const sortCustomers = useCallback((customers: Customer[]): Customer[] => {
+    return [...customers].sort(compareCustomers);
+  }, []);
+
+  // 列表更新时自动重新排序（如切换关注状态会影响排序）
+  const handleListUpdate = useCallback((updater: (prev: Customer[]) => Customer[]) => {
+    setList((prev) => sortCustomers(updater(prev)));
+  }, [sortCustomers]);
+
+  // 当前页展示列表
+  const displayList = useMemo(() => {
+    return list.slice((page - 1) * pageSize, page * pageSize);
+  }, [list, page]);
 
   // ========== 加载数据 ==========
+  // 用 ref 读取最新 list 值，避免将 list 加入 useCallback 依赖导致无限循环：
+  //   fetchData → setList → list 变化 → useCallback 重创建 → useEffect 触发 → fetchData ...
+  const listRef = useRef(list);
+  listRef.current = list;
+
+  // 防止 StrictMode 双重挂载 / useEffect 双次触发导致重复请求
+  const fetchingRef = useRef(false);
+
   const fetchData = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+
+    const currentList = listRef.current;
+    const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
+
+    let apiType: string = filterType;
+    if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
+    else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
+    if (apiType !== 'all') params.type = apiType;
+    if (isAdmin && selectedOwnerId && filterType !== 'public') params.ownerId = selectedOwnerId;
+    if (filterTags) params.tags = filterTags;
+
+    const cacheKey = listCacheKey(params);
+
+    // 1) 命中前端缓存：直接复用，跳过网络请求
+    const cached = getListCache(cacheKey);
+    if (cached) {
+      fetchingRef.current = false;
+      const { mergedList } = diffList(currentList, cached.list);
+      setList(sortCustomers(mergedList));
+      setTotal(cached.total);
+      setEstimatedAmount(cached.estimatedAmount);
+      setTotalContractAmount(cached.totalContractAmount);
+      setEstimatedBreakdown(cached.estimatedBreakdown);
+      setContractBreakdown(cached.contractBreakdown);
+      setNoOrderBreakdown(cached.noOrderBreakdown || {});
+      setDoneBreakdown(cached.doneBreakdown || {});
+      return;
+    }
+
     setLoading(true);
     try {
-      const params: any = { page, pageSize, keyword: keyword || undefined };
-      if (customerType) params.type = customerType;
+      const res = isAdmin
+        ? await customerApi.listAll(params)
+        : await customerApi.listMy(params);
+      const d = res.data.data;
 
-      if (activeTab === 'private') {
-        if (isAdmin) {
-          // 管理员：支持按业务员筛选
-          if (selectedOwnerId) params.ownerId = selectedOwnerId;
-          const res = await customerApi.listAll(params);
-          const d = res.data.data;
-          setList(d.list);
-          setTotal(d.total);
-          if (!selectedOwnerId) {
-            setOwnerStats(d.ownerStats || []);
-            setPublicCount(d.publicCount);
-            setStats(d.stats);
-          }
-        } else {
-          // 普通用户：只能看自己的客户
-          const res = await customerApi.listMy(params);
-          const d = res.data.data;
-          setList(d.list);
-          setTotal(d.total);
-          if (d.stats) setStats(d.stats);
-        }
-      } else {
-        const res = await customerApi.listPublic(params);
-        const d = res.data.data;
-        setList(d.list);
-        setTotal(d.total);
-      }
+      const rawList: Customer[] = d.list;
+      const estAmount = d.estimatedAmount || 0;
+      const cntTotal = d.totalContractAmount || 0;
+      const estBreakdown = d.estimatedBreakdown || [];
+      const cntBreakdown = d.contractBreakdown || [];
+      const noOrderBd = d.noOrderBreakdown || {};
+      const doneBd = d.doneBreakdown || {};
+
+      const sorted = sortCustomers(rawList);
+      setListCache(cacheKey, {
+        list: sorted,
+        total: sorted.length,
+        estimatedAmount: estAmount,
+        totalContractAmount: cntTotal,
+        estimatedBreakdown: estBreakdown,
+        contractBreakdown: cntBreakdown,
+        noOrderBreakdown: noOrderBd,
+        doneBreakdown: doneBd,
+      });
+      const { mergedList } = diffList(currentList, sorted);
+      setList(sortCustomers(mergedList));
+      setTotal(sorted.length);
+      setEstimatedAmount(estAmount);
+      setTotalContractAmount(cntTotal);
+      setEstimatedBreakdown(estBreakdown);
+      setContractBreakdown(cntBreakdown);
+      setNoOrderBreakdown(noOrderBd);
+      setDoneBreakdown(doneBd);
+      setPage(1);
     } catch (err: any) {
       message.error(err?.message || '加载失败');
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [page, pageSize, keyword, customerType, activeTab, isAdmin, selectedOwnerId]);
+  }, [keyword, isAdmin, selectedOwnerId, filterType, subFilterType, filterTags, sortCustomers]);
 
   useEffect(() => {
+    installCacheLifecycle(); // 注册「离开视图即失效」缓存生命周期（幂等）
+    // 先确定角色再发起列表请求：user 未加载（role 未知）时暂不请求，
+    // 避免以错误的角色（非管理员）发起 listMy，拿到不完整数据
+    if (!user) return;
     fetchData();
-  }, [fetchData]);
+  }, [fetchData, user]);
+
+  const openTransfer = useCallback((customerId: string) => {
+    const found = list.find((c) => c.id === customerId);
+    if (found) {
+      setTransferCustomer(found);
+      setTransferModalOpen(true);
+    }
+  }, [list]);
+
+  // 列表项上的聚合字段（商机金额/成交金额/最后下单日期）由 list 接口计算，
+  // getById（详情接口）不返回它们；合并详情数据时必须保留，否则会被清成 undefined。
+  const AGG_FIELDS: (keyof Customer)[] = ['pipelineAmount', 'totalAmount', 'lastOrderDate'];
+
+  // 用 next 覆盖 prev 的变化字段，但保留 prev 上 list 接口的聚合字段（next 没有时不清空）
+  const mergeKeepAgg = useCallback((prev: Customer | null, next: Customer): Customer => {
+    if (!prev || prev.id !== next.id) return next;
+    const merged: Customer = { ...prev, ...next };
+    for (const f of AGG_FIELDS) {
+      if (next[f] === undefined) {
+        (merged as Record<keyof Customer, unknown>)[f] = prev[f];
+      }
+    }
+    return merged;
+  }, []);
+
+  // 打开详情时（getById 异步补充完整数据）只更新弹窗自身的 detailCustomer，
+  // 不要回写 list——list 中的聚合字段（商机/成交金额）由 list 接口计算，getById 不返回，
+  // 回写会把它们清成 undefined，导致列表金额变化。
+  const handleDetailLoaded = useCallback((loaded: Customer) => {
+    setDetailCustomer((prev) => (prev && prev.id === loaded.id ? { ...prev, ...loaded } : prev));
+  }, []);
+
+  // ===== 详情弹窗：编辑保存成功后同步 UI 状态（仅更新对应项，不整页重排） =====
+  const handleDetailUpdated = useCallback((updated: Customer) => {
+    setDetailCustomer((prev) => (prev && prev.id === updated.id ? mergeKeepAgg(prev, updated) : prev));
+    setList((prev) =>
+      prev.map((item) => (item.id === updated.id ? mergeKeepAgg(item, updated) : item))
+    );
+    invalidateDetail(updated.id); // 该客户详情缓存已过期，下次打开回源；列表缓存保留
+  }, [mergeKeepAgg]);
+
+  // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
+  const handleTagsChanged = useCallback((id: string, tags: string) => {
+    setDetailCustomer((prev) => (prev && prev.id === id ? { ...prev, tags } : prev));
+    setList((prev) =>
+      sortCustomers(prev.map((item) => (item.id === id ? { ...item, tags } : item)))
+    );
+  }, [sortCustomers]);
+
+  const handleTransferFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    openTransfer(c.id);
+  }, [openTransfer]);
+
+  const handleReleaseFromModal = useCallback((c: Customer) => {
+    setDetailModalOpen(false);
+    // TODO: 释放到公海
+    message.info(`释放客户 ${c.companyName}（待接入）`);
+  }, [message]);
+
+  const handleDeleteFromModal = useCallback(async (c: Customer) => {
+    setDetailModalOpen(false);
+    try {
+      await customerApi.remove(c.id);
+      message.success(`已删除客户 ${c.companyName || c.contactName || ''}`);
+      invalidateAll();
+      fetchData();
+    } catch {
+      message.error('删除客户失败');
+    }
+  }, [message, fetchData]);
+
+  // 打开「新建销售记录」类型选择弹窗
+  const openPickNewType = useCallback((c: Customer) => {
+    setNewTypeCustomer(c);
+    setNewTypeOpen(true);
+  }, []);
+
+  // 按类型打开对应新建表单（线索/商机走 SalesFormModal，订单走 OrderFormModal）
+  // 注意：保留客户详情弹窗不关闭，新建表单叠在其上
+  const openCreatePipeline = useCallback((c: Customer, stage: 'LEAD' | 'OPPORTUNITY' = 'LEAD') => {
+    setNewTypeOpen(false);
+    setNewTypeCustomer(null);
+    setEditingPipeline(null);
+    setNewPipelineStage(stage);
+    setNewPipelineCustomer(c); // 携带客户：公司名称固定、基础信息带出、负责人锁当前用户
+    setPipelineEditOpen(true);
+  }, []);
+
+  // 编辑商机：数据来自父级（详情里的 pipelines 已是完整 SalesItem），无需再请求
+  const handleEditPipeline = useCallback((pipeline: any) => {
+    setEditingPipeline(pipeline as SalesItem);
+    setPipelineEditOpen(true);
+  }, []);
+
+  // 商机编辑保存成功：先更新前端缓存保证界面一致，最后再持久化到数据库
+  const handlePipelineEditSuccess = useCallback(async (values: any) => {
+    const cid = detailCustomer?.id;
+    // 1) 先更新前端缓存（乐观更新详情中的商机数据），保证前端数据一致
+    if (cid && detailCustomer && editingPipeline) {
+      setDetailCustomer((prev) => {
+        if (!prev) return prev;
+        const pipelines = prev.pipelines ? [...prev.pipelines] : [];
+        const idx = pipelines.findIndex((p: any) => p.id === editingPipeline.id);
+        const updated = { ...editingPipeline, ...values, stage: values.stage || editingPipeline.stage };
+        if (idx >= 0) pipelines[idx] = updated;
+        else pipelines.push(updated);
+        return { ...prev, pipelines };
+      });
+    }
+    // 2) 最后更新到数据库
+    try {
+      if (editingPipeline) {
+        await salesApi.update(editingPipeline.id, values);
+        message.success('更新成功');
+      } else {
+        await salesApi.create(values);
+        message.success('创建成功');
+      }
+    } catch (e) {
+      message.error('保存失败，请重试');
+    }
+    setPipelineEditOpen(false);
+    setEditingPipeline(null);
+    setDetailVersion(v => v + 1);
+    // 3) 仅更新前端详情缓存，不再发网络回源（概览聚合金额来自详情缓存，已由上方乐观更新保持一致）
+    if (cid) {
+      setDetailCustomer((prev2) => {
+        if (prev2) setDetailCache(prev2);
+        return prev2;
+      });
+    }
+    invalidateDetail(cid || '');
+  }, [detailCustomer, editingPipeline, message]);
+
+  // 商机转订单
+  const handleConvertPipeline = useCallback((pipeline: RealPipeline) => {
+    setConvertPipeline(pipeline);
+    setConvertModalOpen(true);
+  }, []);
+
+  const handleConvertConfirm = useCallback(async () => {
+    if (!convertPipeline) return;
+    try {
+      await salesApi.update(convertPipeline.id, {
+        orderStatus: '成交',
+        orderAmount: convertPipeline.estimatedAmount,
+        orderDate: convertPipeline.estimatedCloseDate || undefined,
+      } as any);
+      message.success('商机已转为成交订单');
+      setConvertModalOpen(false);
+      setConvertPipeline(null);
+      // 刷新客户详情（数据层来自缓存，不拉列表）
+      setDetailVersion(v => v + 1);
+      if (detailCustomer) {
+        setDetailCustomer((prev) => {
+          if (!prev) return prev;
+          const pipelines = (prev.pipelines || []).map((p: any) =>
+            p.id === convertPipeline.id
+              ? { ...p, orderStatus: '成交', orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined }
+              : p
+          );
+          const updated = { ...prev, pipelines };
+          setDetailCache(updated);
+          return updated;
+        });
+      }
+      invalidateDetail(detailCustomer?.id || '');
+    } catch {
+      message.error('转化失败');
+    }
+  }, [convertPipeline, message, detailCustomer]);
+
+  // 删除商机
+  const handleDeletePipeline = useCallback((pipeline: RealPipeline) => {
+    modal.confirm({
+      title: '删除商机',
+      content: `确认删除商机「${pipeline.title || pipeline.companyName}」？此操作不可撤销。`,
+      okText: '确认删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await salesApi.delete(pipeline.id);
+          message.success('商机已删除');
+          // 刷新客户详情（数据层来自缓存，不拉列表）
+          setDetailVersion(v => v + 1);
+          if (detailCustomer) {
+            setDetailCustomer((prev) => {
+              if (!prev) return prev;
+              const pipelines = (prev.pipelines || []).filter((p: any) => p.id !== pipeline.id);
+              const updated = { ...prev, pipelines };
+              setDetailCache(updated);
+              return updated;
+            });
+          }
+          invalidateDetail(detailCustomer?.id || '');
+        } catch {
+          message.error('删除失败');
+        }
+      },
+    });
+  }, [message, detailCustomer]);
+
+  const openCreateOrder = useCallback((customerId: string) => {
+    const found = list.find((c) => c.id === customerId);
+    if (found) {
+      setOrderCustomer(found);
+      setOrderModalOpen(true);
+    }
+  }, [list]);
 
   // 加载用户列表（用于筛选和转交）
+  const usersFetched = useRef(false);
   useEffect(() => {
+    if (usersFetched.current) return;
+    usersFetched.current = true;
     userApi.list({ pageSize: 200 }).then((res) => {
       setUserList(res.data.data?.list || []);
     }).catch(() => {});
   }, []);
 
-  // 初始加载时（admin）获取全量统计
-  useEffect(() => {
-    if (isAdmin && activeTab === 'private') {
-      customerApi.listAll({ pageSize: 1 }).then((res) => {
-        const d = res.data.data;
-        setOwnerStats(d.ownerStats || []);
-        setPublicCount(d.publicCount);
-        setStats(d.stats);
-      }).catch(() => {});
-    }
-  }, [isAdmin, activeTab]);
-
   // ========== 打开详情 ==========
-  const openDetail = async (customer: Customer) => {
-    setDetailCustomer(null);
-    setCustomerOrders([]);
-    setDrawerOpen(true);
-    setDetailLoading(true);
-    setShowAllActivities(false);
-    setDrawerEditing(false);
-    try {
-      const [detail, orders] = await Promise.all([
-        customerApi.getById(customer.id),
-        orderApi.listByCustomer(customer.id),
-      ]);
-      setDetailCustomer(detail.data.data);
-      setCustomerOrders(orders.data.data);
-    } catch {
-      message.error('加载详情失败');
-    } finally {
-      setDetailLoading(false);
-    }
-  };
-
-  // ========== 抽屉编辑 ==========
-  const enterDrawerEdit = () => {
-    if (!detailCustomer) return;
-    setDrawerEditValues({
-      companyName: detailCustomer.companyName || '',
-      contactName: detailCustomer.contactName || '',
-      email: detailCustomer.email || '',
-      phone: detailCustomer.phone || '',
-      country: detailCustomer.country || '',
-      source: detailCustomer.source || '',
-      isKeyAccount: detailCustomer.isKeyAccount || false,
-      intentLevel: detailCustomer.intentLevel || undefined,
-      tags: detailCustomer.tags || '',
-      firstOrderDate: detailCustomer.firstOrderDate || '',
-      notes: detailCustomer.notes || '',
-    });
-    setDrawerEditing(true);
-  };
-
-  const handleDrawerSave = async () => {
-    if (!detailCustomer) return;
-    setDrawerSaving(true);
-    try {
-      await customerApi.update(detailCustomer.id, drawerEditValues as any);
-      const updated = { ...detailCustomer, ...drawerEditValues };
-      setDetailCustomer(updated);
-      setList((prev) =>
-        prev.map((c) => (c.id === detailCustomer.id ? { ...c, ...drawerEditValues } : c))
-      );
-      message.success('保存成功');
-      setDrawerEditing(false);
-    } catch {
-      message.error('保存失败');
-    } finally {
-      setDrawerSaving(false);
-    }
-  };
+  // 同步打开：仅设置本地数据与显示弹窗，完整详情（owner/pipelines）由 Modal 内部
+  // 通过 getById 异步补充。这样点击卡片时父组件零 async 阻塞，弹窗即时出现。
+  const openDetail = useCallback((customer: Customer) => {
+    setDetailCustomer(customer);
+    setDetailModalOpen(true);
+  }, []);
 
   // ========== 创建/编辑弹窗 ==========
-  const openCreate = () => {
+  const openCreate = useCallback(() => {
     setEditingCustomer(null);
-    form.resetFields();
-    form.setFieldsValue({ isKeyAccount: false });
     setModalOpen(true);
-  };
+  }, []);
 
-  const openEdit = (customer: Customer) => {
-    setEditingCustomer(customer);
-    form.setFieldsValue({
-      companyName: customer.companyName,
-      contactName: customer.contactName,
-      email: customer.email,
-      phone: customer.phone,
-      country: customer.country,
-      source: customer.source,
-      notes: customer.notes,
-      isKeyAccount: customer.isKeyAccount,
-      intentLevel: customer.intentLevel,
-      tags: customer.tags || '',
-      firstOrderDate: customer.firstOrderDate ? dayjs(customer.firstOrderDate) : null,
-    });
-    setModalOpen(true);
-  };
-
-  const handleSave = async () => {
-    try {
-      const values = await form.validateFields();
-      if (editingCustomer) {
-        await customerApi.update(editingCustomer.id, values);
-        message.success('更新成功');
-      } else {
-        await customerApi.create(values);
-        message.success('创建成功');
-      }
-      setModalOpen(false);
-      fetchData();
-    } catch (e: any) {
-      if (e.errorFields) return;
-      const msg = (e as any)?.response?.data?.message || (e as any)?.message || '操作失败';
-      message.error(msg);
-    }
-  };
-
-  // ========== 认领/释放 ==========
-  const handleClaim = async (id: string) => {
-    await customerApi.claim(id);
-    message.success('认领成功');
-    fetchData();
-    // 如果抽屉打开的是该客户，刷新详情
-    if (detailCustomer?.id === id) {
-      const res = await customerApi.getById(id);
-      setDetailCustomer(res.data.data);
-      setDrawerEditValues({
-        companyName: res.data.data.companyName,
-        contactName: res.data.data.contactName,
-        email: res.data.data.email,
-        phone: res.data.data.phone,
-        country: res.data.data.country,
-        source: res.data.data.source,
-        notes: res.data.data.notes,
-        isKeyAccount: res.data.data.isKeyAccount || false,
-        intentLevel: res.data.data.intentLevel || undefined,
-        tags: res.data.data.tags || '',
-        firstOrderDate: res.data.data.firstOrderDate || '',
-      });
-    }
-  };
-
-  const handleRelease = async (id: string) => {
-    await customerApi.release(id);
-    message.success('已释放到公海');
-    fetchData();
-    if (detailCustomer?.id === id) {
-      const res = await customerApi.getById(id);
-      setDetailCustomer(res.data.data);
-      setDrawerEditValues({
-        companyName: res.data.data.companyName,
-        contactName: res.data.data.contactName,
-        email: res.data.data.email,
-        phone: res.data.data.phone,
-        country: res.data.data.country,
-        source: res.data.data.source,
-        notes: res.data.data.notes,
-        isKeyAccount: res.data.data.isKeyAccount || false,
-        intentLevel: res.data.data.intentLevel || undefined,
-        tags: res.data.data.tags || '',
-        firstOrderDate: res.data.data.firstOrderDate || '',
-      });
-    }
-  };
-
-  // ========== 删除 ==========
-  const handleDelete = async (id: string) => {
-    try {
-      await customerApi.remove(id);
-      message.success('已删除');
-      fetchData();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || '删除失败';
-      message.error(msg);
-    }
-  };
-
-  // ========== 转交 ==========
-  const [transferModalOpen, setTransferModalOpen] = useState(false);
-  const [transferCustomerId, setTransferCustomerId] = useState<string>('');
-  const [transferTargetId, setTransferTargetId] = useState<string>('');
-  const [userList, setUserList] = useState<User[]>([]);
-
-  const openTransfer = (customerId: string) => {
-    setTransferCustomerId(customerId);
-    setTransferTargetId('');
-    setTransferModalOpen(true);
-  };
-
-  const handleTransfer = async () => {
-    if (!transferTargetId) {
-      message.error('请选择目标业务员');
-      return;
-    }
-    try {
-      await customerApi.transfer(transferCustomerId, transferTargetId);
-      message.success('转交成功');
-      setTransferModalOpen(false);
-      if (drawerOpen) {
-        setDrawerOpen(false);
-      }
-      fetchData();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || '转交失败';
-      message.error(msg);
-    }
-  };
-
-  // ========== 导入 ==========
-  const handleImport = async () => {
-    if (!importFile) return;
-    setImporting(true);
-    try {
-      const res = await customerApi.importExcel(importFile);
-      const data = res.data.data;
-      message.success(`导入完成：成功 ${data.created} 条${data.failed > 0 ? `，失败 ${data.failed} 条` : ''}`);
-      setImportOpen(false);
-      setImportFile(null);
-      fetchData();
-    } catch {
-      message.error('导入失败');
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  // ========== 订单弹窗 ==========
-  const openCreateOrder = (customerId: string) => {
-    setEditingOrder(null);
-    setOrderCustomerId(customerId);
-    orderForm.resetFields();
-    orderForm.setFieldsValue({ status: 'PENDING' });
-    setOrderModalOpen(true);
-  };
-
-  const handleSaveOrder = async () => {
-    try {
-      const values = await orderForm.validateFields();
-      if (editingOrder) {
-        await orderApi.update(editingOrder.id, values);
-        message.success('更新成功');
-      } else {
-        await orderApi.create({ ...values, customerId: orderCustomerId });
-        message.success('创建成功');
-      }
-      setOrderModalOpen(false);
-      if (detailCustomer) {
-        const fresh = await customerApi.getById(detailCustomer.id);
-        setDetailCustomer(fresh.data.data);
-        const orders = await orderApi.listByCustomer(detailCustomer.id);
-        setCustomerOrders(orders.data.data);
-      }
-    } catch (e: any) {
-      if (e.errorFields) return;
-      const msg = e?.response?.data?.message || e?.message || '操作失败';
-      message.error(msg);
-    }
-  };
-
-  // ========== 头像颜色 ==========
-  const avatarColor = (name?: string) => {
-    const colors = ['#1677ff', '#52c41a', '#fa8c16', '#f5222d', '#13c2c2', '#722ed1', '#eb2f96', '#fa541c'];
-    if (!name) return colors[0];
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    return colors[Math.abs(hash) % colors.length];
-  };
-
-  // ========== 统计数据 ==========
-  const statsData = useMemo(() => {
-    const totalCustomers = total;
-    const aGradeCount = list.filter((c) => getGrade(c).grade === 'A').length;
-    const totalContract = list.reduce((sum, c) => sum + (c.totalAmount || 0), 0);
-    return { totalCustomers, aGradeCount, totalContract };
-  }, [list, total]);
-
-  const countryStats = useMemo(() => {
-    const map: Record<string, number> = {};
-    list.filter(c => c.country).forEach(c => {
-      map[c.country] = (map[c.country] || 0) + 1;
-    });
-    const total = Object.values(map).reduce((s, v) => s + v, 0);
-    return Object.entries(map)
-      .map(([name, count]) => ({ name, count, pct: total ? Math.round((count / total) * 100) : 0 }))
-      .sort((a, b) => b.count - a.count);
-  }, [list]);
-
-  // ========== 渲染统计卡片 ==========
-  const renderStats = () => (
-    <Row gutter={16} style={{ marginBottom: 24 }}>
-      <Col xs={24} sm={8}>
-        <Card
-          style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-          styles={{ body: { padding: '20px 24px' } }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-              🌍
-            </div>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: '#1a1a2e', lineHeight: 1 }}>{statsData.totalCustomers}</div>
-              <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>客户总数</div>
-              <Popover
-                content={
-                  (() => {
-                    const COLORS = ['#1677ff', '#52c41a', '#fa8c16', '#eb2f96', '#722ed1', '#13c2c2', '#f5222d', '#faad14', '#2f54eb', '#a0d911'];
-                    return (
-                      <div style={{ width: 240, textAlign: 'center' }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: '#1a1a2e' }}>国家/地区分布</div>
-                        <div className="popover-chart-flex" style={{ display: 'flex', justifyContent: 'center' }}>
-                          <PieChart width={180} height={180} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                            <Pie
-                              data={countryStats}
-                              dataKey="count"
-                              nameKey="name"
-                              cx={90}
-                              cy={90}
-                              innerRadius={50}
-                              outerRadius={78}
-                              stroke="none"
-                            >
-                              {countryStats.map((c, i) => (
-                                <Cell key={c.name} fill={COLORS[i % COLORS.length]} />
-                              ))}
-                            </Pie>
-                            <foreignObject x="50%" y="50%" width="1" height="1">
-                              <div style={{ transform: 'translate(-50%, -50%)', textAlign: 'center', lineHeight: 1.2, pointerEvents: 'none' }}>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: '#1a1a2e' }}>{countryStats.length}</div>
-                                <div style={{ fontSize: 11, color: '#999', marginTop: 2 }}>个国家/地区</div>
-                              </div>
-                            </foreignObject>
-                          </PieChart>
-                        </div>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 10px', marginTop: 8, justifyContent: 'center' }}>
-                          {countryStats.map((c, i) => (
-                            <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#666' }}>
-                              <span style={{ width: 7, height: 7, borderRadius: 2, backgroundColor: COLORS[i % COLORS.length], flexShrink: 0 }} />
-                              <span style={{ whiteSpace: 'nowrap' }}>{c.name} {c.pct}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()
-                }
-                title={null}
-              >
-                <div style={{ fontSize: 12, color: '#1677ff', marginTop: 2, cursor: 'pointer' }}>{countryStats.length} 个国家/地区</div>
-              </Popover>
-            </div>
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={8}>
-        <Card
-          style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-          styles={{ body: { padding: '20px 24px' } }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-              ⭐
-            </div>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: '#1a1a2e', lineHeight: 1 }}>{statsData.aGradeCount}</div>
-              <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>A级客户</div>
-              <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>战略合作伙伴</div>
-            </div>
-          </div>
-        </Card>
-      </Col>
-      <Col xs={24} sm={8}>
-        <Card
-          style={{ borderRadius: 16, border: 'none', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}
-          styles={{ body: { padding: '20px 24px' } }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
-              🏦
-            </div>
-            <div>
-              <div style={{ fontSize: 28, fontWeight: 700, color: '#1a1a2e', lineHeight: 1 }}>{formatCurrency(statsData.totalContract || 0)}</div>
-              <div style={{ fontSize: 13, color: '#666', marginTop: 4 }}>累计合同额</div>
-              <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>今年度</div>
-            </div>
-          </div>
-        </Card>
-      </Col>
-    </Row>
-  );
-
-  // ========== 渲染工具栏 ==========
-  const renderToolbar = () => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-      <Input
-        prefix={<SearchOutlined style={{ color: '#999' }} />}
-        placeholder="搜索客户名、国家、联系人..."
-        style={{ width: 320, borderRadius: 8, height: 36 }}
-        value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
-        onPressEnter={() => { setPage(1); fetchData(); }}
-        allowClear
-      />
-
-      <Segmented
-        className="view-mode-segmented"
-        value={viewMode}
-        onChange={(v) => setViewMode(v as 'card' | 'list')}
-        options={[
-          { value: 'card', label: <span><AppstoreOutlined style={{ marginRight: 4 }} />卡片</span> },
-          { value: 'list', label: <span><UnorderedListOutlined style={{ marginRight: 4 }} />列表</span> },
-        ]}
-      />
-
-      {isAdmin && activeTab === 'private' && (
-      <Select
-        placeholder="筛选业务员"
-        value={selectedOwnerId || undefined}
-        onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
-        allowClear
-        style={{ width: 180, borderRadius: 8 }}
-        showSearch
-        filterOption={(input, option: any) =>
-          option?.label?.toLowerCase().includes(input.toLowerCase())
-        }
-        options={userList
-          .filter((u: User) => u.status === 'ACTIVE')
-          .map((u: User) => ({
-            value: u.id,
-            label: u.realName || u.username,
-          }))}
-      />
-      )}
-      <div style={{ flex: 1 }} />
-
-      <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>
-        导入
-      </Button>
-      <Button icon={<ReloadOutlined />} onClick={fetchData}>
-        刷新
-      </Button>
-      <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-        新增客户
-      </Button>
-    </div>
-  );
+  const handleOrderSuccess = useCallback(async () => {
+    setOrderModalOpen(false);
+    // 订单数据已通过 orderApi 持久化；保持前端详情缓存，不额外回源
+    // （订单成功属详情内变更，切走标签页时缓存失效，下次进入自然刷新）
+    if (detailCustomer) setDetailCache(detailCustomer);
+  }, [detailCustomer]);
 
   // ========== 渲染卡片视图 ==========
-  const renderCardView = () => (
-    <Row gutter={[16, 16]}>
-      {list.map((customer) => {
-        const grade = getGrade(customer);
-        const ownerName = customer.owner?.realName || customer.owner?.username || '';
-        const firstChar = ownerName?.charAt(0) || customer.contactName?.charAt(0) || customer.companyName?.charAt(0) || '?';
-        const bgColor = avatarColor(ownerName || customer.companyName);
-
-        return (
-          <Col xs={24} sm={12} md={8} lg={8} xl={8} key={customer.id}>
-            <Card
-              hoverable
-              onClick={() => openDetail(customer)}
-              style={{
-                borderRadius: 16,
-                border: 'none',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                cursor: 'pointer',
-                height: '100%',
-                overflow: 'hidden',
-                backgroundColor: 'transparent',
-              }}
-              styles={{ body: { padding: 0, backgroundColor: 'transparent' } }}
-            >
-              {/* 彩色头部区域 */}
-              <div
-                style={{
-                  backgroundColor: grade.bg,
-                  padding: '18px 20px 20px',
-                  position: 'relative',
-                  overflow: 'hidden',
-                }}
-              >
-                {/* 装饰性圆环 */}
-                <div style={{
-                  position: 'absolute',
-                  top: -30,
-                  right: -20,
-                  width: 100,
-                  height: 100,
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255,255,255,0.1)',
-                }} />
-                <div style={{
-                  position: 'absolute',
-                  bottom: -36,
-                  right: 48,
-                  width: 72,
-                  height: 72,
-                  borderRadius: '50%',
-                  backgroundColor: 'rgba(255,255,255,0.06)',
-                }} />
-
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', position: 'relative', zIndex: 1 }}>
-                  <span style={{
-                    backgroundColor: 'rgba(255,255,255,0.22)',
-                    color: '#fff',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    lineHeight: '18px',
-                    letterSpacing: '0.3px',
-                  }}>
-                    {grade.grade}级客户
-                  </span>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <KeyAccountStar
-                      isKeyAccount={customer.isKeyAccount || false}
-                      customerId={customer.id}
-                      color="rgba(255,255,255,0.9)"
-                      mutedColor="rgba(255,255,255,0.4)"
-                      onToggle={() => {
-                        setList((prev) =>
-                          prev.map((c) =>
-                            c.id === customer.id ? { ...c, isKeyAccount: !c.isKeyAccount } : c
-                          )
-                        );
-                      }}
-                    />
-                    <span style={{ fontSize: 20, lineHeight: 1, filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }}>{getCountryFlag(customer.country)}</span>
-                  </div>
-                </div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginTop: 12, lineHeight: 1.3, position: 'relative', zIndex: 1 }}>
-                  {customer.companyName || '-'}
-                </div>
-                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 4, position: 'relative', zIndex: 1 }}>
-                  {findCountry(customer.country)?.zh || (customer.country || '未知')}
-                </div>
-              </div>
-
-              {/* 白色内容区 */}
-              <div style={{ padding: '14px 20px', backgroundColor: '#fff' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <Avatar size={40} style={{ backgroundColor: bgColor, fontSize: 15, fontWeight: 700 }}>
-                      {firstChar}
-                    </Avatar>
-                    <div>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: '#1a1a2e' }}>{customer.contactName || '-'}</div>
-                      <div style={{ fontSize: 11, color: '#999' }}>{customer.email || customer.phone || '-'}</div>
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: 11, color: '#999' }}>合同额</div>
-                    <div style={{ fontSize: 15, fontWeight: 700, color: '#1a1a2e' }}>
-                      {formatCurrency(customer.totalAmount || 0)}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#999' }}>{customer._count?.orders ?? 0} 单</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* 标签 + 创建时间 */}
-              <div style={{ padding: '0 20px 14px', backgroundColor: '#fff', borderRadius: '0 0 16px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, flex: 1, minWidth: 0 }}>
-                  {tagsToArray(customer.tags).map((tag) => (
-                    <Tag key={tag.name} color={tag.color} style={{
-                      margin: 0,
-                      borderRadius: 10,
-                      fontSize: 11,
-                      padding: '1px 8px',
-                    }}>{tag.name}</Tag>
-                  ))}
-                </div>
-                <div style={{ fontSize: 11, color: '#bbb', whiteSpace: 'nowrap', marginLeft: 8 }}>
-                  {dayjs(customer.createdAt).format('YYYY-MM-DD')}
-                </div>
-              </div>
-            </Card>
-          </Col>
-        );
-      })}
-    </Row>
-  );
+  const renderCardView = useMemo(() => (
+    <ResponsiveCardGrid
+      dataSource={displayList}
+      renderItem={(customer) => (
+        <CustomerCard
+          customer={customer as Customer}
+          token={token}
+          onOpenDetail={openDetail}
+          onListUpdate={handleListUpdate}
+        />
+      )}
+      cols={{ xs: 24, sm: 12, md: 12, lg: 8 }}
+    />
+  ), [displayList, token, openDetail, handleListUpdate]);
 
   // ========== 渲染列表视图 ==========
-  const renderListView = () => {
-    const columns = [
-      {
-        title: '客户',
-        dataIndex: 'companyName',
-        key: 'companyName',
-        render: (_: any, customer: Customer) => (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Avatar
-              size={32}
-              style={{
-                backgroundColor: avatarColor(customer.companyName),
-                fontSize: 14,
-                fontWeight: 600,
-              }}
-            >
-              {customer.companyName?.charAt(0) || '?'}
-            </Avatar>
-            <div>
-              <div style={{ fontWeight: 600, color: '#1a1a2e' }}>{customer.companyName}</div>
-              <div style={{ fontSize: 12, color: '#999' }}>{customer.contactName || '暂无联系人'}</div>
-            </div>
-          </div>
-        ),
-      },
-      {
-        title: '国家',
-        dataIndex: 'country',
-        key: 'country',
-        render: (_: any, record: Customer) => (
-          <CountryDisplay country={record.country} />
-        ),
-      },
-      {
-        title: '联系人',
-        dataIndex: 'contactName',
-        key: 'contactName',
-        render: (v: string) => v || '-',
-      },
-      {
-        title: '邮箱',
-        dataIndex: 'email',
-        key: 'email',
-        render: (v: string) => v || '-',
-      },
-      {
-        title: '等级',
-        key: 'grade',
-        render: (_: any, customer: Customer) => {
-          const g = getGrade(customer);
-          return (
-            <span
-              style={{
-                display: 'inline-block',
-                padding: '2px 10px',
-                borderRadius: 12,
-                backgroundColor: g.bg,
-                color: g.color,
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {g.grade}级
-            </span>
-          );
-        },
-      },
-      {
-        title: '订单数',
-        dataIndex: '_count',
-        key: 'orders',
-        render: (v: any) => v?.orders ?? 0,
-      },
-      {
-        title: '合同总额',
-        key: 'totalAmount',
-        render: (_: any, customer: Customer) => (
-          <span style={{ fontWeight: 500 }}>{formatCurrency(customer.totalAmount || 0)}</span>
-        ),
-      },
-      {
-        title: '最近下单',
-        key: 'lastOrderDate',
-        render: (_: any, customer: Customer) =>
-          customer.lastOrderDate ? dayjs(customer.lastOrderDate).format('YYYY-MM-DD') : '-',
-      },
-      {
-        title: '负责人',
-        key: 'owner',
-        render: (_: any, customer: Customer) =>
-          customer.owner?.realName || customer.owner?.username || <Tag>公海</Tag>,
-      },
-      {
-        title: '操作',
-        key: 'action',
-        render: (_: any, customer: Customer) => (
-          <Space size={8}>
-            <a
-              style={{ color: token.colorPrimary, fontSize: 13 }}
-              onClick={(e) => { e.stopPropagation(); openDetail(customer); }}
-            >
-              详情
-            </a>
-            <a
-              style={{ color: '#999', fontSize: 13 }}
-              onClick={(e) => { e.stopPropagation(); openDetail(customer); }}
-            >
-              跟进
-            </a>
-          </Space>
-        ),
-      },
-    ];
+  const renderListView = useMemo(() => (
+    <CustomerList
+      list={displayList}
+      token={token}
+      onOpenDetail={openDetail}
+      onListUpdate={handleListUpdate}
+    />
+  ), [displayList, token, openDetail, handleListUpdate]);
 
-    return (
-      <Table
-        columns={columns as any}
-        dataSource={list}
-        rowKey="id"
-        loading={loading}
-        pagination={false}
-        onRow={(customer) => ({
-          onClick: () => openDetail(customer),
-          style: { cursor: 'pointer' },
-        })}
-        style={{ backgroundColor: '#fff', borderRadius: 16 }}
-      />
-    );
-  };
+  // 转交弹窗用户列表 memo
+  const transferUserList = useMemo(
+    () => userList.map(u => ({ id: u.id, realName: u.realName || u.username })),
+    [userList]
+  );
+
+
 
   // ========== 分页器 ==========
-  const renderPagination = () => {
-    const totalPages = Math.ceil(total / pageSize);
-    if (totalPages <= 1) return null;
+  const renderPagination = useMemo(() => {
+    if (list.length <= pageSize) return null;
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 24, paddingBottom: 8 }}>
-        <Button
-          size="small"
-          disabled={page <= 1}
-          onClick={() => setPage(page - 1)}
-        >
-          上一页
-        </Button>
-        <Text style={{ fontSize: 13 }}>
-          第 {page} / {totalPages} 页，共 {total} 条
-        </Text>
-        <Button
-          size="small"
-          disabled={page >= totalPages}
-          onClick={() => setPage(page + 1)}
-        >
-          下一页
-        </Button>
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+        <Pagination
+          {...buildTablePagination({
+            total: list.length, page, pageSize,
+            onChange: (p) => setPage(p),
+          })}
+        />
       </div>
     );
-  };
+  }, [list.length, page]);
 
   return (
     <div style={{ padding: '0 0 24px' }}>
-      {/* 统计卡片 */}
-      {renderStats()}
+      <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={filterType} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
 
       {/* 工具栏 */}
-      {renderToolbar()}
+      <CustomerToolbar
+        token={token}
+        keyword={keyword}
+        setKeyword={setKeyword}
+        fetchData={fetchData}
+        setPage={setPage}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        filterTags={filterTags}
+        setFilterTags={setFilterTags}
+        filterType={filterType}
+        setFilterType={setFilterType}
+        subFilterType={subFilterType}
+        setSubFilterType={setSubFilterType}
+        setImportOpen={setImportOpen}
+        openCreate={openCreate}
+        isAdmin={isAdmin}
+        filterTypePublic={filterType === 'public'}
+        selectedOwnerId={selectedOwnerId}
+        setSelectedOwnerId={setSelectedOwnerId}
+        userList={userList}
+        noOrderBreakdown={noOrderBreakdown}
+        doneBreakdown={doneBreakdown}
+      />
 
       {/* 内容区 */}
       <Spin spinning={loading}>
-        {viewMode === 'card' ? renderCardView() : renderListView()}
+        {viewMode === 'card' ? renderCardView : renderListView}
         {list.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: 60, color: '#999' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
-            <div>暂无客户数据</div>
-          </div>
+          <Empty
+            image={
+              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <InboxOutlined style={{ fontSize: 120, color: 'rgba(0,0,0,0.25)' }} />
+              </div>
+            }
+            styles={{ image: { height: 120 } }}
+            description="暂无客户数据"
+            style={{ padding: '64px 0' }}
+          >
+            <Button type="primary" onClick={openCreate}>
+              新建客户
+            </Button>
+          </Empty>
         )}
       </Spin>
 
       {/* 分页 */}
-      {renderPagination()}
+      {renderPagination}
 
       {/* ===== 创建/编辑弹窗 ===== */}
-      <Modal
-        title={editingCustomer ? '编辑客户' : '新增客户'}
+      <CustomerFormModal
         open={modalOpen}
-        onOk={handleSave}
-        onCancel={() => setModalOpen(false)}
-        width={640}
-        zIndex={2000}
-        forceRender
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
-            <Input placeholder="公司名称" />
-          </Form.Item>
-          <Form.Item name="contactName" label="联系人">
-            <Input placeholder="联系人" />
-          </Form.Item>
-          <Form.Item name="email" label="邮箱">
-            <Input placeholder="邮箱" />
-          </Form.Item>
-          <Form.Item name="phone" label="电话">
-            <Input placeholder="电话" />
-          </Form.Item>
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item name="country" label="国家">
-                <CountrySelect />
-              </Form.Item>
-            </Col>
-            <Col span={12}>
-              <Form.Item name="source" label="来源">
-                <Select placeholder="来源" allowClear>
-                  <Select.Option value="MANUAL">手动录入</Select.Option>
-                  <Select.Option value="EXCEL">Excel导入</Select.Option>
-                  <Select.Option value="XIAOMAN">小满API</Select.Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item name="isKeyAccount" hidden>
-            <Input />
-          </Form.Item>
-          <Form.Item
-            noStyle
-            shouldUpdate={(prev, cur) => prev.isKeyAccount !== cur.isKeyAccount}
-          >
-            {({ getFieldValue, setFieldsValue }) => (
-              <Form.Item label="重点客户">
-                <KeyAccountStar
-                  isKeyAccount={getFieldValue('isKeyAccount') || false}
-                  customerId={editingCustomer?.id}
-                  onToggle={() => setFieldsValue({ isKeyAccount: !getFieldValue('isKeyAccount') })}
-                />
-              </Form.Item>
-            )}
-          </Form.Item>
-          <Form.Item name="intentLevel" label="采购意向">
-            <Select placeholder="选择采购意向">
-              {INTENT_OPTIONS.map((o) => (
-                <Select.Option key={o.value} value={o.value}>
-                  <Tag color={o.color}>{o.label}</Tag>
-                </Select.Option>
-              ))}
-            </Select>
-          </Form.Item>
-          <Form.Item name="tags" label="标签">
-            <TagColorEditor />
-          </Form.Item>
-          <Form.Item name="firstOrderDate" label="首次订单日期">
-            <Input type="date" />
-          </Form.Item>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="备注信息" />
-          </Form.Item>
-        </Form>
-      </Modal>
+        editingCustomer={editingCustomer}
+        onClose={() => { setModalOpen(false); setEditingCustomer(null); }}
+        onSuccess={() => { invalidateAll(); fetchData(); }}
+      />
 
       {/* ===== 转交弹窗 ===== */}
-      <Modal
-        title="转交客户"
+      <TransferModal
         open={transferModalOpen}
-        onCancel={() => setTransferModalOpen(false)}
-        onOk={handleTransfer}
-        okText="确认转交"
-      >
-        <div style={{ marginBottom: 12 }}>
-          <Text type="secondary">选择目标业务员</Text>
-        </div>
-        <Select
-          showSearch
-          placeholder="搜索并选择业务员"
-          style={{ width: '100%' }}
-          value={transferTargetId || undefined}
-          onChange={(v) => setTransferTargetId(v)}
-          filterOption={(input, option: any) =>
-            option?.label?.toLowerCase().includes(input.toLowerCase())
+        customer={transferCustomer}
+        userList={transferUserList}
+        onClose={() => { setTransferModalOpen(false); setTransferCustomer(null); }}
+        onSuccess={() => {
+          setTransferModalOpen(false);
+          setTransferCustomer(null);
+          if (detailModalOpen) setDetailModalOpen(false);
+          invalidateAll();
+          fetchData();
+        }}
+      />
+
+      {/* ===== 详情弹窗（居中大弹窗，替代抽屉） ===== */}
+      <CustomerDetailModal
+        open={detailModalOpen}
+        customer={detailCustomer}
+        onClose={() => { setDetailModalOpen(false); }}
+        onDetailLoaded={handleDetailLoaded}
+        onSaved={handleDetailUpdated}
+        onTagsChanged={handleTagsChanged}
+        onTransfer={handleTransferFromModal}
+        onRelease={handleReleaseFromModal}
+        onDelete={handleDeleteFromModal}
+        onPickNewType={(c) => openPickNewType(c)}
+        onCreateOrder={(c) => openCreateOrder(c.id)}
+        onEditPipeline={handleEditPipeline}
+        onConvertPipeline={handleConvertPipeline}
+        onDeletePipeline={handleDeletePipeline}
+        detailVersion={detailVersion}
+        onToggleKeyAccount={async (c) => {
+          // 先本地乐观更新（保留聚合字段，避免金额被清成 undefined），再调用后端持久化
+          const nextKey = !c.isKeyAccount;
+          const applyLocal = (item: Customer): Customer =>
+            item.id === c.id ? mergeKeepAgg(item, { ...item, isKeyAccount: nextKey }) : item;
+          setDetailCustomer((prev) => (prev?.id === c.id ? { ...prev, isKeyAccount: nextKey } : prev));
+          setList((prev) => sortCustomers(prev.map(applyLocal)));
+          try {
+            await customerApi.update(c.id, { isKeyAccount: nextKey });
+            invalidateDetail(c.id); // 详情缓存失效，下次打开回源最新值
+          } catch {
+            // 失败回滚
+            setDetailCustomer((prev) => (prev?.id === c.id ? { ...prev, isKeyAccount: c.isKeyAccount } : prev));
+            setList((prev) => sortCustomers(prev.map((item) => (item.id === c.id ? { ...item, isKeyAccount: c.isKeyAccount } : item))));
+            message.error('重点客户状态更新失败');
           }
-          options={userList
-            .filter((u: User) => u.id !== detailCustomer?.ownerId && u.status === 'ACTIVE')
-            .map((u: User) => ({
-              value: u.id,
-              label: `${u.realName || u.username}`,
-            }))}
-        />
-      </Modal>
-
-      {/* ===== 详情抽屉 ===== */}
-      <Drawer
-        title={
-          detailCustomer ? (
-            <Space>
-              {detailCustomer.owner ? (
-                <Popover content={`负责人：${detailCustomer.owner.realName || detailCustomer.owner.username}`}>
-                  <Avatar size="small" style={{ backgroundColor: '#1677ff', cursor: 'default' }}>
-                    {(detailCustomer.owner.realName || detailCustomer.owner.username)?.[0]}
-                  </Avatar>
-                </Popover>
-              ) : (
-                <Tag color="default">公海</Tag>
-              )}
-              <span>{detailCustomer.companyName}</span>
-            </Space>
-          ) : '客户详情'
-        }
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        width={680}
-        styles={{ wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
-        loading={detailLoading}
-        extra={
-          detailCustomer && (
-            <Space>
-              {drawerEditing ? (
-                <>
-                  <Button onClick={() => { setDrawerEditing(false); }}>取消</Button>
-                  <Button type="primary" loading={drawerSaving} onClick={handleDrawerSave}>保存</Button>
-                </>
-              ) : (
-                <>
-                  <Button onClick={() => { openCreateOrder(detailCustomer.id); }}>
-                    <ShoppingCartOutlined /> 下订单
-                  </Button>
-                  {detailCustomer.ownerId ? (
-                    <>
-                      <Button icon={<SwapOutlined />} onClick={() => openTransfer(detailCustomer.id)}>转交</Button>
-                      <Button type="primary" onClick={enterDrawerEdit}>编辑</Button>
-                      <Popconfirm
-                        title="确认释放到公海？"
-                        onConfirm={() => handleRelease(detailCustomer.id)}
-                      >
-                        <Button>释放</Button>
-                      </Popconfirm>
-                      <Popconfirm
-                        title="确认删除？"
-                        onConfirm={() => handleDelete(detailCustomer.id)}
-                      >
-                        <Button danger>删除</Button>
-                      </Popconfirm>
-                    </>
-                  ) : (
-                    <Button type="primary" icon={<UserAddOutlined />} onClick={() => handleClaim(detailCustomer.id)}>
-                      认领
-                    </Button>
-                  )}
-                </>
-              )}
-            </Space>
-          )
-        }
-      >
-        {detailCustomer && (
-          <div>
-            {/* 基本信息 */}
-            <Card size="small" title="基本信息" style={{ marginBottom: 16, borderRadius: 8 }}>
-              {drawerEditing ? (
-                <Row gutter={[16, 12]}>
-                  <Col span={12}>
-                    <Text type="secondary">公司名称</Text>
-                    <Input
-                      value={drawerEditValues.companyName}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, companyName: e.target.value })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">联系人</Text>
-                    <Input
-                      value={drawerEditValues.contactName}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, contactName: e.target.value })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">邮箱</Text>
-                    <Input
-                      value={drawerEditValues.email}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, email: e.target.value })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">电话</Text>
-                    <Input
-                      value={drawerEditValues.phone}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, phone: e.target.value })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">国家</Text>
-                    <CountrySelect
-                      value={drawerEditValues.country}
-                      onChange={(val) => setDrawerEditValues({ ...drawerEditValues, country: val })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">来源</Text>
-                    <Select
-                      value={drawerEditValues.source || undefined}
-                      onChange={(val) => setDrawerEditValues({ ...drawerEditValues, source: val })}
-                      placeholder="来源"
-                      allowClear
-                      style={{ marginTop: 4, width: '100%' }}
-                    >
-                      <Select.Option value="MANUAL">手动录入</Select.Option>
-                      <Select.Option value="EXCEL">Excel导入</Select.Option>
-                      <Select.Option value="XIAOMAN">小满API</Select.Option>
-                    </Select>
-                  </Col>
-                  <Col span={24}>
-                    <Text type="secondary">客户等级</Text>
-                    <Text type="secondary" style={{ fontSize: 11, marginLeft: 8 }}>（根据重点客户+采购意向自动推算）</Text>
-                    <br />
-                    {(() => {
-                      const grade = getGrade({
-                        ...detailCustomer,
-                        isKeyAccount: drawerEditValues.isKeyAccount ?? false,
-                        intentLevel: drawerEditValues.intentLevel,
-                      } as Customer);
-                      return (
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 10px',
-                          borderRadius: 12,
-                          backgroundColor: grade.bg,
-                          color: grade.color,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          marginTop: 4,
-                        }}>
-                          {grade.grade}级
-                        </span>
-                      );
-                    })()}
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">重点客户</Text>
-                    <div style={{ marginTop: 4 }}>
-                      <KeyAccountStar
-                        isKeyAccount={drawerEditValues.isKeyAccount || false}
-                        customerId={detailCustomer?.id}
-                        onToggle={() => setDrawerEditValues({ ...drawerEditValues, isKeyAccount: !drawerEditValues.isKeyAccount })}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">采购意向</Text>
-                    <Select
-                      value={drawerEditValues.intentLevel || undefined}
-                      onChange={(val) => setDrawerEditValues({ ...drawerEditValues, intentLevel: val })}
-                      placeholder="选择采购意向"
-                      allowClear
-                      style={{ marginTop: 4, width: '100%' }}
-                    >
-                      {INTENT_OPTIONS.map((o) => (
-                        <Select.Option key={o.value} value={o.value}>
-                          <Tag color={o.color}>{o.label}</Tag>
-                        </Select.Option>
-                      ))}
-                    </Select>
-                  </Col>
-                  <Col span={24}>
-                    <Text type="secondary">标签</Text>
-                    <div style={{ marginTop: 4 }}>
-                      <TagColorEditor
-                        value={drawerEditValues.tags}
-                        onChange={(tags) => setDrawerEditValues({ ...drawerEditValues, tags })}
-                      />
-                    </div>
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">首次订单日期</Text>
-                    <Input
-                      type="date"
-                      value={drawerEditValues.firstOrderDate || ''}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, firstOrderDate: e.target.value })}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                  <Col span={24}>
-                    <Text type="secondary">备注</Text>
-                    <Input.TextArea
-                      value={drawerEditValues.notes}
-                      onChange={(e) => setDrawerEditValues({ ...drawerEditValues, notes: e.target.value })}
-                      rows={2}
-                      style={{ marginTop: 4 }}
-                    />
-                  </Col>
-                </Row>
-              ) : (
-                <Row gutter={[16, 12]}>
-                  <Col span={12}><Text type="secondary">公司名称</Text><br /><Text strong>{detailCustomer.companyName}</Text></Col>
-                  <Col span={12}><Text type="secondary">联系人</Text><br /><Text>{detailCustomer.contactName || '-'}</Text></Col>
-                  <Col span={12}>
-                    <Text type="secondary">邮箱</Text><br />
-                    {detailCustomer.email ? <a href={`mailto:${detailCustomer.email}`}><MailOutlined /> {detailCustomer.email}</a> : '-'}
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">电话</Text><br />
-                    {detailCustomer.phone ? <><PhoneOutlined /> {detailCustomer.phone}</> : '-'}
-                  </Col>
-                  <Col span={12}><Text type="secondary">国家</Text><br /><CountryDisplay country={detailCustomer.country} /></Col>
-                  <Col span={12}><Text type="secondary">来源</Text><br /><Text>{detailCustomer.source || '-'}</Text></Col>
-                  <Col span={24}>
-                    <Text type="secondary">客户等级</Text><br />
-                    {(() => {
-                      const grade = getGrade(detailCustomer);
-                      return (
-                        <span style={{
-                          display: 'inline-block',
-                          padding: '2px 10px',
-                          borderRadius: 12,
-                          backgroundColor: grade.bg,
-                          color: grade.color,
-                          fontSize: 12,
-                          fontWeight: 600,
-                        }}>
-                          {grade.grade}级
-                        </span>
-                      );
-                    })()}
-                  </Col>
-                  <Col span={12}>
-                    <Text type="secondary">重点客户</Text><br />
-                    <KeyAccountStar
-                      isKeyAccount={detailCustomer.isKeyAccount || false}
-                      customerId={detailCustomer.id}
-                      onToggle={() => {
-                        setList((prev) =>
-                          prev.map((c) =>
-                            c.id === detailCustomer.id ? { ...c, isKeyAccount: !c.isKeyAccount } : c
-                          )
-                        );
-                        setDetailCustomer({ ...detailCustomer, isKeyAccount: !detailCustomer.isKeyAccount });
-                      }}
-                    />
-                  </Col>
-                  {detailCustomer.firstOrderDate && (
-                    <Col span={12}><Text type="secondary">首次下单</Text><br /><Text>{detailCustomer.firstOrderDate}</Text></Col>
-                  )}
-                  {detailCustomer.tags && (
-                    <Col span={24}>
-                      <Text type="secondary">标签</Text><br />
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-                        {tagsToArray(detailCustomer.tags).map((tag) => (
-                          <Tag key={tag.name} color={tag.color} style={{ borderRadius: 10, margin: 0 }}>
-                            {tag.name}
-                          </Tag>
-                        ))}
-                      </div>
-                    </Col>
-                  )}
-                  {detailCustomer.notes && (
-                    <Col span={24}><Text type="secondary">备注</Text><br /><Text>{detailCustomer.notes}</Text></Col>
-                  )}
-                </Row>
-              )}
-            </Card>
-
-            {/* 订单列表 */}
-            <Card
-              size="small"
-              title={<span><ShoppingCartOutlined /> 订单记录 ({customerOrders.length})</span>}
-              style={{ marginBottom: 16, borderRadius: 8 }}
-              extra={
-                <Button size="small" type="link" onClick={() => openCreateOrder(detailCustomer.id)}>
-                  新增
-                </Button>
-              }
-            >
-              {customerOrders.length === 0 ? (
-                <Text type="secondary">暂无订单</Text>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid #f0f0f0' }}>
-                      <th style={{ textAlign: 'left', padding: 8 }}>订单号</th>
-                      <th style={{ textAlign: 'left', padding: 8 }}>日期</th>
-                      <th style={{ textAlign: 'right', padding: 8 }}>金额</th>
-                      <th style={{ textAlign: 'center', padding: 8 }}>状态</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {customerOrders.map((o) => (
-                      <tr key={o.id} style={{ borderBottom: '1px solid #fafafa' }}>
-                        <td style={{ padding: 8 }}>{o.orderNo || '-'}</td>
-                        <td style={{ padding: 8 }}>{o.orderDate || '-'}</td>
-                        <td style={{ padding: 8, textAlign: 'right', fontWeight: 500 }}>
-                          {formatCurrency(o.amountCNY ?? 0)}
-                        </td>
-                        <td style={{ padding: 8, textAlign: 'center' }}>
-                          <Tag>{o.status || 'PENDING'}</Tag>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </Card>
-
-            {/* 活动日志 */}
-            <Card size="small" title="活动记录" style={{ borderRadius: 8 }}>
-              {detailCustomer.activities?.length === 0 ? (
-                <Text type="secondary">暂无记录</Text>
-              ) : (
-                <div>
-                  {(detailCustomer.activities || [])
-                    .slice(0, showAllActivities ? undefined : 5)
-                    .map((a: CustomerActivity) => (
-                      <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #fafafa', display: 'flex', gap: 12 }}>
-                        <Text type="secondary" style={{ fontSize: 12, whiteSpace: 'nowrap', minWidth: 90 }}>
-                          {dayjs(a.createdAt).format('MM-DD HH:mm')}
-                        </Text>
-                        <Text style={{ fontSize: 13 }}>{a.detail || a.action}</Text>
-                        <Text type="secondary" style={{ fontSize: 12 }}>{a.createdBy}</Text>
-                      </div>
-                    ))}
-                  {(detailCustomer.activities || []).length > 5 && (
-                    <div style={{ textAlign: 'center', marginTop: 8 }}>
-                      <Button
-                        type="link"
-                        size="small"
-                        onClick={() => setShowAllActivities(!showAllActivities)}
-                      >
-                        {showAllActivities
-                          ? '收起'
-                          : `展开全部 (${detailCustomer.activities?.length} 条)`}
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Card>
-          </div>
-        )}
-      </Drawer>
+        }}
+      />
 
       {/* ===== 导入弹窗 ===== */}
-      <Modal
-        title="Excel 导入客户"
+      <ImportModal
         open={importOpen}
-        onOk={handleImport}
-        onCancel={() => { setImportOpen(false); setImportFile(null); }}
-        confirmLoading={importing}
-        zIndex={2000}
-        okText="开始导入"
-      >
-        <Dragger
-          accept=".xlsx,.xls,.csv"
-          maxCount={1}
-          beforeUpload={(file) => {
-            setImportFile(file);
-            return false;
-          }}
-          onRemove={() => setImportFile(null)}
-        >
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p>点击或拖拽文件上传</p>
-          <p style={{ color: '#8b8fa3', fontSize: 12 }}>
-            支持 .xlsx / .xls / .csv，表头支持：公司名称、联系人、邮箱、电话、国家
-          </p>
-        </Dragger>
-      </Modal>
+        onClose={() => setImportOpen(false)}
+        onSuccess={() => { setImportOpen(false); invalidateAll(); fetchData(); }}
+      />
 
       {/* ===== 订单弹窗 ===== */}
-      <Modal
-        title={editingOrder ? '编辑订单' : '新增订单'}
+      <OrderFormModal
         open={orderModalOpen}
-        onOk={handleSaveOrder}
-        onCancel={() => setOrderModalOpen(false)}
-        width={560}
-        zIndex={2000}
-        forceRender
+        customer={orderCustomer}
+        onClose={() => { setOrderModalOpen(false); setOrderCustomer(null); }}
+        onSuccess={handleOrderSuccess}
+      />
+
+      {/* ===== 商机编辑 / 新建弹窗 ===== */}
+      <SalesFormModal
+        open={pipelineEditOpen}
+        editingItem={editingPipeline}
+        initialStage={newPipelineStage}
+        customer={newPipelineCustomer}
+        currentUserId={user?.id}
+        fixedOwner={!!newPipelineCustomer}
+        assignUsers={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
+            onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
+            onSuccess={handlePipelineEditSuccess}
+          />
+
+      {/* 商机转化订单 — 选择订单类型 */}
+      <Modal
+        title="转为订单"
+        open={convertModalOpen}
+        onOk={handleConvertConfirm}
+        onCancel={() => { setConvertModalOpen(false); setConvertPipeline(null); }}
+        okText="确认转化"
+        cancelText="取消"
+        destroyOnHidden
       >
-        <Form form={orderForm} layout="vertical" style={{ marginTop: 12 }}>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="orderNo" label="订单号" style={{ width: 170 }}>
-              <Input placeholder="订单号" />
-            </Form.Item>
-            <Form.Item name="orderDate" label="订单日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="amountCNY" label="金额（CNY）" style={{ width: 170 }}>
-              <Input type="number" placeholder="0.00" />
-            </Form.Item>
-          </Space>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="deliveryDate" label="交付日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="paymentTerms" label="付款条件" style={{ width: 170 }}>
-              <Input placeholder="如 T/T 30%" />
-            </Form.Item>
-            <Form.Item name="status" label="状态" style={{ width: 170 }}>
-              <Select>
-                <Select.Option value="PENDING">待确认</Select.Option>
-                <Select.Option value="CONFIRMED">已确认</Select.Option>
-                <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-                <Select.Option value="SHIPPED">已发货</Select.Option>
-                <Select.Option value="DELIVERED">已交付</Select.Option>
-              </Select>
-            </Form.Item>
-          </Space>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="备注" />
-          </Form.Item>
-        </Form>
+        <div style={{ marginBottom: 12 }}>
+          将商机「<strong>{convertPipeline?.title || convertPipeline?.companyName}</strong>」转为成交订单，预计成交金额 ¥{convertPipeline?.estimatedAmount?.toLocaleString() || 0} 将作为订单金额。
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>订单阶段：</span>
+          <span style={{ color: '#16a34a', fontWeight: 600 }}>订单（已成交，进入订单流程）</span>
+        </div>
+      </Modal>
+
+      {/* 新建销售记录 — 选择类型（线索 / 商机 / 订单） */}
+      <Modal
+        title="新建销售记录"
+        open={newTypeOpen}
+        footer={null}
+        onCancel={() => { setNewTypeOpen(false); setNewTypeCustomer(null); }}
+        width={520}
+        destroyOnHidden
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, padding: '8px 0 4px' }}>
+          {[
+            { key: 'LEAD', label: '线索', desc: '手动新建，或后续由产品链接点击同步', color: '#1677ff' },
+            { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交', color: '#d97706' },
+            { key: 'ORDER', label: '订单', desc: '已成交，进入订单 7 阶段流程', color: '#16a34a' },
+          ].map((opt) => (
+            <div
+              key={opt.key}
+              onClick={() => {
+                if (!newTypeCustomer) return;
+                if (opt.key === 'ORDER') {
+                  setNewTypeOpen(false);
+                  setNewTypeCustomer(null);
+                  openCreateOrder(newTypeCustomer.id);
+                } else {
+                  openCreatePipeline(newTypeCustomer, opt.key as 'LEAD' | 'OPPORTUNITY');
+                }
+              }}
+              style={{
+                cursor: 'pointer', padding: '18px 16px', borderRadius: 12,
+                border: `1px solid ${token.colorBorderSecondary}`, background: token.colorBgContainer,
+                transition: 'all .2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = opt.color;
+                e.currentTarget.style.boxShadow = `0 4px 16px ${opt.color}22`;
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = token.colorBorderSecondary;
+                e.currentTarget.style.boxShadow = 'none';
+                e.currentTarget.style.transform = 'none';
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.color }} />
+                <span style={{ fontSize: 15, fontWeight: 600, color: token.colorText }}>{opt.label}</span>
+              </div>
+              <div style={{ fontSize: 12, color: token.colorTextSecondary, lineHeight: 1.5 }}>{opt.desc}</div>
+            </div>
+          ))}
+        </div>
       </Modal>
     </div>
   );
