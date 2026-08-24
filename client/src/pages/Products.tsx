@@ -781,14 +781,14 @@ export default function Products() {
         footer={
           editing ? (
             [
-              <Button key="back" onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>,
+              <Button key="back" onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>,
               <Button key="cancel" onClick={closeEdit}>取消</Button>,
               <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
             ]
           ) : pendingProducts.length > 0 || productTypeWatch === 'GROUP' ? (
             // 组合模式：可继续添加，或生成产品组
             <Space>
-              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>
+              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleGenerateGroup}>生成组合</Button>
@@ -796,7 +796,7 @@ export default function Products() {
           ) : (
             // 新建单个产品：可直接保存，或「添加单品」开始组合
             <Space>
-              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>
+              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleSubmit}>保存</Button>
