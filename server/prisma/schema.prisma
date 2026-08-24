@@ -367,6 +367,7 @@ model Product {
   remark      String?
 
   visibleUsers ProductVisibleUser[]
+  groupItems   ProductGroupItem[] // 作为单品被哪些组合引用
   leadProducts LeadProduct[]
   activities   ProductActivity[]         // 产品操作记录（时间线）
   createdBy  String?                     // 创建人 id（不公开产品仅创建人 + 指定可见人可查看）
@@ -469,10 +470,29 @@ model ProductGroup {
   description String?  // 备注
   ownerId     String   // 创建人
   owner       User     @relation("ProductGroupOwner", fields: [ownerId], references: [id])
-  productIds  String   @default("") // 逗号分隔的产品 id 列表
+  productIds  String   @default("") // 逗号分隔的产品 id 列表（冗余字段，便于旧接口兼容）
   status      Int      @default(1)  // 1 启用 0 停用
+  items       ProductGroupItem[] // 组合明细
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// 组合明细：一个组合包含多个单品，每行含规格/数量/单价
+model ProductGroupItem {
+  id          String   @id @default(cuid())
+  groupId     String
+  group       ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  productId   String
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  spec        String?  // 规格（如 尺寸/克重，行内快速新建时填写）
+  quantity    Int      @default(1)
+  price       Float?   // 单品单价
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([groupId])
+  @@index([productId])
 }
 
 // ============ 打样申请 ============

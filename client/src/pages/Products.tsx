@@ -85,8 +85,12 @@ export default function Products() {
 
   // 弹窗/表单
   const [open, setOpen] = useState(false);
-  // 新建流程中已添加（待成组）的单品；非空即表示正在组合多个单品
-  const [pendingProducts, setPendingProducts] = useState<{ id: string; name: string; sku: string }[]>([]);
+  // 组合明细（行内录入）：关联已有单品(productId) 或 快速新建单品(name)
+  const [groupItems, setGroupItems] = useState<
+    { key: string; productId?: string; name?: string; spec?: string; quantity: number; price?: number }[]
+  >([]);
+  // 可关联的已有单品列表（排除组合产品：unit='个'）
+  const [singleProducts, setSingleProducts] = useState<{ id: string; name: string; sku?: string }[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [viewing, setViewing] = useState<Product | null>(null);
@@ -96,6 +100,11 @@ export default function Products() {
   // 供货方式（单品/组合）：切换按钮，新建产品弹窗内直接选择
   const productTypeWatch = Form.useWatch('productType', form) as 'PRODUCT' | 'GROUP' | undefined;
   const visValue = Form.useWatch('visibility', form) as 'PUBLIC' | 'PRIVATE' | undefined;
+
+  // 切换到「组合」时拉取可关联的单品（排除组合产品）
+  useEffect(() => {
+    if (productTypeWatch === 'GROUP') ensureSingleProducts();
+  }, [productTypeWatch, ensureSingleProducts]);
   const visibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [certificates, setCertificates] = useState<Certificate[]>([]);
@@ -117,7 +126,7 @@ export default function Products() {
     modalStack.current = modalStack.current.filter((l) => l !== layer);
     if (modalStack.current.length === 0) fetchList();
   };
-  const closeEdit = () => { popLayer('edit'); cleanupPending(); setOpen(false); };
+  const closeEdit = () => { popLayer('edit'); setGroupItems([]); setOpen(false); };
   const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
 
   // 基于此产品创建报价（真实报价单接口，基于单品）
@@ -318,7 +327,7 @@ export default function Products() {
 
   // 打开「新建」：直接进入 选分类 → 新建产品页（不再选择 单品/组合，组合由连续添加单品体现）
   const openCreate = () => {
-    setPendingProducts([]);
+    setGroupItems([]);
     setEditing(null);
     resetStep();
     pushLayer('step');
@@ -396,7 +405,7 @@ export default function Products() {
 
   const openEdit = (record: Product) => {
     setEditing(record);
-    setPendingProducts([]);
+    setGroupItems([]);
     pushLayer('edit');
     setOpen(true);
     loadUsers();
@@ -482,7 +491,7 @@ export default function Products() {
         message.success('创建成功');
       }
       setOpen(false);
-      setPendingProducts([]);
+      setGroupItems([]);
       invalidateAll(); // 写后失效，下次进入重新拉取最新数据
       fetchList();
     } catch (err: unknown) {
@@ -522,30 +531,27 @@ export default function Products() {
   };
 
   // 组合模式：保存当前单品并继续添加下一个
-  const handleAddProduct = async () => {
-    const id = await saveCurrentAsProduct();
-    if (!id) return;
-    const values = form.getFieldsValue();
-    setPendingProducts((prev) => [...prev, { id, name: (values.name as string) || '未命名', sku: (values.sku as string) || '' }]);
-    // 保留分类选择，清空其余以便连续添加
-    const keep = { craftIds: values.craftIds, audienceId: values.audienceId, categoryId: values.categoryId };
-    form.resetFields();
-    form.setFieldsValue(keep);
-    message.success('已添加单品，可继续添加');
-  };
-
-  // 组合模式：把已添加（含当前）单品生成产品组
+  // 组合模式：把组合明细生成产品组（关联已有单品 或 行内快速新建单品）
   const handleGenerateGroup = async () => {
-    const groupName = (form.getFieldValue('groupName') || '').trim();
+    const groupName = (form.getFieldValue('name') || '').trim();
     if (!groupName) { message.warning('请输入组合名称'); return; }
-    const id = await saveCurrentAsProduct();
-    if (!id) return;
-    setPendingProducts((prev) => [...prev, { id, name: form.getFieldValue('name') || '未命名', sku: form.getFieldValue('sku') || '' }]);
-    const ids = [...pendingProducts.map((p) => p.id), id];
+    if (groupItems.length === 0) { message.warning('请至少添加一个组合明细'); return; }
+    const invalid = groupItems.find((it) => !it.productId && !it.name?.trim());
+    if (invalid) { message.warning('组合明细中快速新建单品时名称不能为空'); return; }
     try {
-      await productGroupApi.create({ name: groupName, description: (form.getFieldValue('groupDesc') || '') || undefined, productIds: ids });
+      await productGroupApi.create({
+        name: groupName,
+        description: (form.getFieldValue('groupDesc') || '') || undefined,
+        items: groupItems.map((it) => ({
+          productId: it.productId,
+          name: it.name,
+          spec: it.spec,
+          quantity: it.quantity,
+          price: it.price,
+        })),
+      });
       message.success('产品组已创建');
-      setPendingProducts([]);
+      setGroupItems([]);
       setOpen(false);
       invalidateAll();
       fetchList();
@@ -554,13 +560,14 @@ export default function Products() {
     }
   };
 
-  // 新建流程取消/关闭时，若已有待成组单品则清理，避免脏数据
-  const cleanupPending = () => {
-    if (!editing && pendingProducts.length) {
-      pendingProducts.forEach((p) => productApi.delete(p.id).catch(() => null));
-    }
-    setPendingProducts([]);
-  };
+  // 切换供货方式为组合时，拉取可关联的已有单品（排除组合产品）
+  const ensureSingleProducts = useCallback(async () => {
+    try {
+      const res = await productApi.getList({ page: 1, pageSize: 200, unit: '个' });
+      const list = res.data?.data?.list ?? [];
+      setSingleProducts(list.map((p: Product) => ({ id: p.id, name: p.name, sku: p.sku || '' })));
+    } catch { /* 静默 */ }
+  }, []);
 
   const handleDelete = async (id: string) => {
     try {
@@ -785,8 +792,8 @@ export default function Products() {
               <Button key="cancel" onClick={closeEdit}>取消</Button>,
               <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
             ]
-          ) : pendingProducts.length > 0 || productTypeWatch === 'GROUP' ? (
-            // 组合模式：可继续添加，或生成产品组
+          ) : productTypeWatch === 'GROUP' ? (
+            // 组合模式：生成产品组
             <Space>
               <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>
               <Button onClick={closeEdit}>取消</Button>
@@ -846,28 +853,140 @@ export default function Products() {
 
             {/* 右：基础信息栏（单列整行） */}
             <Col xs={24} xl={{ flex: '2 1 0%' }} className="pm-col-stretch">
-              {!editing && (pendingProducts.length > 0 || productTypeWatch === 'GROUP') && (
-                <Card title="组合信息" variant="outlined" className="pm-card" style={{ marginBottom: 16 }}>
-                  <Form.Item name="groupName" label="组合名称" rules={[{ required: true, message: '请输入组合名称' }]} style={{ marginBottom: 12 }}>
-                    <Input placeholder="如 2024春季毛绒新品组" />
+              {!editing && productTypeWatch === 'GROUP' && (
+                <Card title="组合明细" variant="outlined" className="pm-card" style={{ marginBottom: 16 }}>
+                  <Form.Item name="groupDesc" label="组合备注" style={{ marginBottom: 12 }}>
+                    <Input placeholder="组合整体说明（选填）" />
                   </Form.Item>
-                  <Form.Item name="groupDesc" label="组合备注" style={{ marginBottom: 0 }}>
-                    <Input placeholder="组合整体说明" />
-                  </Form.Item>
-                  <Divider style={{ margin: '12px 0' }} />
-                  <div className="pm-pending-title">已添加单品（{pendingProducts.length}）</div>
-                  {pendingProducts.length ? (
-                    <div className="pm-pending-list">
-                      {pendingProducts.map((p) => (
-                        <span key={p.id} className="pm-pending-tag">
-                          {p.sku && <span className="pm-prod-sku">{p.sku}</span>}
-                          {p.name}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="pm-pending-empty">尚未添加单品，填写上方信息后点「添加单品」</span>
-                  )}
+                  <Table
+                    size="small"
+                    rowKey="key"
+                    pagination={false}
+                    dataSource={groupItems}
+                    locale={{ emptyText: '暂未添加组合明细' }}
+                    columns={[
+                      {
+                        title: '单品',
+                        dataIndex: 'productId',
+                        render: (_: string, row: (typeof groupItems)[number]) =>
+                          row.productId ? (
+                            <Space.Compact>
+                              <Select
+                                style={{ width: 200 }}
+                                showSearch
+                                placeholder="关联已有单品"
+                                optionFilterProp="label"
+                                value={row.productId}
+                                onChange={(v) =>
+                                  setGroupItems((prev) =>
+                                    prev.map((it) => (it.key === row.key ? { ...it, productId: v, name: undefined } : it)),
+                                  )
+                                }
+                                options={singleProducts.map((p) => ({
+                                  label: p.sku ? `${p.name}（${p.sku}）` : p.name,
+                                  value: p.id,
+                                }))}
+                              />
+                              <Button size="small" onClick={() =>
+                                setGroupItems((prev) =>
+                                  prev.map((it) => (it.key === row.key ? { ...it, productId: undefined } : it)),
+                                )
+                              }>快速新建</Button>
+                            </Space.Compact>
+                          ) : (
+                            <Space.Compact>
+                              <Input
+                                style={{ width: 200 }}
+                                placeholder="快速新建单品名称"
+                                value={row.name}
+                                onChange={(e) =>
+                                  setGroupItems((prev) =>
+                                    prev.map((it) => (it.key === row.key ? { ...it, name: e.target.value } : it)),
+                                  )
+                                }
+                              />
+                              <Button size="small" onClick={() =>
+                                setGroupItems((prev) =>
+                                  prev.map((it) => (it.key === row.key ? { ...it, name: undefined, productId: singleProducts[0]?.id } : it)),
+                                )
+                              }>选已有</Button>
+                            </Space.Compact>
+                          ),
+                      },
+                      {
+                        title: '规格',
+                        dataIndex: 'spec',
+                        render: (_: string, row: (typeof groupItems)[number]) => (
+                          <Input
+                            style={{ width: 120 }}
+                            placeholder="如 10cm/50g"
+                            value={row.spec}
+                            onChange={(e) =>
+                              setGroupItems((prev) =>
+                                prev.map((it) => (it.key === row.key ? { ...it, spec: e.target.value } : it)),
+                              )
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        title: '数量',
+                        dataIndex: 'quantity',
+                        render: (_: number, row: (typeof groupItems)[number]) => (
+                          <InputNumber
+                            style={{ width: 80 }}
+                            min={1}
+                            value={row.quantity}
+                            onChange={(v) =>
+                              setGroupItems((prev) =>
+                                prev.map((it) => (it.key === row.key ? { ...it, quantity: Number(v) || 1 } : it)),
+                              )
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        title: '单价',
+                        dataIndex: 'price',
+                        render: (_: number, row: (typeof groupItems)[number]) => (
+                          <InputNumber
+                            style={{ width: 100 }}
+                            min={0}
+                            precision={2}
+                            value={row.price}
+                            onChange={(v) =>
+                              setGroupItems((prev) =>
+                                prev.map((it) => (it.key === row.key ? { ...it, price: v ?? undefined } : it)),
+                              )
+                            }
+                          />
+                        ),
+                      },
+                      {
+                        title: '操作',
+                        width: 60,
+                        render: (_: unknown, row: (typeof groupItems)[number]) => (
+                          <Button
+                            type="link"
+                            danger
+                            size="small"
+                            onClick={() => setGroupItems((prev) => prev.filter((it) => it.key !== row.key))}
+                          >删除</Button>
+                        ),
+                      },
+                    ]}
+                  />
+                  <Button
+                    type="dashed"
+                    block
+                    style={{ marginTop: 12 }}
+                    onClick={() =>
+                      setGroupItems((prev) => [
+                        ...prev,
+                        { key: `gi_${Date.now()}_${prev.length}`, quantity: 1 },
+                      ])
+                    }
+                  >+ 添加组合明细</Button>
                 </Card>
               )}
               <Card title="基础信息" variant="outlined" className="pm-card">
@@ -885,9 +1004,30 @@ export default function Products() {
                   <Select mode="multiple" />
                 </Form.Item>
 
-                <Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}>
-                  <Input placeholder="输入产品名称" />
-                </Form.Item>
+                {/* 产品名称 + 供货方式（单品/组合）同一行；组合时 label 变「组合名称」 */}
+                <Row gutter={10}>
+                  <Col span={14}>
+                    <Form.Item
+                      name="name"
+                      label={productTypeWatch === 'GROUP' ? '组合名称' : '产品名称'}
+                      rules={[{ required: true, message: productTypeWatch === 'GROUP' ? '请输入组合名称' : '请输入产品名称' }]}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <Input placeholder={productTypeWatch === 'GROUP' ? '输入组合名称' : '输入产品名称'} />
+                    </Form.Item>
+                  </Col>
+                  <Col span={10}>
+                    <Form.Item name="productType" label="供货方式" initialValue="PRODUCT" style={{ marginBottom: 0 }}>
+                      <Segmented
+                        block
+                        options={[
+                          { label: '单品', value: 'PRODUCT' },
+                          { label: '组合', value: 'GROUP' },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
 
                 {/* 尺寸：长宽高一行，置于商品描述上方 */}
                 <div className="pm-size-row">
@@ -911,22 +1051,11 @@ export default function Products() {
                   </Row>
                 </div>
 
-                {/* 克重 + 供货方式（单品/组合）一行，置于尺寸栏下方 */}
+                {/* 克重（尺寸栏下方） */}
                 <Row gutter={10} className="pm-size-row">
                   <Col span={12}>
                     <Form.Item name="weight" label="克重 (g)" style={{ marginBottom: 0 }}>
                       <Input placeholder="0" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="productType" label="供货方式" initialValue="PRODUCT" style={{ marginBottom: 0 }}>
-                      <Segmented
-                        block
-                        options={[
-                          { label: '单品', value: 'PRODUCT' },
-                          { label: '组合', value: 'GROUP' },
-                        ]}
-                      />
                     </Form.Item>
                   </Col>
                 </Row>

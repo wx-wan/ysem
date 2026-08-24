@@ -8,7 +8,19 @@ import { activityLogger } from '../lib/activity-logger';
 const groupSchema = z.object({
   name: z.string().min(1, '产品组名称不能为空'),
   description: z.string().nullish(),
-  productIds: z.array(z.string()).nullish(),
+  productIds: z.array(z.string()).nullish(), // 仅关联已有产品
+  // 组合明细：productId 关联已有单品；无 productId 时行内快速新建单品（name/spec 必填）
+  items: z
+    .array(
+      z.object({
+        productId: z.string().nullish(),
+        name: z.string().nullish(),
+        spec: z.string().nullish(),
+        quantity: z.number().int().min(1).default(1),
+        price: z.number().nullish(),
+      }),
+    )
+    .nullish(),
 });
 
 // 列表（含成员产品简要信息）
@@ -27,23 +39,30 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        include: {
+          items: {
+            orderBy: { sort: 'asc' },
+            include: { product: { select: { id: true, name: true, sku: true, spec: true, unit: true } } },
+          },
+        },
       }),
       prisma.productGroup.count({ where }),
     ]);
 
-    // 批量补充成员产品名称/SKU
-    const groups = await Promise.all(
-      list.map(async (g) => {
-        const ids = (g.productIds || '').split(',').filter(Boolean);
-        const products = ids.length
-          ? await prisma.product.findMany({
-              where: { id: { in: ids } },
-              select: { id: true, name: true, sku: true, unit: true },
-            })
-          : [];
-        return { ...g, productCount: products.length, products };
-      }),
-    );
+    // 组装成员产品 + 数量
+    const groups = list.map((g) => {
+      const products = g.items.map((it) => ({
+        id: it.product.id,
+        name: it.product.name,
+        sku: it.product.sku,
+        spec: it.spec ?? it.product.spec,
+        quantity: it.quantity,
+        price: it.price,
+      }));
+      const productCount = g.items.length;
+      const { items, ...rest } = g;
+      return { ...rest, productCount, products };
+    });
 
     success(res, { list: groups, total, page, pageSize });
   } catch {
@@ -53,19 +72,29 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
 
 export const getProductGroupById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const group = await prisma.productGroup.findUnique({ where: { id: req.params.id } });
+    const group = await prisma.productGroup.findUnique({
+      where: { id: req.params.id },
+      include: {
+        items: {
+          orderBy: { sort: 'asc' },
+          include: { product: { select: { id: true, name: true, sku: true, spec: true, unit: true, weight: true } } },
+        },
+      },
+    });
     if (!group) {
       fail(res, 404, '产品组不存在');
       return;
     }
-    const ids = (group.productIds || '').split(',').filter(Boolean);
-    const products = ids.length
-      ? await prisma.product.findMany({
-          where: { id: { in: ids } },
-          select: { id: true, name: true, sku: true, unit: true, weight: true },
-        })
-      : [];
-    success(res, { ...group, productCount: products.length, products });
+    const products = group.items.map((it) => ({
+      id: it.product.id,
+      name: it.product.name,
+      sku: it.product.sku,
+      spec: it.spec ?? it.product.spec,
+      quantity: it.quantity,
+      price: it.price,
+    }));
+    const { items, ...rest } = group;
+    success(res, { ...rest, productCount: group.items.length, products });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -74,14 +103,46 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
 export const createProductGroup = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = groupSchema.parse(req.body);
-    const cleanIds = (parsed.productIds ?? []).filter(Boolean);
+    // 组合明细：productId 关联已有单品；缺 productId 则行内快速新建单品
+    const items = parsed.items ?? [];
+    const resolvedIds: string[] = [...(parsed.productIds ?? [])];
+    const itemData: { productId: string; spec: string | null; quantity: number; price: number | null }[] = [];
+
+    for (const it of items) {
+      let pid = it.productId;
+      if (!pid) {
+        // 快速新建单品（仅必填 name，其余取默认）
+        if (!it.name) {
+          fail(res, 400, '组合明细中快速新建单品时名称不能为空');
+          return;
+        }
+        const p = await prisma.product.create({
+          data: {
+            name: it.name,
+            spec: it.spec ?? null,
+            price: it.price ?? null,
+            unit: '个',
+            source: 'MANUAL',
+            visibility: 'PUBLIC',
+          },
+        });
+        pid = p.id;
+      }
+      if (!resolvedIds.includes(pid)) resolvedIds.push(pid);
+      itemData.push({ productId: pid, spec: it.spec ?? null, quantity: it.quantity ?? 1, price: it.price ?? null });
+    }
+
     const group = await prisma.productGroup.create({
       data: {
         name: parsed.name,
         description: parsed.description ?? null,
-        productIds: cleanIds.join(','),
+        productIds: resolvedIds.join(','),
         ownerId: req.userId || '',
+        items: itemData.length
+          ? { create: itemData.map((d, i) => ({ ...d, sort: i })) }
+          : undefined,
       },
+      include: { items: { include: { product: { select: { id: true, name: true, sku: true, spec: true } } } } },
     });
     void activityLogger.log({
       userId: req.userId || '',
@@ -91,7 +152,7 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
       module: 'product-group',
       targetId: group.id,
       target: group.name,
-      detail: `创建了产品组「${group.name}」${cleanIds.length ? `（含 ${cleanIds.length} 个产品）` : ''}`,
+      detail: `创建了产品组「${group.name}」${resolvedIds.length ? `（含 ${resolvedIds.length} 个产品）` : ''}`,
     });
     created(res, group);
   } catch (err) {
@@ -114,7 +175,7 @@ export const updateProductGroup = async (req: AuthRequest, res: Response): Promi
     const data: Record<string, unknown> = {};
     if (parsed.name !== undefined) data.name = parsed.name;
     if (parsed.description !== undefined) data.description = parsed.description ?? null;
-    if (parsed.productIds !== undefined) data.productIds = parsed.productIds.filter(Boolean).join(',');
+    if (parsed.productIds !== undefined) data.productIds = (parsed.productIds ?? []).filter(Boolean).join(',');
 
     const group = await prisma.productGroup.update({ where: { id: req.params.id }, data });
     void activityLogger.log({
