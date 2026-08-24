@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Button, Space, Input, Modal, Form, Select, Radio,
+  Button, Space, Input, Modal, Form, Select, Radio, Segmented,
   Tag, Popconfirm, App, Card, Row, Col, Typography, Divider, Pagination, Spin, Tooltip,
 } from 'antd';
 import {
@@ -94,6 +94,8 @@ export default function Products() {
   const [salesList, setSalesList] = useState<SalesItem[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [form] = Form.useForm();
+  // 供货方式（单品/组合）：切换按钮，新建产品弹窗内直接选择
+  const productTypeWatch = Form.useWatch('productType', form) as 'PRODUCT' | 'GROUP' | undefined;
   const visValue = Form.useWatch('visibility', form) as 'PUBLIC' | 'PRIVATE' | undefined;
   const visibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
@@ -408,6 +410,8 @@ export default function Products() {
       ...record,
       craftIds: record.crafts?.map((c) => c.id) || [],
       supplyModes: modes.length ? modes[0] : allowedSupplyModes[0],
+      // 供货方式（单品/组合）：按单位映射（套=组合，个=单品）
+      productType: record.unit === '套' ? 'GROUP' : 'PRODUCT',
       certificationIds: record.certificationIds ? record.certificationIds.split(',') : [],
       visibility: record.visibility || 'PUBLIC',
       visibleUserIds: record.visibleUsers?.map((v) => v.userId) ?? [],
@@ -781,8 +785,8 @@ export default function Products() {
               <Button key="cancel" onClick={closeEdit}>取消</Button>,
               <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
             ]
-          ) : pendingProducts.length > 0 ? (
-            // 已添加单品 → 组合模式：可继续添加，或生成产品组
+          ) : pendingProducts.length > 0 || productTypeWatch === 'GROUP' ? (
+            // 组合模式（已添加单品 或 切换为组合）：可继续添加，或生成产品组
             <Space>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
@@ -842,7 +846,7 @@ export default function Products() {
 
             {/* 右：基础信息栏（单列整行） */}
             <Col xs={24} xl={{ flex: '2 1 0%' }} className="pm-col-stretch">
-              {!editing && pendingProducts.length > 0 && (
+              {!editing && (pendingProducts.length > 0 || productTypeWatch === 'GROUP') && (
                 <Card title="组合信息" variant="outlined" className="pm-card" style={{ marginBottom: 16 }}>
                   <Form.Item name="groupName" label="组合名称" rules={[{ required: true, message: '请输入组合名称' }]} style={{ marginBottom: 12 }}>
                     <Input placeholder="如 2024春季毛绒新品组" />
@@ -922,7 +926,8 @@ export default function Products() {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="productType" label="供货方式" initialValue="PRODUCT" style={{ marginBottom: 0 }}>
-                      <Select
+                      <Segmented
+                        block
                         options={[
                           { label: '单品', value: 'PRODUCT' },
                           { label: '组合', value: 'GROUP' },
