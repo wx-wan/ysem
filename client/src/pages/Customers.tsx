@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty, Button,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio,
 } from 'antd';
-import { InboxOutlined } from '@ant-design/icons';
 import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
 import { salesApi, SalesItem } from '../api/sales';
@@ -16,8 +15,7 @@ import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
-import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
-import ResponsiveCardGrid from '../components/common/page/ResponsiveCardGrid';
+import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
@@ -80,7 +78,7 @@ export default function CustomersPage() {
 
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
-  const [convertPipeline, setConvertPipeline] = useState<RealPipeline | null>(null);
+  const [convertPipeline, setConvertPipeline] = useState<SalesItem | null>(null);
 
   // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
   const [detailVersion, setDetailVersion] = useState(0);
@@ -218,11 +216,9 @@ export default function CustomersPage() {
   // 用 next 覆盖 prev 的变化字段，但保留 prev 上 list 接口的聚合字段（next 没有时不清空）
   const mergeKeepAgg = useCallback((prev: Customer | null, next: Customer): Customer => {
     if (!prev || prev.id !== next.id) return next;
-    const merged: Customer = { ...prev, ...next };
+    const merged = { ...prev, ...next };
     for (const f of AGG_FIELDS) {
-      if (next[f] === undefined) {
-        (merged as Record<keyof Customer, unknown>)[f] = prev[f];
-      }
+      if (next[f] === undefined) merged[f] = prev[f];
     }
     return merged;
   }, []);
@@ -447,18 +443,18 @@ export default function CustomersPage() {
 
   // ========== 渲染卡片视图 ==========
   const renderCardView = useMemo(() => (
-    <ResponsiveCardGrid
-      dataSource={displayList}
-      renderItem={(customer) => (
-        <CustomerCard
-          customer={customer as Customer}
-          token={token}
-          onOpenDetail={openDetail}
-          onListUpdate={handleListUpdate}
-        />
-      )}
-      cols={{ xs: 24, sm: 12, md: 12, lg: 8 }}
-    />
+    <Row gutter={[16, 16]}>
+      {displayList.map((customer) => (
+        <Col key={customer.id} xs={24} sm={12} md={8} lg={8} xl={8}>
+          <CustomerCard
+            customer={customer}
+            token={token}
+            onOpenDetail={openDetail}
+            onListUpdate={handleListUpdate}
+          />
+        </Col>
+      ))}
+    </Row>
   ), [displayList, token, openDetail, handleListUpdate]);
 
   // ========== 渲染列表视图 ==========
@@ -528,20 +524,10 @@ export default function CustomersPage() {
       <Spin spinning={loading}>
         {viewMode === 'card' ? renderCardView : renderListView}
         {list.length === 0 && !loading && (
-          <Empty
-            image={
-              <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <InboxOutlined style={{ fontSize: 120, color: 'rgba(0,0,0,0.25)' }} />
-              </div>
-            }
-            styles={{ image: { height: 120 } }}
-            description="暂无客户数据"
-            style={{ padding: '64px 0' }}
-          >
-            <Button type="primary" onClick={openCreate}>
-              新建客户
-            </Button>
-          </Empty>
+          <div style={{ textAlign: 'center', padding: 60, color: token.colorTextSecondary }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+            <div>暂无客户数据</div>
+          </div>
         )}
       </Spin>
 

@@ -1,300 +1,409 @@
-/* 产品多图上传列表 —— 堆叠展示（适配 antd v6） */
+/* 产品图片画廊 —— 大图撑满 + 当前 div 内左右滑动预览 + 缩略图条（适配 antd v6） */
 .pil {
   width: 100%;
-}
-
-/* 外层作为横向 flex 行，容纳图片列表与添加按钮 */
-.pil-upload {
-  display: flex !important;
-  flex-wrap: nowrap;
-  align-items: center;
-}
-
-/* 图片列表本身也是横向 flex */
-.pil-upload .ant-upload-list {
   display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  margin: 0 !important;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* v6 item 外层容器：固定尺寸并向左重叠堆叠 */
-.pil-upload .ant-upload-list-item-container {
-  width: 88px !important;
-  height: 88px !important;
-  margin: 0 0 0 -36px !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  border-radius: 10px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
-}
-
-.pil-upload .ant-upload-list-item-container:first-child {
-  margin-left: 0 !important;
-}
-
-/* hover 时抬升到最前并轻微放大 */
-.pil-upload .ant-upload-list-item-container:hover {
-  transform: translateY(-6px) scale(1.06);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
-  z-index: 10;
-}
-
-/* v6 内层 item 去默认边框/内边距 */
-.pil-upload .ant-upload-list-item {
-  width: 100% !important;
-  height: 100% !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  border-radius: 10px;
-}
-
-/* 添加（上传）按钮作为独立入口，不加入堆叠流 */
-/* antd v6 实际类名是 .ant-upload-select（picture-card 包裹在 wrapper 上），
-   它本身带 1px dashed border + 浅灰底色，hover 改 borderColor，需全部清掉由 .pil-add 接管 */
-.pil-upload .ant-upload-select,
-.pil-upload .ant-upload-select-picture-card {
-  width: 88px !important;
-  height: 88px !important;
-  margin: 0 0 0 12px !important;
-  margin-bottom: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-  background: transparent !important;
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.pil-upload .ant-upload-select:hover,
-.pil-upload .ant-upload-select:focus,
-.pil-upload .ant-upload-select:active,
-.pil-upload .ant-upload-select-picture-card:hover,
-.pil-upload .ant-upload-select-picture-card:focus,
-.pil-upload .ant-upload-select-picture-card:active {
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background: transparent !important;
-}
-
-/* 空态：整行作为一个大的虚线拖拽/点击区。
-   使用更高特异性的选择器，避免被 antd v6 CSS-in-JS 的默认 picture-card 样式覆盖 */
-.pil-empty .pil-upload {
-  width: 100%;
-}
-.pil-empty .pil-upload .ant-upload-select,
-.pil-empty .pil-upload .ant-upload-select-picture-card {
-  width: 100% !important;
-  height: 120px !important;
-  margin: 0 !important;
-}
-
-/* 单张图片卡片 */
-.pil-card {
+/* ============ 大图区：撑满图片栏 ============ */
+.pil-hero {
   position: relative;
   width: 100%;
-  height: 100%;
-  border: 2px solid #fff;
-  border-radius: 10px;
+  border-radius: var(--radius-md, 12px);
   overflow: hidden;
+  background: var(--c-fill-quaternary, #f5f5f5);
+  border: 1px solid var(--c-border, #f1f5f9);
+}
+.pil-empty .pil-hero {
+  min-height: 220px;
+}
+
+.pil-hero .ant-image {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.pil-hero-img {
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  display: block;
   cursor: zoom-in;
-  background: #f5f5f5;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  transition: transform 0.3s ease;
+}
+.pil-hero:hover .pil-hero-img {
+  transform: scale(1.02);
 }
 
-.pil-card-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* antd Image 外层需填满卡片以承载预览点击 */
-.pil-card .ant-image {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.pil-card .ant-image-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
+/* 主图徽标 */
 .pil-main-badge {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  z-index: 1;
-  padding: 0 6px;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  padding: 0 8px;
   border-radius: 6px;
   background: rgba(250, 173, 20, 0.95);
   color: #fff;
-  font-size: 10px;
-  line-height: 16px;
+  font-size: 11px;
+  line-height: 20px;
   font-weight: 600;
 }
 
-/* 操作按钮默认隐藏，hover 卡片时显示 */
-.pil-card-ops {
+/* 左下角：名称 + 计数 */
+.pil-hero-meta {
   position: absolute;
-  right: 0;
-  bottom: 0;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
   display: flex;
   align-items: center;
-  gap: 0;
-  padding: 2px 4px;
-  background: rgba(0, 0, 0, 0.45);
-  border-top-left-radius: 8px;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-}
-
-.pil-card:hover .pil-card-ops {
-  opacity: 1;
-}
-
-.pil-card-ops .ant-btn {
+  gap: 8px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.42);
   color: #fff;
   font-size: 12px;
+  line-height: 1.4;
+  max-width: calc(100% - 20px);
+}
+.pil-hero-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pil-hero-name.is-editable {
+  cursor: text;
+}
+.pil-hero-name-edit {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  opacity: 0.7;
+  transition: opacity 0.18s ease;
+}
+.pil-hero-name.is-editable:hover .pil-hero-name-edit {
+  opacity: 1;
+}
+.pil-hero-name-input {
+  min-width: 120px;
+  max-width: 60%;
+  padding: 1px 6px;
+  border: 1px solid var(--c-primary, #1677ff);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  outline: none;
+}
+.pil-hero-name-input:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent);
+}
+.pil-hero-count {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
 }
 
-.pil-card-ops .ant-btn-danger {
-  color: #ff7875;
+/* 悬浮渐变遮罩：底部暗→透明，hover 时显形，承托操作条 */
+.pil-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0) 42%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.pil-hero:hover::after {
+  opacity: 1;
+}
+.pil-empty .pil-hero::after,
+.pil-empty .pil-hero:hover::after {
+  display: none;
 }
 
-.pil-card-ops .ant-btn[disabled] {
-  color: rgba(255, 255, 255, 0.45) !important;
+/* 顶部胶囊操作条：放大预览 / 设为主图 / 删除，悬浮在图片顶部，hover 柔和浮现 */
+.pil-hero-ops {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  flex-wrap: nowrap;
+  border-radius: 999px;
+  background: rgba(20, 20, 22, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity 0.25s ease;
+}
+.pil-hero:hover .pil-hero-ops {
+  opacity: 1;
+}
+.pil-op-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.pil-op-btn:hover,
+.pil-op-btn:active,
+.pil-op-btn:focus {
+  background: transparent;
+  color: #fff;
+}
+.pil-op-btn svg {
+  font-size: 13px;
+}
+.pil-op-btn.is-danger {
+  color: #ff9c98;
+}
+.pil-op-btn.is-danger:hover,
+.pil-op-btn.is-danger:active,
+.pil-op-btn.is-danger:focus {
+  background: transparent;
+  color: #ff9c98;
 }
 
-/* 添加按钮（有图态）：轻量幽灵方块，只保留一层干净虚线 */
-.pil-add {
+/* 左右切换箭头：悬浮两侧显形 */
+.pil-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s ease, background 0.18s ease;
+}
+.pil-hero:hover .pil-nav {
+  opacity: 1;
+}
+.pil-nav:hover {
+  background: rgba(0, 0, 0, 0.6);
+}
+.pil-nav-prev {
+  left: 10px;
+}
+.pil-nav-next {
+  right: 10px;
+}
+
+/* 空态：大虚线圆环 + 添加图片 + 粘贴/拖拽提示 */
+.pil-hero-drop {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   height: 100%;
-  padding: 8px;
+  border: 1.5px dashed var(--c-border, #e2e8f0);
+  border-radius: var(--radius-md, 12px);
+  background: var(--c-fill-quaternary, #f8fafc);
   color: var(--c-text-secondary, #64748b);
-  border: 1.5px dashed var(--c-border-strong, #e2e8f0);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--c-primary, #1677ff) 3%, transparent);
   cursor: pointer;
   outline: none;
-  transition: border-color 0.22s ease, color 0.22s ease,
-    background 0.22s ease, transform 0.18s ease, box-shadow 0.22s ease;
+  transition: border-color 0.2s ease, background 0.2s ease;
 }
-
-/* 图标徽标：圆形浅底，明确传达"添加"语义 */
-.pil-add-icon {
+.pil-hero-drop:hover {
+  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 40%, transparent);
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 4%, var(--c-fill-quaternary, #f8fafc));
+}
+.pil-hero-drop-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
-  font-size: 16px;
-  line-height: 1;
+  font-size: 24px;
   color: var(--c-primary, #1677ff);
-  background: var(--c-surface, #fff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 22%, transparent),
-    0 2px 6px color-mix(in srgb, var(--c-primary, #1677ff) 14%, transparent);
-  transition: transform 0.22s ease, color 0.22s ease, background 0.22s ease,
-    box-shadow 0.22s ease;
+  background: transparent;
+  border: 1.5px dashed color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent);
+  transition: transform 0.22s ease, border-color 0.2s ease, background 0.2s ease;
 }
-
-.pil-add-text {
-  font-size: 12px;
-  line-height: 1.3;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-/* hover / focus / active：抬升 + 主色填充 + 图标旋转微交互 */
-.pil-add:hover,
-.pil-add:focus,
-.pil-add:active {
-  border-color: var(--c-primary, #1677ff);
-  color: var(--c-primary, #1677ff);
+.pil-hero-drop:hover .pil-hero-drop-icon {
   background: color-mix(in srgb, var(--c-primary, #1677ff) 8%, transparent);
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  outline: none;
+  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 70%, transparent);
+  transform: scale(1.05);
 }
-
-.pil-add:hover .pil-add-icon,
-.pil-add:focus .pil-add-icon,
-.pil-add:active .pil-add-icon {
-  color: #fff;
-  background: var(--c-primary, #1677ff);
-  transform: rotate(90deg) scale(1.06);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent),
-    0 4px 12px color-mix(in srgb, var(--c-primary, #1677ff) 32%, transparent);
+.pil-hero-drop-text {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--c-text-primary, #334155);
 }
-
-/* 上传中：实线主色环 + 旋转图标，禁用抬升 */
-.pil-add.is-uploading {
+.pil-hero-drop-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--c-text-tertiary, #94a3b8);
+}
+.pil-hero-drop:disabled {
   cursor: default;
+  border-color: var(--c-border, #f1f5f9);
+  background: var(--c-fill-quaternary, #f5f5f5);
+  color: var(--c-text-tertiary, #94a3b8);
+}
+
+/* ============ 缩略图条 ============ */
+.pil-thumbs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 8px;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong, #e2e8f0) transparent;
+}
+.pil-thumbs::-webkit-scrollbar {
+  height: 4px;
+}
+.pil-thumbs::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pil-thumbs::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong, #e2e8f0);
+  border-radius: 2px;
+}
+.pil-thumbs::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-tertiary, #94a3b8);
+}
+
+.pil-thumb {
+  position: relative;
+  flex: none;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--c-fill-quaternary, #f5f5f5);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.18s ease, transform 0.18s ease;
+}
+.pil-thumb:hover {
+  transform: translateY(-1px);
+}
+.pil-thumb.is-active {
+  border-color: var(--c-primary, #1677ff);
+}
+.pil-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.pil-thumb-badge {
+  position: absolute;
+  left: 2px;
+  bottom: 2px;
+  z-index: 1;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(250, 173, 20, 0.95);
+  color: #fff;
+  font-size: 9px;
+  line-height: 14px;
+  font-weight: 600;
+}
+
+.pil-thumb-del {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.pil-thumb:hover .pil-thumb-del {
+  opacity: 1;
+}
+
+/* 添加缩略块：轻量虚线方块，与空态呼应 */
+.pil-thumb-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-primary, #1677ff);
+  border: 1.5px dashed color-mix(in srgb, var(--c-primary, #1677ff) 35%, var(--c-border-strong, #e2e8f0));
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 3%, transparent);
+  font-size: 18px;
+  transition: border-color 0.22s ease, background 0.22s ease, transform 0.18s ease;
+}
+.pil-thumb-add:hover {
+  border-color: var(--c-primary, #1677ff);
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 8%, transparent);
+  transform: translateY(-1px);
+}
+.pil-thumb-add.is-uploading {
   color: var(--c-primary, #1677ff);
   border-style: solid;
-  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 38%, transparent);
-  background: color-mix(in srgb, var(--c-primary, #1677ff) 6%, transparent);
+  cursor: default;
 }
-
-.pil-add.is-uploading .pil-add-icon {
-  color: #fff;
-  background: var(--c-primary, #1677ff);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--c-primary, #1677ff) 35%, transparent);
-}
-
-.pil-add.is-uploading .pil-add-icon.is-spin {
+.pil-thumb-add .is-spin {
   animation: pil-spin 0.9s linear infinite;
+}
+
+/* 隐藏原生 file input，避免默认「选择文件」UI 出现 */
+.pil-file-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
 
 @keyframes pil-spin {
   to {
     transform: rotate(360deg);
   }
-}
-
-.pil-add.is-uploading:hover,
-.pil-add.is-uploading:focus,
-.pil-add.is-uploading:active {
-  transform: none;
-  box-shadow: none;
-}
-
-.pil-add.is-uploading:hover .pil-add-icon,
-.pil-add.is-uploading:focus .pil-add-icon,
-.pil-add.is-uploading:active .pil-add-icon {
-  transform: none;
-}
-
-/* 空态：整行大虚线拖拽/点击区，与主色呼应 */
-.pil-empty .pil-add {
-  flex-direction: row;
-  gap: 14px;
-  height: 100%;
-  border-width: 1.5px;
-  border-color: color-mix(in srgb, var(--c-primary, #1677ff) 30%, var(--c-border-strong, #e2e8f0));
-  background: color-mix(in srgb, var(--c-primary, #1677ff) 3%, transparent);
-}
-
-.pil-empty .pil-add .pil-add-icon {
-  width: 40px;
-  height: 40px;
-  font-size: 20px;
-}
-
-.pil-empty .pil-add .pil-add-text {
-  margin-top: 0;
-  font-size: 14px;
-  font-weight: 600;
 }

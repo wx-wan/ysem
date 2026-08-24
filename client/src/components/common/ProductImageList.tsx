@@ -1,7 +1,6 @@
-import { useRef, useState } from 'react';
-import { Upload, Image as AntImage, Button, App } from 'antd';
-import { PlusOutlined, LoadingOutlined, DeleteOutlined, StarFilled, StarOutlined } from '@ant-design/icons';
-import type { UploadFile } from 'antd';
+import { useRef, useState, useEffect } from 'react';
+import { Image as AntImage, App } from 'antd';
+import { PlusOutlined, LoadingOutlined, DeleteOutlined, LeftOutlined, RightOutlined, StarOutlined, ZoomInOutlined, EditOutlined } from '@ant-design/icons';
 import { ProductImageItem, parseImages, serializeImages } from '../../utils/productImages';
 import './ProductImageList.css';
 
@@ -79,6 +78,30 @@ async function uploadFile(blob: Blob, uploadUrl: string): Promise<string> {
   return url;
 }
 
+/** 操作栏轻量按钮：原生 button，hover 行为完全自控，不依赖 antd 默认样式 */
+function PilOpButton({
+  icon,
+  children,
+  onClick,
+  danger,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  onClick: () => void;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`pil-op-btn ${danger ? 'is-danger' : ''}`}
+      onClick={onClick}
+    >
+      {icon}
+      <span>{children}</span>
+    </button>
+  );
+}
+
 export default function ProductImageList({
   value,
   onChange,
@@ -89,8 +112,27 @@ export default function ProductImageList({
   const { message } = App.useApp();
   const items = parseImages(value);
   const [uploading, setUploading] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const [zoomed, setZoomed] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
   const pendingRef = useRef<File[]>([]);
   const flushScheduledRef = useRef(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  /** 监听页面粘贴图片（打开弹窗时使用） */
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+      if (!files.length) return;
+      e.preventDefault();
+      files.forEach(queueFile);
+    };
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, []);
+
+  const safeCurrent = Math.min(current, Math.max(0, items.length - 1));
 
   const commit = (next: ProductImageItem[]) => {
     onChange?.(serializeImages(next));
@@ -144,22 +186,28 @@ export default function ProductImageList({
     }
   };
 
-  const beforeUpload = (file: File) => {
+  /** 把选中的文件排入上传队列（原生 input 与普通上传共用） */
+  const queueFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
       message.error('请选择图片文件');
-      return Upload.LIST_IGNORE;
+      return;
     }
     pendingRef.current.push(file);
     if (!flushScheduledRef.current) {
       flushScheduledRef.current = true;
-      // 等同一批次所有文件都进入队列后再统一上传
       Promise.resolve().then(flushPending);
     }
-    return Upload.LIST_IGNORE;
+  };
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files) Array.from(files).forEach(queueFile);
+    e.target.value = '';
   };
 
   const removeAt = (index: number) => {
     commit(items.filter((_, i) => i !== index));
+    setCurrent((c) => Math.max(0, Math.min(c, items.length - 2)));
   };
 
   const moveToFirst = (index: number) => {
@@ -168,81 +216,206 @@ export default function ProductImageList({
     const [target] = next.splice(index, 1);
     next.unshift(target);
     commit(next);
+    setCurrent(0);
   };
 
-  const fileList: UploadFile[] = items.map((it, i) => ({
-    uid: String(i),
-    url: it.url,
-    name: it.name,
-  }));
+  const go = (dir: number) => {
+    if (!items.length) return;
+    setZoomed(false);
+    setEditingName(false);
+    setCurrent((c) => (c + dir + items.length) % items.length);
+  };
+
+  const renameAt = (index: number, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const next = items.map((it, i) => (i === index ? { ...it, name: trimmed } : it));
+    commit(next);
+  };
 
   return (
     <div className={`pil ${items.length ? 'pil-has-images' : 'pil-empty'}`}>
-      <AntImage.PreviewGroup>
-        <Upload
-          multiple
-          listType="picture-card"
-          accept="image/png,image/jpeg,image/webp"
-          fileList={fileList}
-          beforeUpload={beforeUpload}
-          disabled={disabled || uploading}
-          className="pil-upload"
-          itemRender={(_, file) => {
-            const idx = Number(file.uid);
-            const isFirst = idx === 0;
-            return (
-              <div className="pil-card">
-                <AntImage
-                  className="pil-card-img"
-                  src={file.url}
-                  alt={file.name}
-                  preview={{ mask: false }}
+      {/* 大图区：撑满图片栏，在当前 div 内左右滑动预览 */}
+      <div className="pil-hero">
+        {items.length ? (
+          <>
+            <AntImage
+              className="pil-hero-img"
+              src={items[safeCurrent].url}
+              alt={items[safeCurrent].name}
+              preview={{
+                visible: zoomed,
+                onVisibleChange: (v) => setZoomed(v),
+                current: safeCurrent,
+                onChange: (cur) => setCurrent(cur),
+              }}
+            />
+            {items.length > 1 && !zoomed && (
+              <>
+                <button
+                  type="button"
+                  className="pil-nav pil-nav-prev"
+                  onClick={() => go(-1)}
+                  aria-label="上一张"
+                >
+                  <LeftOutlined />
+                </button>
+                <button
+                  type="button"
+                  className="pil-nav pil-nav-next"
+                  onClick={() => go(1)}
+                  aria-label="下一张"
+                >
+                  <RightOutlined />
+                </button>
+              </>
+            )}
+            {safeCurrent === 0 && !zoomed && <span className="pil-main-badge">主图</span>}
+            <div className="pil-hero-meta">
+              {editingName && !disabled ? (
+                <input
+                  className="pil-hero-name-input"
+                  autoFocus
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onBlur={() => {
+                    renameAt(safeCurrent, nameDraft);
+                    setEditingName(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      renameAt(safeCurrent, nameDraft);
+                      setEditingName(false);
+                    } else if (e.key === 'Escape') {
+                      setEditingName(false);
+                    }
+                  }}
                 />
-                {isFirst && <span className="pil-main-badge">主图</span>}
-                <div className="pil-card-ops">
-                  <Button
-                    size="small"
-                    type="text"
-                    title="设为主图"
-                    disabled={disabled || isFirst}
-                    icon={isFirst ? <StarFilled /> : <StarOutlined />}
-                    onClick={() => moveToFirst(idx)}
-                  />
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    title="删除"
-                    disabled={disabled}
-                    icon={<DeleteOutlined />}
-                    onClick={() => removeAt(idx)}
-                  />
-                </div>
-              </div>
-            );
-          }}
-        >
-          {items.length < maxCount && !disabled && (
-            <div className={`pil-add ${uploading ? 'is-uploading' : ''}`}>
-              {uploading ? (
-                <>
-                  <span className="pil-add-icon is-spin">
-                    <LoadingOutlined />
-                  </span>
-                  <div className="pil-add-text">上传中…</div>
-                </>
               ) : (
-                <>
-                  <span className="pil-add-icon">
-                    <PlusOutlined />
-                  </span>
-                  <div className="pil-add-text">添加图片</div>
-                </>
+                <span
+                  className={`pil-hero-name ${disabled ? '' : 'is-editable'}`}
+                  title={disabled ? undefined : '点击编辑名称'}
+                  onClick={() => {
+                    if (disabled) return;
+                    setNameDraft(items[safeCurrent].name);
+                    setEditingName(true);
+                  }}
+                >
+                  {!disabled && (
+                    <span
+                      className="pil-hero-name-edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNameDraft(items[safeCurrent].name);
+                        setEditingName(true);
+                      }}
+                    >
+                      <EditOutlined />
+                    </span>
+                  )}
+                  {items[safeCurrent].name}
+                </span>
+              )}
+              <span className="pil-hero-count">{safeCurrent + 1} / {items.length}</span>
+            </div>
+
+            {/* 放大预览使用 antd Image 自带预览（点击图片或顶部「放大预览」按钮触发） */}
+
+            {/* 顶部胶囊操作条：放大预览 / 设为主图 / 删除 */}
+            <div className="pil-hero-ops">
+              <PilOpButton
+                icon={<ZoomInOutlined />}
+                onClick={() => setZoomed(true)}
+              >
+                放大预览
+              </PilOpButton>
+              {safeCurrent !== 0 && !disabled && (
+                <PilOpButton
+                  icon={<StarOutlined />}
+                  onClick={() => moveToFirst(safeCurrent)}
+                >
+                  设为主图
+                </PilOpButton>
+              )}
+              {!disabled && (
+                <PilOpButton
+                  icon={<DeleteOutlined />}
+                  danger
+                  onClick={() => removeAt(safeCurrent)}
+                >
+                  删除
+                </PilOpButton>
               )}
             </div>
-          )}
-        </Upload>
-      </AntImage.PreviewGroup>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="pil-hero-drop"
+            onClick={() => fileRef.current?.click()}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'copy';
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              Array.from(e.dataTransfer.files).forEach(queueFile);
+            }}
+            disabled={disabled || uploading}
+          >
+            <span className="pil-hero-drop-icon">
+              {uploading ? <LoadingOutlined className="is-spin" /> : <PlusOutlined />}
+            </span>
+            <span className="pil-hero-drop-text">{uploading ? '上传中…' : '添加图片'}</span>
+            <span className="pil-hero-drop-hint">粘贴 / 拖拽至此上传</span>
+          </button>
+        )}
+      </div>
+
+      {/* 缩略图条 + 添加入口（始终显示，空态仅显示「+」新增框） */}
+      <div className="pil-thumbs">
+        {items.map((it, i) => (
+          <button
+            type="button"
+            key={i}
+            className={`pil-thumb ${i === safeCurrent ? 'is-active' : ''}`}
+            onClick={() => setCurrent(i)}
+          >
+            <AntImage className="pil-thumb-img" src={it.url} alt={it.name} preview={false} />
+            {i === 0 && <span className="pil-thumb-badge">主</span>}
+            {!disabled && i !== 0 && (
+              <span
+                className="pil-thumb-del"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeAt(i);
+                }}
+              >
+                <DeleteOutlined />
+              </span>
+            )}
+          </button>
+        ))}
+        {items.length < maxCount && !disabled && (
+          <button
+            type="button"
+            className={`pil-thumb pil-thumb-add ${uploading ? 'is-uploading' : ''}`}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? <LoadingOutlined className="is-spin" /> : <PlusOutlined />}
+          </button>
+        )}
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        multiple
+        className="pil-file-input"
+        onChange={onPick}
+      />
     </div>
   );
 }

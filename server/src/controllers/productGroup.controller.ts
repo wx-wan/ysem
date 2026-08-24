@@ -56,7 +56,7 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
         include: {
           items: {
             orderBy: { sort: 'asc' },
-            include: { product: { select: { id: true, name: true, sku: true, spec: true } } },
+            include: { product: { select: { id: true, name: true, sku: true } } },
           },
         },
       }),
@@ -71,7 +71,6 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
           id: it.product!.id,
           name: it.product!.name,
           sku: it.product!.sku,
-          spec: it.spec ?? it.product!.spec,
           quantity: it.quantity,
           price: it.price,
         }));
@@ -93,7 +92,7 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
       include: {
         items: {
           orderBy: { sort: 'asc' },
-          include: { product: { select: { id: true, name: true, sku: true, spec: true, weight: true } } },
+          include: { product: { select: { id: true, name: true, sku: true, weight: true } } },
         },
       },
     });
@@ -107,11 +106,10 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
         id: it.product!.id,
         name: it.product!.name,
         sku: it.product!.sku,
-        spec: it.spec ?? it.product!.spec,
         quantity: it.quantity,
         price: it.price,
-      }));
-    const { items, ...rest } = group;
+        }));
+        const { items, ...rest } = group;
     success(res, { ...rest, productCount: group.items.length, products });
   } catch {
     fail(res, 500, '服务器错误');
@@ -183,7 +181,7 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
           ? { create: itemData.map((d, i) => ({ ...d, sort: i })) }
           : undefined,
       },
-      include: { items: { include: { product: { select: { id: true, name: true, sku: true, spec: true } } } } },
+      include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
     });
     void activityLogger.log({
       userId: req.userId || '',
@@ -274,7 +272,6 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
             z.object({
               productId: z.string().nullish(),
               name: z.string().nullish(),
-              spec: z.string().nullish(),
               quantity: z.number().int().min(1).default(1),
               price: z.number().nullish(),
             }),
@@ -295,14 +292,13 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
         items: {
           create: body.items.map((it, i) => ({
             productId: it.productId ?? undefined,
-            spec: it.spec ?? null,
             quantity: it.quantity ?? 1,
             price: it.price ?? null,
             sort: i,
           })),
         },
       },
-      include: { items: { include: { product: { select: { id: true, name: true, sku: true, spec: true } } } } },
+      include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
     });
     void activityLogger.log({
       userId: req.userId || '',

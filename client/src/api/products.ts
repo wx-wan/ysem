@@ -108,7 +108,6 @@ export interface Product {
   certificationIds?: string | null;  // 关联证书 id，逗号分隔
 
   // 原有字段
-  spec?: string | null;
   description?: string | null;
   price?: number | null;
   currency?: string | null;
@@ -195,7 +194,6 @@ export interface BatchCreateResult {
 export interface ProductGroupItemInput {
   productId?: string;
   name?: string;
-  spec?: string;
   quantity?: number;
   price?: number;
   images?: string;

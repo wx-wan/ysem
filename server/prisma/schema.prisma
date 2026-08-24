@@ -349,7 +349,6 @@ model SingleProduct {
   progress String? @default("{}")
 
   // ---- 价格库存 ----
-  spec          String?
   description   String?
   price         Float?
   currency      String? @default("CNY")
@@ -487,7 +486,6 @@ model ComboItem {
   group     ComboProduct   @relation(fields: [groupId], references: [id], onDelete: Cascade)
   productId String? // 关联已有单品；行内快速新建单品时为空，新建后回填
   product   SingleProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
-  spec      String? // 规格（如 尺寸/克重，行内快速新建时填写）
   quantity  Int            @default(1)
   price     Float? // 单品单价
   sort      Int            @default(0)

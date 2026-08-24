@@ -10,6 +10,7 @@ import {
 } from '@ant-design/icons';
 import { orderApi, Order } from '../api/customers';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
+import Price from '../components/common/Price';
 import dayjs from 'dayjs';
 
 const { Text } = Typography;
@@ -24,7 +25,7 @@ const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
 };
 
 export default function OrdersPage() {
-  const { format: formatCurrency, formatWithDate } = useCurrencyStore();
+  const { currency } = useCurrencyStore();
 
   const [loading, setLoading] = useState(false);
   const [list, setList] = useState<Order[]>([]);
@@ -150,7 +151,7 @@ export default function OrdersPage() {
       key: 'amountCNY',
       width: 130,
       align: 'right' as const,
-      render: (v: number) => v != null ? `¥${v.toLocaleString()}` : '-',
+      render: (v: number) => v != null ? <Price value={v} /> : '-',
     },
     {
       title: '交付日期',
@@ -211,19 +212,21 @@ export default function OrdersPage() {
         <Col span={8}>
           <Card size="small">
             <Statistic
-              title="累计金额 (CNY)"
+              title={`累计金额 (${currency.code})`}
               value={totalAmount}
               precision={0}
-              valueStyle={{ color: '#52c41a' }}
+              styles={{ content: { color: '#52c41a' } }}
+              formatter={(v) => <Price value={Number(v)} />}
             />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
             <Statistic
-              title="当前页金额"
+              title={`当前页金额 (${currency.code})`}
               value={list.reduce((s, o) => s + (o.amountCNY || 0), 0)}
               precision={0}
+              formatter={(v) => <Price value={Number(v)} />}
             />
           </Card>
         </Col>
@@ -342,7 +345,7 @@ export default function OrdersPage() {
               <Col span={12}><Text type="secondary">订单号</Text><br /><Text strong>{detailOrder.orderNo || '-'}</Text></Col>
               <Col span={12}><Text type="secondary">客户</Text><br /><Text>{detailOrder.customer?.companyName || '-'}</Text></Col>
               <Col span={12}><Text type="secondary">订单日期</Text><br /><Text>{detailOrder.orderDate || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">金额(CNY)</Text><br /><Text strong style={{ fontSize: 16 }}>¥{(detailOrder.amountCNY ?? 0).toLocaleString()}</Text></Col>
+              <Col span={12}><Text type="secondary">金额({currency.code})</Text><br /><Text strong style={{ fontSize: 16 }}><Price value={detailOrder.amountCNY ?? 0} /></Text></Col>
               <Col span={12}><Text type="secondary">交付日期</Text><br /><Text>{detailOrder.deliveryDate || '-'}</Text></Col>
               <Col span={12}><Text type="secondary">付款条件</Text><br /><Text>{detailOrder.paymentTerms || '-'}</Text></Col>
               <Col span={12}>

@@ -25,7 +25,6 @@ CREATE TABLE "SingleProduct" (
     "supplyModes" TEXT DEFAULT '',
     "certificationIds" TEXT DEFAULT '',
     "progress" TEXT DEFAULT '{}',
-    "spec" TEXT,
     "description" TEXT,
     "price" DOUBLE PRECISION,
     "currency" TEXT DEFAULT 'CNY',
@@ -63,7 +62,6 @@ CREATE TABLE "ComboItem" (
     "id" TEXT NOT NULL,
     "groupId" TEXT NOT NULL,
     "productId" TEXT,
-    "spec" TEXT,
     "quantity" INTEGER NOT NULL DEFAULT 1,
     "price" DOUBLE PRECISION,
     "sort" INTEGER NOT NULL DEFAULT 0,
@@ -106,13 +104,13 @@ ALTER TABLE "ProductActivity" ADD CONSTRAINT "ProductActivity_comboId_fkey" FORE
 INSERT INTO "SingleProduct" (
     "id","name","sku","audienceId","categoryId","images","sizeL","sizeW","sizeH","weight",
     "unit","sampleNo","logo","sound","glow","colorChange","sprayWater","colors","packaging",
-    "supplyModes","certificationIds","progress","spec","description","price","currency","taxRate",
+    "supplyModes","certificationIds","progress","description","price","currency","taxRate",
     "stock","lowStockAlert","source","visibility","remark","createdBy","createdAt","updatedAt"
 )
 SELECT
     p."id",p."name",p."sku",p."audienceId",p."categoryId",p."images",p."sizeL",p."sizeW",p."sizeH",p."weight",
     COALESCE(NULLIF(p."unit",''),'个'),p."sampleNo",p."logo",p."sound",p."glow",p."colorChange",p."sprayWater",p."colors",p."packaging",
-    p."supplyModes",p."certificationIds",p."progress",p."spec",p."description",p."price",p."currency",p."taxRate",
+    p."supplyModes",p."certificationIds",p."progress",p."description",p."price",p."currency",p."taxRate",
     p."stock",p."lowStockAlert",p."source",p."visibility",p."remark",p."createdBy",p."createdAt",p."updatedAt"
 FROM "Product" p;
 
@@ -129,9 +127,9 @@ SELECT
 FROM "ProductGroup" g;
 
 -- 7.3 ProductGroupItem -> ComboItem
-INSERT INTO "ComboItem" ("id","groupId","productId","spec","quantity","price","sort","createdAt","updatedAt")
+INSERT INTO "ComboItem" ("id","groupId","productId","quantity","price","sort","createdAt","updatedAt")
 SELECT
-    gi."id", gi."groupId", gi."productId", gi."spec", gi."quantity", gi."price", gi."sort", gi."createdAt", gi."updatedAt"
+    gi."id", gi."groupId", gi."productId", gi."quantity", gi."price", gi."sort", gi."createdAt", gi."updatedAt"
 FROM "ProductGroupItem" gi;
 
 -- 8) 重建指向 Product 的外键，改指向 SingleProduct，再删旧表 ----------------

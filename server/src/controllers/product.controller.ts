@@ -24,7 +24,6 @@ const productSchema = z.object({
   // 认证资质：关联证书 id 列表（逗号分隔）
   certificationIds: z.string().nullish(),
   // 原有
-  spec: z.string().nullish(),
   description: z.string().nullish(),
   price: z.number().nonnegative().nullish(),
   currency: z.string().nullish(),
@@ -95,7 +94,6 @@ async function buildProductDiff(
     sizeH: '高(cm)',
     weight: '重量(g)',
     supplyModes: '供货模式',
-    spec: '规格',
     description: '描述',
     price: '单价',
     currency: '币种',
@@ -255,12 +253,15 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.parse(req.body);
     const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-    const data = { ...rest } as Prisma.SingleProductUncheckedCreateInput;
-    data.createdBy = req.userId;
-    if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
-    if (visibleUserIds?.length) {
-      data.visibleUsers = { create: visibleUserIds.map((userId) => ({ userId })) };
-    }
+
+    // 使用 SingleProductCreateInput 支持多对多/一对多关联的嵌套写入
+    const data: Prisma.SingleProductCreateInput = {
+      ...rest,
+      createdBy: req.userId,
+      ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
+      ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
+    };
+
     // SKU 无需人工录入：按「工艺-受众-序号」自动生成
     const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
     const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
@@ -269,6 +270,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
     data.sku = sku;
+
     const product = await prisma.singleProduct.create({ data });
     void activityLogger.log({
       userId: req.userId || '',
@@ -284,7 +286,8 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     created(res, product);
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
-    fail(res, 500, '服务器错误');
+    console.error('[createProduct]', err);
+    fail(res, 500, err instanceof Error ? err.message : '服务器错误');
   }
 };
 

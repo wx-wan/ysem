@@ -17,7 +17,7 @@ import FlagIcon from './FlagIcon';
 import KeyAccountStar from './KeyAccountStar';
 import TagSelector from './TagSelector';
 import { findCountry } from '../data/countries';
-import { getCustomerTypeLabel } from './customer/shared/utils';
+import { getCustomerTypeLabel } from './customer/utils';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { customerApi } from '../api/customers';
 import { salesApi, SalesItem } from '../api/sales';
@@ -244,7 +244,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       }
       open={open}
       onClose={handleClose}
-      size={680}
+      width={680}
       styles={{ wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
       loading={loading}
       extra={

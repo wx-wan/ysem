@@ -72,10 +72,20 @@
   color: rgba(0, 0, 0, 0.88);
 }
 .pm-sku-head {
+  display: inline-flex;
+  align-items: center;
   font-size: 13px;
   padding: 2px 10px;
   border-radius: var(--radius-sm);
   background: var(--c-fill-quaternary, #f5f5f5);
+}
+/* SKU 右侧：已选工艺/受众/品类，以「/」串联的纯文本展示 */
+.pm-sku-tags {
+  display: inline;
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--c-text-tertiary, #94a3b8);
+  vertical-align: middle;
 }
 
 /* SKU 旁的分类串：工艺/受众/品类，用斜杠分隔 */
@@ -103,14 +113,11 @@
   padding-left: 0;
 }
 
-/* 尺寸一行（长宽高）+ 标题 */
+/* 尺寸一行（长宽高 + 克重）：作为结构化子网格，用细虚线与上下字段分节 */
 .pm-size-row {
-  margin-bottom: 18px;
-}
-.pm-size-row-title {
-  font-size: 14px;
-  color: var(--c-text, #1f1f1f);
-  margin-bottom: 6px;
+  margin: 2px 0 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--c-border-secondary, #eef2f7);
 }
 .pm-size-row .ant-form-item {
   margin-bottom: 0;
@@ -683,13 +690,6 @@
 .pm-size-row:last-child {
   margin-bottom: 0;
 }
-.pm-size-row-title {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--c-text-tertiary, #94a3b8);
-  margin-bottom: 8px;
-  letter-spacing: 0.02em;
-}
 
 /* 卡片内分节分隔统一节奏，避免 Divider 与标题叠加造成的冗余间距 */
 .pm-card-sectioned .pm-card-divider {
@@ -748,6 +748,18 @@
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px dashed var(--c-border-secondary, #e2e8f0);
+}
+/* 第一步：每个选择块（工艺/受众/品类），label 显式渲染，避免 antd component=false 不显示 label */
+.pm-step-field {
+  margin-bottom: 18px;
+}
+.pm-step-field:last-child {
+  margin-bottom: 0;
+}
+.pm-step-err {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--c-danger, #ef4444);
 }
 
 .pm-step-flow .pm-form-row:last-child {
@@ -1362,9 +1374,9 @@
 /* ============ 弹窗：产品卡片（左图右文） ============ */
 .pm-product-card {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 20px;
-  padding: 16px;
+  padding: 20px 16px 16px;
   border: 1px solid var(--c-border, #f1f5f9);
   border-radius: var(--radius-md, 12px);
   background: var(--c-bg, #ffffff);
@@ -1374,9 +1386,17 @@
   border-right: 1px solid var(--c-border, #f1f5f9);
   padding-right: 20px;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .pm-product-card__body {
   min-width: 0;
+}
+/* 图片区内的上传组件占满，空态更舒展居中 */
+.pm-product-card__media .pil {
+  display: flex;
+  flex-direction: column;
 }
 .pm-product-card__head {
   display: flex;
@@ -1415,7 +1435,7 @@
     border-right: none;
     border-bottom: 1px solid var(--c-border, #f1f5f9);
     padding-right: 0;
-    padding-bottom: 14px;
+    padding-bottom: 16px;
   }
 }
 
