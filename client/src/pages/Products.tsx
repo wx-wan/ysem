@@ -873,12 +873,6 @@ export default function Products() {
                 </Card>
               )}
               <Card title="基础信息" variant="outlined" className="pm-card">
-                <div className="pm-back-step">
-                  <Button type="link" size="small" icon={<ArrowLeftOutlined />} onClick={backToStep}>
-                    返回选择 工艺 / 受众 / 品类
-                  </Button>
-                </div>
-
                 {/* 工艺/受众/品类已移至第一步选择，此处保留隐藏 Form.Item 以维持字段注册 */}
                 <Form.Item name="craftIds" hidden><Input /></Form.Item>
                 <Form.Item name="audienceId" hidden><Input /></Form.Item>
