@@ -43,6 +43,29 @@ interface CurrencyState {
 }
 
 const STORAGE_KEY = 'ysem_currency';
+const RATES_KEY = 'ysem_currency_rates';
+// 汇率缓存有效期：24 小时内不重复请求
+const RATES_TTL_MS = 24 * 60 * 60 * 1000;
+
+function loadSavedRates(): { rates: Record<string, number>; lastUpdated: string } | null {
+  try {
+    const raw = localStorage.getItem(RATES_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { rates: Record<string, number>; lastUpdated: string };
+    if (!parsed.rates || !parsed.lastUpdated) return null;
+    const age = Date.now() - new Date(parsed.lastUpdated).getTime();
+    if (age > RATES_TTL_MS) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveRates(rates: Record<string, number>, lastUpdated: string) {
+  try {
+    localStorage.setItem(RATES_KEY, JSON.stringify({ rates, lastUpdated }));
+  } catch {}
+}
 
 // 从 localStorage 恢复或默认 CNY
 function loadSavedCurrency(): CurrencyInfo {
@@ -71,6 +94,13 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   fetchRates: async () => {
+    // 优先使用本地缓存（24h 内有效），避免每次刷新都请求汇率
+    const cached = loadSavedRates();
+    if (cached) {
+      set({ rates: cached.rates, loading: false, lastUpdated: cached.lastUpdated });
+      return;
+    }
+
     set({ loading: true });
     try {
       // 通过后端代理请求 Frankfurter，避免 CORS 问题
@@ -78,11 +108,10 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         params: { from: 'CNY' },
         timeout: 8000,
       });
-      set({
-        rates: data.data?.rates || {},
-        loading: false,
-        lastUpdated: new Date().toISOString(),
-      });
+      const rates = data.data?.rates || {};
+      const lastUpdated = new Date().toISOString();
+      saveRates(rates, lastUpdated);
+      set({ rates, loading: false, lastUpdated });
     } catch {
       // 降级：使用内置近似汇率
       set({
