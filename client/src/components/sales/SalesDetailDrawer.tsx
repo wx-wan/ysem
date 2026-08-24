@@ -39,7 +39,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       title="详情"
       open={open}
       onClose={onClose}
-      width={560}
+      size={560}
       zIndex={2000}
       extra={
         <Space>
