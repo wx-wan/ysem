@@ -101,10 +101,6 @@ export default function Products() {
   const productTypeWatch = Form.useWatch('productType', form) as 'PRODUCT' | 'GROUP' | undefined;
   const visValue = Form.useWatch('visibility', form) as 'PUBLIC' | 'PRIVATE' | undefined;
 
-  // 切换到「组合」时拉取可关联的单品（排除组合产品）
-  useEffect(() => {
-    if (productTypeWatch === 'GROUP') ensureSingleProducts();
-  }, [productTypeWatch, ensureSingleProducts]);
   const visibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
   const [certificates, setCertificates] = useState<Certificate[]>([]);
@@ -568,6 +564,11 @@ export default function Products() {
       setSingleProducts(list.map((p: Product) => ({ id: p.id, name: p.name, sku: p.sku || '' })));
     } catch { /* 静默 */ }
   }, []);
+
+  // 切换到「组合」时拉取可关联的单品（排除组合产品）
+  useEffect(() => {
+    if (productTypeWatch === 'GROUP') ensureSingleProducts();
+  }, [productTypeWatch, ensureSingleProducts]);
 
   const handleDelete = async (id: string) => {
     try {
