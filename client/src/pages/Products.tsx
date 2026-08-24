@@ -20,7 +20,6 @@ import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
 import { salesApi, SalesItem, STAGE_META } from '../api/sales';
 import ProductImageList from '../components/common/ProductImageList';
-
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
@@ -782,12 +781,14 @@ export default function Products() {
         footer={
           editing ? (
             [
+              <Button key="back" onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>,
               <Button key="cancel" onClick={closeEdit}>取消</Button>,
               <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
             ]
           ) : pendingProducts.length > 0 || productTypeWatch === 'GROUP' ? (
-            // 组合模式（已添加单品 或 切换为组合）：可继续添加，或生成产品组
+            // 组合模式：可继续添加，或生成产品组
             <Space>
+              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleGenerateGroup}>生成组合</Button>
@@ -795,6 +796,7 @@ export default function Products() {
           ) : (
             // 新建单个产品：可直接保存，或「添加单品」开始组合
             <Space>
+              <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>上一步</Button>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleSubmit}>保存</Button>
