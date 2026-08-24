@@ -175,3 +175,14 @@ export function findCountry(name?: string): CountryData | undefined {
 export function getCountryCode(name?: string): string | undefined {
   return findCountry(name)?.code;
 }
+
+// 根据国家代码生成国旗 Emoji（code 转 regional indicator symbols）
+export function getCountryFlag(name?: string): string {
+  const code = getCountryCode(name);
+  if (!code || code.length !== 2) return '';
+  return code
+    .toUpperCase()
+    .split('')
+    .map((char) => String.fromCodePoint(0x1f1e6 + char.charCodeAt(0) - 65))
+    .join('');
+}
