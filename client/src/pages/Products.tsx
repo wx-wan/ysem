@@ -790,15 +790,13 @@ export default function Products() {
             <Space>
               <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>
               <Button onClick={closeEdit}>取消</Button>
-              <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleGenerateGroup}>生成组合</Button>
             </Space>
           ) : (
-            // 新建单个产品：可直接保存，或「添加单品」开始组合
+            // 新建单个产品：直接保存
             <Space>
               <Button onClick={backToStep} icon={<ArrowLeftOutlined />}>重选分类</Button>
               <Button onClick={closeEdit}>取消</Button>
-              <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleSubmit}>保存</Button>
             </Space>
           )
