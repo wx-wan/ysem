@@ -24,8 +24,10 @@ export interface LogEntry {
   ip?: string;
   /** 如果提供了 customerId，同步写入客户活动时间线 */
   customerId?: string;
-  /** 如果提供了 productId，同步写入产品操作记录时间线 */
+  /** 如果提供了 productId，同步写入单品操作记录时间线 */
   productId?: string;
+  /** 如果提供了 comboId，同步写入组合操作记录时间线 */
+  comboId?: string;
 }
 
 class ActivityLogger {
@@ -75,12 +77,30 @@ class ActivityLogger {
       );
     }
 
-    // 3. 产品操作记录时间线
+    // 3. 单品操作记录时间线
     if (entry.productId) {
       writes.push(
         prisma.productActivity.create({
           data: {
             productId: entry.productId,
+            action: entry.action,
+            detail: entry.detail,
+            summary: entry.detail,
+            diff: diffStr,
+            operator: entry.username,
+            realName: entry.realName,
+            createdBy: entry.userId,
+          },
+        })
+      );
+    }
+
+    // 4. 组合操作记录时间线
+    if (entry.comboId) {
+      writes.push(
+        prisma.productActivity.create({
+          data: {
+            comboId: entry.comboId,
             action: entry.action,
             detail: entry.detail,
             summary: entry.detail,

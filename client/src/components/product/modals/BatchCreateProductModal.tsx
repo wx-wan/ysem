@@ -36,8 +36,6 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
   const [rows, setRows] = useState<RowState[]>([newRow()]);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<{ successCount: number; failCount: number; failed: { index: number; name?: string; reason: string }[] } | null>(null);
-  // 批量建产品统一供货方式（单品 / 组合）
-  const [batchUnit, setBatchUnit] = useState<string>('PRODUCT');
 
   // 公共分类（应用到全部行）
   const [commonCraftIds, setCommonCraftIds] = useState<string[]>([]);
@@ -103,7 +101,6 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
       supplyModes: r.supplyModes || 'DEEP_CUSTOM',
       description: r.description,
       remark: r.remark,
-      unit: batchUnit === 'GROUP' ? '套' : '个',
       visibility: 'PUBLIC',
       visibleUserIds: [],
     }));
@@ -253,15 +250,6 @@ export default function BatchCreateProductModal({ open, onClose, onSuccess }: Pr
         <Button icon={<UploadOutlined />} onClick={() => message.info('选中下方输入框可直接粘贴 Excel 多行（第一列=名称，第二列=克重）')}>
           粘贴说明
         </Button>
-        <span>
-          供货方式
-          <Select
-            value={batchUnit}
-            onChange={setBatchUnit}
-            style={{ width: 110, marginLeft: 6 }}
-            options={[{ label: '单品', value: 'PRODUCT' }, { label: '组合', value: 'GROUP' }]}
-          />
-        </span>
         <Tag>一产品一 SKU，不做聚合</Tag>
       </Space>
 

@@ -22,7 +22,7 @@ export const createQuote = async (req: AuthRequest, res: Response): Promise<void
     let productIds: string[] = [];
     let targetName = '';
     if (parsed.targetType === 'PRODUCT') {
-      const p = await prisma.product.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true, sku: true } });
+      const p = await prisma.singleProduct.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true, sku: true } });
       if (!p) {
         fail(res, 404, '产品不存在');
         return;
@@ -30,12 +30,15 @@ export const createQuote = async (req: AuthRequest, res: Response): Promise<void
       productIds = [p.id];
       targetName = p.name;
     } else {
-      const g = await prisma.productGroup.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true, productIds: true } });
+      const g = await prisma.comboProduct.findUnique({
+        where: { id: parsed.targetId },
+        select: { id: true, name: true, items: { select: { productId: true } } },
+      });
       if (!g) {
-        fail(res, 404, '产品组不存在');
+        fail(res, 404, '组合不存在');
         return;
       }
-      productIds = (g.productIds || '').split(',').filter(Boolean);
+      productIds = g.items.map((it) => it.productId).filter((x): x is string => Boolean(x));
       targetName = g.name;
     }
 
@@ -111,9 +114,9 @@ export const getQuoteById = async (req: AuthRequest, res: Response): Promise<voi
     }
     const ids = (quote.productIds || '').split(',').filter(Boolean);
     const products = ids.length
-      ? await prisma.product.findMany({
+      ? await prisma.singleProduct.findMany({
           where: { id: { in: ids } },
-          select: { id: true, name: true, sku: true, unit: true, weight: true },
+          select: { id: true, name: true, sku: true, weight: true },
         })
       : [];
     success(res, { ...quote, products });

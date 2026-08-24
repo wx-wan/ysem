@@ -97,18 +97,19 @@ export default function ProductGroupManageModal({ groupId, open, onClose, onChan
 
   const openMembers = () => {
     if (!group) return;
-    setMemberSelected((group.productIds || '').split(',').filter(Boolean));
+    // 组合成员来自 items（优先）或 products，取单品 id 列表
+    const currentIds = (group.items || []).map((i) => i.productId).filter(Boolean) as string[];
+    setMemberSelected(currentIds.length ? currentIds : (group.products || []).map((p) => p.id));
     setMemberOpen(true);
   };
 
   const saveMembers = async () => {
     if (!group) return;
     try {
-      const current = (group.productIds || '').split(',').filter(Boolean);
-      const toRemove = current.filter((id) => !memberSelected.includes(id));
-      const toAdd = memberSelected.filter((id) => !current.includes(id));
-      if (toRemove.length) await productGroupApi.updateProducts(group.id, toRemove, 'remove');
-      if (toAdd.length) await productGroupApi.updateProducts(group.id, toAdd, 'add');
+      // 组合成员由 items 维护：整体覆盖为选中的单品 id 列表
+      await productGroupApi.update(group.id, {
+        items: memberSelected.map((id) => ({ productId: id })),
+      });
       message.success('成员已更新');
       setMemberOpen(false);
       triggerChanged();

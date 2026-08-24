@@ -97,7 +97,7 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
         include: {
           assignee: { select: { id: true, realName: true, username: true } },
           leadProducts: {
-            include: { product: { select: { id: true, name: true, sku: true, unit: true, spec: true, audienceId: true, categoryId: true } } },
+            include: { product: { select: { id: true, name: true, sku: true, spec: true, audienceId: true, categoryId: true } } },
             orderBy: { createdAt: 'asc' },
           },
         },
@@ -167,7 +167,7 @@ export const getPipeline = async (req: AuthRequest, res: Response): Promise<void
         assignee: { select: { id: true, realName: true, username: true } },
         activities: { orderBy: { createdAt: 'desc' }, take: 30 },
         leadProducts: {
-          include: { product: { select: { id: true, name: true, sku: true, unit: true, spec: true, audienceId: true, categoryId: true } } },
+          include: { product: { select: { id: true, name: true, sku: true, spec: true, audienceId: true, categoryId: true } } },
           orderBy: { createdAt: 'asc' },
         },
       },
@@ -273,7 +273,7 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
         leadProducts: {
-          include: { product: { select: { id: true, name: true, sku: true, unit: true, spec: true, audienceId: true, categoryId: true } } },
+          include: { product: { select: { id: true, name: true, sku: true, spec: true, audienceId: true, categoryId: true } } },
         },
       },
     });
@@ -348,7 +348,7 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
         leadProducts: {
-          include: { product: { select: { id: true, name: true, sku: true, unit: true, spec: true, audienceId: true, categoryId: true } } },
+          include: { product: { select: { id: true, name: true, sku: true, spec: true, audienceId: true, categoryId: true } } },
         },
       },
     });

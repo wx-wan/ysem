@@ -1,7 +1,7 @@
 import React from 'react';
 import { Flex, Popconfirm, Button } from 'antd';
 import { DeleteOutlined, TeamOutlined } from '@ant-design/icons';
-import { ProductGroup } from '../../api/products';
+import { ProductGroup } from '../../../api/products';
 
 interface Props {
   group: ProductGroup;

@@ -20,8 +20,8 @@ export const ProductCardSkeleton = memo(function ProductCardSkeleton() {
     <div className="pm-prod-card pm-prod-card--skeleton">
       <div className="pm-prod-cover">
         <div className="pm-prod-skeleton-head">
-          <Skeleton.Avatar active shape="round" size={20} />
-          <Skeleton.Avatar active shape="round" size={20} />
+          <Skeleton.Avatar active shape="circle" size={20} />
+          <Skeleton.Avatar active shape="circle" size={20} />
         </div>
       </div>
       <div className="pm-prod-body">
@@ -107,7 +107,7 @@ const ProductCard = memo(function ProductCard({
           <div className="pm-prod-meta__item">
             <span className="pm-prod-meta__label">模式</span>
             <span className="pm-prod-meta__value">
-              {product.unit === '套' ? '组合' : '单品'}
+              {(product as unknown as { items?: unknown[] }).items?.length ? '组合' : '单品'}
             </span>
           </div>
         </div>

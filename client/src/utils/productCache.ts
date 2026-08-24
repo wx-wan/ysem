@@ -1,4 +1,4 @@
-import type { Product } from '../api/products';
+import type { Product, MixedItem } from '../api/products';
 import { productApi } from '../api/products';
 
 /**
@@ -11,7 +11,7 @@ import { productApi } from '../api/products';
  */
 
 export interface ListCacheEntry {
-  list: Product[];
+  list: MixedItem[];
   total: number;
 }
 

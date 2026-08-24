@@ -36,7 +36,6 @@ export default function ProductList({
       render: (_: unknown, r: Product) =>
         r.crafts?.length ? r.crafts.map((c) => c.name).join('+') : '-',
     },
-    { title: '单位', dataIndex: 'unit', width: 80, render: (v: string) => (v === '套' ? '组合' : '单品') },
     {
       title: '供应模式',
       render: (_: unknown, r: Product) =>

@@ -19,7 +19,6 @@ const productSchema = z.object({
   sizeW: z.string().nullish(),
   sizeH: z.string().nullish(),
   weight: z.string().nullish(),
-  unit: z.string().nullish(),
   // 供货模式（单选，逗号分隔，最多一个值）
   supplyModes: z.string().nullish(),
   // 认证资质：关联证书 id 列表（逗号分隔）
@@ -44,7 +43,7 @@ const productSchema = z.object({
 // 按「工艺代码 - 受众代码 - 序号」自动生成 SKU：
 // 多工艺时主工艺在括号外，其余用 + 连接，如 TJ(ZS)-ET-001；序号按同组合递增 3 位补零。
 // 缺少工艺或受众（含缺 code）时返回 null，由调用方决定提示。
-async function buildSkuCode(
+export async function buildSkuCode(
   craftIds: string[],
   audienceId: string | null,
   excludeId?: string,
@@ -63,7 +62,7 @@ async function buildSkuCode(
     : craftCodes[0];
   const prefix = `${craftPart}-${audience.code}-`;
 
-  const existing = await prisma.product.findMany({
+  const existing = await prisma.singleProduct.findMany({
     where: { sku: { startsWith: prefix }, ...(excludeId ? { id: { not: excludeId } } : {}) },
     select: { sku: true },
   });
@@ -95,7 +94,6 @@ async function buildProductDiff(
     sizeW: '宽(cm)',
     sizeH: '高(cm)',
     weight: '重量(g)',
-    unit: '销售单位',
     supplyModes: '供货模式',
     spec: '规格',
     description: '描述',
@@ -166,7 +164,7 @@ export const previewProductSku = async (req: AuthRequest, res: Response): Promis
 
 export const getProductOptions = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const list = await prisma.product.findMany({
+    const list = await prisma.singleProduct.findMany({
       select: { id: true, name: true, sku: true },
       orderBy: { name: 'asc' },
     });
@@ -206,7 +204,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     }
 
     const [list, total] = await Promise.all([
-      prisma.product.findMany({
+      prisma.singleProduct.findMany({
         where,
         include: {
           crafts: { select: { id: true, name: true } },
@@ -218,7 +216,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
         take: pageSize,
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.product.count({ where }),
+      prisma.singleProduct.count({ where }),
     ]);
 
     success(res, { list, total, page, pageSize });
@@ -227,7 +225,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
 
 export const getProductById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const product = await prisma.product.findUnique({
+    const product = await prisma.singleProduct.findUnique({
       where: { id: req.params.id },
       include: {
         crafts: true,
@@ -257,7 +255,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.parse(req.body);
     const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-    const data: Prisma.ProductCreateInput = { ...rest };
+    const data = { ...rest } as Prisma.SingleProductUncheckedCreateInput;
     data.createdBy = req.userId;
     if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
     if (visibleUserIds?.length) {
@@ -271,7 +269,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
     data.sku = sku;
-    const product = await prisma.product.create({ data });
+    const product = await prisma.singleProduct.create({ data });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -303,10 +301,8 @@ export const batchCreateProducts = async (req: AuthRequest, res: Response): Prom
       const row = rows[i] as Record<string, unknown>;
       try {
         const parsed = productSchema.parse(row);
-        const { craftIds, sku: _ignored, visibleUserIds, unit, ...rest } = parsed;
-        const data: Prisma.ProductCreateInput = { ...rest };
-        // 单位由前端按「供货方式（单品/组合）」映射传入：单品→个，组合→套；缺省默认个
-        data.unit = unit || '个';
+        const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
+        const data = { ...rest } as Prisma.SingleProductUncheckedCreateInput;
         data.createdBy = req.userId;
         if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
         if (visibleUserIds?.length) {
@@ -319,7 +315,7 @@ export const batchCreateProducts = async (req: AuthRequest, res: Response): Prom
           continue;
         }
         data.sku = sku;
-        const product = await prisma.product.create({ data });
+        const product = await prisma.singleProduct.create({ data });
         void activityLogger.log({
           userId: req.userId || '',
           username: req.username || '',
@@ -355,7 +351,7 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.partial().parse(req.body);
     const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-    const data: Prisma.ProductUpdateInput = { ...rest };
+    const data = { ...rest } as Prisma.SingleProductUpdateInput;
     if (Array.isArray(craftIds)) {
       data.crafts = craftIds.length ? { set: craftIds.map((id) => ({ id })) } : { set: [] };
     }
@@ -366,7 +362,7 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       };
     }
     // 工艺或受众变化时，SKU 按新组合自动重新生成；未变化则保留原 SKU
-    const existing = await prisma.product.findUnique({
+    const existing = await prisma.singleProduct.findUnique({
       where: { id: req.params.id },
       include: { crafts: { select: { id: true, name: true } }, visibleUsers: { select: { userId: true } } },
     });
@@ -390,7 +386,7 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
         data.sku = sku;
       }
     }
-    const product = await prisma.product.update({
+    const product = await prisma.singleProduct.update({
       where: { id: req.params.id },
       data,
     });
@@ -423,9 +419,9 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
       fail(res, 403, '仅管理员可删除产品');
       return;
     }
-    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
+    const product = await prisma.singleProduct.findUnique({ where: { id: req.params.id } });
     if (!product) { fail(res, 404, '产品不存在'); return; }
-    await prisma.product.delete({ where: { id: req.params.id } });
+    await prisma.singleProduct.delete({ where: { id: req.params.id } });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -485,7 +481,7 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
       }
 
       const where: Record<string, unknown> = and.length ? { AND: and } : {};
-      const products = await prisma.product.findMany({
+      const products = await prisma.singleProduct.findMany({
         where,
         include: {
           crafts: { select: { id: true, name: true } },
@@ -503,22 +499,16 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
       const where: Record<string, unknown> = {};
       if (keyword) where.name = { contains: keyword };
 
-      const groupsRaw = await prisma.productGroup.findMany({
+      const groupsRaw = await prisma.comboProduct.findMany({
         where,
         orderBy: { createdAt: 'desc' },
+        include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
       });
-      const groups = await Promise.all(
-        groupsRaw.map(async (g) => {
-          const ids = (g.productIds || '').split(',').map((s) => s.trim()).filter(Boolean);
-          const products = ids.length
-            ? await prisma.product.findMany({
-                where: { id: { in: ids } },
-                select: { id: true, name: true, sku: true, unit: true },
-              })
-            : [];
-          return { ...g, productCount: products.length, products };
-        }),
-      );
+      const groups = groupsRaw.map((g) => ({
+        ...g,
+        productCount: g.items.length,
+        products: g.items.map((it) => it.product).filter(Boolean),
+      }));
       groups.forEach((g) => entries.push({ type: 'GROUP', data: g as unknown as Record<string, unknown> }));
     }
 

@@ -58,7 +58,6 @@ export interface LeadProduct {
     sku?: string | null;
     type: 'SELF' | 'EXTERNAL';
     selfKind?: 'FINISHED' | 'SEMI' | null;
-    unit?: string | null;
   };
 }
 

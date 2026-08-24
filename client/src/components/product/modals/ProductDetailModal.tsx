@@ -4,7 +4,7 @@ import { Avatar, Button, Empty, Tag, theme, Tooltip } from 'antd';
 import {
   EditOutlined, CloseOutlined,
   ProfileOutlined, ArrowsAltOutlined, ColumnHeightOutlined,
-  ColumnWidthOutlined, HomeOutlined, FileTextOutlined, ClockCircleOutlined,
+  HomeOutlined, FileTextOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product, ProductActivity } from '../../../api/products';
@@ -101,7 +101,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         : '未设置',
     },
     { icon: <ColumnHeightOutlined style={{ fontSize: 14 }} />, label: '克重', value: product.weight ? `${product.weight} g` : '未设置' },
-    { icon: <ColumnWidthOutlined style={{ fontSize: 14 }} />, label: '单位', value: product.unit === '套' ? '组合' : '单品' },
     { icon: <HomeOutlined style={{ fontSize: 14 }} />, label: '模式', value: supplyLabels.join('、') || '未设置' },
   ];
 

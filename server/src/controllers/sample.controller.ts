@@ -18,14 +18,14 @@ export const applySample = async (req: AuthRequest, res: Response): Promise<void
     // 校验目标存在
     let targetName = '';
     if (parsed.targetType === 'PRODUCT') {
-      const p = await prisma.product.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true, sku: true } });
+      const p = await prisma.singleProduct.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true, sku: true } });
       if (!p) {
         fail(res, 404, '产品不存在');
         return;
       }
       targetName = p.name;
     } else {
-      const g = await prisma.productGroup.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true } });
+      const g = await prisma.comboProduct.findUnique({ where: { id: parsed.targetId }, select: { id: true, name: true } });
       if (!g) {
         fail(res, 404, '产品组不存在');
         return;

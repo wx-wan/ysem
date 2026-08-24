@@ -9,69 +9,66 @@ datasource db {
 
 // ========== 用户表 ==========
 model User {
-  id          String       @id @default(uuid())
-  username    String       @unique
-  password    String
-  realName    String
-  email       String?      @unique
-  phone       String?
-  avatar      String?
-  status      String       @default("ACTIVE")
-  departmentId String?
-  department  Department?  @relation(fields: [departmentId], references: [id])
-  roleId      String?
-  role        Role?        @relation(fields: [roleId], references: [id])
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  lastLoginAt DateTime?
-  loginLogs   LoginLog[]
-  createdBy   String?
-  creator     User?        @relation("CreatedUsers", fields: [createdBy], references: [id])
-  createdUsers User[]      @relation("CreatedUsers")
-  refreshToken String?
-  salesPipelines SalesPipeline[]
-  customers      Customer[]
+  id                  String               @id @default(uuid())
+  username            String               @unique
+  password            String
+  realName            String
+  email               String?              @unique
+  phone               String?
+  avatar              String?
+  status              String               @default("ACTIVE")
+  departmentId        String?
+  department          Department?          @relation(fields: [departmentId], references: [id])
+  roleId              String?
+  role                Role?                @relation(fields: [roleId], references: [id])
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lastLoginAt         DateTime?
+  loginLogs           LoginLog[]
+  createdBy           String?
+  creator             User?                @relation("CreatedUsers", fields: [createdBy], references: [id])
+  createdUsers        User[]               @relation("CreatedUsers")
+  refreshToken        String?
+  salesPipelines      SalesPipeline[]
+  customers           Customer[]
   productVisibilities ProductVisibleUser[]
-  products    Product[]      @relation("ProductCreator")
-  productGroups ProductGroup[] @relation("ProductGroupOwner")
-  sampleApplies SampleApply[]  @relation("SampleApplicant")
-  quotes       Quote[]         @relation("QuoteOwner")
+  products            SingleProduct[]      @relation("ProductCreator")
+  productGroups       ComboProduct[]       @relation("ComboProductOwner")
+  comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
+  sampleApplies       SampleApply[]        @relation("SampleApplicant")
+  quotes              Quote[]              @relation("QuoteOwner")
 }
-
-
 
 // ========== 角色表 ==========
 model Role {
-  id          String      @id @default(uuid())
-  name        String      @unique
-  code        String      @unique
+  id          String           @id @default(uuid())
+  name        String           @unique
+  code        String           @unique
   description String?
-  status      Int         @default(1)
-  sort        Int         @default(0)
+  status      Int              @default(1)
+  sort        Int              @default(0)
   users       User[]
   permissions RolePermission[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 // ========== 权限表 ==========
 model Permission {
-  id       String           @id @default(uuid())
-  name     String           @unique
-  code     String           @unique
-  type     String           @default("BUTTON")
-  parentId String?
-  parent   Permission?      @relation("PermissionTree", fields: [parentId], references: [id])
-  children Permission[]     @relation("PermissionTree")
-  roles    RolePermission[]
-  sort     Int              @default(0)
-  path     String?
-  icon     String?
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id        String           @id @default(uuid())
+  name      String           @unique
+  code      String           @unique
+  type      String           @default("BUTTON")
+  parentId  String?
+  parent    Permission?      @relation("PermissionTree", fields: [parentId], references: [id])
+  children  Permission[]     @relation("PermissionTree")
+  roles     RolePermission[]
+  sort      Int              @default(0)
+  path      String?
+  icon      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 }
-
-
 
 // ========== 角色-权限关联表 ==========
 model RolePermission {
@@ -86,20 +83,20 @@ model RolePermission {
 
 // ========== 部门表 ==========
 model Department {
-  id          String       @id @default(uuid())
-  name        String
-  code        String       @unique
-  parentId    String?
-  parent      Department?  @relation("DeptTree", fields: [parentId], references: [id])
-  children    Department[] @relation("DeptTree")
-  leader      String?
-  phone       String?
-  email       String?
-  sort        Int          @default(0)
-  status      Int          @default(1)
-  users       User[]
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  id        String       @id @default(uuid())
+  name      String
+  code      String       @unique
+  parentId  String?
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptTree")
+  leader    String?
+  phone     String?
+  email     String?
+  sort      Int          @default(0)
+  status    Int          @default(1)
+  users     User[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 // ========== 登录日志表 ==========
@@ -133,31 +130,31 @@ model OperationLog {
 
 // ========== 客户表 ==========
 model Customer {
-  id          String   @id @default(uuid())
-  customerCode String? @unique // 客户编号：CUS-YYMMDD-序号
-  companyName String
-  contactName String?
-  englishName String?  // 英文名
-  position    String?  // 职位
-  email       String?
-  phone       String?
-  wechat      String?  // 微信
-  country     String?
-  region      String?  // 所在地区（省市区，如 "广东省·广州市"）
+  id            String  @id @default(uuid())
+  customerCode  String? @unique // 客户编号：CUS-YYMMDD-序号
+  companyName   String
+  contactName   String?
+  englishName   String? // 英文名
+  position      String? // 职位
+  email         String?
+  phone         String?
+  wechat        String? // 微信
+  country       String?
+  region        String? // 所在地区（省市区，如 "广东省·广州市"）
   customerLevel String? @default("普通客户") // 客户等级：钻石客户/战略客户/优质客户/普通客户/潜在客户
-  source      String?  // MANUAL / EXCEL / XIAOMAN
-  notes       String?
+  source        String? // MANUAL / EXCEL / XIAOMAN
+  notes         String?
 
   // 归属（null = 公海）
   ownerId String?
   owner   User?   @relation(fields: [ownerId], references: [id])
 
   // 重点客户标记
-  isKeyAccount Boolean  @default(false)
-  intentLevel  String?  // LOW / MEDIUM / HIGH / READY
+  isKeyAccount Boolean @default(false)
+  intentLevel  String? // LOW / MEDIUM / HIGH / READY
 
   // 客户标签（逗号分隔，如 "VIP,长期合作,高利润"）
-  tags         String?  @default("")
+  tags String? @default("")
 
   // 首次下单日期（自动推算：取其下最早订单日期）
   firstOrderDate String?
@@ -178,7 +175,7 @@ model Customer {
 model CustomerActivity {
   id         String   @id @default(uuid())
   customerId String
-  action     String   // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
+  action     String // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
   detail     String?
   summary    String?
   diff       String?
@@ -193,36 +190,36 @@ model CustomerActivity {
 // 订单阶段（统一流程，样品单融入订单）：
 //   DEPOSIT(预付款) → SAMPLE_ORDER(下打样单) → DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样) → PRODUCTION(生产) → SHIPPED(出货)
 model Order {
-  id           String   @id @default(uuid())
-  customerId   String
-  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  orderNo      String?
-  orderDate    String?
-  amountCNY    Float?        // 订单金额（CNY）
-  depositAmount Float?       // 预付款金额（CNY）
-  depositPaid  Boolean? @default(false) // 预付款是否已付
-  deliveryDate String?
-  paymentTerms String?
+  id                  String   @id @default(uuid())
+  customerId          String
+  customer            Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderNo             String?
+  orderDate           String?
+  amountCNY           Float? // 订单金额（CNY）
+  depositAmount       Float? // 预付款金额（CNY）
+  depositPaid         Boolean? @default(false) // 预付款是否已付
+  deliveryDate        String?
+  paymentTerms        String?
   // 7 阶段流程
-  status       String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
+  status              String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
   // 各阶段时间节点（用于进度跟踪，可选）
-  sampleOrderDate String? // 下打样单日期
-  designDate      String? // 设计完成日期
-  moldDate        String? // 开模日期
-  sampleSentDate  String? // 寄样日期
+  sampleOrderDate     String? // 下打样单日期
+  designDate          String? // 设计完成日期
+  moldDate            String? // 开模日期
+  sampleSentDate      String? // 寄样日期
   productionStartDate String? // 生产开始日期
-  shippedDate     String? // 出货日期
-  notes        String?
-  createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  shippedDate         String? // 出货日期
+  notes               String?
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 // ========== 销售管道 ==========
 model SalesPipeline {
-  id          String      @id @default(uuid())
-  pipelineNumber String?  @unique // 商机编号：BO-YYYYMMDD-序号
-  stage       String      @default("LEAD") // LEAD → OPPORTUNITY → ORDER
+  id             String  @id @default(uuid())
+  pipelineNumber String? @unique // 商机编号：BO-YYYYMMDD-序号
+  stage          String  @default("LEAD") // LEAD → OPPORTUNITY → ORDER
 
   // 关联客户
   customerId String?
@@ -237,176 +234,177 @@ model SalesPipeline {
   country     String?
 
   // 线索阶段
-  source          String?  // 来源: XIAOMAN / EXCEL / MANUAL
-  productInterest String?  // 感兴趣的产品
+  source          String? // 来源: XIAOMAN / EXCEL / MANUAL
+  productInterest String? // 感兴趣的产品
   leadNotes       String?
 
   // 商机阶段
-  estimatedAmount    Float?  // 预估金额(CNY)
+  estimatedAmount    Float? // 预估金额(CNY)
   estimatedCloseDate String? // 预计成交日期
   probability        String? // 采购意向：准成交 / 高意向 / 中意向 / 低意向（直接存储文案，不再存数字）
   opportunityNotes   String?
 
   // 订单阶段
-  orderAmount       Float?   // 订单金额(CNY)
-  orderDate         String?  // 下单日期
-  deliveryDate      String?  // 交付日期
-  paymentTerms      String?  // 付款条件
-  orderStatus       String?  // 订单阶段已统一到 Order 模型（DEPOSIT/SAMPLE_ORDER/DESIGN/MOLD/SAMPLE_SENT/PRODUCTION/SHIPPED）
-  orderNotes        String?
+  orderAmount  Float? // 订单金额(CNY)
+  orderDate    String? // 下单日期
+  deliveryDate String? // 交付日期
+  paymentTerms String? // 付款条件
+  orderStatus  String? // 订单阶段已统一到 Order 模型（DEPOSIT/SAMPLE_ORDER/DESIGN/MOLD/SAMPLE_SENT/PRODUCTION/SHIPPED）
+  orderNotes   String?
 
   // 样品单阶段信息（导入兼容）
-  sampleType        String?
-  sampleStatus      String?
-  sampleQuantity    Int?
-  sampleNotes       String?
+  sampleType     String?
+  sampleStatus   String?
+  sampleQuantity Int?
+  sampleNotes    String?
 
   // 系统字段
-  assignedTo String?
-  assignee   User?       @relation(fields: [assignedTo], references: [id])
-  activities SalesActivity[]
+  assignedTo   String?
+  assignee     User?           @relation(fields: [assignedTo], references: [id])
+  activities   SalesActivity[]
   leadProducts LeadProduct[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
 }
 
 // ========== 工艺 ==========
 model ProductCraft {
-  id        String   @id @default(uuid())
-  name      String   @unique              // 搪胶 / 注塑 / 硅胶（基础工艺，可多选组合）
-  code      String?  @unique              // 编码（如 TJ / ZS / GJ），用于自动生成 SKU
-  sort      Int      @default(0)
-  status    Int      @default(1)          // 1 启用 / 0 停用
-  products  Product[]                    // 多对多：一个产品可挂多个工艺
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String          @id @default(uuid())
+  name      String          @unique // 搪胶 / 注塑 / 硅胶（基础工艺，可多选组合）
+  code      String?         @unique // 编码（如 TJ / ZS / GJ），用于自动生成 SKU
+  sort      Int             @default(0)
+  status    Int             @default(1) // 1 启用 / 0 停用
+  products  SingleProduct[] // 多对多：一个单品可挂多个工艺
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 }
 
 // ========== 二级受众 ==========
 model ProductAudience {
-  id         String   @id @default(uuid())
-  name       String   @unique             // 儿童 / 宠物 / 配件 / 文具 / 家居
-  code       String?  @unique             // 编码（如 ET / CW / PJ / WJ / JJ），用于自动生成 SKU
-  sort       Int      @default(0)
-  status     Int      @default(1)
-  categories ProductCategory[]            // 关联三级品类
-  products   Product[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id         String            @id @default(uuid())
+  name       String            @unique // 儿童 / 宠物 / 配件 / 文具 / 家居
+  code       String?           @unique // 编码（如 ET / CW / PJ / WJ / JJ），用于自动生成 SKU
+  sort       Int               @default(0)
+  status     Int               @default(1)
+  categories ProductCategory[] // 关联三级品类
+  products   SingleProduct[]
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
 }
 
 // ========== 三级产品品类 ==========
 model ProductCategory {
-  id        String   @id @default(uuid())
-  name      String                        // 沐浴玩具 / 挤压玩具 / 存钱罐 ...
+  id         String          @id @default(uuid())
+  name       String // 沐浴玩具 / 挤压玩具 / 存钱罐 ...
   audienceId String
-  audience  ProductAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
-  sort      Int      @default(0)
-  status    Int      @default(1)
-  products  Product[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  audience   ProductAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+  sort       Int             @default(0)
+  status     Int             @default(1)
+  products   SingleProduct[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
 
   @@unique([audienceId, name])
 }
 
 // ========== 产品 ==========
 // 定制类产品核心模型：工艺 → 受众 → 品类 三级分类 + 产品属性 + 产品要求
-model Product {
-  id          String   @id @default(cuid())
-  name        String
-  sku         String?  @unique
+// ============ 单品表（原 Product 的主体；组合由单品构成）============
+model SingleProduct {
+  id   String  @id @default(cuid())
+  name String
+  sku  String? @unique
 
   // ---- 三级分类 ----
-  crafts      ProductCraft[]                  // 多对多：工艺（可多选，如 搪胶+注塑）
-  audienceId  String?
-  audience    ProductAudience? @relation(fields: [audienceId], references: [id])
-  categoryId  String?
-  category    ProductCategory? @relation(fields: [categoryId], references: [id])
+  crafts     ProductCraft[] // 多对多：工艺（可多选，如 搪胶+注塑）
+  audienceId String?
+  audience   ProductAudience? @relation(fields: [audienceId], references: [id])
+  categoryId String?
+  category   ProductCategory? @relation(fields: [categoryId], references: [id])
 
   // ---- (定制)产品属性（必填）----
-  images      String?                      // 产品图片 JSON 数组 [{url,name}]，第一张为主图
-  sizeL       String?                      // 长 cm
-  sizeW       String?                      // 宽 cm
-  sizeH       String?                      // 高 cm
-  weight      String?                      // 克重 g
-  unit        String   @default("个")       // 产品单位（仅计量，默认「个」，不再有「套」聚合）
+  images String? // 产品图片 JSON 数组 [{url,name}]，第一张为主图
+  sizeL  String? // 长 cm
+  sizeW  String? // 宽 cm
+  sizeH  String? // 高 cm
+  weight String? // 克重 g
 
   // ---- (深/轻)产品要求（打样单号）----
-  sampleNo    String?                      // 打样单号
-  logo        Boolean  @default(false)      // 功能：logo
-  sound       Boolean  @default(false)      // 发声
-  glow        Boolean  @default(false)      // 发光
-  colorChange Boolean  @default(false)      // 变色
-  sprayWater  Boolean  @default(false)      // 喷水
-  colors      String?                      // 颜色（潘通色），逗号分隔
-  packaging   String?                      // 产品包装（卡/盒/袋/桶）
+  sampleNo    String? // 打样单号
+  logo        Boolean @default(false) // 功能：logo
+  sound       Boolean @default(false) // 发声
+  glow        Boolean @default(false) // 发光
+  colorChange Boolean @default(false) // 变色
+  sprayWater  Boolean @default(false) // 喷水
+  colors      String? // 颜色（潘通色），逗号分隔
+  packaging   String? // 产品包装（卡/盒/袋/桶）
 
   // ---- 供货定制模式（多选，由角色决定可选范围）----
-  supplyModes String?  @default("")        // 逗号分隔：DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
+  supplyModes String? @default("") // 逗号分隔：DEEP_CUSTOM/LIGHT_CUSTOM/STOCK
 
   // ---- 认证资质：关联现有证书，逗号分隔证书 id ----
-  certificationIds String? @default("")   // 逗号分隔证书 id
+  certificationIds String? @default("") // 逗号分隔证书 id
 
   // ---- 产品进度（打样 / 报价 阶段多子任务并行）----
-  // JSON 结构：{ stages: { sampling: SamplingStage[], quoting: QuotingStage[] } }
-  // SamplingStage: { id, name, status('pending'|'active'|'done'), steps: { key, label, done }[] }
-  progress   String?   @default("{}")
+  progress String? @default("{}")
 
-  // ---- 保留原有字段 ----
-  spec        String?
-  description String?
-  price       Float?
-  currency    String?  @default("CNY")
-  taxRate     Float?  @default(13)
-  stock       Int?    @default(0)
-  lowStockAlert Int?  @default(0)
-  source      String   @default("MANUAL")
-  // 产品可见性：PUBLIC 所有人可见；PRIVATE 仅指定用户可见（见 ProductVisibleUser）
-  visibility  String   @default("PUBLIC")
-  remark      String?
+  // ---- 价格库存 ----
+  spec          String?
+  description   String?
+  price         Float?
+  currency      String? @default("CNY")
+  taxRate       Float?  @default(13)
+  stock         Int?    @default(0)
+  lowStockAlert Int?    @default(0)
+  source        String  @default("MANUAL")
+  // 单品可见性：PUBLIC 所有人可见；PRIVATE 仅指定用户可见
+  visibility    String  @default("PUBLIC")
+  remark        String?
 
   visibleUsers ProductVisibleUser[]
-  groupItems   ProductGroupItem[] // 作为单品被哪些组合引用
+  groupItems   ComboItem[] // 作为单品被哪些组合引用
   leadProducts LeadProduct[]
-  activities   ProductActivity[]         // 产品操作记录（时间线）
-  createdBy  String?                     // 创建人 id（不公开产品仅创建人 + 指定可见人可查看）
-  creator    User?    @relation("ProductCreator", fields: [createdBy], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  activities   ProductActivity[] // 产品操作记录（时间线）
+  createdBy    String? // 创建人 id
+  creator      User?                @relation("ProductCreator", fields: [createdBy], references: [id])
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 }
 
-// 产品可见人关联：visibility=PRIVATE 时，仅 listed 用户可见该产品
+// 产品可见人关联：visibility=PRIVATE 时，仅 listed 用户可见该单品
 model ProductVisibleUser {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product   SingleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
 
   @@unique([productId, userId])
   @@index([userId])
 }
 
-// 线索-产品关联（一条线索可包含多个产品，带数量）
+// 线索-产品关联（一条线索可包含多个单品，带数量）
 model LeadProduct {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   leadId    String
   productId String
-  quantity  Int      @default(1)
+  quantity  Int           @default(1)
   pipeline  SalesPipeline @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  product   SingleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
 
   @@unique([leadId, productId])
 }
 
 // ========== 产品操作记录 ==========
 model ProductActivity {
-  id        String   @id @default(cuid())
-  productId String
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  id        String         @id @default(cuid())
+  // 关联对象：单品或组合（二选一）
+  productId String? // 单品 id
+  product   SingleProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  comboId   String? // 组合 id
+  combo     ComboProduct?  @relation(fields: [comboId], references: [id], onDelete: Cascade)
   // 操作类型：CREATE / UPDATE / DELETE / STAGE / STATUS 等
   action    String
   // 操作详情（JSON 字符串，记录前后变化或备注）
@@ -419,16 +417,17 @@ model ProductActivity {
   operator  String?
   realName  String? // 操作人姓名（昵称），与 operator 区分：realName 优先展示
   createdBy String?
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
 
   @@index([productId])
+  @@index([comboId])
 }
 
 // ========== 销售活动日志 ==========
 model SalesActivity {
   id         String   @id @default(uuid())
   pipelineId String
-  action     String   // STAGE_CHANGE / NOTE_ADDED / CREATED / UPDATED
+  action     String // STAGE_CHANGE / NOTE_ADDED / CREATED / UPDATED
   fromStage  String?
   toStage    String?
   comment    String?
@@ -441,9 +440,9 @@ model SalesActivity {
 // ========== 每日汇率表 ==========
 model DailyExchangeRate {
   id           String   @id @default(uuid())
-  date         String   // "YYYY-MM-DD"
-  currencyCode String   // USD, EUR, GBP, JPY, etc.
-  ratePerCNY   Float    // 1 CNY = 目标币种汇率
+  date         String // "YYYY-MM-DD"
+  currencyCode String // USD, EUR, GBP, JPY, etc.
+  ratePerCNY   Float // 1 CNY = 目标币种汇率
   createdAt    DateTime @default(now())
 
   @@unique([date, currencyCode], name: "daily_rate_unique")
@@ -451,45 +450,49 @@ model DailyExchangeRate {
 
 // ========== 证书管理 ==========
 model Certificate {
-  id          String   @id @default(cuid())
-  name        String   // 证书名称，如 CE 认证
-  code        String?  // 证书编号 / 标准代号，如 CE / FCC
-  issuer      String?  // 发证机构
-  category    String?  // 分类，如 安全 / 电磁兼容 / 环保
-  validUntil  DateTime? // 有效期至（可选）
-  status      Int      @default(1) // 1 启用 0 停用
-  remark      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  name       String // 证书名称，如 CE 认证
+  code       String? // 证书编号 / 标准代号，如 CE / FCC
+  issuer     String? // 发证机构
+  category   String? // 分类，如 安全 / 电磁兼容 / 环保
+  validUntil DateTime? // 有效期至（可选）
+  status     Int       @default(1) // 1 启用 0 停用
+  remark     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }
 
-// ============ 产品组（用于批量报价 / 打样 / 集合管理）============
-model ProductGroup {
-  id          String   @id @default(cuid())
-  name        String   // 产品组名称
-  description String?  // 备注
-  ownerId     String   // 创建人
-  owner       User     @relation("ProductGroupOwner", fields: [ownerId], references: [id])
-  productIds  String   @default("") // 逗号分隔的产品 id 列表（冗余字段，便于旧接口兼容）
-  status      Int      @default(1)  // 1 启用 0 停用
-  items       ProductGroupItem[] // 组合明细
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ============ 组合（由多个单品构成，用于批量报价 / 打样 / 集合管理）============
+model ComboProduct {
+  id          String            @id @default(cuid())
+  name        String // 组合名称
+  sku         String?           @unique
+  description String? // 备注
+  ownerId     String // 创建人
+  owner       User              @relation("ComboProductOwner", fields: [ownerId], references: [id])
+  status      Int               @default(1) // 1 启用 0 停用
+  remark      String?
+  items       ComboItem[] // 组合明细
+  activities  ProductActivity[] // 组合操作记录（时间线）
+  createdBy   String?
+  creator     User?             @relation("ComboProductCreator", fields: [createdBy], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 }
 
 // 组合明细：一个组合包含多个单品，每行含规格/数量/单价
-model ProductGroupItem {
-  id          String   @id @default(cuid())
-  groupId     String
-  group       ProductGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  productId   String
-  product     Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
-  spec        String?  // 规格（如 尺寸/克重，行内快速新建时填写）
-  quantity    Int      @default(1)
-  price       Float?   // 单品单价
-  sort        Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+model ComboItem {
+  id        String         @id @default(cuid())
+  groupId   String
+  group     ComboProduct   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  productId String? // 关联已有单品；行内快速新建单品时为空，新建后回填
+  product   SingleProduct? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  spec      String? // 规格（如 尺寸/克重，行内快速新建时填写）
+  quantity  Int            @default(1)
+  price     Float? // 单品单价
+  sort      Int            @default(0)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   @@index([groupId])
   @@index([productId])
@@ -499,29 +502,27 @@ model ProductGroupItem {
 model SampleApply {
   id          String   @id @default(cuid())
   targetType  String   @default("PRODUCT") // PRODUCT | GROUP
-  targetId    String   // 产品 id 或产品组 id
-  applicantId String   // 申请人
+  targetId    String // 产品 id 或产品组 id
+  applicantId String // 申请人
   applicant   User     @relation("SampleApplicant", fields: [applicantId], references: [id])
   status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
-  remark      String?  // 申请说明
+  remark      String? // 申请说明
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
 // ============ 报价单 ============
 model Quote {
-  id          String   @id @default(cuid())
-  title       String   // 报价单标题
-  targetType  String   @default("PRODUCT") // PRODUCT | GROUP
-  targetId    String   // 产品 id 或产品组 id
-  productIds  String   @default("") // 关联产品 id（逗号分隔）
-  ownerId     String   // 创建人
-  owner       User     @relation("QuoteOwner", fields: [ownerId], references: [id])
-  status      String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
-  remark      String?
-  items       String?  // 报价明细 JSON（前端可编辑）
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  title      String // 报价单标题
+  targetType String   @default("PRODUCT") // PRODUCT | GROUP
+  targetId   String // 产品 id 或产品组 id
+  productIds String   @default("") // 关联产品 id（逗号分隔）
+  ownerId    String // 创建人
+  owner      User     @relation("QuoteOwner", fields: [ownerId], references: [id])
+  status     String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
+  remark     String?
+  items      String? // 报价明细 JSON（前端可编辑）
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
-
-

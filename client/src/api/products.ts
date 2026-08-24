@@ -89,7 +89,6 @@ export interface Product {
   sizeW?: string | null;        // 宽 cm
   sizeH?: string | null;        // 高 cm
   weight?: string | null;       // 克重 g
-  unit?: string | null;         // 单位
 
   // 产品要求
   sampleNo?: string | null;     // 打样单号
@@ -135,7 +134,6 @@ interface ProductListParams {
   audienceId?: string;
   categoryId?: string;
   visibility?: string;
-  unit?: string;
 }
 
 /** 产品 / 组合 混合列表条目 */
@@ -177,7 +175,6 @@ export interface BatchProductRow {
   audienceId?: string;
   categoryId?: string;
   weight?: string;
-  unit?: string;
   supplyModes?: string;
   description?: string;
   remark?: string;
@@ -194,15 +191,31 @@ export interface BatchCreateResult {
   failed: { index: number; name?: string; reason: string }[];
 }
 
-// ============ 产品组 ProductGroup ============
+// ============ 组合 ComboProduct ============
+export interface ProductGroupItemInput {
+  productId?: string;
+  name?: string;
+  spec?: string;
+  quantity?: number;
+  price?: number;
+  images?: string;
+  sizeL?: string;
+  sizeW?: string;
+  sizeH?: string;
+  weight?: string;
+  certificationIds?: string;
+  remark?: string;
+}
+
 export interface ProductGroup {
   id: string;
   name: string;
   description?: string | null;
   ownerId: string;
-  productIds: string;
+  productIds?: string; // 兼容旧字段（后端已改用 items，可能为空）
+  items?: ProductGroupItemInput[];
   productCount?: number;
-  products?: { id: string; name: string; sku?: string | null; unit?: string | null; weight?: string | null }[];
+  products?: { id: string; name: string; sku?: string | null; weight?: string | null }[];
   status: number;
   createdAt: string;
   updatedAt: string;
@@ -237,7 +250,7 @@ export interface Quote {
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
   remark?: string | null;
   items?: string | null;
-  products?: { id: string; name: string; sku?: string | null; unit?: string | null; weight?: string | null }[];
+  products?: { id: string; name: string; sku?: string | null; weight?: string | null }[];
   createdAt: string;
 }
 
@@ -250,13 +263,22 @@ export const productGroupApi = {
   getList: (params?: { page?: number; pageSize?: number; keyword?: string }) =>
     request.get<ApiResponse<ProductGroupListResult>>('/product-groups', { params }),
   getById: (id: string) => request.get<ApiResponse<ProductGroup>>(`/product-groups/${id}`),
-  create: (data: { name: string; description?: string; productIds?: string[] }) =>
-    request.post<ApiResponse<ProductGroup>>('/product-groups', data),
-  update: (id: string, data: { name?: string; description?: string; productIds?: string[] }) =>
+  create: (data: {
+    name: string;
+    description?: string;
+    // 组合级分类信息：作为所有行内快速新建单品的分类
+    craftIds?: string[];
+    audienceId?: string;
+    categoryId?: string;
+    visibility?: 'PUBLIC' | 'PRIVATE';
+    visibleUserIds?: string[];
+    items?: ProductGroupItemInput[];
+  }) => request.post<ApiResponse<ProductGroup>>('/product-groups', data),
+  update: (id: string, data: { name?: string; description?: string; items?: ProductGroupItemInput[] }) =>
     request.put(`/product-groups/${id}`, data),
   remove: (id: string) => request.delete(`/product-groups/${id}`),
-  updateProducts: (id: string, productIds: string[], mode: 'add' | 'remove' = 'add') =>
-    request.post(`/product-groups/${id}/products?mode=${mode}`, { productIds }),
+  updateProducts: (id: string, items: ProductGroupItemInput[], mode: 'add' | 'remove' = 'add') =>
+    request.post(`/product-groups/${id}/products?mode=${mode}`, { items }),
 };
 
 export const sampleApi = {
