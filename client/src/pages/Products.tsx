@@ -20,7 +20,7 @@ import { certificateApi, Certificate } from '../api/certificates';
 import { userApi } from '../api/users';
 import { salesApi, SalesItem, STAGE_META } from '../api/sales';
 import ProductImageList from '../components/common/ProductImageList';
-import CreateTypeModal from '../components/common/CreateTypeModal';
+
 import { getProgressPhase, STATUS_TAG_COLOR } from '../components/common/ProductProgress';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { StepBar } from '../components/common/StepBar';
@@ -86,10 +86,7 @@ export default function Products() {
 
   // 弹窗/表单
   const [open, setOpen] = useState(false);
-  const [createTypeOpen, setCreateTypeOpen] = useState(false);
-  // 统一新建流程的模式：单品 / 组合（均为 选分类 → 同一新建产品页，仅组合允许连续新增多个单品）
-  const [createMode, setCreateMode] = useState<'PRODUCT' | 'GROUP' | null>(null);
-  // 组合模式下的待加入单品（已创建但未成组的产品 id）
+  // 新建流程中已添加（待成组）的单品；非空即表示正在组合多个单品
   const [pendingProducts, setPendingProducts] = useState<{ id: string; name: string; sku: string }[]>([]);
   const [detailOpen, setDetailOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
@@ -318,15 +315,8 @@ export default function Products() {
     setStepErr((e) => ({ ...e, craftId: undefined }));
   };
 
-  // 打开「新建」引导弹窗（第一步：选择 单品 / 组合）
+  // 打开「新建」：直接进入 选分类 → 新建产品页（不再选择 单品/组合，组合由连续添加单品体现）
   const openCreate = () => {
-    setCreateTypeOpen(true);
-  };
-
-  // 引导弹窗选择结果：单品 / 组合 进入同一套「选分类 → 新建产品页」流程
-  const handleCreateTypeSelect = (target: 'PRODUCT' | 'GROUP') => {
-    setCreateTypeOpen(false);
-    setCreateMode(target);
     setPendingProducts([]);
     setEditing(null);
     resetStep();
@@ -405,7 +395,7 @@ export default function Products() {
 
   const openEdit = (record: Product) => {
     setEditing(record);
-    setCreateMode(null);
+    setPendingProducts([]);
     pushLayer('edit');
     setOpen(true);
     loadUsers();
@@ -489,7 +479,6 @@ export default function Products() {
         message.success('创建成功');
       }
       setOpen(false);
-      setCreateMode(null);
       setPendingProducts([]);
       invalidateAll(); // 写后失效，下次进入重新拉取最新数据
       fetchList();
@@ -554,7 +543,6 @@ export default function Products() {
       await productGroupApi.create({ name: groupName, description: (form.getFieldValue('groupDesc') || '') || undefined, productIds: ids });
       message.success('产品组已创建');
       setPendingProducts([]);
-      setCreateMode(null);
       setOpen(false);
       invalidateAll();
       fetchList();
@@ -563,13 +551,12 @@ export default function Products() {
     }
   };
 
-  // 组合模式取消/关闭时清理已生成的待加入单品
+  // 新建流程取消/关闭时，若已有待成组单品则清理，避免脏数据
   const cleanupPending = () => {
-    if (createMode === 'GROUP' && pendingProducts.length) {
+    if (!editing && pendingProducts.length) {
       pendingProducts.forEach((p) => productApi.delete(p.id).catch(() => null));
     }
     setPendingProducts([]);
-    setCreateMode(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -716,7 +703,7 @@ export default function Products() {
       <Modal
         title={
           <div className="pm-modal-title">
-            <span className="pm-modal-title-main">{createMode === 'GROUP' ? '新建组合' : (editing ? '编辑产品' : '新建产品')}</span>
+            <span className="pm-modal-title-main">{editing ? '编辑产品' : '新建产品'}</span>
             <span className="pm-sku-head">
               {(() => {
                 const { phase, label } = getProgressPhase(editing?.progress ?? null);
@@ -789,17 +776,25 @@ export default function Products() {
         width={1000}
         zIndex={1100}
         footer={
-          createMode === 'GROUP' && !editing ? (
+          editing ? (
+            [
+              <Button key="cancel" onClick={closeEdit}>取消</Button>,
+              <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
+            ]
+          ) : pendingProducts.length > 0 ? (
+            // 已添加单品 → 组合模式：可继续添加，或生成产品组
             <Space>
               <Button onClick={closeEdit}>取消</Button>
               <Button onClick={handleAddProduct}>添加单品</Button>
               <Button type="primary" onClick={handleGenerateGroup}>生成组合</Button>
             </Space>
           ) : (
-            [
-              <Button key="cancel" onClick={closeEdit}>取消</Button>,
-              <Button key="save" type="primary" onClick={handleSubmit}>保存</Button>,
-            ]
+            // 新建单个产品：可直接保存，或「添加单品」开始组合
+            <Space>
+              <Button onClick={closeEdit}>取消</Button>
+              <Button onClick={handleAddProduct}>添加单品</Button>
+              <Button type="primary" onClick={handleSubmit}>保存</Button>
+            </Space>
           )
         }
         // forceRender 让 form 常驻连接，打开时可直接 setFieldsValue，避免 useForm not connected 警告
@@ -847,7 +842,7 @@ export default function Products() {
 
             {/* 右：基础信息栏（单列整行） */}
             <Col xs={24} xl={{ flex: '2 1 0%' }} className="pm-col-stretch">
-              {createMode === 'GROUP' && !editing && (
+              {!editing && pendingProducts.length > 0 && (
                 <Card title="组合信息" variant="outlined" className="pm-card" style={{ marginBottom: 16 }}>
                   <Form.Item name="groupName" label="组合名称" rules={[{ required: true, message: '请输入组合名称' }]} style={{ marginBottom: 12 }}>
                     <Input placeholder="如 2024春季毛绒新品组" />
@@ -1115,12 +1110,6 @@ export default function Products() {
         open={groupManageOpen}
         onClose={() => setGroupManageOpen(false)}
         onChanged={() => fetchList()}
-      />
-      {/* 新建引导弹窗：选择 单品 / 组合 */}
-      <CreateTypeModal
-        open={createTypeOpen}
-        onCancel={() => setCreateTypeOpen(false)}
-        onSelect={handleCreateTypeSelect}
       />
     </div>
   );
