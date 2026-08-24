@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Avatar, Badge, Dropdown } from 'antd';
 import {
   UserOutlined,
@@ -23,8 +24,18 @@ interface HeaderToolsProps {
 export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderToolsProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { currency } = useCurrencyStore();
-  const rateToCNY = useCurrencyStore.getState().getRateToCNY();
+  const { currency, rates } = useCurrencyStore();
+  // 响应式计算汇率展示文本（直接读 getState 不会随 rates 更新重新渲染）
+  const rateToCNY = useMemo(() => {
+    if (currency.code === 'CNY') return null;
+    const r = rates[currency.code];
+    if (!r) return null;
+    const toCNY = 1 / r;
+    if (currency.code === 'JPY' || currency.code === 'KRW') {
+      return `1 ${currency.code} ≈ ${toCNY.toFixed(4)} CNY`;
+    }
+    return `1 ${currency.code} ≈ ${toCNY.toFixed(3)} CNY`;
+  }, [currency, rates]);
   const currentLang = i18n.language;
 
   const toggleLanguage = () => {
