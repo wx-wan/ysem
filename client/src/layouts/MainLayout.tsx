@@ -14,7 +14,6 @@ import {
   SendOutlined,
   TeamOutlined,
   FileDoneOutlined,
-  BarChartOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -40,7 +39,6 @@ const routeTitles: Record<string, string> = {
   '/production': '生产',
   '/shipment': '出货',
   '/settlement': '结算',
-  '/reports': '报告',
   '/system/user': '用户管理',
   '/system/role': '角色管理',
   '/system/dept': '部门管理',
@@ -122,7 +120,6 @@ export default function MainLayout() {
     ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
-    ...(hasPerm('reports') ? [{ key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') }] : []),
   ];
 
   // 当前选中项与展开项

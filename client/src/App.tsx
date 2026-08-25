@@ -16,7 +16,6 @@ import SalesOrdersPage from './pages/SalesOrders';
 import QuotePage from './pages/QuotePage';
 import SamplePage from './pages/SamplePage';
 import SettlementPage from './pages/SettlementPage';
-import ReportsPage from './pages/Reports';
 import OrdersPage from './pages/Orders';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
@@ -76,7 +75,6 @@ function App() {
         <Route path="shipment" element={<ShipmentPage />} />
         <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
-        <Route path="reports" element={<ReportsPage />} />
       </Route>
       {/* 独立的系统设置页面（无侧边栏，与业务页面区分） */}
       <Route
