@@ -4,7 +4,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
-import SegmentedTabBar from '../components/common/SegmentedTabBar';
+import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import UserManagementPage from './UserManagement';
 import PermPage from './Perm';
 import ProductManagementPage from './ProductManagement';
@@ -41,14 +41,16 @@ export default function DesignApp() {
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('header.systemDesign')}</Title>
         <div style={{ flex: 1 }} />
+        <CapsuleSwitch
+          className="design-top-nav"
+          tone="primary"
+          value={tab}
+          options={uniqueTabs.map((x) => ({ label: x.label, key: x.key }))}
+          onChange={(v) => setTab(v)}
+        />
       </div>
       <div className="design-body">
-        <SegmentedTabBar
-          options={uniqueTabs.map((x) => ({ label: x.label, key: x.key }))}
-          value={tab}
-          onChange={(v) => setTab(v as DesignTab)}
-        />
-        <div style={{ marginTop: 16 }}>
+        <div>
           {tab === 'user' && <UserManagementPage />}
           {tab === 'perm' && <PermPage />}
           {tab === 'product' && <ProductManagementPage systemOnly />}
