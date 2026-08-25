@@ -965,10 +965,10 @@ html, body {
 
 /* --- 无商机客户(void)：灰色 --- */
 
-/* ========== 独立系统设计页（无侧边栏，与业务页面区分） ========== */
+/* ========== 独立系统设置页（无侧边栏，与业务页面区分） ========== */
 .design-app {
   min-height: 100vh;
-  background: #f5f7fa;
+  background: var(--c-bg);
 }
 .design-header {
   display: flex;
@@ -976,14 +976,22 @@ html, body {
   gap: 16px;
   height: 56px;
   padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #eef0f4;
+  /* 顶部导航：浅色渐变（非饱和），文字深色，符合全站 header 规范 */
+  background: linear-gradient(135deg, #f0f7ff, #e0efff);
+  border-bottom: 1px solid var(--c-border);
+  box-shadow: var(--shadow-rest);
   position: sticky;
   top: 0;
   z-index: 10;
 }
+.design-header .ant-typography {
+  color: var(--c-text);
+}
+.design-title {
+  letter-spacing: 0.5px;
+}
 .design-body {
-  padding: 20px 24px 32px;
+  padding: 24px 24px 36px;
   max-width: 1200px;
   margin: 0 auto;
 }
