@@ -120,6 +120,20 @@ export default function CreateOrderFromProductModal({
 
   const columns = [
     {
+      title: '绑定产品',
+      dataIndex: 'productId',
+      width: 120,
+      render: (_: any, r: InitialItem) => (
+        <span>
+          {r.productId ? (
+            <Tag color="geekblue">{targetType === 'PRODUCT' ? productName : '组合'}</Tag>
+          ) : (
+            <span style={{ opacity: 0.45 }}>未绑定</span>
+          )}
+        </span>
+      ),
+    },
+    {
       title: '名称',
       dataIndex: 'name',
       render: (_: any, _r: InitialItem, idx: number) => (
@@ -142,14 +156,14 @@ export default function CreateOrderFromProductModal({
       ),
     },
     {
-      title: '单价',
+      title: '报价单价',
       dataIndex: 'unitPrice',
       width: 110,
       render: (_: any, _r: InitialItem, idx: number) => (
         <InputNumber
           min={0}
           value={items[idx].unitPrice}
-          placeholder="成本核算"
+          placeholder="报价价格"
           onChange={(v) => updateItem(idx, { unitPrice: v === null ? undefined : Number(v) })}
         />
       ),
@@ -208,7 +222,7 @@ export default function CreateOrderFromProductModal({
           columns={columns as any}
           pagination={false}
           footer={() => (
-            <a onClick={() => setItems((prev) => [...prev, { name: '', quantity: 1, key: genKey() }])}>添加明细行</a>
+            <a onClick={() => setItems((prev) => [...prev, { name: '', quantity: 1, key: genKey(), productId: targetId }])}>添加明细行（绑定当前产品）</a>
           )}
         />
         <Form.Item name="remark" label="备注" style={{ marginTop: 12 }}>
