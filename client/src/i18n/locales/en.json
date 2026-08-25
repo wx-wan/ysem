@@ -90,7 +90,7 @@
     "systemDept": "Department Management",
     "systemPerm": "Permission Management",
     "systemProductTaxonomy": "Product Taxonomy",
-    "systemCertificates": "Certificates"
+    "systemCertificates": "File Management"
   },
   "user": {
     "title": "User Management",

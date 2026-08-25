@@ -31,7 +31,7 @@ export default function ProductManagement({ systemOnly = false }: { systemOnly?:
   const TABS = systemOnly
     ? [
         { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
-        { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
+        { label: t('menu.systemCertificates') || '档案管理', key: 'certificate' },
       ]
     : [{ label: t('menu.products') || '产品', key: 'product' }];
 

@@ -32,7 +32,7 @@ export default function DesignApp() {
     { label: t('menu.systemUser'), key: 'user' as const, perm: 'system:user' },
     { label: t('menu.systemPerm'), key: 'perm' as const, perm: 'system:perm' },
     { label: t('menu.systemProductTaxonomy'), key: 'product' as const, perm: 'product:taxonomy:view' },
-    { label: t('menu.systemCertificates') || '证书', key: 'product' as const, perm: 'certificate:view' },
+    { label: t('menu.systemCertificates') || '档案管理', key: 'product' as const, perm: 'certificate:view' },
     { label: '操作日志', key: 'logs' as const, perm: 'system:perm' },
     { label: '审批管理', key: 'approval' as const, perm: 'system:perm' },
   ].filter((x) => hasPerm(x.perm));
