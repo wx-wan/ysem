@@ -8,13 +8,15 @@ import SegmentedTabBar from '../components/common/SegmentedTabBar';
 
 type Tab = 'product' | 'taxonomy' | 'certificate';
 
-export default function ProductManagement() {
+export default function ProductManagement({ systemOnly = false }: { systemOnly?: boolean }) {
   const { t } = useTranslation();
   const location = useLocation();
 
   const init: Tab = location.pathname.startsWith('/system/certificates')
     ? 'certificate'
     : location.pathname.startsWith('/system/product-taxonomy')
+    ? 'taxonomy'
+    : systemOnly
     ? 'taxonomy'
     : 'product';
 
@@ -26,11 +28,18 @@ export default function ProductManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const TABS = [
-    { label: t('menu.products') || '产品', key: 'product' },
-    { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
-    { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
-  ];
+  const TABS = (
+    systemOnly
+      ? [
+          { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
+          { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
+        ]
+      : [
+          { label: t('menu.products') || '产品', key: 'product' },
+          { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
+          { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
+        ]
+  );
 
   return (
     <div className="product-management">

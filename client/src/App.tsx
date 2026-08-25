@@ -74,8 +74,8 @@ function App() {
         <Route path="system/role" element={<PermRoute perm="system:role"><UserManagementPage /></PermRoute>} />
         <Route path="system/dept" element={<PermRoute perm="system:dept"><UserManagementPage /></PermRoute>} />
         <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
-        <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage /></PermRoute>} />
-        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><ProductManagementPage /></PermRoute>} />
+        <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />
+        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><ProductManagementPage systemOnly /></PermRoute>} />
         <Route path="system/operation-logs" element={<PermRoute perm="system:perm"><OperationLogsPage /></PermRoute>} />
         <Route path="system/approval" element={<PermRoute perm="system:perm"><SettingsApprovalPage /></PermRoute>} />
       </Route>
