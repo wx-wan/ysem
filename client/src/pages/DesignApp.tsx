@@ -39,7 +39,7 @@ export default function DesignApp() {
         <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
           {t('menu.dashboard')}
         </Button>
-        <Title level={4} style={{ margin: 0 }}>{t('header.settings')}</Title>
+        <Title level={4} style={{ margin: 0 }}>{t('header.systemDesign')}</Title>
         <div style={{ flex: 1 }} />
       </div>
       <div className="design-body">

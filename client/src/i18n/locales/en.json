@@ -220,7 +220,7 @@
   },
   "header": {
     "profile": "Profile",
-    "systemDesign": "System Design",
+    "systemDesign": "System Settings",
     "changePassword": "Change Password",
     "logout": "Logout"
   },

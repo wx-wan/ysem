@@ -220,7 +220,7 @@
   },
   "header": {
     "profile": "个人信息",
-    "systemDesign": "系统设计",
+    "systemDesign": "系统设置",
     "changePassword": "修改密码",
     "logout": "退出登录"
   },
