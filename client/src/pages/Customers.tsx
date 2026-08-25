@@ -15,7 +15,7 @@ import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
-import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
+import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
@@ -78,7 +78,7 @@ export default function CustomersPage() {
 
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
-  const [convertPipeline, setConvertPipeline] = useState<SalesItem | null>(null);
+  const [convertPipeline, setConvertPipeline] = useState<RealPipeline | null>(null);
 
   // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
   const [detailVersion, setDetailVersion] = useState(0);
@@ -211,14 +211,14 @@ export default function CustomersPage() {
 
   // 列表项上的聚合字段（商机金额/成交金额/最后下单日期）由 list 接口计算，
   // getById（详情接口）不返回它们；合并详情数据时必须保留，否则会被清成 undefined。
-  const AGG_FIELDS: (keyof Customer)[] = ['pipelineAmount', 'totalAmount', 'lastOrderDate'];
+  const AGG_FIELDS = ['pipelineAmount', 'totalAmount', 'lastOrderDate'] as const;
 
   // 用 next 覆盖 prev 的变化字段，但保留 prev 上 list 接口的聚合字段（next 没有时不清空）
   const mergeKeepAgg = useCallback((prev: Customer | null, next: Customer): Customer => {
     if (!prev || prev.id !== next.id) return next;
     const merged = { ...prev, ...next };
     for (const f of AGG_FIELDS) {
-      if (next[f] === undefined) merged[f] = prev[f];
+      if (next[f] === undefined) (merged as any)[f] = (prev as any)[f];
     }
     return merged;
   }, []);

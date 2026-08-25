@@ -18,7 +18,7 @@ async function fetchRatesFromAPI(date: string): Promise<Record<string, number>> 
   
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Frankfurter API error: ${res.status}`);
-  const data = await res.json();
+  const data = await res.json() as { rates?: Record<string, number> };
   return data.rates || {};
 }
 

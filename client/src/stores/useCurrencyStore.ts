@@ -30,14 +30,10 @@ interface CurrencyState {
 
   setCurrency: (code: string) => void;
   fetchRates: () => Promise<void>;
-  // 获取指定日期的汇率（从后端每日汇率缓存读取）
-  fetchRatesForDate: (date: string) => Promise<Record<string, number>>;
   // 转换金额
   convert: (amountCNY: number) => number;
   // 格式化金额
   format: (amountCNY: number) => string;
-  // 按历史日期格式化金额（订单成交日期）
-  formatWithDate: (amountCNY: number, date: string) => Promise<string>;
   // 获取当前币种兑 CNY 的汇率展示文本
   getRateToCNY: () => string | null;
 }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Table, Button, Modal, Form, Input, Select, Image, Tag,
-  Popconfirm, App, DatePicker, Card,
+  Popconfirm, App, DatePicker, Card, type TableProps,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -87,7 +87,7 @@ export default function CertificatePage() {
     }
   };
 
-  const columns = [
+  const columns: TableProps<Certificate>['columns'] = [
     {
       title: 'Logo', dataIndex: 'logo', key: 'logo', width: 80, align: 'center',
       render: (src: string | null) =>

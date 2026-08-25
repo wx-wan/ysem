@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Card, Table, Select, Switch, Button, Space, Typography, message, App } from 'antd';
-import { userApi } from '../api/users';
-import { approvalApi } from '../api/approvals';
+import { Card, Table, Select, Switch, Button, Space, Typography, App } from 'antd';
+import { userApi, type User } from '../api/users';
+import { approvalApi, type ApprovalConfigItem } from '../api/approvals';
 
 const { Title, Text } = Typography;
 
@@ -20,7 +20,7 @@ interface Row {
 
 export default function SettingsApprovalPage() {
   const { message: msg } = App.useApp();
-  const [users, setUsers] = useState<{ id: string; realName?: string; username: string }[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [rows, setRows] = useState<Row[]>(
     TYPES.map((t) => ({ type: t.value, enabled: false, approverIds: [], approverNames: [] }))
   );
@@ -29,12 +29,12 @@ export default function SettingsApprovalPage() {
   useEffect(() => {
     userApi.list({ pageSize: 200 }).then((r) => setUsers(r.data?.data?.list || [])).catch(() => {});
     approvalApi.list().then((r) => {
-      const list: Row[] = r.data?.data || [];
+      const list: ApprovalConfigItem[] = r.data?.data || [];
       setRows((prev) =>
         TYPES.map((t) => {
           const cfg = list.find((c) => c.type === t.value);
           const ids: string[] = cfg?.approverIds ? JSON.parse(cfg.approverIds) : [];
-          const names: (string | null)[] = cfg?.approverNames ? JSON.parse(cfg.approverNames) : [];
+          const names: string[] = cfg?.approverNames ? JSON.parse(cfg.approverNames) : [];
           return { type: t.value, enabled: cfg ? cfg.enabled : false, approverIds: ids, approverNames: names };
         })
       );
@@ -48,8 +48,10 @@ export default function SettingsApprovalPage() {
     setSaving(true);
     try {
       for (const r of rows) {
-        const names = r.approverIds.map((id) => users.find((u) => u.id === id)?.realName || users.find((u) => u.id === id)?.username || null);
-        await approvalApi.save({ type: r.type as any, approverIds: r.approverIds, approverNames: names, enabled: r.enabled });
+        const names = r.approverIds
+          .map((id) => users.find((u) => u.id === id)?.realName || users.find((u) => u.id === id)?.username || '')
+          .filter(Boolean);
+        await approvalApi.save({ type: r.type as 'QUOTE' | 'SAMPLE' | 'ORDER', approverIds: r.approverIds, approverNames: names, enabled: r.enabled });
       }
       msg.success('审批配置已保存');
     } catch (e: any) {

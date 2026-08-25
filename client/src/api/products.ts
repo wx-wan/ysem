@@ -1,4 +1,5 @@
 import request, { type ApiResponse } from './request';
+import type { Order } from './customers';
 
 // ============ 产品分类 Taxonomy ============
 

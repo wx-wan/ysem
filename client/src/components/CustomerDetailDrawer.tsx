@@ -17,11 +17,11 @@ import FlagIcon from './FlagIcon';
 import KeyAccountStar from './KeyAccountStar';
 import TagSelector from './TagSelector';
 import { findCountry } from '../data/countries';
-import { getCustomerTypeLabel } from './customer/utils';
+import { getCustomerTypeLabel } from './customer/shared/utils';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
-import { customerApi } from '../api/customers';
-import { salesApi, SalesItem } from '../api/sales';
-import type { Customer, Order, CustomerActivity, User } from '../types';
+import { customerApi, type Customer, type Order, type CustomerActivity } from '../api/customers';
+import { salesApi, type SalesItem } from '../api/sales';
+import type { User } from '../api/users';
 
 const { Text } = Typography;
 
@@ -63,7 +63,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   // 商机记录 CRUD 状态
   const [pipelineModalOpen, setPipelineModalOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
-  const [pipelineForm, setPipelineForm] = useState({ name: '', estimatedAmount: undefined as number | undefined, closeProbability: undefined as number | undefined, expectedCloseDate: '' });
+  const [pipelineForm, setPipelineForm] = useState({ title: '', estimatedAmount: undefined as number | undefined, probability: undefined as string | undefined, estimatedCloseDate: '' });
   const [pipelineSaving, setPipelineSaving] = useState(false);
 
   // 加载商机记录
@@ -85,7 +85,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   // 新增商机
   const openCreatePipeline = useCallback(() => {
     setEditingPipeline(null);
-    setPipelineForm({ name: '', estimatedAmount: undefined, closeProbability: undefined, expectedCloseDate: '' });
+    setPipelineForm({ title: '', estimatedAmount: undefined, probability: undefined, estimatedCloseDate: '' });
     setPipelineModalOpen(true);
   }, []);
 
@@ -93,25 +93,25 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
   const openEditPipeline = useCallback((item: SalesItem) => {
     setEditingPipeline(item);
     setPipelineForm({
-      name: item.name,
+      title: item.title,
       estimatedAmount: item.estimatedAmount ?? undefined,
-      closeProbability: item.closeProbability ?? undefined,
-      expectedCloseDate: item.expectedCloseDate ? dayjs(item.expectedCloseDate).format('YYYY-MM-DD') : '',
+      probability: item.probability ?? undefined,
+      estimatedCloseDate: item.estimatedCloseDate ? dayjs(item.estimatedCloseDate).format('YYYY-MM-DD') : '',
     });
     setPipelineModalOpen(true);
   }, []);
 
   // 保存商机
   const handleSavePipeline = useCallback(async () => {
-    if (!pipelineForm.name || !customer) return;
+    if (!pipelineForm.title || !customer) return;
     setPipelineSaving(true);
     try {
       const payload = {
-        name: pipelineForm.name,
+        title: pipelineForm.title,
         customerId: customer.id,
         estimatedAmount: pipelineForm.estimatedAmount ?? 0,
-        closeProbability: pipelineForm.closeProbability ?? 0,
-        expectedCloseDate: pipelineForm.expectedCloseDate || undefined,
+        probability: pipelineForm.probability ?? undefined,
+        estimatedCloseDate: pipelineForm.estimatedCloseDate || undefined,
       };
       if (editingPipeline) {
         await salesApi.update(editingPipeline.id, payload as any);
@@ -350,7 +350,6 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   <div style={{ marginTop: 4 }}>
                     <KeyAccountStar
                       isKeyAccount={editValues.isKeyAccount || false}
-                      customerId={customer?.id}
                       onToggle={() => setEditValues({ ...editValues, isKeyAccount: !editValues.isKeyAccount })}
                     />
                   </div>
@@ -403,8 +402,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
                   <Text type="secondary">重点客户</Text>
                   <KeyAccountStar
                     isKeyAccount={customer.isKeyAccount || false}
-                    customerId={customer.id}
-                    onToggle={() => onRefresh(customer.id)}
+                    onToggle={() => customer && onRefresh(customer.id)}
                   />
                 </div>
               </div>
@@ -599,8 +597,8 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           <div>
             <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>商机名称 *</Text>
             <Input
-              value={pipelineForm.name}
-              onChange={(e) => setPipelineForm({ ...pipelineForm, name: e.target.value })}
+              value={pipelineForm.title}
+              onChange={(e) => setPipelineForm({ ...pipelineForm, title: e.target.value })}
               placeholder="请输入商机名称"
             />
           </div>
@@ -620,8 +618,8 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
             <Col span={12}>
               <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>成交概率 (%)</Text>
               <InputNumber
-                value={pipelineForm.closeProbability}
-                onChange={(val) => setPipelineForm({ ...pipelineForm, closeProbability: val ?? undefined })}
+                value={pipelineForm.probability ? Number(pipelineForm.probability) : undefined}
+                onChange={(val) => setPipelineForm({ ...pipelineForm, probability: val ? String(val) : undefined })}
                 placeholder="0-100"
                 min={0}
                 max={100}
@@ -632,9 +630,9 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
           <div>
             <Text type="secondary" style={{ display: 'block', marginBottom: 4 }}>预计成交日期</Text>
             <Input
-              type="date"
-              value={pipelineForm.expectedCloseDate}
-              onChange={(e) => setPipelineForm({ ...pipelineForm, expectedCloseDate: e.target.value })}
+            type="date"
+            value={pipelineForm.estimatedCloseDate}
+            onChange={(e) => setPipelineForm({ ...pipelineForm, estimatedCloseDate: e.target.value })}
             />
           </div>
         </div>

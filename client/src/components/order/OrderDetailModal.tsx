@@ -46,8 +46,8 @@ const OrderDetailModal: React.FC<Props> = React.memo(({ open, detailOrder, onClo
             </Tag>
           </Col>
           <Col span={12}><Text type="secondary">联系人</Text><br /><Text>{detailOrder.customer?.contactName || '-'}</Text></Col>
-          {detailOrder.notes && (
-            <Col span={24}><Text type="secondary">备注</Text><br /><Text>{detailOrder.notes}</Text></Col>
+          {detailOrder.remark && (
+            <Col span={24}><Text type="secondary">备注</Text><br /><Text>{detailOrder.remark}</Text></Col>
           )}
         </Row>
       </div>

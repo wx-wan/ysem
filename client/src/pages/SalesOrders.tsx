@@ -34,7 +34,7 @@ const SalesOrdersPage: React.FC = () => {
     setLoading(true);
     try {
       const params: Record<string, any> = { page, pageSize };
-      if (statusFilter) params.status = statusFilter;
+      if (statusFilter) params.stage = statusFilter;
       if (search) params.search = search;
       const res = await orderApi.list(params);
       const d = res.data?.data;
@@ -54,7 +54,7 @@ const SalesOrdersPage: React.FC = () => {
   // 统计卡（本地计算）
   const stats = useMemo(() => {
     const totalAmount = list.reduce((s, o) => s + (o.amountCNY || 0), 0);
-    const inProgress = list.filter((o) => o.status !== 'SHIPPED').length;
+    const inProgress = list.filter((o) => o.stage !== 'SHIPPED').length;
     return { count: total || list.length, totalAmount, inProgress };
   }, [list, total]);
 
@@ -72,10 +72,10 @@ const SalesOrdersPage: React.FC = () => {
   };
 
   const advanceStage = async (o: Order) => {
-    const next = nextOrderStatus(o.status);
+    const next = nextOrderStatus(o.stage);
     if (!next) return;
     try {
-      await orderApi.update(o.id, { status: next });
+      await orderApi.update(o.id, { stage: next });
       message.success(`已推进至「${getOrderStatusMeta(next).label}」`);
       fetchList();
     } catch (e: any) {
@@ -88,8 +88,8 @@ const SalesOrdersPage: React.FC = () => {
     <div style={{ display: 'flex', gap: 16, overflowX: 'auto', paddingBottom: 8, alignItems: 'flex-start' }}>
       {ORDER_STAGES.map((stage) => {
         const colItems = statusFilter || search
-          ? list.filter((o) => o.status === stage.key)
-          : list.filter((o) => o.status === stage.key);
+          ? list.filter((o) => o.stage === stage.key)
+          : list.filter((o) => o.stage === stage.key);
         return (
           <div
             key={stage.key}
@@ -137,7 +137,7 @@ const SalesOrdersPage: React.FC = () => {
                       <Tooltip title="推进到下一阶段">
                         <Button
                           type="text" size="small" icon={<ArrowRightOutlined />}
-                          disabled={!nextOrderStatus(o.status)}
+                          disabled={!nextOrderStatus(o.stage)}
                           onClick={() => advanceStage(o)}
                         />
                       </Tooltip>
@@ -161,7 +161,7 @@ const SalesOrdersPage: React.FC = () => {
     {
       title: '阶段', key: 'status', width: 110,
       render: (_: any, o: Order) => {
-        const m = getOrderStatusMeta(o.status);
+        const m = getOrderStatusMeta(o.stage);
         return <Tag color={m.color}>{m.label}</Tag>;
       },
     },

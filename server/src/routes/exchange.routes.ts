@@ -44,7 +44,7 @@ router.get('/', async (_req, res) => {
     const response = await fetch(`https://api.frankfurter.app/latest?from=${from}`, {
       signal: AbortSignal.timeout(8000),
     });
-    const data = await response.json();
+    const data = await response.json() as { base?: string; date?: string; rates?: Record<string, number> };
     res.json({
       code: 0,
       data: {

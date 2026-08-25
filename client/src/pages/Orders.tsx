@@ -6,7 +6,6 @@ import {
 import { PlusOutlined, SearchOutlined, ReloadOutlined, FileTextOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { orderApi, customerApi, Order, OrderItem } from '../api/customers';
 import dayjs from 'dayjs';
-import './Orders.css';
 
 const { Title, Text } = Typography;
 

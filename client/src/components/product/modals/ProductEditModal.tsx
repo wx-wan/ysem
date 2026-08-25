@@ -63,7 +63,7 @@ const joinCertIds = (values: Record<string, unknown>): string =>
   splitCertIds(values.certificationIds).join(',');
 
 // 非负浮点数输入：基于 antd InputNumber，stringMode 保持字符串以兼容后端存储
-const FloatInput = (props: React.ComponentProps<typeof InputNumber>) => {
+const FloatInput = (props: React.ComponentProps<typeof InputNumber> & { allowClear?: boolean }) => {
   // InputNumber 不支持 allowClear，避免透传到 DOM 触发 React 警告
   const { allowClear, ...rest } = props;
   return (
@@ -91,7 +91,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
     // 第一步：分类选择（工艺 / 受众 / 品类）
     const [stepOpen, setStepOpen] = useState(false);
-    const [stepCrafts, setStepCrafts] = useState<ProductCraft[]>([]);
+    const [stepCrafts, setStepCrafts] = useState<{ id: string; name: string }[]>([]);
     const [stepAudience, setStepAudience] = useState<ProductAudience | undefined>();
     const [stepCategory, setStepCategory] = useState<ProductCategory | undefined>();
     const [stepErr, setStepErr] = useState<{ craftId?: string; audienceId?: string; categoryId?: string }>({});
@@ -163,7 +163,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           setStepAudience(aud);
           setCategories(aud?.categories || []);
           setStepCategory(aud?.categories?.find((c) => c.id === record.categoryId));
-          setStepCrafts(Array.isArray(record.crafts) ? record.crafts.map((c) => ({ id: c.id, name: c.name })) : []);
+          setStepCrafts(Array.isArray(record.crafts) ? record.crafts.map((c) => ({ ...c })) : []);
           setOpen(true);
           const values: Record<string, unknown> = {
             name: record.name ?? '',

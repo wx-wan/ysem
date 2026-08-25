@@ -1,4 +1,5 @@
 import { Response, NextFunction } from 'express';
+import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -294,8 +295,8 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     // 使用 SingleProductCreateInput 支持多对多/一对多关联的嵌套写入
     const data: Prisma.SingleProductCreateInput = {
       ...rest,
+      source: rest.source ?? 'MANUAL',
       supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
-      createdBy: req.userId,
       ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
       ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
     };
@@ -622,8 +623,8 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
         const { craftIds: cIds, sku: _ig, visibleUserIds: vIds, ...rest } = parsed;
         const pdata: Prisma.SingleProductCreateInput = {
           ...rest,
+          source: rest.source ?? 'MANUAL',
           supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
-          createdBy: req.userId,
           ...(cIds?.length ? { crafts: { connect: cIds.map((id) => ({ id })) } } : {}),
           ...(vIds?.length ? { visibleUsers: { create: vIds.map((userId) => ({ userId })) } } : {}),
         };

@@ -123,9 +123,9 @@ function computeOverview(customer: Customer): OverviewData {
       }
     }
 
-    // 品类提取：从 notes 中识别品类关键词
-    if (o.notes) {
-      const cats = extractCategories(o.notes);
+    // 品类提取：从备注中识别品类关键词
+    if (o.remark) {
+      const cats = extractCategories(o.remark);
       cats.forEach((c) => {
         categoryMap.set(c, (categoryMap.get(c) || 0) + amt);
       });
@@ -149,15 +149,15 @@ function computeOverview(customer: Customer): OverviewData {
     .sort((a, b) => b.amount - a.amount);
 
   // 下打样单阶段订单数（样品单融入订单流程）
-  const sampleOrderCount = orders.filter(o => o.status === 'SAMPLE_ORDER').length;
+  const sampleOrderCount = orders.filter(o => o.stage === 'SAMPLE_ORDER').length;
 
   // 下打样单阶段订单成交金额
   const sampleOrderAmount = orders
-    .filter(o => o.status === 'SAMPLE_ORDER')
+    .filter(o => o.stage === 'SAMPLE_ORDER')
     .reduce((sum, o) => sum + (o.amountCNY || 0), 0);
 
   // 样品到订单率：下打样单 → 出货
-  const shippedCount = orders.filter(o => o.status === 'SHIPPED').length;
+  const shippedCount = orders.filter(o => o.stage === 'SHIPPED').length;
   const sampleToOrderRate = sampleOrderCount > 0
     ? Math.round((shippedCount / sampleOrderCount) * 100)
     : null;

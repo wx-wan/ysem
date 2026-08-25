@@ -246,9 +246,7 @@ export default function ProductImageList({
               preview={{
                 open: zoomed,
                 onOpenChange: (v) => setZoomed(v),
-                current: safeCurrent,
-                onChange: (cur) => setCurrent(cur),
-                imageRender: (current) => (
+                imageRender: (current: React.ReactNode) => (
                   <>
                     {current}
                     <div className="pil-preview-name">{items[safeCurrent]?.name}</div>
