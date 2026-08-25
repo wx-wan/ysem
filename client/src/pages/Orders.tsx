@@ -41,10 +41,10 @@ function useCurrentUser() {
   return null;
 }
 
-export default function OrdersPage() {
+export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPLE' | 'ORDER' } = {}) {
   const { message: msg } = App.useApp();
   const user = useCurrentUser();
-  const [tab, setTab] = useState<TabKey>('ALL');
+  const [tab, setTab] = useState<TabKey>(fixedType || 'ALL');
   const [status, setStatus] = useState<DocStatus | undefined>();
   const [keyword, setKeyword] = useState('');
   const [data, setData] = useState<Order[]>([]);
@@ -89,7 +89,7 @@ export default function OrdersPage() {
     if (createOpen) {
       customerApi.listMy({ pageSize: 200 }).then((r) => setCustomers(r.data?.data?.list || []));
       form.resetFields();
-      form.setFieldsValue({ type: tab === 'ALL' ? 'ORDER' : tab, status: 'DRAFT' });
+      form.setFieldsValue({ type: (tab === 'ALL' ? 'ORDER' : tab) as any, status: 'DRAFT' });
     }
   }, [createOpen, tab, form]);
 
@@ -202,7 +202,9 @@ export default function OrdersPage() {
     <div className="orders-page">
       <div className="orders-toolbar">
         <Title level={4} style={{ margin: 0 }}>订单管理</Title>
-        <SegmentedTabBar options={TAB_OPTIONS} value={tab} onChange={(v) => { setTab(v as TabKey); setPage(1); }} />
+        {!fixedType && (
+          <SegmentedTabBar options={TAB_OPTIONS} value={tab} onChange={(v) => { setTab(v as TabKey); setPage(1); }} />
+        )}
         <Space>
           <Select
             placeholder="审批状态"

@@ -4,7 +4,6 @@ import { Layout, Menu, Spin, theme } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
-  ShoppingOutlined,
   AppstoreOutlined,
   ProjectOutlined,
   ThunderboltOutlined,
@@ -15,6 +14,8 @@ import {
   ReconciliationOutlined,
   SendOutlined,
   TeamOutlined,
+  ApartmentOutlined,
+  FileProtectOutlined,
   BarChartOutlined,
   SettingOutlined,
   UserOutlined,
@@ -36,15 +37,16 @@ const { Sider, Header, Content } = Layout;
 // 路由 → 页面名映射
 const routeTitles: Record<string, string> = {
   '/dashboard': '仪表盘',
-  '/sales': '销售管理',
-  '/sales/products': '产品',
   '/sales/leads': '线索',
+  '/customers': '客户',
   '/sales/opportunities': '商机',
-  '/sales/orders': '订单',
-  '/production': '生产管理',
-  '/shipment': '发货管理',
-  '/customers': '客户管理',
-  '/reports': '数据报表',
+  '/sales/products': '产品',
+  '/quotes': '报价',
+  '/samples': '打样',
+  '/orders': '订单',
+  '/production': '生产',
+  '/shipment': '出货',
+  '/reports': '报告',
   '/system/user': '用户管理',
   '/system/role': '角色管理',
   '/system/dept': '部门管理',
@@ -52,6 +54,7 @@ const routeTitles: Record<string, string> = {
   '/system/product-taxonomy': '产品管理',
   '/system/certificates': '证书管理',
   '/system/operation-logs': '操作日志',
+  '/system/approval': '审批管理',
 };
 
 export default function MainLayout() {
@@ -112,27 +115,18 @@ export default function MainLayout() {
 
   const { hasPerm } = usePermission();
 
-  // 侧边栏菜单（按权限动态渲染）
+  // 侧边栏菜单（按业务流程顺序扁平化，按权限动态渲染）
   const menuItems: MenuProps['items'] = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
-    ...(hasPerm('sales')
-      ? [
-          {
-            key: 'sales-group',
-            icon: <ShoppingOutlined />,
-            label: t('menu.sales'),
-            children: [
-              ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
-              ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
-              ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
-              ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
-            ],
-          },
-        ]
-      : []),
+    ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
+    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
+    ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
+    ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
+    ...(hasPerm('sales:orders') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
+    ...(hasPerm('sales:orders') ? [{ key: '/samples', icon: <ProfileOutlined />, label: t('menu.sample') }] : []),
+    ...(hasPerm('sales:orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
     ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
-    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
     ...(hasPerm('reports') ? [{ key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') }] : []),
     ...(hasPerm('system')
       ? [
@@ -144,10 +138,13 @@ export default function MainLayout() {
               ...(hasPerm('system:user')
                 ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }]
                 : []),
+              ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <TeamOutlined />, label: t('menu.systemRole') }] : []),
+              ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
               ...(hasPerm('product:taxonomy:view')
                 ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }]
                 : []),
+              ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <FileProtectOutlined />, label: t('menu.systemCertificates') }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/operation-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/approval', icon: <AuditOutlined />, label: '审批管理' }] : []),
             ],
@@ -162,15 +159,12 @@ export default function MainLayout() {
     if (path.startsWith('/sales/products')) return '/sales/products';
     if (path.startsWith('/sales/leads')) return '/sales/leads';
     if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
-    if (path.startsWith('/sales/orders')) return '/sales/orders';
+    if (path.startsWith('/quotes')) return '/quotes';
+    if (path.startsWith('/samples')) return '/samples';
     if (path.startsWith('/system/')) return path;
     return path;
   })();
-  const openKeys = selectedKey.startsWith('/sales')
-    ? ['sales-group']
-    : selectedKey.startsWith('/system')
-    ? ['system-group']
-    : [];
+  const openKeys = selectedKey.startsWith('/system') ? ['system-group'] : [];
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -201,7 +195,7 @@ export default function MainLayout() {
           mode="inline"
           theme="light"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['sales-group']}
+          defaultOpenKeys={['system-group']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderInlineEnd: 'none', background: 'transparent' }}
