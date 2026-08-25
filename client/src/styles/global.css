@@ -965,35 +965,10 @@ html, body {
 
 /* --- 无商机客户(void)：灰色 --- */
 
-/* ========== 独立系统设置页（无侧边栏，左侧分组菜单 + 右侧内容） ========== */
+/* ========== 系统设置页（承载于 MainLayout 内，左侧分组菜单 + 右侧内容） ========== */
 .design-app {
-  min-height: 100vh;
-  background: #f5f7fa;
   display: flex;
-  flex-direction: column;
-}
-.design-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  height: 56px;
-  padding: 0 20px;
-  background: #fff;
-  border-bottom: 1px solid #eef0f4;
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-.design-title {
-  /* 与仪表盘卡片标题(.card-heading)字号层级保持一致 */
-  font-size: 18px !important;
-  font-weight: 700 !important;
-  letter-spacing: 0.5px;
-}
-.design-layout {
-  display: flex;
-  flex: 1;
-  min-height: calc(100vh - 56px);
+  height: 100%;
 }
 .design-sider {
   width: 240px;
@@ -1001,6 +976,7 @@ html, body {
   background: #fff;
   border-right: 1px solid #eef0f4;
   padding: 12px 0;
+  overflow: auto;
 }
 .design-sider .ant-menu {
   border-inline-end: none;
@@ -1010,7 +986,8 @@ html, body {
 }
 .design-main {
   flex: 1;
-  padding: 20px 24px 32px;
+  min-width: 0;
+  padding: 8px 16px 16px;
   overflow: auto;
 }
 .customer-tier-void .ant-card {

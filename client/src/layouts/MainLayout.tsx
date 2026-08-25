@@ -47,6 +47,7 @@ const routeTitles: Record<string, string> = {
   '/system/certificates': '销售管理',
   '/system/operation-logs': '操作日志',
   '/system/approval': '审批管理',
+  '/setting': '系统设置',
 };
 
 export default function MainLayout() {

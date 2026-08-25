@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Button, Typography, Menu } from 'antd';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Menu } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  ArrowLeftOutlined,
   AppstoreOutlined,
   ShoppingOutlined,
   SwapOutlined,
@@ -11,7 +10,6 @@ import {
   NodeIndexOutlined,
   BarChartOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
 import UserManagementPage from './UserManagement';
@@ -19,8 +17,6 @@ import PermPage from './Perm';
 import ProductManagementPage from './ProductManagement';
 import OperationLogsPage from './OperationLogs';
 import SettingsApprovalPage from './SettingsApproval';
-
-const { Title } = Typography;
 
 type SettingItemKey = 'user' | 'perm' | 'archive' | 'logs' | 'approval';
 
@@ -39,15 +35,7 @@ interface SettingGroup {
 
 export default function DesignApp() {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { hasPerm } = usePermission();
-
-  useEffect(() => {
-    document.title = '设置 - Joylifetoy';
-    return () => {
-      document.title = 'Joylifetoy';
-    };
-  }, []);
 
   const groups: SettingGroup[] = [
     {
@@ -123,32 +111,22 @@ export default function DesignApp() {
 
   return (
     <div className="design-app">
-      <div className="design-header">
-        <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
-          返回
-        </Button>
-        <Title level={4} className="design-title" style={{ margin: 0 }}>
-          {t('header.systemDesign')}
-        </Title>
-      </div>
-      <div className="design-layout">
-        <aside className="design-sider">
-          <Menu
-            mode="inline"
-            theme="light"
-            selectedKeys={[selectedKey]}
-            items={menuItems}
-            onClick={(info) => setSelectedKey(info.key as SettingItemKey)}
-          />
-        </aside>
-        <main className="design-main">
-          {selectedKey === 'user' && <UserManagementPage />}
-          {selectedKey === 'perm' && <PermPage />}
-          {selectedKey === 'archive' && <ProductManagementPage systemOnly />}
-          {selectedKey === 'logs' && <OperationLogsPage />}
-          {selectedKey === 'approval' && <SettingsApprovalPage />}
-        </main>
-      </div>
+      <aside className="design-sider">
+        <Menu
+          mode="inline"
+          theme="light"
+          selectedKeys={[selectedKey]}
+          items={menuItems}
+          onClick={(info) => setSelectedKey(info.key as SettingItemKey)}
+        />
+      </aside>
+      <main className="design-main">
+        {selectedKey === 'user' && <UserManagementPage />}
+        {selectedKey === 'perm' && <PermPage />}
+        {selectedKey === 'archive' && <ProductManagementPage systemOnly />}
+        {selectedKey === 'logs' && <OperationLogsPage />}
+        {selectedKey === 'approval' && <SettingsApprovalPage />}
+      </main>
     </div>
   );
 }
