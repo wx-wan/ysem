@@ -1,26 +1,25 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   Button, Space, Tag, App, Drawer, Form, Input, Select, InputNumber, Popconfirm,
-  Row, Col, Card, Dropdown, Empty, Tooltip, Badge,
+  Row, Col, Card, Dropdown, Empty, Tooltip,
 } from 'antd';
 import {
   PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
-  ApartmentOutlined, ShopOutlined, MoreOutlined, GlobalOutlined, ShopTwoTone,
+  ApartmentOutlined, ShopOutlined, MoreOutlined, GlobalOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
-import { theme } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { channelApi, type Channel, type ChannelPayload } from '../api/channel';
 
-const CATEGORY_META: Record<string, { color: string; bg: string; label: string; icon: React.ReactNode }> = {
-  ONLINE: { color: '#1677ff', bg: '#e6f4ff', label: 'channel.catOnline', icon: <GlobalOutlined /> },
-  OFFLINE: { color: '#fa8c16', bg: '#fff7e6', label: 'channel.catOffline', icon: <ShopTwoTone /> },
+// 类别语义色：线上=主色，线下=警示色（均走 antd 预设语义 Tag，与 --c-* 体系一致）
+const CAT_TAG: Record<string, { tag: string; icon: React.ReactNode }> = {
+  ONLINE: { tag: 'blue', icon: <GlobalOutlined style={{ color: 'var(--c-primary)' }} /> },
+  OFFLINE: { tag: 'orange', icon: <EnvironmentOutlined style={{ color: 'var(--c-warning)' }} /> },
 };
 
 export default function ChannelManagement() {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const { token } = theme.useToken();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<Channel[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -157,34 +156,34 @@ export default function ChannelManagement() {
       {/* 概览统计 */}
       <Row gutter={16} style={{ marginBottom: 20 }}>
         <Col xs={12} md={8}>
-          <Card size="small" variant="borderless" style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Card size="small" variant="borderless" className="channel-platform-card">
             <Space align="center">
-              <span style={{ fontSize: 22, color: token.colorPrimary }}><ApartmentOutlined /></span>
+              <span style={{ fontSize: 22, color: 'var(--c-primary)' }}><ApartmentOutlined /></span>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{data.length}</div>
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{t('channel.addPlatform')}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{data.length}</div>
+                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.addPlatform')}</div>
               </div>
             </Space>
           </Card>
         </Col>
         <Col xs={12} md={8}>
-          <Card size="small" variant="borderless" style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Card size="small" variant="borderless" className="channel-platform-card">
             <Space align="center">
-              <span style={{ fontSize: 22, color: '#1677ff' }}><GlobalOutlined /></span>
+              <span style={{ fontSize: 22, color: 'var(--c-primary)' }}><GlobalOutlined /></span>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{t('channel.onlineCount', { n: onlineCount })}</div>
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{t('channel.catOnline')}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{t('channel.onlineCount', { n: onlineCount })}</div>
+                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.catOnline')}</div>
               </div>
             </Space>
           </Card>
         </Col>
         <Col xs={24} md={8}>
-          <Card size="small" variant="borderless" style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}>
+          <Card size="small" variant="borderless" className="channel-platform-card">
             <Space align="center">
-              <span style={{ fontSize: 22, color: '#fa8c16' }}><ShopTwoTone /></span>
+              <span style={{ fontSize: 22, color: 'var(--c-warning)' }}><EnvironmentOutlined /></span>
               <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1 }}>{t('channel.offlineCount', { n: offlineCount })}</div>
-                <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{t('channel.catOffline')}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{t('channel.offlineCount', { n: offlineCount })}</div>
+                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.catOffline')}</div>
               </div>
             </Space>
           </Card>
@@ -197,24 +196,19 @@ export default function ChannelManagement() {
       ) : (
         <Row gutter={[16, 16]}>
           {data.map((platform) => {
-            const meta = CATEGORY_META[platform.category] || CATEGORY_META.ONLINE;
+            const meta = CAT_TAG[platform.category] || CAT_TAG.ONLINE;
             const shops = platform.children || [];
             return (
               <Col xs={24} md={12} xl={8} key={platform.id}>
                 <Card
+                  className="channel-platform-card"
                   loading={loading}
                   styles={{ body: { paddingTop: 14 } }}
-                  style={{
-                    borderRadius: token.borderRadiusLG,
-                    borderTop: `3px solid ${meta.color}`,
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-                    height: '100%',
-                  }}
                   title={
                     <Space>
-                      <span style={{ color: meta.color, fontSize: 16 }}>{meta.icon}</span>
-                      <span style={{ fontWeight: 600 }}>{platform.name}</span>
-                      <Tag color={meta.color} style={{ marginInlineStart: 2 }}>{t(meta.label)}</Tag>
+                      <span style={{ color: platform.category === 'ONLINE' ? 'var(--c-primary)' : 'var(--c-warning)', fontSize: 16 }}>{meta.icon}</span>
+                      <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{platform.name}</span>
+                      <Tag color={meta.tag}>{t(platform.category === 'ONLINE' ? 'channel.catOnline' : 'channel.catOffline')}</Tag>
                       {platform.status === 'DISABLED' && <Tag>{t('channel.disabled')}</Tag>}
                     </Space>
                   }
@@ -229,7 +223,7 @@ export default function ChannelManagement() {
                     </Space>
                   }
                 >
-                  <div style={{ marginBottom: 10, fontSize: 12, color: token.colorTextSecondary }}>
+                  <div style={{ marginBottom: 10, fontSize: 12, color: 'var(--c-text-secondary)' }}>
                     {t('channel.shopCount', { n: shops.length })}
                     {platform.contact && (
                       <span style={{ marginInlineStart: 12 }}>
@@ -239,37 +233,27 @@ export default function ChannelManagement() {
                   </div>
 
                   {shops.length === 0 ? (
-                    <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: token.colorTextQuaternary, border: `1px dashed ${token.colorBorderSecondary}`, borderRadius: token.borderRadius }}>
+                    <div style={{ padding: '14px 0', textAlign: 'center', fontSize: 12, color: 'var(--c-text-secondary)', border: '1px dashed var(--c-border)', borderRadius: 'var(--radius-sm)' }}>
                       {t('channel.emptyShop')}
                     </div>
                   ) : (
                     <Space wrap size={[8, 8]}>
                       {shops.map((shop) => (
                         <Dropdown key={shop.id} menu={shopMenu(shop)} trigger={['click']}>
-                          <div
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              padding: '5px 12px', cursor: 'pointer',
-                              background: token.colorFillQuaternary,
-                              border: `1px solid ${token.colorBorderSecondary}`,
-                              borderRadius: 999, fontSize: 13, color: token.colorText,
-                              transition: 'all .2s',
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = meta.color; e.currentTarget.style.color = meta.color; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorText; }}
+                          <Button
+                            size="small"
+                            icon={<ShopOutlined style={{ color: platform.category === 'ONLINE' ? 'var(--c-primary)' : 'var(--c-warning)', fontSize: 12 }} />}
+                            disabled={shop.status === 'DISABLED'}
                           >
-                            <ShopOutlined style={{ fontSize: 12 }} />
                             {shop.name}
-                            {shop.status === 'DISABLED' && <Badge status="default" />}
-                          </div>
+                          </Button>
                         </Dropdown>
                       ))}
                     </Space>
                   )}
 
                   {platform.remark && (
-                    <div style={{ marginTop: 12, fontSize: 12, color: token.colorTextTertiary, lineHeight: 1.5 }}>
+                    <div style={{ marginTop: 12, fontSize: 12, color: 'var(--c-text-tertiary)', lineHeight: 1.5 }}>
                       {platform.remark}
                     </div>
                   )}
