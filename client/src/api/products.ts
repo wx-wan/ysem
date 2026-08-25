@@ -167,21 +167,6 @@ const productApi = {
 export { productApi };
 export default productApi;
 
-// ============ 批量新建产品 ============
-export interface BatchProductRow {
-  name: string;
-  craftIds?: string[];
-  audienceId?: string;
-  categoryId?: string;
-  weight?: string;
-  supplyModes?: string;
-  description?: string;
-  remark?: string;
-  visibility?: 'PUBLIC' | 'PRIVATE';
-  visibleUserIds?: string[];
-  [key: string]: unknown;
-}
-
 export interface BatchCreateResult {
   total: number;
   successCount: number;
@@ -253,8 +238,15 @@ export interface Quote {
 }
 
 // ---- 接口封装 ----
-export const batchProductApi = {
-  create: (rows: BatchProductRow[]) => request.post<ApiResponse<BatchCreateResult>>('/products/batch', { rows }),
+export const importProductApi = {
+  importExcel: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request.post<ApiResponse<BatchCreateResult>>('/products/import', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  downloadTemplate: () => window.open('/api/products/template', '_blank'),
 };
 
 export const productGroupApi = {

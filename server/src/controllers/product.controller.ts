@@ -1,4 +1,4 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
@@ -34,7 +34,6 @@ const productSchema = z.object({
   // 可见性：PUBLIC 所有人可见；PRIVATE 仅指定用户可见
   visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
   visibleUserIds: z.array(z.string()).nullish(),
-  remark: z.string().nullish(),
   // 产品进度（打样/报价阶段多子任务并行），前端维护的 JSON 字符串
   progress: z.string().nullish(),
 });
@@ -102,7 +101,6 @@ async function buildProductDiff(
     lowStockAlert: '低库存预警',
     source: '产品来源',
     visibility: '可见范围',
-    remark: '备注',
   };
 
   // id → 名称 解析（关联字段）
@@ -331,66 +329,6 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
-// 批量新建产品：一产品一 SKU，不做聚合；逐条校验，返回成功/失败明细
-export const batchCreateProducts = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const body = z.object({ rows: z.array(z.any()).min(1, '请至少提供一条产品数据') }).parse(req.body);
-    const rows = body.rows as unknown[];
-    const created: any[] = [];
-    const failed: { index: number; name?: string; reason: string }[] = [];
-
-    // 逐条处理，单条失败不影响其余（记录失败明细）
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] as Record<string, unknown>;
-      try {
-        const parsed = productSchema.parse(row);
-        const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-        const data: Prisma.SingleProductCreateInput = {
-          ...rest,
-          supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
-          createdBy: req.userId,
-          ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
-          ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
-        };
-        const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
-        const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
-        if (hasFullContext && sku === null) {
-          failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
-          continue;
-        }
-        data.sku = sku;
-        const product = await prisma.singleProduct.create({ data });
-        void activityLogger.log({
-          userId: req.userId || '',
-          username: req.username || '',
-          realName: req.realName,
-          action: 'CREATE',
-          module: 'product',
-          targetId: product.id,
-          target: product.name,
-          detail: `批量创建了产品「${product.name}」`,
-          productId: product.id,
-        });
-        created.push(product);
-      } catch (err) {
-        const reason = err instanceof z.ZodError ? err.errors.map((e) => e.message).join(', ') : '服务器错误';
-        failed.push({ index: i, name: (row?.name as string) ?? undefined, reason });
-      }
-    }
-
-    success(res, {
-      total: rows.length,
-      successCount: created.length,
-      failCount: failed.length,
-      created,
-      failed,
-    });
-  } catch (err) {
-    if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
-    fail(res, 500, '服务器错误');
-  }
-};
-
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = productSchema.partial().parse(req.body);
@@ -564,5 +502,185 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
     success(res, { list, total, page, pageSize });
   } catch {
     fail(res, 500, '服务器错误');
+  }
+};
+
+// ========== Excel 导入产品 ==========
+const PRODUCT_FIELD_MAP: Record<string, string> = {
+  产品名称: 'name',
+  name: 'name',
+  产品简称: 'shortName',
+  工艺: 'craftNames',
+  受众: 'audienceName',
+  品类: 'categoryName',
+  尺寸长: 'sizeL',
+  尺寸宽: 'sizeW',
+  尺寸高: 'sizeH',
+  克重: 'weight',
+  供货模式: 'supplyModes',
+  认证资质: 'certificationNames',
+  描述: 'description',
+  价格: 'price',
+  币种: 'currency',
+  税率: 'taxRate',
+  库存: 'stock',
+  低库存预警: 'lowStockAlert',
+  来源: 'source',
+  可见性: 'visibility',
+  可见人员: 'visibleUsernames',
+};
+
+export const importExcel = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const file = req.file;
+    if (!file) return fail(res, 400, '请上传文件');
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows: any[] = XLSX.utils.sheet_to_json(sheet);
+
+    // 预加载名称→ID 映射
+    const [crafts, audiences, categories, certs, users] = await Promise.all([
+      prisma.productCraft.findMany({ select: { id: true, name: true } }),
+      prisma.productAudience.findMany({ select: { id: true, name: true } }),
+      prisma.productCategory.findMany({ select: { id: true, name: true } }),
+      prisma.certificate.findMany({ select: { id: true, name: true } }),
+      prisma.user.findMany({ select: { id: true, realName: true, username: true } }),
+    ]);
+    const craftMap = new Map(crafts.map((c) => [c.name, c.id]));
+    const audienceMap = new Map(audiences.map((a) => [a.name, a.id]));
+    const categoryMap = new Map(categories.map((c) => [c.name, c.id]));
+    const certMap = new Map(certs.map((c) => [c.name, c.id]));
+    const userMap = new Map<string, string>();
+    users.forEach((u) => { if (u.realName) userMap.set(u.realName, u.id); if (u.username) userMap.set(u.username, u.id); });
+
+    const created: any[] = [];
+    const failed: { index: number; name?: string; reason: string }[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const raw = rows[i];
+      const data: Record<string, any> = {};
+      for (const [key, value] of Object.entries(raw)) {
+        const mapped = PRODUCT_FIELD_MAP[key] || PRODUCT_FIELD_MAP[key.toLowerCase()] || null;
+        if (mapped && value !== undefined && value !== null && value !== '') data[mapped] = value;
+      }
+      if (!data.name) {
+        failed.push({ index: i, reason: '缺少产品名称' });
+        continue;
+      }
+      try {
+        // 名称 → ID 解析
+        const craftIds: string[] = [];
+        if (data.craftNames) {
+          String(data.craftNames).split(/[、,，]/).forEach((n) => {
+            const id = craftMap.get(n.trim());
+            if (id) craftIds.push(id);
+          });
+        }
+        const audienceId = data.audienceName ? audienceMap.get(String(data.audienceName).trim()) : undefined;
+        const categoryId = data.categoryName ? categoryMap.get(String(data.categoryName).trim()) : undefined;
+        const certificationIds: string[] = [];
+        if (data.certificationNames) {
+          String(data.certificationNames).split(/[、,，]/).forEach((n) => {
+            const id = certMap.get(n.trim());
+            if (id) certificationIds.push(id);
+          });
+        }
+        const visibleUserIds: string[] = [];
+        if (data.visibleUsernames) {
+          String(data.visibleUsernames).split(/[、,，]/).forEach((n) => {
+            const id = userMap.get(n.trim());
+            if (id) visibleUserIds.push(id);
+          });
+        }
+
+        const payload: Record<string, any> = {
+          name: data.name,
+          sku: undefined,
+          craftIds,
+          audienceId,
+          categoryId,
+          sizeL: data.sizeL,
+          sizeW: data.sizeW,
+          sizeH: data.sizeH,
+          weight: data.weight,
+          supplyModes: data.supplyModes ? String(data.supplyModes).split(/[、,，]/)[0] : undefined,
+          certificationIds: certificationIds.join(','),
+          description: data.description,
+          price: data.price === undefined ? undefined : Number(data.price),
+          currency: data.currency,
+          taxRate: data.taxRate === undefined ? undefined : Number(data.taxRate),
+          stock: data.stock === undefined ? undefined : Number(data.stock),
+          lowStockAlert: data.lowStockAlert === undefined ? undefined : Number(data.lowStockAlert),
+          source: data.source,
+          visibility: data.visibility === '私有' || data.visibility === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
+          visibleUserIds,
+        };
+
+        const parsed = productSchema.parse(payload);
+        const { craftIds: cIds, sku: _ig, visibleUserIds: vIds, ...rest } = parsed;
+        const pdata: Prisma.SingleProductCreateInput = {
+          ...rest,
+          supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
+          createdBy: req.userId,
+          ...(cIds?.length ? { crafts: { connect: cIds.map((id) => ({ id })) } } : {}),
+          ...(vIds?.length ? { visibleUsers: { create: vIds.map((userId) => ({ userId })) } } : {}),
+        };
+        const hasFullContext = Boolean(cIds?.length && parsed.audienceId);
+        const sku = await buildSkuCode(cIds ?? [], parsed.audienceId ?? null);
+        if (hasFullContext && sku === null) {
+          failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
+          continue;
+        }
+        pdata.sku = sku;
+        const product = await prisma.singleProduct.create({ data: pdata });
+        void activityLogger.log({
+          userId: req.userId || '',
+          username: req.username || '',
+          realName: req.realName,
+          action: 'CREATE',
+          module: 'product',
+          targetId: product.id,
+          target: product.name,
+          detail: `通过 Excel 导入创建了产品「${product.name}」`,
+          productId: product.id,
+        });
+        created.push(product);
+      } catch (err) {
+        const reason = err instanceof z.ZodError ? err.errors.map((e) => e.message).join(', ') : '服务器错误';
+        failed.push({ index: i, name: data.name, reason });
+      }
+    }
+
+    success(res, {
+      total: rows.length,
+      successCount: created.length,
+      failCount: failed.length,
+      created,
+      failed,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 下载导入模板 ==========
+export const downloadTemplate = async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const header = [
+      '产品名称', '工艺', '受众', '品类', '尺寸长', '尺寸宽', '尺寸高', '克重',
+      '供货模式', '认证资质', '描述', '价格', '币种', '税率', '库存', '低库存预警',
+      '来源', '可见性', '可见人员', '备注',
+    ];
+    const ws = XLSX.utils.aoa_to_sheet([header]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '产品导入模板');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="product-import-template.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (err) {
+    next(err);
   }
 };

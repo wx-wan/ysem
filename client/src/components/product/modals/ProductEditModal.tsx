@@ -2,11 +2,11 @@ import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, us
 import { useTranslation } from 'react-i18next';
 import { App } from 'antd';
 import {
-  Form, Input, InputNumber, Select, Button, Tag, Badge, Divider, Spin, Row, Col,
+  Form, Input, InputNumber, Select, Button, Tag, Divider, Spin, Row, Col,
 } from 'antd';
 import AppModal from '../../../components/AppModal';
 import {
-  AppstoreAddOutlined, CopyOutlined, CheckCircleFilled, ReloadOutlined,
+  CheckCircleFilled, ReloadOutlined, ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import productApi, {
@@ -98,10 +98,11 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
     const [categories, setCategories] = useState<ProductCategory[]>([]);
     const [selectedAudienceId, setSelectedAudienceId] = useState<string | undefined>();
-    const [users, setUsers] = useState<{ id: string; username: string }[]>([]);
+    const [users, setUsers] = useState<{ id: string; username: string; realName: string | null }[]>([]);
     const [certificates, setCertificates] = useState<Certificate[]>([]);
     const [visValue, setVisValue] = useState<string>('PUBLIC');
     const [skuPreview, setSkuPreview] = useState<string>('');
+    const watchedVisibleUserIds = Form.useWatch('visibleUserIds', form) as string[] | undefined;
 
     // 本次新建会话累计的单品序列（仅顶层弹窗维护；嵌套弹窗创建后通过 onCreated 回传）
     const [createdSingleIds, setCreatedSingleIds] = useState<string[]>([]);
@@ -112,11 +113,6 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
     // 主弹窗内"重选分类"模式：不再清空已填表单，仅回写分类到表单隐藏字段
     const [reselectMode, setReselectMode] = useState(false);
-
-    // 生成组合弹窗
-    const [groupOpen, setGroupOpen] = useState(false);
-    const [groupForm] = Form.useForm();
-    const [groupSubmitting, setGroupSubmitting] = useState(false);
 
     const isEdit = !!editing;
 
@@ -185,7 +181,6 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
               ? record.visibleUsers.map((v) => v.userId)
               : [],
             description: record.description ?? '',
-            remark: record.remark ?? '',
           };
           setVisValue((values.visibility as string) || 'PUBLIC');
           if (record.audienceId) handleAudienceChange(record.audienceId);
@@ -312,52 +307,14 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
       }
     };
 
-    const openCreateAnother = () => handleSubmit({ openNext: true });
-
-    const openGroupModal = () => {
-      if (createdSingleIds.length === 0) {
-        message.warning('请先创建至少一个单品');
-        return;
-      }
-      groupForm.resetFields();
-      setGroupOpen(true);
-    };
-
-    const handleGroupOk = async () => {
-      try {
-        const v = await groupForm.validateFields();
-        if (!v.name || !String(v.name).trim()) {
-          message.warning('请输入组合名称');
-          return;
-        }
-        setGroupSubmitting(true);
-        const items: ProductGroupItemInput[] = createdSingleIds.map((id) => ({
-          productId: id,
-          images: '',
-          sizeL: '', sizeW: '', sizeH: '', weight: '', certificationIds: '', remark: '',
-        }));
-        await productGroupApi.create({ name: v.name, description: v.description || undefined, items });
-        message.success('组合创建成功');
-        onSuccess?.();
-        setGroupOpen(false);
-        setOpen(false);
-        setCreatedSingleIds([]);
-      } catch (err) {
-        if (err && typeof err === 'object' && 'errorFields' in err) return;
-        message.error('组合创建失败');
-      } finally {
-        setGroupSubmitting(false);
-      }
-    };
-
     const renderFooter = () => {
       if (nested) {
         return <Button type="primary" loading={submitting} onClick={() => handleSubmit()}>保存单品</Button>;
       }
       if (isEdit) {
         return [
-          <Button key="reselect" icon={<ReloadOutlined />} onClick={openReselectCategory} disabled={submitting}>
-            重选分类
+          <Button key="prev" icon={<ArrowLeftOutlined />} onClick={openReselectCategory} disabled={submitting}>
+            上一步
           </Button>,
           <Button key="save" type="primary" loading={submitting} onClick={() => handleSubmit()}>
             更新
@@ -365,18 +322,10 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         ];
       }
       return [
+        <Button key="prev" icon={<ArrowLeftOutlined />} onClick={openReselectCategory} disabled={submitting}>
+          上一步
+        </Button>,
         <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
-        <Button key="group" icon={<AppstoreAddOutlined />} onClick={openGroupModal} disabled={createdSingleIds.length === 0}>
-          <Badge count={createdSingleIds.length} size="small" offset={[4, -2]}>
-            <span>生成组合</span>
-          </Badge>
-        </Button>,
-        <Button key="reselect" icon={<ReloadOutlined />} onClick={openReselectCategory} disabled={submitting}>
-          重选分类
-        </Button>,
-        <Button key="another" icon={<CopyOutlined />} onClick={openCreateAnother} disabled={submitting}>
-          再建一个
-        </Button>,
         <Button key="save" type="primary" loading={submitting} onClick={() => handleSubmit()}>
           保存
         </Button>,
@@ -489,7 +438,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
                     </Row>
                   </div>
                 )}
-              </Form>
+                </Form>
             </div>
           </div>
         </AppModal>
@@ -538,9 +487,11 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
                   allowClear
                   placeholder={t('product.visibleUsersPlaceholder')}
                   className="pm-vis-users"
-                  value={Form.useWatch('visibleUserIds', form) as string[] | undefined}
+                  value={watchedVisibleUserIds}
                   onChange={(v) => form.setFieldsValue({ visibleUserIds: v })}
-                  options={users.map((u) => ({ label: u.username, value: u.id }))}
+                  options={users
+                    .filter((u) => u.id !== currentUser?.id)
+                    .map((u) => ({ label: u.realName || u.username, value: u.id }))}
                 />
               )}
             </div>
@@ -581,11 +532,11 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
                     <Select mode="multiple" placeholder={t('product.certificatesPlaceholder')} allowClear optionFilterProp="label"
                       options={certificates.map((c) => ({ label: c.code ? `${c.name}（${c.code}）` : c.name, value: c.id }))} />
                   </Form.Item>
-                  <Form.Item name="remark" label={t('product.description')} style={{ marginBottom: 0 }}>
-                    <Input.TextArea rows={3} placeholder={t('product.descriptionPlaceholder')} />
-                  </Form.Item>
+                  <Form.Item name="description" label="描述" style={{ marginBottom: 0 }}>
+                      <Input.TextArea rows={3} placeholder="填写产品描述" />
+                    </Form.Item>
+                  </div>
                 </div>
-              </div>
 
               {isEdit && Array.isArray((editing as unknown as { items?: unknown[] }).items) &&
                 ((editing as unknown as { items?: unknown[] }).items?.length ?? 0) > 0 && (
@@ -622,34 +573,6 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
             onSuccess={onSuccess}
           />
         )}
-
-        {/* 生成组合弹窗 */}
-        <AppModal
-          open={groupOpen}
-          onClose={() => setGroupOpen(false)}
-          title={t('product.groupTitle')}
-          width={520}
-          maskClosable={false}
-          bodyPadding={24}
-          footer={(
-            <>
-              <Button onClick={() => setGroupOpen(false)}>取消</Button>
-              <Button type="primary" loading={groupSubmitting} onClick={handleGroupOk}>{t('product.groupCreate')}</Button>
-            </>
-          )}
-        >
-          <p style={{ color: '#999', marginBottom: 16 }}>
-            {t('product.groupHint', { n: createdSingleIds.length })}
-          </p>
-          <Form form={groupForm} layout="vertical">
-            <Form.Item name="name" label={t('product.groupName')} rules={[{ required: true, message: t('product.groupNameRequired') }]}>
-              <Input placeholder={t('product.groupNamePlaceholder')} allowClear />
-            </Form.Item>
-            <Form.Item name="description" label={t('product.groupRemark')}>
-              <Input.TextArea rows={3} placeholder={t('product.groupRemarkPlaceholder')} allowClear />
-            </Form.Item>
-          </Form>
-        </AppModal>
       </>
     );
   },

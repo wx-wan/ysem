@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button, Space, Input, Select,
-  Tag, App, Card, Row, Col, Pagination, Spin, Tooltip, Table, Typography,
+  Tag, App, Card, Row, Col, Pagination, Spin, Tooltip, Table, Typography, Grid, Dropdown,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  ReloadOutlined, UploadOutlined, InfoCircleOutlined,
+  UploadOutlined, InfoCircleOutlined, DownOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import productApi, {
@@ -25,9 +25,8 @@ import ProductGroupCard from '../components/product/cards/ProductGroupCard';
 import ProductGroupManageModal from '../components/product/ProductGroupManageModal';
 import { useAuthStore } from '../stores/useAuthStore';
 import ProductDetailModal from '../components/product/modals/ProductDetailModal';
-import BatchCreateProductModal from '../components/product/modals/BatchCreateProductModal';
+import ProductImportModal from '../components/product/modals/ProductImportModal';
 import { ProductEditModal, ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
-import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import {
   listCacheKey, getListCache, setListCache,
   setDetailCache, installCacheLifecycle, invalidateAll,
@@ -50,13 +49,11 @@ export default function Products() {
 
   // 筛选
   const [keyword, setKeyword] = useState('');
+  const [kwInput, setKwInput] = useState('');
   const navigate = useNavigate();
   const [filterCraftId, setFilterCraftId] = useState<string | undefined>();
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
   const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
-  // 列表内类型筛选：全部 / 产品 / 组合（同列表混排）
-  const [filterType, setFilterType] = useState<'ALL' | 'PRODUCT' | 'GROUP'>('ALL');
-
   // 用户列表（用于「不公开」产品指定可见人）
   const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
   const userMap = useMemo(
@@ -149,7 +146,6 @@ export default function Products() {
       craftIds: filterCraftId,
       audienceId: filterAudienceId,
       visibility: filterVisibility,
-      type: filterType,
     };
     const key = listCacheKey(query);
     const cached = getListCache(key);
@@ -181,7 +177,7 @@ export default function Products() {
       }
     } catch { message.error('加载失败'); }
     finally { setLoading(false); }
-  }, [page, pageSize, keyword, filterCraftId, filterAudienceId, filterVisibility, filterType]);
+  }, [page, pageSize, keyword, filterCraftId, filterAudienceId, filterVisibility]);
 
   const fetchTaxonomy = async () => {
     try {
@@ -196,10 +192,11 @@ export default function Products() {
 
   useEffect(() => { fetchTaxonomy(); }, []);
   useEffect(() => { installCacheLifecycle(); }, []);
-  useEffect(() => { fetchList(); }, [page, filterCraftId, filterAudienceId, filterVisibility, filterType]);
+  // 改变任意筛选即重新查询（关键词在失焦时写入，故此处即时查询）
+  useEffect(() => { fetchList(); }, [page, keyword, filterCraftId, filterAudienceId, filterVisibility]);
 
-  // 第一步卡片式选择的状态
-  const [batchOpen, setBatchOpen] = useState(false);
+  // Excel 导入弹窗
+  const [importOpen, setImportOpen] = useState(false);
   // 组合管理弹窗
   const [groupManageId, setGroupManageId] = useState<string | null>(null);
   const [groupManageOpen, setGroupManageOpen] = useState(false);
@@ -228,12 +225,15 @@ export default function Products() {
         <Row gutter={12} align="middle" wrap>
           <Col flex="auto">
             <Space wrap>
-                <Input
+              <Input
                 placeholder="搜索产品名称 / SKU"
                 prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onPressEnter={fetchList}
+                value={kwInput}
+                onChange={(e) => {
+                  setKwInput(e.target.value);
+                  if (e.target.value === '') setKeyword('');
+                }}
+                onBlur={(e) => setKeyword(e.target.value.trim())}
                 allowClear
                 style={{ width: 260 }}
               />
@@ -264,24 +264,27 @@ export default function Products() {
                   { label: t('product.visibilityPrivate'), value: 'PRIVATE' },
                 ]}
               />
-              <Button type="primary" icon={<SearchOutlined />} onClick={fetchList}>搜索</Button>
-              <Button icon={<ReloadOutlined />} onClick={() => { setKeyword(''); setFilterCraftId(undefined); setFilterAudienceId(undefined); setFilterVisibility(undefined); setFilterType('ALL'); setPage(1); }}>重置</Button>
-              <CapsuleSwitch
-                value={filterType}
-                options={[
-                  { key: 'ALL', label: '全部' },
-                  { key: 'PRODUCT', label: '单品' },
-                  { key: 'GROUP', label: '组合' },
-                ]}
-                onChange={(v) => { setFilterType(v); setPage(1); }}
-              />
             </Space>
           </Col>
           <Col>
             <Space>
               <ViewModeSwitch value={viewMode} onChange={setViewMode} />
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => editModalRef.current?.open()}>新建</Button>
-              <Button icon={<UploadOutlined />} onClick={() => setBatchOpen(true)}>批量新建</Button>
+              <Dropdown
+                menu={{
+                  items: [
+                    { key: 'create', icon: <PlusOutlined />, label: '新建产品' },
+                    { key: 'import', icon: <UploadOutlined />, label: 'Excel 导入' },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'create') editModalRef.current?.open();
+                    else setImportOpen(true);
+                  },
+                }}
+              >
+                <Button type="primary" icon={<PlusOutlined />}>
+                  新建 <DownOutlined />
+                </Button>
+              </Dropdown>
             </Space>
           </Col>
         </Row>
@@ -294,7 +297,7 @@ export default function Products() {
             <Spin size="large" />
           </div>
         ) : list.length === 0 ? (
-          <div className="pm-grid-empty">暂无数据，点击右上角「新建产品」或「新建组合」开始添加</div>
+          <div className="pm-grid-empty">暂无数据，点击右上角「新建」开始添加</div>
         ) : viewMode === 'card' ? (
           <>
             <Row gutter={[16, 16]}>
@@ -383,11 +386,11 @@ export default function Products() {
         userMap={userMap}
       />
 
-      {/* 批量新建产品 */}
-      <BatchCreateProductModal
-        open={batchOpen}
-        onClose={() => setBatchOpen(false)}
-        onSuccess={() => { setBatchOpen(false); fetchList(); }}
+      {/* Excel 导入产品 */}
+      <ProductImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onSuccess={() => { setImportOpen(false); fetchList(); }}
       />
 
       {/* 组合集中管理（成员 / 打样 / 报价 / 编辑 / 删除） */}

@@ -63,7 +63,12 @@ export default function MainLayout() {
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token } = theme.useToken();
   const screens = Grid.useBreakpoint();
-  const [collapsed, setCollapsed] = useState(false);
+  // 屏幕宽度小于 lg(992px) 时默认收起侧边导航
+  const [collapsed, setCollapsed] = useState(!screens.lg);
+
+  useEffect(() => {
+    setCollapsed(!screens.lg);
+  }, [screens.lg]);
 
   // 获取用户信息（防 StrictMode 双重挂载重复请求）
   const profileFetched = useRef(false);

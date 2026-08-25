@@ -331,7 +331,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 marginBottom: 8,
               }}
             >
-              <FileTextOutlined /> 产品备注
+              <FileTextOutlined /> 产品描述
             </div>
             <div
               style={{
@@ -344,8 +344,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 wordBreak: 'break-word',
               }}
             >
-              {product.remark?.trim() || product.description?.trim() ? (
-                product.remark || product.description
+              {product.description?.trim() ? (
+                product.description
               ) : (
                 <span style={{ color: token.colorTextTertiary, fontSize: 13 }}>暂无</span>
               )}
