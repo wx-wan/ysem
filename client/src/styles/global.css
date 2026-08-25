@@ -145,14 +145,14 @@ html, body {
   padding: 0 20px;
   overflow: hidden;
   border-bottom: 1px solid var(--c-border);
-  transition: justify-content 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    padding 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: padding 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* 折叠态：仅显示 logo 并水平居中 */
+/* 折叠态：仅显示 logo 并水平居中（去掉 gap，避免占位把 logo 推偏） */
 .ant-layout-sider-collapsed .sider-brand {
   justify-content: center;
   padding: 0;
+  gap: 0;
 }
 
 .sider-brand .brand-icon {
@@ -167,19 +167,16 @@ html, body {
   font-weight: 700;
   color: var(--c-text);
   white-space: nowrap;
-  overflow: hidden;
-  max-width: 200px;
   opacity: 1;
-  margin-left: 0;
-  transition: opacity 0.18s ease, max-width 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    margin 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.2s ease;
 }
 
 /* 折叠态：文字淡出并收起，仅留居中的 logo */
 .ant-layout-sider-collapsed .sider-brand .brand-text {
   opacity: 0;
   max-width: 0;
-  margin-left: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .sider-trigger {
@@ -1403,8 +1400,7 @@ html, body {
   padding-inline: 0 !important;
   text-align: center;
   justify-content: center;
-  transition: padding 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-    background 0.2s ease, color 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 .ant-layout-sider-collapsed .ant-menu-inline-collapsed .ant-menu-item-icon,
 .ant-layout-sider-collapsed .ant-menu-inline-collapsed .ant-menu-submenu-title > .anticon,
