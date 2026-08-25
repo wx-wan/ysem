@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination, Segmented, Tooltip, Avatar, Empty } from 'antd';
+import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination, Tooltip, Avatar, Empty } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined, SafetyOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -10,6 +10,7 @@ import RoleFormModal from '../components/role/RoleFormModal';
 import RolePermModal from '../components/role/RolePermModal';
 import DeptFormModal from '../components/dept/DeptFormModal';
 import { buildTablePagination } from '../components/common/tablePagination';
+import SegmentedTabBar from '../components/common/SegmentedTabBar';
 import { usePermission } from '../hooks/usePermission';
 
 type TabKey = 'user' | 'role' | 'dept';
@@ -81,10 +82,10 @@ const deptApi = {
   update: (id: string, data: any) => request.put(`/departments/${id}`, data),
 };
 
-const TAB_OPTIONS: { label: string; value: TabKey }[] = [
-  { label: '用户', value: 'user' },
-  { label: '角色', value: 'role' },
-  { label: '部门', value: 'dept' },
+const TAB_OPTIONS: { label: string; key: TabKey }[] = [
+  { label: '用户', key: 'user' },
+  { label: '角色', key: 'role' },
+  { label: '部门', key: 'dept' },
 ];
 
 export default function UserManagementPage() {
@@ -297,10 +298,10 @@ export default function UserManagementPage() {
   ], [t, hasPerm]);
 
   const statusOptions = useMemo(() => [
-    { label: t('common.all'), value: 'ALL' },
-    { label: t('user.statusActive'), value: 'ACTIVE' },
-    { label: t('user.statusDisabled'), value: 'DISABLED' },
-    { label: t('user.statusLocked'), value: 'LOCKED' },
+    { label: t('common.all'), key: 'ALL' },
+    { label: t('user.statusActive'), key: 'ACTIVE' },
+    { label: t('user.statusDisabled'), key: 'DISABLED' },
+    { label: t('user.statusLocked'), key: 'LOCKED' },
   ], [t]);
 
   const parentDeptOptions = useMemo(() => deptsData.map((d) => ({ label: d.name, value: d.id })), [deptsData]);
@@ -314,7 +315,7 @@ export default function UserManagementPage() {
         </div>
       </div>
 
-      <Segmented className="um-tab-switch" options={TAB_OPTIONS} value={tab} onChange={(v) => setTab(v as TabKey)} />
+      <SegmentedTabBar options={TAB_OPTIONS} value={tab} onChange={(v) => setTab(v as TabKey)} />
 
       {/* ===== 用户 Tab ===== */}
       {tab === 'user' && (
@@ -329,7 +330,7 @@ export default function UserManagementPage() {
               onKeyDown={(e) => { if (e.key && e.key.toLowerCase() === 'enter') { e.preventDefault(); setUserPage(1); fetchUsers(); } }}
               allowClear
             />
-            <Segmented className="um-status-filter" options={statusOptions} value={statusFilter} onChange={(v) => { setStatusFilter(v as string); setUserPage(1); }} />
+            <SegmentedTabBar options={statusOptions} value={statusFilter} onChange={(v) => { setStatusFilter(v as string); setUserPage(1); }} />
             <div className="um-toolbar-spacer" />
             <Tooltip title={t('common.refresh')}><Button className="um-refresh" icon={<ReloadOutlined />} onClick={fetchUsers} /></Tooltip>
             {hasPerm('system:user:create') && (

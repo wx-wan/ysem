@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Segmented } from 'antd';
 import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import Products from './Products';
 import ProductTaxonomy from './ProductTaxonomy';
 import CertificatePage from './Certificate';
+import SegmentedTabBar from '../components/common/SegmentedTabBar';
 
 type Tab = 'product' | 'taxonomy' | 'certificate';
 
@@ -27,14 +27,14 @@ export default function ProductManagement() {
   }, [location.pathname]);
 
   const TABS = [
-    { label: t('menu.products') || '产品', value: 'product' },
-    { label: t('menu.systemProductTaxonomy') || '产品分类', value: 'taxonomy' },
-    { label: t('menu.systemCertificates') || '证书', value: 'certificate' },
+    { label: t('menu.products') || '产品', key: 'product' },
+    { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
+    { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
   ];
 
   return (
     <div className="product-management">
-      <Segmented className="um-tab-switch" options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+      <SegmentedTabBar options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
       <div style={{ marginTop: 16 }}>
         {tab === 'product' && <Products />}
         {tab === 'taxonomy' && <ProductTaxonomy />}
