@@ -54,7 +54,7 @@ const SalesOrdersPage: React.FC = () => {
   // 统计卡（本地计算）
   const stats = useMemo(() => {
     const totalAmount = list.reduce((s, o) => s + (o.amountCNY || 0), 0);
-    const inProgress = list.filter((o) => o.stage !== 'SHIPPED').length;
+    const inProgress = list.filter((o) => o.type !== 'SHIPPED').length;
     return { count: total || list.length, totalAmount, inProgress };
   }, [list, total]);
 

@@ -164,6 +164,8 @@ model Customer {
   orders     Order[]
   pipelines  SalesPipeline[]
   activities CustomerActivity[]
+  payments   PaymentRecord[]
+  profits    ProfitRecord[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -184,14 +186,13 @@ model CustomerActivity {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 }
 
-// ========== 通用单据表（报价 / 打样 / 正式订单） ==========
-// type: QUOTE(报价) / SAMPLE(打样) / ORDER(正式订单)
+// ========== 通用单据表（报价 / 打样 / 正式订单 / 生产单 / 出货单） ==========
+// type: QUOTE(报价) / SAMPLE(打样) / ORDER(正式订单) / PRODUCTION(生产单) / SHIPPED(出货单)
 // status: 审批态 DRAFT → SUBMITTED → APPROVED / REJECTED
-// stage: 仅 ORDER 用，生产阶段 7 段：
-//   DEPOSIT(预付款) → SAMPLE_ORDER(下打样单) → DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样) → PRODUCTION(生产) → SHIPPED(出货)
+// stage: 仅 SAMPLE 用（打样阶段）：DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样)
 model Order {
   id          String   @id @default(uuid())
-  type        String   @default("ORDER") // QUOTE / SAMPLE / ORDER
+  type        String   @default("ORDER") // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
   orderNo     String?
   title       String?
   customerId  String
@@ -204,8 +205,8 @@ model Order {
 
   // 审批态（报价/打样/订单通用）
   status      String   @default("DRAFT") // DRAFT / SUBMITTED / APPROVED / REJECTED
-  // 生产阶段（仅 ORDER 使用），其余类型留空
-  stage       String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
+  // 打样阶段（仅 SAMPLE 使用）：DESIGN / MOLD / SAMPLE_SENT，其余类型留空
+  stage       String?  @default("DESIGN") // DESIGN / MOLD / SAMPLE_SENT
 
   items       String?  // 单据明细 JSON：{productId,name,spec,quantity,unitPrice,amount,pipelineId?}[]
   amountCNY   Float?   // 单据金额合计（CNY）
@@ -230,16 +231,68 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // 关联：付款单 / 利润单（以本单为基准）
+  payments  PaymentRecord[]
+  profits   ProfitRecord[]
+
   @@index([type])
   @@index([customerId])
   @@index([status])
+}
+
+// ========== 付款单（收款记录） ==========
+// 记录某单据的收款明细与比例，关联 Order
+model PaymentRecord {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  paymentNo   String?  // 付款单号
+  payDate     String?  // 收款日期
+  amount      Float?   // 本次收款金额（CNY）
+  ratio       Float?   // 收款比例（0-100，相对订单金额）
+  method      String?  // 收款方式：电汇/信用证/支付宝...
+  status      String   @default("RECEIVED") // RECEIVED / PENDING
+  remark      String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
+}
+
+// ========== 利润单（利润核算） ==========
+// 记录某单据的利润核算，关联 Order
+model ProfitRecord {
+  id          String   @id @default(uuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  profitNo    String?  // 利润单号
+  revenue     Float?   // 收入（CNY）
+  cost        Float?   // 成本（CNY）
+  profit      Float?   // 利润 = 收入 - 成本
+  margin      Float?   // 利润率（%）
+  currency    String?  @default("CNY")
+  remark      String?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([customerId])
 }
 
 // ========== 审批配置表 ==========
 // 用于「设置 → 审批管理」中配置各单据类型的审批人
 model ApprovalConfig {
   id           String   @id @default(uuid())
-  type         String   @unique // QUOTE / SAMPLE / ORDER
+  type         String   @unique // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
   approverIds  String?  // 审批人用户 ID 数组 JSON
   approverNames String? // 审批人姓名冗余 JSON
   enabled      Boolean  @default(true)

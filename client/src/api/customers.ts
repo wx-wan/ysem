@@ -87,7 +87,7 @@ export interface AllCustomersRes extends CustomerListRes {
 
 export interface Order {
   id: string;
-  type?: 'QUOTE' | 'SAMPLE' | 'ORDER';
+  type?: 'QUOTE' | 'SAMPLE' | 'ORDER' | 'PRODUCTION' | 'SHIPPED';
   title?: string;
   customerId: string;
   orderNo?: string;
@@ -100,8 +100,8 @@ export interface Order {
   paymentTerms?: string;
   // 审批态（报价/打样/订单通用）
   status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
-  // 生产阶段（仅 ORDER）：预付款 → 下打样单 → 设计 → 开模 → 寄样 → 生产 → 出货
-  stage?: 'DEPOSIT' | 'SAMPLE_ORDER' | 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | 'PRODUCTION' | 'SHIPPED' | null;
+  // 打样阶段（仅 SAMPLE）：设计 → 开模 → 寄样
+  stage?: 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | null;
   items?: string | OrderItem[];
   targetType?: 'PRODUCT' | 'GROUP' | null;
   targetId?: string;
@@ -114,6 +114,42 @@ export interface Order {
   shippedDate?: string;
   remark?: string;
   customer?: { id: string; companyName: string; contactName?: string; ownerId?: string; email?: string; phone?: string; country?: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 付款单（收款记录）
+export interface PaymentRecord {
+  id: string;
+  orderId: string;
+  customerId: string;
+  paymentNo?: string;
+  payDate?: string;
+  amount?: number;        // 本次收款金额
+  ratio?: number;         // 收款比例（%）
+  method?: string;        // 收款方式
+  status?: 'RECEIVED' | 'PENDING';
+  remark?: string;
+  customer?: { id: string; companyName: string };
+  order?: { id: string; orderNo?: string; title?: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 利润单（利润核算）
+export interface ProfitRecord {
+  id: string;
+  orderId: string;
+  customerId: string;
+  profitNo?: string;
+  revenue?: number;       // 收入
+  cost?: number;          // 成本
+  profit?: number;        // 利润
+  margin?: number;        // 利润率（%）
+  currency?: string;
+  remark?: string;
+  customer?: { id: string; companyName: string };
+  order?: { id: string; orderNo?: string; title?: string };
   createdAt: string;
   updatedAt: string;
 }
@@ -229,4 +265,28 @@ export const orderApi = {
 
   reject: (id: string) =>
     request.post<ApiResponse<Order>>(`/orders/${id}/reject`),
+};
+
+// ========== 付款单 API（收款记录） ==========
+export const paymentApi = {
+  list: (params?: Record<string, any>) =>
+    request.get<ApiResponse<PaymentRecord[]>>('/orders/payments', { params }),
+  create: (data: Partial<PaymentRecord>) =>
+    request.post<ApiResponse<PaymentRecord>>('/orders/payments', data),
+  update: (id: string, data: Partial<PaymentRecord>) =>
+    request.put<ApiResponse<PaymentRecord>>(`/orders/payments/${id}`, data),
+  remove: (id: string) =>
+    request.delete<ApiResponse<any>>(`/orders/payments/${id}`),
+};
+
+// ========== 利润单 API（利润核算） ==========
+export const profitApi = {
+  list: (params?: Record<string, any>) =>
+    request.get<ApiResponse<ProfitRecord[]>>('/orders/profits', { params }),
+  create: (data: Partial<ProfitRecord>) =>
+    request.post<ApiResponse<ProfitRecord>>('/orders/profits', data),
+  update: (id: string, data: Partial<ProfitRecord>) =>
+    request.put<ApiResponse<ProfitRecord>>(`/orders/profits/${id}`, data),
+  remove: (id: string) =>
+    request.delete<ApiResponse<any>>(`/orders/profits/${id}`),
 };

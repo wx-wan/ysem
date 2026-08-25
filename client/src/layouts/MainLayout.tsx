@@ -148,12 +148,34 @@ export default function MainLayout() {
             icon: <SettingOutlined />,
             label: t('menu.system'),
             children: [
-              ...(hasPerm('system:user') ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }] : []),
-              ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') }] : []),
-              ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
+              ...(hasPerm('system:user')
+                ? [
+                    {
+                      key: 'user-group',
+                      icon: <UserOutlined />,
+                      label: t('menu.systemUser'),
+                      children: [
+                        ...(hasPerm('system:user') ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }] : []),
+                        ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') }] : []),
+                        ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
+                      ],
+                    },
+                  ]
+                : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
-              ...(hasPerm('product:taxonomy:view') ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }] : []),
-              ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <SafetyOutlined />, label: t('menu.systemCertificates') }] : []),
+              ...(hasPerm('product:taxonomy:view')
+                ? [
+                    {
+                      key: 'product-taxonomy-group',
+                      icon: <AppstoreOutlined />,
+                      label: t('menu.systemProductTaxonomy'),
+                      children: [
+                        ...(hasPerm('product:taxonomy:view') ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }] : []),
+                        ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <SafetyOutlined />, label: t('menu.systemCertificates') }] : []),
+                      ],
+                    },
+                  ]
+                : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/operation-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/approval', icon: <AuditOutlined />, label: '审批管理' }] : []),
             ],
@@ -172,7 +194,17 @@ export default function MainLayout() {
     if (path.startsWith('/system/')) return path;
     return path;
   })();
-  const openKeys = collapsed ? [] : selectedKey.startsWith('/sales') ? ['sales-group'] : selectedKey.startsWith('/system') ? ['system-group'] : [];
+  const openKeys = collapsed
+    ? []
+    : selectedKey.startsWith('/sales')
+    ? ['sales-group']
+    : selectedKey.startsWith('/system')
+    ? (selectedKey.startsWith('/system/user') || selectedKey.startsWith('/system/role') || selectedKey.startsWith('/system/dept')
+        ? ['system-group', 'user-group']
+        : selectedKey.startsWith('/system/product-taxonomy') || selectedKey.startsWith('/system/certificates')
+        ? ['system-group', 'product-taxonomy-group']
+        : ['system-group'])
+    : [];
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>

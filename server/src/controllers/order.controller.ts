@@ -5,13 +5,13 @@ import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
 
 // 单据类型
-export type OrderType = "QUOTE" | "SAMPLE" | "ORDER";
+export type OrderType = "QUOTE" | "SAMPLE" | "ORDER" | "PRODUCTION" | "SHIPPED";
 // 审批态
 export type OrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 // 生成单据号（按类型前缀）
 async function genOrderNo(type: OrderType): Promise<string> {
-  const prefix = type === "QUOTE" ? "Q" : type === "SAMPLE" ? "S" : "O";
+  const prefix = type === "QUOTE" ? "Q" : type === "SAMPLE" ? "S" : type === "PRODUCTION" ? "P" : type === "SHIPPED" ? "H" : "O";
   const date = new Date();
   const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
   const count = await prisma.order.count({ where: { type } });
@@ -157,7 +157,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       return error(res, "无权为该客户操作，请先认领", 403);
     }
 
-    const finalType = (["QUOTE", "SAMPLE", "ORDER"].includes(type) ? type : "ORDER") as OrderType;
+    const finalType = (["QUOTE", "SAMPLE", "ORDER", "PRODUCTION", "SHIPPED"].includes(type) ? type : "ORDER") as OrderType;
     const finalOrderNo = orderNo || (await genOrderNo(finalType));
 
     // 金额合计：若未传 amountCNY 但传了 items，则按 items 计算
@@ -414,6 +414,159 @@ export const listByCustomer = async (req: AuthRequest, res: Response, next: Next
       orderBy: { createdAt: "desc" },
     });
     success(res, orders);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 付款单（收款记录） ==========
+export const listPayments = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { orderId, customerId } = req.query;
+    const where: any = {};
+    if (orderId) where.orderId = String(orderId);
+    if (customerId) where.customerId = String(customerId);
+    const list = await prisma.paymentRecord.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { customer: { select: { id: true, companyName: true } }, order: { select: { id: true, orderNo: true, title: true } } },
+    });
+    success(res, list);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const createPayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.userId!;
+    const { orderId, payDate, amount, ratio, method, status, remark } = req.body;
+    if (!orderId) return error(res, "请选择关联单据", 400);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return error(res, "关联单据不存在", 404);
+    const rec = await prisma.paymentRecord.create({
+      data: {
+        orderId,
+        customerId: order.customerId,
+        paymentNo: `P-${Date.now()}`,
+        payDate,
+        amount: amount !== undefined ? Number(amount) : null,
+        ratio: ratio !== undefined ? Number(ratio) : null,
+        method,
+        status: status || "RECEIVED",
+        remark,
+        createdBy: userId,
+      },
+    });
+    success(res, rec, "创建成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updatePayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { payDate, amount, ratio, method, status, remark } = req.body;
+    const data: any = {};
+    if (payDate !== undefined) data.payDate = payDate;
+    if (amount !== undefined) data.amount = amount ? Number(amount) : null;
+    if (ratio !== undefined) data.ratio = ratio ? Number(ratio) : null;
+    if (method !== undefined) data.method = method;
+    if (status !== undefined) data.status = status;
+    if (remark !== undefined) data.remark = remark;
+    const rec = await prisma.paymentRecord.update({ where: { id }, data });
+    success(res, rec, "更新成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const removePayment = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    await prisma.paymentRecord.delete({ where: { id: req.params.id } });
+    success(res, null, "删除成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 利润单（利润核算） ==========
+export const listProfits = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { orderId, customerId } = req.query;
+    const where: any = {};
+    if (orderId) where.orderId = String(orderId);
+    if (customerId) where.customerId = String(customerId);
+    const list = await prisma.profitRecord.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { customer: { select: { id: true, companyName: true } }, order: { select: { id: true, orderNo: true, title: true } } },
+    });
+    success(res, list);
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const createProfit = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.userId!;
+    const { orderId, revenue, cost, currency, remark } = req.body;
+    if (!orderId) return error(res, "请选择关联单据", 400);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) return error(res, "关联单据不存在", 404);
+    const rev = revenue !== undefined ? Number(revenue) : 0;
+    const cst = cost !== undefined ? Number(cost) : 0;
+    const rec = await prisma.profitRecord.create({
+      data: {
+        orderId,
+        customerId: order.customerId,
+        profitNo: `PR-${Date.now()}`,
+        revenue: rev || null,
+        cost: cst || null,
+        profit: rev - cst,
+        margin: rev > 0 ? ((rev - cst) / rev) * 100 : null,
+        currency: currency || "CNY",
+        remark,
+        createdBy: userId,
+      },
+    });
+    success(res, rec, "创建成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateProfit = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const { revenue, cost, currency, remark } = req.body;
+    const data: any = {};
+    if (revenue !== undefined) data.revenue = revenue ? Number(revenue) : null;
+    if (cost !== undefined) data.cost = cost ? Number(cost) : null;
+    if (currency !== undefined) data.currency = currency;
+    if (remark !== undefined) data.remark = remark;
+    const existing = await prisma.profitRecord.findUnique({ where: { id } });
+    if (existing) {
+      const rev = data.revenue !== undefined ? data.revenue : existing.revenue;
+      const cst = data.cost !== undefined ? data.cost : existing.cost;
+      if (rev !== null && cst !== null) {
+        data.profit = rev - cst;
+        data.margin = rev > 0 ? ((rev - cst) / rev) * 100 : null;
+      }
+    }
+    const rec = await prisma.profitRecord.update({ where: { id }, data });
+    success(res, rec, "更新成功");
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const removeProfit = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    await prisma.profitRecord.delete({ where: { id: req.params.id } });
+    success(res, null, "删除成功");
   } catch (err) {
     next(err);
   }

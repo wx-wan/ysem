@@ -51,6 +51,18 @@ router.get("/", ctrl.list);
  */
 router.get("/customer/:customerId", ctrl.listByCustomer);
 
+// 付款单（收款记录）
+router.get("/payments", ctrl.listPayments);
+router.post("/payments", ctrl.createPayment);
+router.put("/payments/:id", ctrl.updatePayment);
+router.delete("/payments/:id", ctrl.removePayment);
+
+// 利润单（利润核算）
+router.get("/profits", ctrl.listProfits);
+router.post("/profits", ctrl.createProfit);
+router.put("/profits/:id", ctrl.updateProfit);
+router.delete("/profits/:id", ctrl.removeProfit);
+
 // 审批流转
 router.post("/:id/submit", ctrl.submit);
 router.post("/:id/approve", ctrl.approve);

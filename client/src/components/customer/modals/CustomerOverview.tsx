@@ -148,16 +148,16 @@ function computeOverview(customer: Customer): OverviewData {
     .map(([name, amount]) => ({ name, amount, percent: catTotal > 0 ? Math.round(amount / catTotal * 100) : 0 }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 下打样单阶段订单数（样品单融入订单流程）
-  const sampleOrderCount = orders.filter(o => o.stage === 'SAMPLE_ORDER').length;
+  // 打样单数（样品单独立类型）
+  const sampleOrderCount = orders.filter(o => o.type === 'SAMPLE').length;
 
-  // 下打样单阶段订单成交金额
+  // 打样单成交金额
   const sampleOrderAmount = orders
-    .filter(o => o.stage === 'SAMPLE_ORDER')
+    .filter(o => o.type === 'SAMPLE')
     .reduce((sum, o) => sum + (o.amountCNY || 0), 0);
 
-  // 样品到订单率：下打样单 → 出货
-  const shippedCount = orders.filter(o => o.stage === 'SHIPPED').length;
+  // 样品到订单率：打样单 → 出货单
+  const shippedCount = orders.filter(o => o.type === 'SHIPPED').length;
   const sampleToOrderRate = sampleOrderCount > 0
     ? Math.round((shippedCount / sampleOrderCount) * 100)
     : null;

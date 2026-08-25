@@ -1,14 +1,42 @@
-// ========== 订单 7 阶段流程配置 ==========
-// 流程：预付款 → 下打样单 → 设计 → 开模 → 寄样 → 生产 → 出货
+// ========== 单据类型配置 ==========
+// 类型：报价单 / 打样单 / 正式订单 / 生产单 / 出货单
+// 打样阶段（仅 SAMPLE）：设计 → 开模 → 寄样
+
+export type OrderType =
+  | 'QUOTE'
+  | 'SAMPLE'
+  | 'ORDER'
+  | 'PRODUCTION'
+  | 'SHIPPED';
+
+export interface OrderTypeMeta {
+  key: OrderType;
+  label: string;
+  color: string;
+}
+
+// 顶部 Tab 展示的销售记录类型
+export const ORDER_TYPES: OrderTypeMeta[] = [
+  { key: 'QUOTE', label: '报价单', color: 'blue' },
+  { key: 'SAMPLE', label: '打样单', color: 'cyan' },
+  { key: 'ORDER', label: '正式订单', color: 'green' },
+  { key: 'PRODUCTION', label: '生产单', color: 'orange' },
+  { key: 'SHIPPED', label: '出货单', color: 'purple' },
+];
+
+export const ORDER_TYPE_MAP: Record<OrderType, OrderTypeMeta> = ORDER_TYPES.reduce(
+  (acc, s) => { acc[s.key] = s; return acc; }, {} as Record<OrderType, OrderTypeMeta>,
+);
+
+export function getOrderTypeMeta(t?: string | null): OrderTypeMeta {
+  if (t && ORDER_TYPE_MAP[t as OrderType]) return ORDER_TYPE_MAP[t as OrderType];
+  return ORDER_TYPES[2];
+}
 
 export type OrderStatus =
-  | 'DEPOSIT'        // 预付款
-  | 'SAMPLE_ORDER'   // 下打样单
   | 'DESIGN'         // 设计
   | 'MOLD'           // 开模
-  | 'SAMPLE_SENT'    // 寄样
-  | 'PRODUCTION'     // 生产
-  | 'SHIPPED';       // 出货
+  | 'SAMPLE_SENT';   // 寄样
 
 export interface OrderStageMeta {
   key: OrderStatus;
@@ -17,15 +45,11 @@ export interface OrderStageMeta {
   accent: string;      // 看板列强调色（主色系递进）
 }
 
-// 看板列顺序即流程顺序
+// 看板列顺序即打样流程顺序（仅 SAMPLE 使用）
 export const ORDER_STAGES: OrderStageMeta[] = [
-  { key: 'DEPOSIT',      label: '预付款',   color: 'blue',   accent: '#1677ff' },
-  { key: 'SAMPLE_ORDER', label: '下打样单', color: 'cyan',   accent: '#13c2c2' },
   { key: 'DESIGN',       label: '设计',     color: 'geekblue', accent: '#2f54eb' },
   { key: 'MOLD',         label: '开模',     color: 'purple', accent: '#722ed1' },
   { key: 'SAMPLE_SENT',  label: '寄样',     color: 'gold',   accent: '#d48806' },
-  { key: 'PRODUCTION',   label: '生产',     color: 'orange', accent: '#fa8c16' },
-  { key: 'SHIPPED',      label: '出货',     color: 'green',  accent: '#52c41a' },
 ];
 
 export const ORDER_STATUS_MAP: Record<OrderStatus, OrderStageMeta> = ORDER_STAGES.reduce(
