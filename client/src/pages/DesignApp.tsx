@@ -57,13 +57,13 @@ export default function DesignApp() {
       children: [
         { key: 'user', label: t('menu.systemUser'), perm: 'system:user' },
         { key: 'perm', label: t('menu.systemPerm'), perm: 'system:perm' },
-        { key: 'archive', label: t('menu.systemArchive'), perm: 'product:taxonomy:view' },
       ],
     },
     {
       key: 'sales',
       label: t('menu.settingSales'),
       icon: <ShoppingOutlined />,
+      children: [{ key: 'archive', label: t('menu.systemArchive'), perm: 'product:taxonomy:view' }],
     },
     {
       key: 'trade',

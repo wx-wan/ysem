@@ -44,7 +44,7 @@ const routeTitles: Record<string, string> = {
   '/system/dept': '部门管理',
   '/system/perm': '权限管理',
   '/system/product-taxonomy': '产品管理',
-  '/system/certificates': '档案管理',
+  '/system/certificates': '销售管理',
   '/system/operation-logs': '操作日志',
   '/system/approval': '审批管理',
 };
