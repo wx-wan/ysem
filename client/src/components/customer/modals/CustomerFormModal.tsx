@@ -1,5 +1,6 @@
 import React from 'react';
-import { Modal, Form, Input, Select, Row, Col, App } from 'antd';
+import { Modal, Form, Input, DatePicker, Row, Col, App } from 'antd';
+import dayjs from 'dayjs';
 import { customerApi, Customer } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
 
@@ -18,6 +19,9 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      if (values.firstOrderDate && dayjs.isDayjs(values.firstOrderDate)) {
+        values.firstOrderDate = values.firstOrderDate.format('YYYY-MM-DD');
+      }
       setSaving(true);
       if (editingCustomer) {
         await customerApi.update(editingCustomer.id, values);
@@ -63,31 +67,39 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
           <Input placeholder="公司名称" />
         </Form.Item>
-        <Form.Item name="contactName" label="联系人">
-          <Input placeholder="联系人" />
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="contactName" label="联系人">
+              <Input placeholder="联系人" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="position" label="职位">
+              <Input placeholder="职位" />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="country" label="国家">
+          <CountrySelect />
         </Form.Item>
         <Form.Item name="email" label="邮箱">
           <Input placeholder="邮箱" />
         </Form.Item>
-        <Form.Item name="phone" label="电话">
-          <Input placeholder="电话" />
-        </Form.Item>
         <Row gutter={16}>
           <Col span={12}>
-            <Form.Item name="country" label="国家">
-              <CountrySelect />
+            <Form.Item name="phone" label="电话">
+              <Input placeholder="电话" />
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="source" label="来源">
-              <Select placeholder="来源" allowClear>
-                <Select.Option value="MANUAL">手动录入</Select.Option>
-                <Select.Option value="EXCEL">Excel导入</Select.Option>
-                <Select.Option value="XIAOMAN">小满API</Select.Option>
-              </Select>
+            <Form.Item name="wechat" label="微信">
+              <Input placeholder="微信" />
             </Form.Item>
           </Col>
         </Row>
+        <Form.Item name="firstOrderDate" label="首次合作日期">
+          <DatePicker style={{ width: '100%' }} placeholder="首次合作日期" />
+        </Form.Item>
         <Form.Item name="isKeyAccount" hidden>
           <Input />
         </Form.Item>

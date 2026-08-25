@@ -1,6 +1,6 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
-import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
+import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, IdcardOutlined, WechatOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../../KeyAccountStar';
 import type { Customer } from '../../../api/customers';
 import { getGrade, getCustomerLogicLabel } from '../shared/utils';
@@ -183,9 +183,21 @@ const CustomerCard = memo(function CustomerCard({
               <UserOutlined style={{ fontSize: 11, flexShrink: 0 }} />
               <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.contactName || '-'}</span>
             </span>
+            {customer.position && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'rgba(255,255,255,0.72)' }}>
+                <IdcardOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.position}</span>
+              </span>
+            )}
           </div>
-          {/* 下方：联系方式（电话） */}
+          {/* 下方：联系方式（微信 / 电话 / 邮箱） */}
           <div style={{ marginTop: 4, position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px' }}>
+            {customer.wechat && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
+                <WechatOutlined style={{ fontSize: 11, flexShrink: 0 }} />
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.wechat}</span>
+              </span>
+            )}
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
               <PhoneOutlined style={{ fontSize: 11, flexShrink: 0 }} />
               <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.phone || '-'}</span>

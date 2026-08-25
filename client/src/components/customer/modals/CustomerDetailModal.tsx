@@ -19,6 +19,7 @@ import {
   NumberOutlined,
   MoneyCollectOutlined,
   RiseOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
@@ -579,6 +580,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
                   <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
                   <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderDate || undefined} />
+                  <InfoRow icon={<FileTextOutlined style={{ fontSize: 14 }} />} value={customer.notes} />
                 </div>
               </div>
 
