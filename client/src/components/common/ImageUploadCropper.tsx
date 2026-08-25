@@ -25,6 +25,10 @@ export interface ImageUploadCropperProps {
   disabled?: boolean;
   /** 组件 id，用于 label htmlFor 关联 */
   id?: string;
+  /** 裁剪/预览弹窗标题，默认「预览头像」 */
+  previewTitle?: string;
+  /** 预览弹窗底部提示文字，默认「确认后将自动上传并替换当前头像」 */
+  previewTip?: string;
   /** 上传接口地址（baseURL 之外的完整路径或 /api 开头）；传入后确认图片后自动上传并返回 URL */
   uploadUrl?: string;
   /** 上传成功后从响应里取 URL 的路径，默认取 data.url */
@@ -146,6 +150,8 @@ export default function ImageUploadCropper({
   urlField = 'data.url',
   onUploaded,
   cropSquare,
+  previewTitle,
+  previewTip,
 }: ImageUploadCropperProps) {
   const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
@@ -287,7 +293,7 @@ export default function ImageUploadCropper({
       </div>
 
       <Modal
-        title={cropSquare ? '裁剪 Logo' : '预览头像'}
+        title={cropSquare ? '裁剪 Logo' : (previewTitle ?? '预览头像')}
         open={open}
         onCancel={handleCancel}
         width={480}
@@ -332,7 +338,7 @@ export default function ImageUploadCropper({
           </div>
         )}
         <div className="iuc-preview-tip">
-          {cropSquare ? '拖动调整位置、滑动缩放裁剪框，确认即按正方形保存' : '确认后将自动上传并替换当前头像'}
+          {cropSquare ? '拖动调整位置、滑动缩放裁剪框，确认即按正方形保存' : (previewTip ?? '确认后将自动上传并替换当前头像')}
         </div>
       </Modal>
     </>

@@ -39,9 +39,14 @@ interface CurrencyState {
 }
 
 const STORAGE_KEY = 'ysem_currency';
-const RATES_KEY = 'ysem_rates';
+const RATES_CACHE_KEY = 'ysem_exchange_rates';
 
-const RATES_TTL = 24 * 60 * 60 * 1000; // 24 小时缓存
+// 汇率本地缓存结构（按日期缓存，当天不再向后端请求）
+interface RatesCache {
+  date: string; // 汇率对应日期 YYYY-MM-DD
+  rates: Record<string, number>;
+  savedAt: string; // ISO 时间戳
+}
 
 // 从 localStorage 恢复或默认 CNY
 function loadSavedCurrency(): CurrencyInfo {
@@ -55,31 +60,29 @@ function loadSavedCurrency(): CurrencyInfo {
   return CURRENCIES[0]; // 默认 CNY
 }
 
-// 从 localStorage 恢复汇率缓存（含上次更新时间）
-function loadSavedRates(): { rates: Record<string, number>; lastUpdated: string | null } {
+function loadRatesCache(): RatesCache | null {
   try {
-    const saved = localStorage.getItem(RATES_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed && typeof parsed === 'object' && parsed.rates) {
-        return { rates: parsed.rates, lastUpdated: parsed.lastUpdated || null };
-      }
-    }
-  } catch {}
-  return { rates: {}, lastUpdated: null };
+    const raw = localStorage.getItem(RATES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RatesCache;
+    if (!parsed || !parsed.date || typeof parsed.rates !== 'object') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
-function saveRates(rates: Record<string, number>, lastUpdated: string): void {
+function saveRatesCache(cache: RatesCache) {
   try {
-    localStorage.setItem(RATES_KEY, JSON.stringify({ rates, lastUpdated }));
-  } catch {}
+    localStorage.setItem(RATES_CACHE_KEY, JSON.stringify(cache));
+  } catch { /* 存储失败不影响使用 */ }
 }
 
 export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   currency: loadSavedCurrency(),
-  rates: loadSavedRates().rates,
+  rates: {},
   loading: false,
-  lastUpdated: loadSavedRates().lastUpdated,
+  lastUpdated: null,
 
   setCurrency: (code: string) => {
     const found = CURRENCIES.find((c) => c.code === code);
@@ -90,28 +93,32 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   fetchRates: async () => {
-    // 24 小时内已成功获取过汇率则复用缓存，不再请求后端
-    const { lastUpdated, rates } = get();
-    if (lastUpdated && Object.keys(rates).length && Date.now() - new Date(lastUpdated).getTime() < RATES_TTL) {
+    // 1. 本地缓存命中（当天日期）：直接使用，不再请求后端
+    const cached = loadRatesCache();
+    const today = new Date().toISOString().slice(0, 10);
+    if (cached && cached.date === today) {
+      set({ rates: cached.rates, loading: false, lastUpdated: cached.savedAt });
       return;
     }
+
+    // 2. 未命中：请求后端（后端自身有 24h DB 缓存）
     set({ loading: true });
     try {
-      // 通过后端代理请求 Frankfurter，避免 CORS 问题
       const { data } = await axios.get('/api/ext/exchange', {
         params: { from: 'CNY' },
         timeout: 8000,
       });
-      const fetched = data.data?.rates || {};
-      const updatedAt = new Date().toISOString();
-      saveRates(fetched, updatedAt);
-      set({
-        rates: fetched,
-        loading: false,
-        lastUpdated: updatedAt,
-      });
+      const rates = data.data?.rates || {};
+      const date = data.data?.date || today;
+      const savedAt = new Date().toISOString();
+      saveRatesCache({ date, rates, savedAt });
+      set({ rates, loading: false, lastUpdated: savedAt });
     } catch {
-      // 降级：使用内置近似汇率（不写入缓存，下次仍尝试拉取真实汇率）
+      // 3. 请求失败：回退本地缓存；无缓存则用内置近似汇率
+      if (cached) {
+        set({ rates: cached.rates, loading: false, lastUpdated: cached.savedAt });
+        return;
+      }
       set({
         rates: {
           USD: 0.14,

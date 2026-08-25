@@ -7,11 +7,14 @@ import CountrySelect from '../../CountrySelect';
 interface Props {
   open: boolean;
   editingCustomer: Customer | null;
+  /** 新增模式下预填的公司名称（用于线索建档等场景带入） */
+  initialCompanyName?: string;
   onClose: () => void;
-  onSuccess: () => void;
+  /** 保存成功后回调；新建成功时携带新客户对象 */
+  onSuccess?: (customer?: Customer) => void;
 }
 
-const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, onClose, onSuccess }) => {
+const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, onClose, onSuccess }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
@@ -26,12 +29,14 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
       if (editingCustomer) {
         await customerApi.update(editingCustomer.id, values);
         message.success('更新成功');
+        onClose();
+        onSuccess?.();
       } else {
-        await customerApi.create(values);
+        const res = await customerApi.create(values);
         message.success('创建成功');
+        onClose();
+        onSuccess?.(res.data.data);
       }
-      onClose();
-      onSuccess();
     } catch (e: any) {
       if (e.errorFields) return;
       const msg = e?.response?.data?.message || e?.message || '操作失败';
@@ -47,10 +52,10 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         form.setFieldsValue(editingCustomer);
       } else {
         form.resetFields();
-        form.setFieldsValue({ isKeyAccount: false });
+        form.setFieldsValue({ isKeyAccount: false, ...(initialCompanyName ? { companyName: initialCompanyName } : {}) });
       }
     }
-  }, [open, editingCustomer, form]);
+  }, [open, editingCustomer, initialCompanyName, form]);
 
   return (
     <Modal

@@ -74,20 +74,6 @@ export default function ProductTaxonomy() {
     } catch { message.error('删除失败'); }
   };
 
-  // 排序：上移 / 下移（重排后统一写回 sort = 1..N）
-  const handleMove = async (index: number, dir: -1 | 1) => {
-    const list = ACTIVE_API.list;
-    const j = index + dir;
-    if (j < 0 || j >= list.length) return;
-    try {
-      const next = [...list];
-      [next[index], next[j]] = [next[j], next[index]];
-      await Promise.all(next.map((item, i) => ACTIVE_API.update(item.id, { sort: i + 1 })));
-      message.success('排序已更新');
-      fetchData();
-    } catch { message.error('排序失败'); }
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -118,7 +104,9 @@ export default function ProductTaxonomy() {
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (s: number) => (
-        <Tag color={s === 1 ? 'success' : 'default'} variant="filled">{s === 1 ? '启用' : '停用'}</Tag>
+        <span className={`pm-status ${s === 1 ? 'pm-status--active' : 'pm-status--inactive'}`}>
+          {s === 1 ? '启用' : '停用'}
+        </span>
       ),
     },
     {
@@ -134,17 +122,11 @@ export default function ProductTaxonomy() {
       },
     },
     {
-      title: t('common.operation') || '操作', key: 'action', width: 170, fixed: 'right' as const,
-      render: (_: unknown, record: any, index: number) => (
+      title: t('common.operation') || '操作', key: 'action', width: 120, fixed: 'right' as const,
+      render: (_: unknown, record: any) => (
         <span className="pm-actions">
           {hasPerm('product:taxonomy:update') && (
-            <>
-              <Button type="text" title="上移" icon={<ArrowUpOutlined />}
-                disabled={index === 0} onClick={() => handleMove(index, -1)} />
-              <Button type="text" title="下移" icon={<ArrowDownOutlined />}
-                disabled={index === ACTIVE_API.list.length - 1} onClick={() => handleMove(index, 1)} />
-              <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
-            </>
+            <Button type="text" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           )}
           {hasPerm('product:taxonomy:delete') && (
             <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>

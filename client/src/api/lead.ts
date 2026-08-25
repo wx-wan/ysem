@@ -12,21 +12,12 @@ export interface LeadCustomer {
   country?: string | null;
 }
 
-export interface LeadChannel {
-  id: string;
-  name: string;
-  category?: string;
-}
-
 export interface Lead {
   id: string;
   leadName: string;
   customerId?: string | null;
   customer?: LeadCustomer | null;
-  channelId?: string | null;
-  channel?: LeadChannel | null;
-  shopId?: string | null;
-  shop?: LeadChannel | null;
+  sourceChannel?: string | null;
   source: LeadSource;
   status: LeadStatus;
   companyName?: string | null;
@@ -35,26 +26,33 @@ export interface Lead {
   phone?: string | null;
   country?: string | null;
   productInterest?: string | null;
+  productName?: string | null;
+  productId?: string | null;
+  product?: { id: string; name: string } | null;
+  quantity?: number;
   remark?: string | null;
   assignedTo?: string | null;
+  assignedUser?: { id: string; username: string; realName: string | null } | null;
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface LeadPayload {
-  leadName: string;
+  leadName?: string;
   customerId?: string | null;
-  channelId?: string | null;
-  shopId?: string | null;
+  sourceChannel?: string | null;
+  productId?: string | null;
+  quantity?: number;
   source?: LeadSource;
   status?: LeadStatus;
-  companyName?: string;
+  companyName?: string | null;
   contactName?: string;
   email?: string;
   phone?: string;
   country?: string;
   productInterest?: string;
+  productName?: string | null;
   remark?: string;
   assignedTo?: string | null;
 }
@@ -63,8 +61,8 @@ export interface LeadListParams {
   page?: number;
   pageSize?: number;
   keyword?: string;
-  channelId?: string;
-  shopId?: string;
+  channel?: string;
+  platform?: string;
   status?: LeadStatus;
   source?: LeadSource;
   assignedTo?: string;

@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Card, Button, Space, Input, Select, Table, Tag, Popconfirm, App, Drawer, Form, Pagination,
+  Card, Button, Space, Input, InputNumber, Select, AutoComplete, Table, Tag, Popconfirm, App, Form, Pagination, Row, Col,
 } from 'antd';
+import AppModal from '../components/AppModal';
+import { productApi, taxonomyApi, type ProductOption, type ProductCraft, type ProductAudience, type Product } from '../api/products';
+import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
+import { ProductEditModal, type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
   EyeOutlined, EditOutlined,
@@ -11,6 +15,8 @@ import { theme } from 'antd';
 import { leadApi, type Lead, type LeadStatus, type LeadPayload, type LeadSource } from '../api/lead';
 import { channelApi, type Channel } from '../api/channel';
 import { customerApi, type Customer } from '../api/customers';
+import { userApi, type UserSelectItem } from '../api/users';
+import { useAuthStore } from '../stores/useAuthStore';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useTranslation } from 'react-i18next';
 
@@ -42,31 +48,84 @@ export default function SalesLeads() {
   // 筛选
   const [keyword, setKeyword] = useState('');
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
-  const [filterShop, setFilterShop] = useState<string | undefined>();
+  const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(19);
 
-  // 渠道下拉（平台 -> 店铺）
+  // 来源渠道（渠道树，展平为选项）
   const [channels, setChannels] = useState<Channel[]>([]);
+  // 采购产品选项（产品模块简化版：下拉选择，后续支持一键新建产品）
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
+  // 产品建档弹窗所需分类数据
+  const [crafts, setCrafts] = useState<ProductCraft[]>([]);
+  const [audiences, setAudiences] = useState<ProductAudience[]>([]);
+  // 「确认建档」弹窗：客户走新建客户弹窗、产品走新建产品弹窗
+  const [custModalOpen, setCustModalOpen] = useState(false);
+  const [initialCustName, setInitialCustName] = useState('');
+  const productEditRef = useRef<ProductEditModalHandle>(null);
 
   // 抽屉
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
   const [form] = Form.useForm();
-  const [customerOptions, setCustomerOptions] = useState<{ label: string; value: string }[]>([]);
+  const [customerOptions, setCustomerOptions] = useState<{ label: string; value: string; contactName?: string; customerCode?: string }[]>([]);
+
+  // 当前登录用户（新建线索时负责人默认取当前用户）
+  const currentUser = useAuthStore((s) => s.user);
+  // 仅管理员可删除线索
+  const isAdmin = currentUser?.role?.code === 'admin';
+  // 可选负责人列表
+  const [userOptions, setUserOptions] = useState<UserSelectItem[]>([]);
+  const userNameMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    userOptions.forEach((u) => { m[u.id] = u.realName || u.username; });
+    return m;
+  }, [userOptions]);
+  const fetchUsers = useCallback(async () => {
+    try {
+      const res = await userApi.listForSelect();
+      setUserOptions(res.data.data || []);
+    } catch { /* ignore */ }
+  }, []);
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const fetchChannels = useCallback(async () => {
     try {
-      const res = await channelApi.list();
+      const res = await channelApi.tree();
       setChannels(res.data);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchProducts = useCallback(async () => {
+    try {
+      const res = await productApi.options();
+      setProductOptions(res.data.data || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchTaxonomy = useCallback(async () => {
+    try {
+      const [cRes, aRes] = await Promise.all([
+        taxonomyApi.getCrafts(),
+        taxonomyApi.getAudiences(),
+      ]);
+      if (cRes.data.code === 200 || cRes.data.code === 0) setCrafts(cRes.data.data);
+      if (aRes.data.code === 200 || aRes.data.code === 0) setAudiences(aRes.data.data);
     } catch { /* ignore */ }
   }, []);
 
   const fetchCustomers = useCallback(async () => {
     try {
       const res = await customerApi.listAll({ pageSize: 9999 });
-      setCustomerOptions((res.data.data.list || []).map((c: Customer) => ({ label: c.companyName, value: c.id })));
+      setCustomerOptions(
+        (res.data.data.list || []).map((c: Customer) => ({
+          label: c.companyName,
+          value: c.id,
+          contactName: c.contactName || undefined,
+          customerCode: c.customerCode || undefined,
+        })),
+      );
     } catch { /* ignore */ }
   }, []);
 
@@ -76,8 +135,8 @@ export default function SalesLeads() {
       const res = await leadApi.list({
         page, pageSize,
         keyword: keyword || undefined,
-        channelId: filterChannel,
-        shopId: filterShop,
+        channel: filterChannel,
+        platform: filterPlatform,
         status: filterStatus,
       });
       setListData(res.data.list);
@@ -87,11 +146,13 @@ export default function SalesLeads() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, filterChannel, filterShop, filterStatus, message, t]);
+  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, message, t]);
 
   useEffect(() => {
     fetchChannels();
-  }, [fetchChannels]);
+    fetchProducts();
+    fetchTaxonomy();
+  }, [fetchChannels, fetchProducts, fetchTaxonomy]);
 
   useEffect(() => {
     fetchList();
@@ -103,8 +164,10 @@ export default function SalesLeads() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ status: 'NEW', source: 'MANUAL' });
+    // 负责人默认当前创建人（来源/状态由系统判定，无需选择）
+    form.setFieldsValue({ assignedTo: currentUser?.id });
     fetchCustomers();
+    fetchUsers();
     setDrawerOpen(true);
   };
 
@@ -114,19 +177,14 @@ export default function SalesLeads() {
     try {
       const res = await leadApi.get(record.id);
       const item = res.data;
+      // 来源渠道回填：若为「渠道 / 平台」路径则拆分，渠道自动带出
+      const sourceParts = (item.sourceChannel || '').split(' / ');
       form.setFieldsValue({
-        leadName: item.leadName,
-        customerId: item.customerId,
-        channelId: item.channelId,
-        shopId: item.shopId,
-        source: item.source,
-        status: item.status,
-        companyName: item.companyName,
-        contactName: item.contactName,
-        email: item.email,
-        phone: item.phone,
-        country: item.country,
-        productInterest: item.productInterest,
+        customerKey: item.customer?.companyName || item.companyName || undefined,
+        channel: sourceParts.length > 1 ? sourceParts[0] : item.sourceChannel || '',
+        sourceChannel: item.sourceChannel || undefined,
+        productKey: item.product?.name || item.productName || undefined,
+        quantity: item.quantity ?? undefined,
         remark: item.remark,
         assignedTo: item.assignedTo,
       });
@@ -136,19 +194,38 @@ export default function SalesLeads() {
 
   const submit = async () => {
     const values = await form.validateFields();
+    // 客户：可手输新客户名，或下拉选择已有客户；手输新名仅存文本，确认后才会建档
+    let customerId: string | null = null;
+    let companyName: string | undefined;
+    const customerName = values.customerKey?.trim();
+    if (customerName) {
+      const matched = customerOptions.find((c) => c.label === customerName);
+      if (matched) {
+        customerId = matched.value;
+      } else {
+        companyName = customerName;
+      }
+    }
+    // 采购产品：可手输新产品名，或下拉选择已有产品；手输新名仅存文本，确认后才会建档
+    let productId: string | null = null;
+    let productName: string | undefined;
+    const productNameInput = values.productKey?.trim();
+    if (productNameInput) {
+      const matched = productOptions.find((p) => p.name === productNameInput);
+      if (matched) {
+        productId = matched.id;
+      } else {
+        productName = productNameInput;
+      }
+    }
     const payload: LeadPayload = {
-      leadName: values.leadName,
-      customerId: values.customerId || null,
-      channelId: values.channelId || null,
-      shopId: values.shopId || null,
-      source: values.source || 'MANUAL',
-      status: values.status || 'NEW',
-      companyName: values.companyName,
-      contactName: values.contactName,
-      email: values.email,
-      phone: values.phone,
-      country: values.country,
-      productInterest: values.productInterest,
+      leadName: leadNamePreview,
+      customerId,
+      companyName,
+      sourceChannel: values.sourceChannel || values.channel || null,
+      productId,
+      productName,
+      quantity: values.quantity ?? 0,
       remark: values.remark,
       assignedTo: values.assignedTo || null,
     };
@@ -167,6 +244,46 @@ export default function SalesLeads() {
     }
   };
 
+  // 确认建档：走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
+  const confirmCreateCustomer = () => {
+    if (!editing?.companyName) return;
+    setInitialCustName(editing.companyName);
+    setCustModalOpen(true);
+  };
+
+  const confirmCreateProduct = () => {
+    if (!editing?.productName) return;
+    productEditRef.current?.open(null, { name: editing.productName ?? '' });
+  };
+
+  // 新建客户弹窗保存成功后：关联到当前线索
+  const handleCustomerFiled = async (customer?: Customer) => {
+    if (!customer?.id || !editing) return;
+    try {
+      await leadApi.update(editing.id, { customerId: customer.id, companyName: null });
+      message.success(t('common.createSuccess'));
+      fetchCustomers();
+      refresh();
+      setEditing({ ...editing, customerId: customer.id, companyName: null });
+    } catch {
+      message.error(t('common.saveFailed'));
+    }
+  };
+
+  // 新建产品弹窗保存成功后：关联到当前线索
+  const handleProductFiled = async (saved?: Product) => {
+    if (!saved?.id || !editing) return;
+    try {
+      await leadApi.update(editing.id, { productId: saved.id, productName: null });
+      message.success(t('common.createSuccess'));
+      fetchProducts();
+      refresh();
+      setEditing({ ...editing, productId: saved.id, productName: null });
+    } catch {
+      message.error(t('common.saveFailed'));
+    }
+  };
+
   const remove = async (id: string) => {
     try {
       await leadApi.delete(id);
@@ -177,19 +294,80 @@ export default function SalesLeads() {
     }
   };
 
-  const changeStatus = async (id: string, status: LeadStatus) => {
-    try {
-      await leadApi.changeStatus(id, status);
-      message.success(t('lead.statusUpdated'));
-      refresh();
-    } catch {
-      message.error(t('common.updateFailed'));
-    }
-  };
+  // 渠道选项（根节点，如 国际站 / 线下渠道）
+  const channelOptions = useMemo(
+    () => channels.map((c) => ({ label: c.name, value: c.name })),
+    [channels],
+  );
 
-  const channelOptions = channels.filter((c) => !c.parentId);
-  const shopOptionsFor = (platformId?: string) =>
-    channels.filter((c) => c.parentId === platformId);
+  // 平台选项：选中渠道后只列其下平台；未选渠道则列出所有平台（带渠道前缀区分）
+  const platformOptions = useMemo(() => {
+    const opts: { label: string; value: string }[] = [];
+    const collect = (node: Channel) => {
+      (node.children || []).forEach((child) => {
+        opts.push({ label: `${node.name} / ${child.name}`, value: child.name });
+      });
+    };
+    if (filterChannel) {
+      const node = channels.find((c) => c.name === filterChannel);
+      if (node) collect(node);
+    } else {
+      channels.forEach(collect);
+    }
+    return opts;
+  }, [channels, filterChannel]);
+
+  // 表单平台选项：随所选渠道联动（先选渠道，再选平台）
+  const selectedChannel = Form.useWatch('channel', form);
+  const formPlatformOptions = useMemo(() => {
+    if (!selectedChannel) return [];
+    const node = channels.find((c) => c.name === selectedChannel);
+    const children = node?.children || [];
+    // 渠道无平台时，兜底可选渠道本身
+    if (!children.length) return [{ label: selectedChannel, value: selectedChannel, title: selectedChannel }];
+    return children.map((child) => ({
+      label: child.name,
+      value: `${selectedChannel} / ${child.name}`,
+      title: `${selectedChannel} / ${child.name}`,
+    }));
+  }, [channels, selectedChannel]);
+
+  // 线索名称自动生成：渠道-平台-采购产品-数量
+  const watchChannel = Form.useWatch('channel', form);
+  const watchSourceChannel = Form.useWatch('sourceChannel', form);
+  const watchProductKey = Form.useWatch('productKey', form);
+  const watchQuantity = Form.useWatch('quantity', form);
+  const leadNamePreview = useMemo(() => {
+    const parts: string[] = [];
+    if (watchChannel) parts.push(watchChannel);
+    if (watchSourceChannel) {
+      // 平台值可能为「渠道 / 平台」路径，取平台段；平台等于渠道（无子平台兜底）时省略
+      const platform = watchSourceChannel.split(' / ').pop() || '';
+      if (platform && platform !== watchChannel) parts.push(platform);
+    }
+    if (watchProductKey) parts.push(watchProductKey);
+    if (watchQuantity !== undefined && watchQuantity !== null) parts.push(String(watchQuantity));
+    return parts.join('-');
+  }, [watchChannel, watchSourceChannel, watchProductKey, watchQuantity]);
+
+  // 客户/产品 AutoComplete 选项：以名称为值，支持手输或下拉选择
+  // 客户下拉展示「公司名 · 联系人 · 编号」，搜索按整个文本模糊匹配
+  const customerNameOptions = useMemo(
+    () =>
+      customerOptions.map((c) => ({
+        value: c.label,
+        label: [
+          c.label,
+          c.contactName ? `${t('lead.customerContact')}：${c.contactName}` : '',
+          c.customerCode ? `${t('lead.customerNo')}：${c.customerCode}` : '',
+        ].filter(Boolean).join(' · '),
+      })),
+    [customerOptions, t],
+  );
+  const productNameOptions = useMemo(
+    () => productOptions.map((p) => ({ label: p.name, value: p.name })),
+    [productOptions],
+  );
 
   const columns: ColumnsType<Lead> = useMemo(() => [
     {
@@ -206,19 +384,25 @@ export default function SalesLeads() {
       width: 160,
       render: (_: unknown, r) => {
         if (r.customer) return r.customer.companyName || r.customer.contactName || '-';
-        return r.companyName || '-';
+        if (r.companyName) {
+          return (
+            <span>
+              {r.companyName}
+              <Tag color="orange" style={{ marginLeft: 6 }}>
+                {t('lead.pendingTag')}
+              </Tag>
+            </span>
+          );
+        }
+        return '-';
       },
     },
     {
       title: t('lead.channel'),
+      dataIndex: 'sourceChannel',
       width: 180,
-      render: (_: unknown, r) => (
-        <Space size={4}>
-          {r.channel && <Tag color="blue">{r.channel.name}</Tag>}
-          {r.shop && <Tag>{r.shop.name}</Tag>}
-          {!r.channel && !r.shop && '-'}
-        </Space>
-      ),
+      ellipsis: true,
+      render: (v?: string) => v || '-',
     },
     {
       title: t('lead.source'),
@@ -230,22 +414,17 @@ export default function SalesLeads() {
       title: t('lead.status'),
       dataIndex: 'status',
       width: 110,
-      render: (s: LeadStatus, r) => (
-        <Select
-          size="small"
-          value={s}
-          variant="borderless"
-          style={{ width: 92 }}
-          onChange={(v) => changeStatus(r.id, v)}
-          options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: t(m.label) }))}
-        />
-      ),
+      render: (s: LeadStatus) => <Tag color={STATUS_META[s]?.color}>{t(STATUS_META[s]?.label)}</Tag>,
     },
     {
       title: t('lead.assignee'),
       dataIndex: 'assignedTo',
       width: 100,
-      render: (v: string) => v || '-',
+      ellipsis: true,
+      render: (v?: string, r?: Lead) => {
+        if (r?.assignedUser) return r.assignedUser.realName || r.assignedUser.username;
+        return (v && userNameMap[v]) || v || '-';
+      },
     },
     {
       title: t('lead.createdAt'),
@@ -263,13 +442,15 @@ export default function SalesLeads() {
           <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => openEdit(r)}>
             {t('common.detail')}
           </Button>
-          <Popconfirm title={t('common.confirmDelete')} onConfirm={() => remove(r.id)}>
-            <Button size="small" type="link" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {isAdmin && (
+            <Popconfirm title={t('common.confirmDelete')} onConfirm={() => remove(r.id)}>
+              <Button size="small" type="link" danger icon={<DeleteOutlined />} />
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
-  ], [t]);
+  ], [t, isAdmin]);
 
   return (
     <div>
@@ -311,21 +492,24 @@ export default function SalesLeads() {
         >
           <Space wrap>
             <Select
-              style={{ width: 150 }}
+              style={{ width: 160 }}
               placeholder={t('lead.filterPlatform')}
               allowClear
+              showSearch
+              optionFilterProp="label"
               value={filterChannel}
-              onChange={(v) => { setFilterChannel(v); setFilterShop(undefined); setPage(1); }}
-              options={channelOptions.map((c) => ({ label: c.name, value: c.id }))}
+              onChange={(v) => { setFilterChannel(v); setFilterPlatform(undefined); setPage(1); }}
+              options={channelOptions}
             />
             <Select
-              style={{ width: 140 }}
+              style={{ width: 180 }}
               placeholder={t('lead.filterShop')}
               allowClear
-              disabled={!filterChannel}
-              value={filterShop}
-              onChange={(v) => { setFilterShop(v); setPage(1); }}
-              options={shopOptionsFor(filterChannel).map((c) => ({ label: c.name, value: c.id }))}
+              showSearch
+              optionFilterProp="label"
+              value={filterPlatform}
+              onChange={(v) => { setFilterPlatform(v); setPage(1); }}
+              options={platformOptions}
             />
             <Select
               style={{ width: 120 }}
@@ -347,7 +531,7 @@ export default function SalesLeads() {
             <Button icon={<ReloadOutlined />} onClick={refresh}>{t('common.refresh')}</Button>
           </Space>
           <Space>
-            {selectedKeys.length > 0 && (
+            {isAdmin && selectedKeys.length > 0 && (
               <Popconfirm title={t('lead.batchDeleteConfirm', { n: selectedKeys.length })} onConfirm={() => {
                 Promise.all(selectedKeys.map((id) => leadApi.delete(id)))
                   .then(() => { message.success(t('common.deleteSuccess')); setSelectedKeys([]); refresh(); })
@@ -379,14 +563,14 @@ export default function SalesLeads() {
         </div>
       )}
 
-      {/* 新建 / 详情抽屉 */}
-      <Drawer
-        title={editing ? t('lead.editTitle') : t('lead.createTitle')}
+      {/* 新建 / 编辑弹窗 */}
+      <AppModal
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={480}
-        destroyOnClose
-        extra={
+        title={editing ? t('lead.editTitle') : t('lead.createTitle')}
+        width={560}
+        bodyPadding={20}
+        footer={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
             <Button type="primary" onClick={submit}>{t('common.save')}</Button>
@@ -394,71 +578,135 @@ export default function SalesLeads() {
         }
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="leadName" label={t('lead.name')} rules={[{ required: true, message: t('lead.nameRequired') }]}>
-            <Input placeholder={t('lead.namePlaceholder')} />
-          </Form.Item>
-          <Form.Item name="customerId" label={t('lead.customer')}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t('lead.customerPlaceholder')}
-              optionFilterProp="label"
-              options={customerOptions}
+          <Form.Item label={t('lead.name')} required>
+            <Input
+              value={leadNamePreview}
+              readOnly
+              placeholder={t('lead.nameAutoPlaceholder')}
+              style={{ color: 'rgba(0, 0, 0, 0.65)', background: '#f5f5f5', cursor: 'not-allowed' }}
             />
           </Form.Item>
-          <Form.Item label={t('lead.channel')}>
-            <Space.Compact style={{ display: 'flex' }}>
-              <Form.Item name="channelId" noStyle>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
                 <Select
-                  style={{ width: '50%' }}
+                  showSearch
+                  allowClear
                   placeholder={t('lead.filterPlatform')}
-                  allowClear
-                  onChange={() => form.setFieldValue('shopId', undefined)}
-                  options={channelOptions.map((c) => ({ label: c.name, value: c.id }))}
+                  optionFilterProp="label"
+                  options={channelOptions}
+                  onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
                 />
               </Form.Item>
-              <Form.Item name="shopId" noStyle>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
                 <Select
-                  style={{ width: '50%' }}
-                  placeholder={t('lead.filterShop')}
+                  showSearch
                   allowClear
-                  options={(channels.filter((c) => c.parentId === form.getFieldValue('channelId'))).map((c) => ({ label: c.name, value: c.id }))}
+                  disabled={!selectedChannel}
+                  placeholder={t('lead.filterShop')}
+                  optionFilterProp="label"
+                  options={formPlatformOptions}
                 />
               </Form.Item>
-            </Space.Compact>
+            </Col>
+          </Row>
+          <Form.Item
+            name="customerKey"
+            label={t('lead.customer')}
+            rules={[{ required: true, message: t('lead.customerRequired') }]}
+          >
+            <AutoComplete
+              allowClear
+              placeholder={t('lead.customerPlaceholder')}
+              options={customerNameOptions}
+              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
+            />
           </Form.Item>
-          <Form.Item name="source" label={t('lead.source')} rules={[{ required: true }]}>
-            <Select options={Object.entries(SOURCE_META).map(([k, m]) => ({ value: k, label: t(m.label) }))} />
-          </Form.Item>
-          <Form.Item name="status" label={t('lead.status')} rules={[{ required: true }]}>
-            <Select options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: t(m.label) }))} />
-          </Form.Item>
-          <Form.Item name="companyName" label={t('lead.companyName')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="contactName" label={t('lead.contactName')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="email" label={t('lead.email')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="phone" label={t('lead.phone')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="country" label={t('lead.country')}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="productInterest" label={t('lead.productInterest')}>
-            <Input.TextArea rows={2} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="productKey"
+                label={t('lead.product')}
+                rules={[{ required: true, message: t('lead.productRequired') }]}
+              >
+                <AutoComplete
+                  allowClear
+                  placeholder={t('lead.productPlaceholder')}
+                  options={productNameOptions}
+                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="quantity" label={t('lead.quantity')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
+                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item name="remark" label={t('lead.remark')}>
             <Input.TextArea rows={3} />
           </Form.Item>
+          {(editing?.companyName && !editing.customerId) || (editing?.productName && !editing.productId) ? (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '10px 12px',
+                background: '#fffbe6',
+                border: '1px solid #ffe58f',
+                borderRadius: 6,
+              }}
+            >
+              {editing.companyName && !editing.customerId && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: '#ad6800' }}>{t('lead.customerPendingTip', { name: editing.companyName })}</span>
+                  <Button size="small" type="primary" ghost onClick={confirmCreateCustomer}>
+                    {t('lead.createCustomerNow')}
+                  </Button>
+                </div>
+              )}
+              {editing.companyName && !editing.customerId && editing.productName && !editing.productId ? (
+                <div style={{ height: 8 }} />
+              ) : null}
+              {editing.productName && !editing.productId && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                  <span style={{ color: '#ad6800' }}>{t('lead.productPendingTip', { name: editing.productName })}</span>
+                  <Button size="small" type="primary" ghost onClick={confirmCreateProduct}>
+                    {t('lead.createProductNow')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          ) : null}
           <Form.Item name="assignedTo" label={t('lead.assignee')}>
-            <Input placeholder={t('lead.assigneePlaceholder')} />
+            <Select
+              showSearch
+              allowClear
+              placeholder={t('lead.assigneePlaceholder')}
+              optionFilterProp="label"
+              options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
+            />
           </Form.Item>
         </Form>
-      </Drawer>
+      </AppModal>
+
+      {/* 确认建档：新建客户弹窗（带入待确认客户名到公司名称） */}
+      <CustomerFormModal
+        open={custModalOpen}
+        editingCustomer={null}
+        initialCompanyName={initialCustName}
+        onClose={() => setCustModalOpen(false)}
+        onSuccess={handleCustomerFiled}
+      />
+
+      {/* 确认建档：新建产品弹窗（带入待确认产品名到产品名称） */}
+      <ProductEditModal
+        ref={productEditRef}
+        crafts={crafts}
+        audiences={audiences}
+        onSuccess={handleProductFiled}
+      />
     </div>
   );
 }

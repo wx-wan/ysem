@@ -5,21 +5,42 @@ import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 
 const leadSchema = z.object({
-  leadName: z.string().min(1, '线索名称不能为空'),
+  // 名称可选：未传时由系统按「渠道-平台-采购产品-数量」规则自动生成
+  leadName: z.string().min(1).optional(),
   customerId: z.string().optional().nullable(),
-  channelId: z.string().optional().nullable(),
-  shopId: z.string().optional().nullable(),
+  sourceChannel: z.string().optional().nullable(),
+  productId: z.string().optional().nullable(),
+  quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED']).optional(),
-  companyName: z.string().trim().max(200).optional(),
+  companyName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(100).optional(),
   email: z.string().trim().max(200).optional(),
   phone: z.string().trim().max(50).optional(),
   country: z.string().trim().max(100).optional(),
   productInterest: z.string().trim().max(300).optional(),
+  productName: z.string().trim().max(200).nullable().optional(),
   remark: z.string().trim().max(1000).optional(),
   assignedTo: z.string().optional().nullable(),
 });
+
+// 按「渠道-平台-采购产品-数量」规则生成线索名称
+const buildLeadName = async (sourceChannel?: string | null, productId?: string | null, productName?: string | null, quantity?: number): Promise<string> => {
+  const parts: string[] = [];
+  if (sourceChannel) {
+    const [channel, ...rest] = sourceChannel.split(' / ');
+    parts.push(channel);
+    if (rest.length) parts.push(rest.join(' / '));
+  }
+  if (productId) {
+    const product = await prisma.singleProduct.findUnique({ where: { id: productId }, select: { name: true } });
+    if (product) parts.push(product.name);
+  } else if (productName) {
+    parts.push(productName);
+  }
+  if (quantity !== undefined && quantity !== null) parts.push(String(quantity));
+  return parts.join('-');
+};
 
 // 列表：分页 + 多维筛选
 export const getLeads = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -27,8 +48,8 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize as string) || 20));
     const keyword = (req.query.keyword as string)?.trim();
-    const channelId = req.query.channelId as string; // 平台/展会
-    const shopId = req.query.shopId as string; // 店铺
+    const channel = req.query.channel as string;   // 渠道（父级，如 国际站）
+    const platform = req.query.platform as string; // 平台（子级，如 寿春店）
     const status = req.query.status as string;
     const source = req.query.source as string;
     const assignedTo = req.query.assignedTo as string;
@@ -43,8 +64,17 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         { phone: { contains: keyword } },
       ];
     }
-    if (channelId) where.channelId = channelId;
-    if (shopId) where.shopId = shopId;
+    // 来源渠道按「渠道 / 平台」两维筛选（sourceChannel 存渠道名或「渠道 / 平台」完整路径）
+    if (channel && platform) {
+      where.AND = [
+        { sourceChannel: { contains: channel } },
+        { sourceChannel: { contains: platform } },
+      ];
+    } else if (channel) {
+      where.sourceChannel = { contains: channel };
+    } else if (platform) {
+      where.sourceChannel = { contains: platform };
+    }
     if (status) where.status = status;
     if (source) where.source = source;
     if (assignedTo) where.assignedTo = assignedTo;
@@ -54,8 +84,8 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         where,
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
-          channel: { select: { id: true, name: true } },
-          shop: { select: { id: true, name: true } },
+          product: { select: { id: true, name: true } },
+          assignedUser: { select: { id: true, username: true, realName: true } },
         },
         orderBy: [{ createdAt: 'desc' }],
         skip: (page - 1) * pageSize,
@@ -73,11 +103,7 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
   try {
     const item = await prisma.lead.findUnique({
       where: { id: req.params.id },
-      include: {
-        customer: true,
-        channel: { select: { id: true, name: true, category: true } },
-        shop: { select: { id: true, name: true } },
-      },
+      include: { customer: true, product: { select: { id: true, name: true } } },
     });
     if (!item) {
       fail(res, 404, '线索不存在');
@@ -92,12 +118,14 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
+    const leadName = data.leadName ?? (await buildLeadName(data.sourceChannel, data.productId, data.productName, data.quantity));
     const item = await prisma.lead.create({
       data: {
-        leadName: data.leadName,
+        leadName,
         customerId: data.customerId ?? null,
-        channelId: data.channelId ?? null,
-        shopId: data.shopId ?? null,
+        sourceChannel: data.sourceChannel ?? null,
+        productId: data.productId ?? null,
+        quantity: data.quantity ?? 0,
         source: data.source ?? 'MANUAL',
         status: data.status ?? 'NEW',
         companyName: data.companyName ?? null,
@@ -106,9 +134,10 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         phone: data.phone ?? null,
         country: data.country ?? null,
         productInterest: data.productInterest ?? null,
+      productName: data.productName ?? null,
         remark: data.remark ?? null,
         assignedTo: data.assignedTo ?? null,
-        createdBy: req.user?.userId ?? null,
+        createdBy: req.userId ?? null,
       },
     });
     created(res, item);
@@ -126,8 +155,10 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     const data = leadSchema.partial().parse(req.body);
     const update: Record<string, unknown> = { ...data };
     if (data.customerId === null) update.customerId = null;
-    if (data.channelId === null) update.channelId = null;
-    if (data.shopId === null) update.shopId = null;
+    if (data.companyName === null) update.companyName = null;
+    if (data.sourceChannel === null) update.sourceChannel = null;
+    if (data.productId === null) update.productId = null;
+    if (data.productName === null) update.productName = null;
     if (data.assignedTo === null) update.assignedTo = null;
     await prisma.lead.update({ where: { id: req.params.id }, data: update });
     success(res, null, '更新成功');

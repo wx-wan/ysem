@@ -3,7 +3,7 @@ import axios from './request';
 export interface Channel {
   id: string;
   name: string;
-  category: 'ONLINE' | 'OFFLINE'; // 线上平台 / 线下展会
+  category: 'ONLINE' | 'OFFLINE'; // 线上渠道 / 线下渠道
   parentId: string | null;
   parent?: Channel | null;
   children?: Channel[];

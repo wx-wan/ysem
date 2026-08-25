@@ -18,7 +18,7 @@ import { StepBar } from '../../../components/common/StepBar';
 import ProductImageList from '../../../components/common/ProductImageList';
 
 export interface ProductEditModalHandle {
-  open: (record?: Product | null) => void;
+  open: (record?: Product | null, initial?: { name?: string }) => void;
 }
 
 interface ProductEditModalProps {
@@ -113,6 +113,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
     // 主弹窗内"重选分类"模式：不再清空已填表单，仅回写分类到表单隐藏字段
     const [reselectMode, setReselectMode] = useState(false);
+    // 新建时预填的产品名称（线索建档等场景带入）
+    const [initialName, setInitialName] = useState('');
 
     const isEdit = !!editing;
 
@@ -154,7 +156,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     }, [open]);
 
     useImperativeHandle(ref, () => ({
-      open: (record?: Product | null) => {
+      open: (record?: Product | null, initial?: { name?: string }) => {
         if (record) {
           setEditing(record);
           setCreatedSingleIds([]);
@@ -187,6 +189,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           setTimeout(() => form.setFieldsValue(values), 0);
         } else {
           // 新建：先走「选择分类」第一步
+          setInitialName(initial?.name ?? '');
           setEditing(null);
           setCreatedSingleIds([]);
           setStepCrafts([]);
@@ -237,7 +240,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
       setEditing(null);
       setOpen(true);
       form.resetFields();
-      form.setFieldsValue({ ...v, visibility: 'PUBLIC' });
+      form.setFieldsValue({ ...v, visibility: 'PUBLIC', ...(initialName ? { name: initialName } : {}) });
       setVisValue('PUBLIC');
       if (v.audienceId) handleAudienceChange(v.audienceId);
     };

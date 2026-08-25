@@ -92,16 +92,15 @@ const ProductCard = memo(function ProductCard({
 
         <div className="pm-prod-meta">
           <div className="pm-prod-meta__item">
-            <span className="pm-prod-meta__label">尺寸</span>
+            <span className="pm-prod-meta__label">尺寸(cm)</span>
             <span className="pm-prod-meta__value">
               {[product.sizeL, product.sizeW, product.sizeH].filter(Boolean).join('×') || '-'}
-              {([product.sizeL, product.sizeW, product.sizeH].filter(Boolean).length ? ' cm' : '')}
             </span>
           </div>
           <div className="pm-prod-meta__item">
-            <span className="pm-prod-meta__label">克重</span>
+            <span className="pm-prod-meta__label">克重(g)</span>
             <span className="pm-prod-meta__value">
-              {product.weight || '-'}{product.weight ? ' g' : ''}
+              {product.weight || '-'}
             </span>
           </div>
           <div className="pm-prod-meta__item">

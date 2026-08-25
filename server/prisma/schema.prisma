@@ -35,6 +35,7 @@ model User {
   products            SingleProduct[]      @relation("ProductCreator")
   productGroups       ComboProduct[]       @relation("ComboProductOwner")
   comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
+  leadAssignments     Lead[]               @relation("LeadAssignee")
 }
 
 // ========== 角色表 ==========
@@ -449,6 +450,7 @@ model SingleProduct {
   visibleUsers ProductVisibleUser[]
   groupItems   ComboItem[] // 作为单品被哪些组合引用
   leadProducts LeadProduct[]
+  leads        Lead[] // 作为采购产品被哪些线索引用
   activities   ProductActivity[] // 产品操作记录（时间线）
   createdBy    String? // 创建人 id
   creator      User?                @relation("ProductCreator", fields: [createdBy], references: [id])
@@ -585,17 +587,17 @@ model ComboItem {
 
 // ============ 打样申请 / 报价单 已并入通用 Order（type = SAMPLE / QUOTE） ============
 
-// ============ 获客渠道 / 平台 / 店铺（自关联树） ============
-// category 区分线上平台(ONLINE)与线下展会(OFFLINE)
-// 树形：父节点为平台（如 国际站 / 1688 / 展会），子节点为店铺（如 寿春店 / 微它店 / 景元店）
+// ============ 获客渠道 / 平台（自关联树） ============
+// category 区分线上渠道(ONLINE)与线下渠道(OFFLINE)
+// 树形：父节点为渠道（如 国际站 / 1688 / 线下渠道），子节点为平台（如 寿春平台 / 微它平台 / 景元平台）
 model Channel {
   id         String   @id @default(cuid())
-  name       String // 平台名或店铺名
+  name       String // 渠道名或平台名
   category   String   @default("ONLINE") // ONLINE | OFFLINE
-  parentId   String? // 平台下的店铺才有父级
+  parentId   String? // 渠道下的平台才有父级
   parent     Channel? @relation("ChannelTree", fields: [parentId], references: [id], onDelete: Cascade)
   children   Channel[] @relation("ChannelTree")
-  contact    String? // 店铺联系人 / 负责人
+  contact    String? // 平台联系人 / 负责人
   status     String   @default("ENABLED") // ENABLED | DISABLED
   sort       Int      @default(0)
   remark     String?
@@ -616,9 +618,9 @@ model Lead {
   leadName     String // 线索名称（标题）
   customerId   String? // 关联客户
   customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  channelId    String? // 来源平台 / 展会
+  channelId    String? // 来源渠道
   channel      Channel? @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
-  shopId       String? // 来源店铺
+  shopId       String? // 来源平台
   shop         Channel? @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
   source       String   @default("MANUAL") // MANUAL | EXCEL | RPA | SYNC
   status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED
@@ -628,8 +630,14 @@ model Lead {
   phone        String?
   country      String?
   productInterest String? // 感兴趣产品
+  sourceChannel String? // 来源渠道/平台（存渠道名或「渠道 / 平台」完整路径）
+  productName String? // 未关联产品时直接记录的产品名称（待确认建档）
+  productId  String? // 采购产品
+  product    SingleProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  quantity   Int            @default(1) // 采购数量
   remark       String?
   assignedTo   String? // 负责人 userId
+  assignedUser User?   @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   createdBy    String? // 创建人 userId
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -637,6 +645,7 @@ model Lead {
   @@index([customerId])
   @@index([channelId])
   @@index([shopId])
+  @@index([productId])
   @@index([status])
   @@index([source])
 }

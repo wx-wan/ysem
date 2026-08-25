@@ -244,7 +244,7 @@ const CustomerDetailDrawer = React.memo(function CustomerDetailDrawer({
       }
       open={open}
       onClose={handleClose}
-      width={680}
+      size={680}
       styles={{ wrapper: { borderRadius: '10px 0 0 10px', overflow: 'hidden' } }}
       loading={loading}
       extra={

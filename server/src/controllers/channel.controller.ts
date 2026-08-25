@@ -24,7 +24,7 @@ export const getChannels = async (_req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// 树形结构：父节点(平台/展会) -> children(店铺)
+// 树形结构：父节点(渠道) -> children(平台)
 export const getChannelTree = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const list = await prisma.channel.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] });
@@ -60,7 +60,7 @@ export const getChannel = async (req: AuthRequest, res: Response): Promise<void>
 export const createChannel = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = channelSchema.parse(req.body);
-    // 子级(店铺)自动继承父级类别
+    // 子级(平台)自动继承父级类别
     let category = data.category ?? 'ONLINE';
     if (data.parentId) {
       const parent = await prisma.channel.findUnique({ where: { id: data.parentId } });
@@ -105,7 +105,7 @@ export const updateChannel = async (req: AuthRequest, res: Response): Promise<vo
 
 export const deleteChannel = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // 删除父级时级联删除子店铺
+    // 删除父级时级联删除子平台
     await prisma.channel.delete({ where: { id: req.params.id } });
     success(res, null, '删除成功');
   } catch {

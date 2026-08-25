@@ -311,12 +311,12 @@ async function main() {
 
   console.log('✅ 产品分类初始化完成！');
 
-  // 6. 初始化获客渠道（线上平台 / 线下展会 + 店铺）
+  // 6. 初始化获客渠道（线上渠道 / 线下渠道 + 平台）
   console.log('📡 初始化获客渠道...');
   const channelSeed: { name: string; category: 'ONLINE' | 'OFFLINE'; shops?: string[] }[] = [
-    { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
-    { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
-    { name: '线下展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
+    { name: '国际站', category: 'ONLINE', shops: ['寿春平台', '微它平台'] },
+    { name: '1688', category: 'ONLINE', shops: ['微它平台', '景元平台'] },
+    { name: '线下渠道', category: 'OFFLINE', shops: ['广交会', '义博会'] },
   ];
   for (const p of channelSeed) {
     let platform = await prisma.channel.findFirst({ where: { name: p.name, parentId: null } });

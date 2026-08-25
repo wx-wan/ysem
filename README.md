@@ -282,6 +282,21 @@ docker-compose logs --tail=50 server
 
 ## 更新日志
 
+### 2026-08-25（续）—— 线索模块重构与多模块体验优化
+
+- **线索模块重构**（`server/src/controllers/lead.controller.ts` + `client/src/pages/SalesLeads.tsx` + `client/src/api/lead.ts`）：
+  - 线索关联由「渠道/店铺」调整为「**产品 + 来源渠道**」：线索直接关联产品（`productId`），来源渠道记录为 `sourceChannel`
+  - 线索名 `leadName` 支持自动生成：按「来源渠道 + 产品 + 数量」组合，数量为空时不拼入
+  - 新增负责人字段 `assignedTo`（关联用户），列表/详情回显负责人姓名（`assignedUser`）
+  - 新建线索**数量默认为空**（不再预填 0），填写后提交
+  - **待确认建档**：线索中新建的客户、产品不再直接写入客户表/产品表，进入待确认状态（列表「客户」列显示「未建档」标记），确认建档后才创建实体，避免脏数据
+  - 迁移：`20260826000000_lead_product_quantity`、`20260826000001_lead_source_channel`、`20260826000002_lead_assignee_relation`、`20260826000003_lead_product_image`（已由 `20260826000004_drop_lead_product_image` 回退）
+- **汇率同步优化**（`exchange.controller` + `exchange.routes` + `useCurrencyStore`）：汇率按「日期」本地缓存，当天内不再重复请求后端，减少请求量
+- **产品卡片单位**（`ProductCard.tsx`）：尺寸/克重单位上移到标签（「尺寸(cm)」「克重(g)」），数值仅显示数字
+- **操作日志展示**（`OperationLogs.tsx`）：操作人列两行显示（上行姓名、下行 `@用户名`）；动作列中文映射补全（新增单据动作：新增报价单/打样单/订单、提交审批、审批通过/驳回等）
+- **数据回填**：新增 `server/src/scripts/backfill-log-realname.ts`，将历史日志（操作日志/客户活动/产品操作）缺失的操作人姓名从用户表回填
+- **其他**：产品编辑弹窗 UI 还原与细节优化、渠道管理页统计与样式调整、客户表单头像上传裁剪优化、产品分类页样式调整、i18n 中英文案补充
+
 ### 2026-08-25 —— 产品编辑/详情体验与日志展示优化
 
 - **产品编辑弹窗 (`ProductEditModal`) 体验优化**：

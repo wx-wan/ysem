@@ -25,6 +25,7 @@ const MODULE_LABELS: Record<string, string> = {
   customer: '客户', sales: '商机', order: '订单',
   user: '用户', certificate: '资质',
 };
+// 动作中文映射
 const ACTION_LABELS: Record<string, string> = {
   // 通用
   CREATE: '创建',
@@ -43,6 +44,16 @@ const ACTION_LABELS: Record<string, string> = {
   PIPELINE_DELETED: '删除商机',
   PIPELINE_STAGE_CHANGE: '商机阶段变更',
   STAGE_CHANGE: '阶段变更',
+  STAGE: '阶段变更',
+  // 单据
+  QUOTE_CREATED: '新增报价单',
+  SAMPLE_CREATED: '新增打样单',
+  ORDER_CREATED: '新增订单',
+  ORDER_UPDATED: '修改订单',
+  ORDER_SUBMITTED: '提交审批',
+  ORDER_APPROVED: '审批通过',
+  ORDER_REJECTED: '审批驳回',
+  ORDER_DELETED: '删除订单',
   // 其他
   LOGIN: '登录',
   AUTH: '授权',
@@ -52,7 +63,6 @@ const ACTION_LABELS: Record<string, string> = {
   CREATED: '创建',
   UPDATED: '修改',
   TRANSFERRED: '转移',
-  STAGE: '阶段变更',
 };
 const ACTION_COLORS: Record<string, string> = {
   CREATE: 'green', CREATED: 'green',
@@ -119,12 +129,12 @@ export default function OperationLogs() {
     {
       title: '操作人',
       key: 'operator',
-      width: 140,
+      width: 160,
       render: (_, r) => (
-        <span>
-          <span style={{ fontWeight: 600 }}>{r.realName || r.username}</span>
-          {r.realName && <span style={{ color: '#8c8c8c', marginLeft: 4, fontSize: 12 }}>@{r.username}</span>}
-        </span>
+        <div>
+          <div style={{ fontWeight: 600, lineHeight: 1.5 }}>{r.realName || r.username}</div>
+          {r.realName && <div style={{ color: '#8c8c8c', fontSize: 12, lineHeight: 1.5 }}>@{r.username}</div>}
+        </div>
       ),
     },
     {
@@ -136,7 +146,7 @@ export default function OperationLogs() {
     {
       title: '动作',
       dataIndex: 'action',
-      width: 90,
+      width: 120,
       render: (v: string) => <Tag color={ACTION_COLORS[v] || 'default'}>{ACTION_LABELS[v] || v}</Tag>,
     },
     {

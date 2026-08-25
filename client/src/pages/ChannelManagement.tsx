@@ -153,41 +153,25 @@ export default function ChannelManagement() {
         </Space>
       </div>
 
-      {/* 概览统计 */}
+      {/* 概览统计：上面显示总数，下面标注；卡片加高 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
-        <Col xs={12} md={8}>
-          <Card size="small" variant="borderless" className="channel-platform-card">
-            <Space align="center">
-              <span style={{ fontSize: 22, color: 'var(--c-primary)' }}><ApartmentOutlined /></span>
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{data.length}</div>
-                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.addPlatform')}</div>
+        {[
+          { color: 'var(--c-primary)', icon: <ApartmentOutlined />, value: data.length, label: t('channel.totalPlatform') },
+          { color: 'var(--c-primary)', icon: <GlobalOutlined />, value: onlineCount, label: t('channel.catOnline') },
+          { color: 'var(--c-warning)', icon: <EnvironmentOutlined />, value: offlineCount, label: t('channel.catOffline') },
+        ].map((s, i) => (
+          <Col xs={12} md={8} key={i}>
+            <Card size="small" variant="borderless" className="channel-platform-card" style={{ minHeight: 108 }}>
+              <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 14, height: '100%', minHeight: 88, paddingLeft: 6 }}>
+                <span style={{ fontSize: 26, color: s.color, display: 'inline-flex' }}>{s.icon}</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: 30, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{s.value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c-text-secondary)', marginTop: 6 }}>{s.label}</div>
+                </div>
               </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={12} md={8}>
-          <Card size="small" variant="borderless" className="channel-platform-card">
-            <Space align="center">
-              <span style={{ fontSize: 22, color: 'var(--c-primary)' }}><GlobalOutlined /></span>
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{t('channel.onlineCount', { n: onlineCount })}</div>
-                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.catOnline')}</div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} md={8}>
-          <Card size="small" variant="borderless" className="channel-platform-card">
-            <Space align="center">
-              <span style={{ fontSize: 22, color: 'var(--c-warning)' }}><EnvironmentOutlined /></span>
-              <div>
-                <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.1, color: 'var(--c-text)' }}>{t('channel.offlineCount', { n: offlineCount })}</div>
-                <div style={{ fontSize: 12, color: 'var(--c-text-secondary)' }}>{t('channel.catOffline')}</div>
-              </div>
-            </Space>
-          </Card>
-        </Col>
+            </Card>
+          </Col>
+        ))}
       </Row>
 
       {/* 平台卡片网格 */}
@@ -269,7 +253,7 @@ export default function ChannelManagement() {
         title={editing ? t('channel.editTitle') : parentForChild ? t('channel.addShopTitle') : t('channel.addPlatformTitle')}
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
-        width={440}
+        size={440}
         destroyOnClose
         extra={
           <Space>
