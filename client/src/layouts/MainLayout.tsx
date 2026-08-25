@@ -158,7 +158,7 @@ export default function MainLayout() {
           style={{ cursor: 'pointer', userSelect: 'none' }}
         >
           <img className="brand-icon" src="/logo.png" alt="Logo" draggable={false} />
-          {!collapsed && <span className="brand-text">Joylifetoy</span>}
+          <span className="brand-text">Joylifetoy</span>
         </div>
         <Menu
           mode="inline"
