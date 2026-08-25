@@ -1355,3 +1355,28 @@ html, body {
   justify-content: flex-end;
   padding: 4px 2px 0;
 }
+
+/* ========== 侧边栏收缩性能优化 ========== */
+/* 宽度过渡走 GPU 合成，避免收缩时整页重排卡顿 */
+.ant-layout-sider {
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  will-change: width;
+}
+/* 收缩动画期间隔离内容区重排，防止大表格跟随重排掉帧 */
+.ant-layout-content,
+.page-container {
+  contain: layout style;
+}
+/* 收缩时只保留垂直滚动，避免横向滚动条出现导致内容抖动 */
+.ant-layout-sider {
+  overflow-x: hidden !important;
+}
+.ant-layout-sider {
+  scrollbar-gutter: stable;
+}
+/* 折叠态下子菜单图标垂直居中，减少布局抖动 */
+.ant-layout-sider-collapsed .ant-menu-item,
+.ant-layout-sider-collapsed .ant-menu-submenu-title {
+  padding-left: 0 !important;
+  justify-content: center;
+}
