@@ -90,8 +90,10 @@
     "systemDept": "部门管理",
     "systemPerm": "权限管理",
     "systemProductTaxonomy": "产品管理",
-    "systemCertificates": "档案管理"
-  },
+    "systemCertificates": "档案管理",
+
+    "systemArchive": "档案管理",
+    "systemCertificateManage": "证书管理"  },
   "user": {
     "title": "用户管理",
     "avatar": "头像",

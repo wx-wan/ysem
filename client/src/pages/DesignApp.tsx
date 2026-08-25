@@ -13,7 +13,7 @@ import SettingsApprovalPage from './SettingsApproval';
 
 const { Title } = Typography;
 
-type DesignTab = 'user' | 'perm' | 'product' | 'logs' | 'approval';
+type DesignTab = 'user' | 'perm' | 'archive' | 'logs' | 'approval';
 
 export default function DesignApp() {
   const { t } = useTranslation();
@@ -31,8 +31,7 @@ export default function DesignApp() {
   const TABS = [
     { label: t('menu.systemUser'), key: 'user' as const, perm: 'system:user' },
     { label: t('menu.systemPerm'), key: 'perm' as const, perm: 'system:perm' },
-    { label: t('menu.systemProductTaxonomy'), key: 'product' as const, perm: 'product:taxonomy:view' },
-    { label: t('menu.systemCertificates') || '档案管理', key: 'product' as const, perm: 'certificate:view' },
+    { label: t('menu.systemArchive'), key: 'archive' as const, perm: 'product:taxonomy:view' },
     { label: '操作日志', key: 'logs' as const, perm: 'system:perm' },
     { label: '审批管理', key: 'approval' as const, perm: 'system:perm' },
   ].filter((x) => hasPerm(x.perm));
@@ -59,7 +58,7 @@ export default function DesignApp() {
         <div>
           {tab === 'user' && <UserManagementPage />}
           {tab === 'perm' && <PermPage />}
-          {tab === 'product' && <ProductManagementPage systemOnly />}
+          {tab === 'archive' && <ProductManagementPage systemOnly />}
           {tab === 'logs' && <OperationLogsPage />}
           {tab === 'approval' && <SettingsApprovalPage />}
         </div>
