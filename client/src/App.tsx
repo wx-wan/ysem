@@ -24,6 +24,7 @@ import PermPage from './pages/Perm';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
+import ChannelManagementPage from './pages/ChannelManagement';
 import SettingLayout from './layouts/SettingLayout';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
@@ -81,6 +82,7 @@ function App() {
         <Route path="user" element={<UserManagementPage />} />
         <Route path="perm" element={<PermPage />} />
         <Route path="archive" element={<ProductManagementPage systemOnly />} />
+        <Route path="channel" element={<ChannelManagementPage />} />
         <Route path="logs" element={<OperationLogsPage />} />
         <Route path="approval" element={<SettingsApprovalPage />} />
       </Route>

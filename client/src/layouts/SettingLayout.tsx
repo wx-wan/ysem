@@ -84,7 +84,10 @@ export default function SettingLayout() {
       key: 'sales',
       label: t('menu.settingSales'),
       icon: <ShoppingOutlined />,
-      children: [{ key: 'archive', label: t('menu.systemArchive'), perm: 'product:taxonomy:view' }],
+      children: [
+        { key: 'archive', label: t('menu.systemArchive'), perm: 'product:taxonomy:view' },
+        { key: 'channel', label: t('menu.systemChannel'), perm: 'system:perm' },
+      ],
     },
     {
       key: 'trade',

@@ -163,6 +163,7 @@ model Customer {
   // 关联数据
   orders     Order[]
   pipelines  SalesPipeline[]
+  leads      Lead[]
   activities CustomerActivity[]
   payments   PaymentRecord[]
   profits    ProfitRecord[]
@@ -583,3 +584,59 @@ model ComboItem {
 }
 
 // ============ 打样申请 / 报价单 已并入通用 Order（type = SAMPLE / QUOTE） ============
+
+// ============ 获客渠道 / 平台 / 店铺（自关联树） ============
+// category 区分线上平台(ONLINE)与线下展会(OFFLINE)
+// 树形：父节点为平台（如 国际站 / 1688 / 展会），子节点为店铺（如 寿春店 / 微它店 / 景元店）
+model Channel {
+  id         String   @id @default(cuid())
+  name       String // 平台名或店铺名
+  category   String   @default("ONLINE") // ONLINE | OFFLINE
+  parentId   String? // 平台下的店铺才有父级
+  parent     Channel? @relation("ChannelTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Channel[] @relation("ChannelTree")
+  contact    String? // 店铺联系人 / 负责人
+  status     String   @default("ENABLED") // ENABLED | DISABLED
+  sort       Int      @default(0)
+  remark     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  leadChannels Lead[] @relation("LeadChannel")
+  leadShops    Lead[] @relation("LeadShop")
+
+  @@index([parentId])
+  @@index([category])
+}
+
+// ============ 线索 ============
+// 线索主要字段由「客户信息」+「线索名称」构成
+model Lead {
+  id           String   @id @default(cuid())
+  leadName     String // 线索名称（标题）
+  customerId   String? // 关联客户
+  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  channelId    String? // 来源平台 / 展会
+  channel      Channel? @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  shopId       String? // 来源店铺
+  shop         Channel? @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
+  source       String   @default("MANUAL") // MANUAL | EXCEL | RPA | SYNC
+  status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED
+  companyName  String? // 未关联客户时直接记录的客户信息
+  contactName  String?
+  email        String?
+  phone        String?
+  country      String?
+  productInterest String? // 感兴趣产品
+  remark       String?
+  assignedTo   String? // 负责人 userId
+  createdBy    String? // 创建人 userId
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([channelId])
+  @@index([shopId])
+  @@index([status])
+  @@index([source])
+}

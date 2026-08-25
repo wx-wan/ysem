@@ -20,6 +20,8 @@ import productGroupRoutes from './routes/productGroup.routes';
 import approvalRoutes from './routes/approval.routes';
 import taxonomyRoutes from './routes/productTaxonomy.routes';
 import certificateRoutes from './routes/certificate.routes';
+import channelRoutes from './routes/channel.routes';
+import leadRoutes from './routes/lead.routes';
 import uploadRoutes from './routes/upload.routes';
 import operationLogRoutes from './routes/operationLog.routes';
 import { UPLOAD_DIR } from './controllers/upload.controller';
@@ -113,6 +115,8 @@ app.use('/api/product-groups', productGroupRoutes);
 app.use('/api/approvals', approvalRoutes);
 app.use('/api/product/taxonomy', taxonomyRoutes);
 app.use('/api/certificates', certificateRoutes);
+app.use('/api/channels', channelRoutes);
+app.use('/api/leads', leadRoutes);
 app.use('/api/operations', operationLogRoutes);
 app.use('/api/upload', uploadRoutes);
 

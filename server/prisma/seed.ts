@@ -310,6 +310,30 @@ async function main() {
   }
 
   console.log('✅ 产品分类初始化完成！');
+
+  // 6. 初始化获客渠道（线上平台 / 线下展会 + 店铺）
+  console.log('📡 初始化获客渠道...');
+  const channelSeed: { name: string; category: 'ONLINE' | 'OFFLINE'; shops?: string[] }[] = [
+    { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
+    { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
+    { name: '线下展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
+  ];
+  for (const p of channelSeed) {
+    let platform = await prisma.channel.findFirst({ where: { name: p.name, parentId: null } });
+    if (!platform) {
+      platform = await prisma.channel.create({ data: { name: p.name, category: p.category, status: 'ENABLED', sort: 0 } });
+    } else {
+      await prisma.channel.update({ where: { id: platform.id }, data: { category: p.category } });
+    }
+    for (let i = 0; i < (p.shops || []).length; i++) {
+      const shopName = p.shops![i];
+      const shop = await prisma.channel.findFirst({ where: { name: shopName, parentId: platform.id } });
+      if (!shop) {
+        await prisma.channel.create({ data: { name: shopName, category: p.category, parentId: platform.id, status: 'ENABLED', sort: i } });
+      }
+    }
+  }
+  console.log('✅ 获客渠道初始化完成！');
 }
 
 main()
