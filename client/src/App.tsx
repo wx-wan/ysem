@@ -19,8 +19,7 @@ import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
 import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
-import ProductTaxonomyPage from './pages/ProductTaxonomy';
-import CertificatePage from './pages/Certificate';
+import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
 import NotFoundPage from './pages/NotFound';
@@ -61,7 +60,7 @@ function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales" element={<SalesLayout />}>
           <Route index element={<SalesPage />} />
-          <Route path="products" element={<ProductsPage />} />
+          <Route path="products" element={<ProductManagementPage />} />
           <Route path="leads" element={<SalesLeadsPage />} />
           <Route path="opportunities" element={<SalesOpportunitiesPage />} />
           <Route path="orders" element={<SalesOrdersPage />} />
@@ -75,8 +74,8 @@ function App() {
         <Route path="system/role" element={<PermRoute perm="system:role"><UserManagementPage /></PermRoute>} />
         <Route path="system/dept" element={<PermRoute perm="system:dept"><UserManagementPage /></PermRoute>} />
         <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
-        <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductTaxonomyPage /></PermRoute>} />
-        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><CertificatePage /></PermRoute>} />
+        <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage /></PermRoute>} />
+        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><ProductManagementPage /></PermRoute>} />
         <Route path="system/operation-logs" element={<PermRoute perm="system:perm"><OperationLogsPage /></PermRoute>} />
         <Route path="system/approval" element={<PermRoute perm="system:perm"><SettingsApprovalPage /></PermRoute>} />
       </Route>
