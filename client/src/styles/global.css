@@ -965,30 +965,9 @@ html, body {
 
 /* --- 无商机客户(void)：灰色 --- */
 
-/* ========== 系统设置页（承载于 MainLayout 内，左侧分组菜单 + 右侧内容） ========== */
-.design-app {
-  display: flex;
-  height: 100%;
-}
-.design-sider {
-  width: 240px;
-  flex-shrink: 0;
-  background: #fff;
-  border-right: 1px solid #eef0f4;
-  padding: 12px 0;
-  overflow: auto;
-}
-.design-sider .ant-menu {
-  border-inline-end: none;
-}
+/* ========== 系统设置页分组菜单（承载于独立 SettingLayout 的 Sider 内） ========== */
 .design-sider .ant-menu-submenu-title {
   font-weight: 500;
-}
-.design-main {
-  flex: 1;
-  min-width: 0;
-  padding: 8px 16px 16px;
-  overflow: auto;
 }
 .customer-tier-void .ant-card {
   filter: grayscale(30%) brightness(0.94);

@@ -1,19 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { Layout, Menu, Spin, theme } from 'antd';
 import type { MenuProps } from 'antd';
 import {
-  DashboardOutlined,
   AppstoreOutlined,
-  ProjectOutlined,
-  ThunderboltOutlined,
-  ShoppingCartOutlined,
-  UnorderedListOutlined,
-  SolutionOutlined,
-  ProfileOutlined,
-  SendOutlined,
-  TeamOutlined,
-  FileDoneOutlined,
+  ShoppingOutlined,
+  SwapOutlined,
+  MessageOutlined,
+  ApiOutlined,
+  NodeIndexOutlined,
+  BarChartOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -26,48 +22,36 @@ import HeaderTools from './HeaderTools';
 
 const { Sider, Header, Content } = Layout;
 
-// 路由 → 页面名映射
-const routeTitles: Record<string, string> = {
-  '/dashboard': '仪表盘',
-  '/sales/leads': '线索',
-  '/customers': '客户',
-  '/sales/opportunities': '商机',
-  '/sales/products': '产品',
-  '/quotes': '报价',
-  '/samples': '打样',
-  '/orders': '订单',
-  '/production': '生产',
-  '/shipment': '出货',
-  '/settlement': '结算',
-  '/system/user': '用户管理',
-  '/system/role': '角色管理',
-  '/system/dept': '部门管理',
-  '/system/perm': '权限管理',
-  '/system/product-taxonomy': '产品管理',
-  '/system/certificates': '销售管理',
-  '/system/operation-logs': '操作日志',
-  '/system/approval': '审批管理',
-};
+interface SettingChild {
+  key: string;
+  label: string;
+  perm: string;
+}
 
-export default function MainLayout() {
+interface SettingGroup {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  children?: SettingChild[];
+}
+
+export default function SettingLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token } = theme.useToken();
-  // 侧边导航默认展开，仅通过顶部折叠按钮手动控制
   const [collapsed, setCollapsed] = useState(false);
 
-  // 获取用户信息（防 StrictMode 双重挂载重复请求）
   const profileFetched = useRef(false);
   useEffect(() => {
     if (!user && !profileFetched.current) {
       profileFetched.current = true;
       authApi.getProfile().then((res) => {
         const profile = res.data.data;
-        // getProfile 返回 role.permissions（嵌套），需提取为顶层 permissions 数组，避免 setAuth 把权限清空
-        const permissions = profile?.role?.permissions?.map((rp: { permission: { code: string } }) => rp.permission.code) ?? [];
+        const permissions =
+          profile?.role?.permissions?.map((rp: { permission: { code: string } }) => rp.permission.code) ?? [];
         useAuthStore.getState().setAuth(
           { ...profile, permissions },
           localStorage.getItem('accessToken') || '',
@@ -80,15 +64,69 @@ export default function MainLayout() {
     }
   }, []);
 
-  // 获取汇率
   useEffect(() => {
     fetchRates();
   }, []);
 
-  // 动态设置标签页标题
+  const { hasPerm } = usePermission();
+
+  const groups: SettingGroup[] = [
+    {
+      key: 'basic',
+      label: t('menu.settingBasic'),
+      icon: <AppstoreOutlined />,
+      children: [
+        { key: 'user', label: t('menu.systemUser'), perm: 'system:user' },
+        { key: 'perm', label: t('menu.systemPerm'), perm: 'system:perm' },
+      ],
+    },
+    {
+      key: 'sales',
+      label: t('menu.settingSales'),
+      icon: <ShoppingOutlined />,
+      children: [{ key: 'archive', label: t('menu.systemArchive'), perm: 'product:taxonomy:view' }],
+    },
+    {
+      key: 'trade',
+      label: t('menu.settingTrade'),
+      icon: <SwapOutlined />,
+    },
+    {
+      key: 'communication',
+      label: t('menu.settingCommunication'),
+      icon: <MessageOutlined />,
+    },
+    {
+      key: 'external',
+      label: t('menu.settingExternal'),
+      icon: <ApiOutlined />,
+    },
+    {
+      key: 'workflow',
+      label: t('menu.settingWorkflow'),
+      icon: <NodeIndexOutlined />,
+      children: [{ key: 'approval', label: '审批管理', perm: 'system:perm' }],
+    },
+    {
+      key: 'data',
+      label: t('menu.settingData'),
+      icon: <BarChartOutlined />,
+      children: [{ key: 'logs', label: '操作日志', perm: 'system:perm' }],
+    },
+  ];
+
+  const menuItems: MenuProps['items'] = groups
+    .map((g) => {
+      const children = (g.children || [])
+        .filter((c) => hasPerm(c.perm))
+        .map((c) => ({ key: `/setting/${c.key}`, label: c.label }));
+      if (!children.length) return null;
+      return { key: g.key, icon: g.icon, label: g.label, children };
+    })
+    .filter(Boolean) as MenuProps['items'];
+
   const pageTitle = useMemo(() => {
-    const name = routeTitles[location.pathname] || '';
-    return name ? `${name} - Joylifetoy` : 'Joylifetoy';
+    return location.pathname.startsWith('/setting') ? '系统设置 - Joylifetoy' : 'Joylifetoy';
   }, [location.pathname]);
   useEffect(() => {
     document.title = pageTitle;
@@ -105,35 +143,17 @@ export default function MainLayout() {
     if (key.startsWith('/')) navigate(key);
   };
 
-  const { hasPerm } = usePermission();
-
-  // 侧边栏菜单（按业务流程顺序扁平化，按权限动态渲染）
-  const menuItems: MenuProps['items'] = [
-    { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
-    ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
-    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
-    ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
-    ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/samples', icon: <ProfileOutlined />, label: t('menu.sample') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
-    ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
-    ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
-  ];
-
-  // 当前选中项与展开项
+  // 默认选中项
   const selectedKey = (() => {
-    const path = location.pathname;
-    if (path.startsWith('/sales/products')) return '/sales/products';
-    if (path.startsWith('/sales/leads')) return '/sales/leads';
-    if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
-    if (path.startsWith('/quotes')) return '/quotes';
-    if (path.startsWith('/samples')) return '/samples';
-    if (path.startsWith('/settlement')) return '/settlement';
-    return path;
+    const m = location.pathname.match(/^\/setting\/(.+)$/);
+    return m ? `/setting/${m[1]}` : '';
   })();
-  const openKeys: string[] = [];
+
+  // 精确 /setting 重定向到第一个有权限的子模块
+  if (location.pathname === '/setting') {
+    const first = groups.flatMap((g) => g.children || []).find((c) => hasPerm(c.perm));
+    return <Navigate to={`/setting/${first ? first.key : 'user'}`} replace />;
+  }
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -154,7 +174,7 @@ export default function MainLayout() {
       >
         <div
           className="sider-brand"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/dashboard')}
           style={{ cursor: 'pointer', userSelect: 'none' }}
         >
           <img className="brand-icon" src="/logo.png" alt="Logo" draggable={false} />
@@ -164,7 +184,7 @@ export default function MainLayout() {
           mode="inline"
           theme="light"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={[]}
+          defaultOpenKeys={['basic', 'sales', 'workflow', 'data']}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderInlineEnd: 'none', background: 'transparent' }}
@@ -194,9 +214,7 @@ export default function MainLayout() {
             >
               {collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             </span>
-            <span style={{ fontSize: 16, fontWeight: 600, color: token.colorText }}>
-              {routeTitles[location.pathname] || 'Joylifetoy'}
-            </span>
+            <span style={{ fontSize: 16, fontWeight: 600, color: token.colorText }}>系统设置</span>
           </div>
           <HeaderTools user={user} onLogout={handleLogout} onMenuClick={handleMenuClick} />
         </Header>
@@ -222,9 +240,6 @@ export default function MainLayout() {
           }}
         >
           <Spin size="large" />
-          <span style={{ color: 'rgba(0,0,0,0.65)', fontSize: 14 }}>
-            {t('common.loadingRates')}
-          </span>
         </div>
       )}
     </Layout>

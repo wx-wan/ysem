@@ -24,7 +24,7 @@ import PermPage from './pages/Perm';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
-import DesignApp from './pages/DesignApp';
+import SettingLayout from './layouts/SettingLayout';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
 
@@ -75,7 +75,14 @@ function App() {
         <Route path="shipment" element={<ShipmentPage />} />
         <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
-        <Route path="setting" element={<DesignApp />} />
+      </Route>
+      {/* 系统设置：独立的一套框架（侧边栏为设置分组菜单，与业务侧边栏区分） */}
+      <Route path="/setting" element={<SettingLayout />}>
+        <Route path="user" element={<UserManagementPage />} />
+        <Route path="perm" element={<PermPage />} />
+        <Route path="archive" element={<ProductManagementPage systemOnly />} />
+        <Route path="logs" element={<OperationLogsPage />} />
+        <Route path="approval" element={<SettingsApprovalPage />} />
       </Route>
       <Route path="/design" element={<Navigate to="/setting" replace />} />
       <Route path="*" element={<NotFoundPage />} />
