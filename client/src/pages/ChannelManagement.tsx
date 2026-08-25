@@ -146,7 +146,7 @@ export default function ChannelManagement() {
       width: 80,
     },
     {
-      title: t('common.action'),
+      title: t('common.operation'),
       width: 200,
       render: (_: unknown, record: Channel) => (
         <Space>

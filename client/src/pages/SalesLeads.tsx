@@ -254,7 +254,7 @@ export default function SalesLeads() {
       render: (v: string) => new Date(v).toLocaleDateString('zh-CN'),
     },
     {
-      title: t('common.action'),
+      title: t('common.operation'),
       key: 'action',
       width: 130,
       fixed: 'right',
