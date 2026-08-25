@@ -50,7 +50,17 @@ export default function ProductImagesStack({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <AntImage.PreviewGroup items={fan.map((it) => ({ src: it.url, alt: it.name }))}>
+      <AntImage.PreviewGroup
+        items={fan.map((it) => ({ src: it.url, alt: it.name }))}
+        preview={{
+          imageRender: (node, info) => (
+            <>
+              {node}
+              <div className="pil-preview-name">{fan[(info as { current?: number })?.current ?? 0]?.name}</div>
+            </>
+          ),
+        }}
+      >
         {fan.map((it, i) => {
           const zIndex = total - i; // 第 0 张最前
           const imgSize = size - i * scaleStep;

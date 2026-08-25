@@ -2,11 +2,11 @@ import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, us
 import { useTranslation } from 'react-i18next';
 import { App } from 'antd';
 import {
-  Form, Input, Select, Button, Tag, Badge, Divider, Spin, Row, Col,
+  Form, Input, InputNumber, Select, Button, Tag, Badge, Divider, Spin, Row, Col,
 } from 'antd';
 import AppModal from '../../../components/AppModal';
 import {
-  AppstoreAddOutlined, CopyOutlined, CheckCircleFilled,
+  AppstoreAddOutlined, CopyOutlined, CheckCircleFilled, ReloadOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import productApi, {
@@ -28,8 +28,8 @@ interface ProductEditModalProps {
   nested?: boolean;
   /** 嵌套模式下，成功创建单品后回传新记录 id（用于父级累计组合序列） */
   onCreated?: (productId: string) => void;
-  /** 创建 / 更新成功后回调（用于刷新列表） */
-  onSuccess?: () => void;
+  /** 创建 / 更新成功后回调（用于刷新列表，带回保存后的产品对象） */
+  onSuccess?: (saved?: Product) => void;
 }
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
@@ -52,6 +52,31 @@ const buildVisibleUserIds = (values: Record<string, unknown>) =>
   (values.visibility as string) === 'PRIVATE' && Array.isArray(values.visibleUserIds)
     ? (values.visibleUserIds as string[])
     : [];
+
+// 证书后端以逗号分隔字符串存储，表单多选 Select 用数组，这里做双向转换
+const splitCertIds = (v: unknown): string[] => {
+  if (Array.isArray(v)) return v as string[];
+  if (typeof v === 'string' && v) return v.split(',').filter(Boolean);
+  return [];
+};
+const joinCertIds = (values: Record<string, unknown>): string =>
+  splitCertIds(values.certificationIds).join(',');
+
+// 非负浮点数输入：基于 antd InputNumber，stringMode 保持字符串以兼容后端存储
+const FloatInput = (props: React.ComponentProps<typeof InputNumber>) => {
+  // InputNumber 不支持 allowClear，避免透传到 DOM 触发 React 警告
+  const { allowClear, ...rest } = props;
+  return (
+    <InputNumber
+      min={0}
+      precision={2}
+      step={0.1}
+      stringMode
+      style={{ width: '100%' }}
+      {...rest}
+    />
+  );
+};
 
 export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditModalProps>(
   ({ crafts, audiences, nested, onCreated, onSuccess }, ref) => {
@@ -84,6 +109,9 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     // 嵌套「再建一个」弹窗
     const nestedRef = useRef<ProductEditModalHandle>(null);
     const handleNestedCreated = (id: string) => setCreatedSingleIds((p) => [...p, id]);
+
+    // 主弹窗内"重选分类"模式：不再清空已填表单，仅回写分类到表单隐藏字段
+    const [reselectMode, setReselectMode] = useState(false);
 
     // 生成组合弹窗
     const [groupOpen, setGroupOpen] = useState(false);
@@ -134,6 +162,12 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         if (record) {
           setEditing(record);
           setCreatedSingleIds([]);
+          // 初始化分类状态，使左上角 SKU/分类标签与新建一致，并作为重选分类默认
+          const aud = audiences.find((a) => a.id === record.audienceId);
+          setStepAudience(aud);
+          setCategories(aud?.categories || []);
+          setStepCategory(aud?.categories?.find((c) => c.id === record.categoryId));
+          setStepCrafts(Array.isArray(record.crafts) ? record.crafts.map((c) => ({ id: c.id, name: c.name })) : []);
           setOpen(true);
           const values: Record<string, unknown> = {
             name: record.name ?? '',
@@ -142,7 +176,10 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
             audienceId: record.audienceId ?? undefined,
             categoryId: record.categoryId ?? undefined,
             weight: record.weight ?? '',
-            certificationIds: record.certificationIds ?? '',
+            certificationIds: splitCertIds(record.certificationIds),
+            sizeL: record.sizeL ?? '',
+            sizeW: record.sizeW ?? '',
+            sizeH: record.sizeH ?? '',
             visibility: record.visibility ?? 'PUBLIC',
             visibleUserIds: Array.isArray(record.visibleUsers)
               ? record.visibleUsers.map((v) => v.userId)
@@ -181,13 +218,40 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
       setStepErr(err);
       if (Object.keys(err).length) return;
 
+      // 同步选中的分类状态对象，确保标题标签与后续回写一致
+      const selectedCrafts = crafts.filter((c) => stepCrafts.some((s) => s.id === c.id));
+      const selectedAudience = audiences.find((a) => a.id === v.audienceId);
+      const selectedCategory = categories.find((c) => c.id === v.categoryId);
+      setStepCrafts(selectedCrafts);
+      setStepAudience(selectedAudience);
+      setStepCategory(selectedCategory);
       setStepOpen(false);
+
+      // 主弹窗内重选分类：仅回写隐藏字段并刷新 SKU 预览，不清空已填内容
+      if (reselectMode) {
+        setReselectMode(false);
+        form.setFieldsValue({
+          craftIds: v.craftIds,
+          audienceId: v.audienceId,
+          categoryId: v.categoryId,
+        });
+        if (v.audienceId) handleAudienceChange(v.audienceId);
+        return;
+      }
+
       setEditing(null);
       setOpen(true);
       form.resetFields();
       form.setFieldsValue({ ...v, visibility: 'PUBLIC' });
       setVisValue('PUBLIC');
       if (v.audienceId) handleAudienceChange(v.audienceId);
+    };
+
+    // 主弹窗内重选分类：保留上一次分类作为默认，仅切换为回写模式打开
+    const openReselectCategory = () => {
+      setStepErr({});
+      setReselectMode(true);
+      setStepOpen(true);
     };
 
     const handleSubmit = async (opts?: { openNext?: boolean }) => {
@@ -203,17 +267,27 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           visibility: buildVisibility(values),
           craftIds: buildCraftIds(values),
           visibleUserIds: buildVisibleUserIds(values),
+          certificationIds: joinCertIds(values),
         } as Partial<Product>;
+        // 尺寸/克重后端以字符串存储；编辑回填为数字时需统一转字符串，否则 Zod 校验失败
+        (['sizeL', 'sizeW', 'sizeH', 'weight'] as const).forEach((k) => {
+          const v = (values as Record<string, unknown>)[k];
+          (payload as Record<string, unknown>)[k] = v === undefined || v === null || v === '' ? null : String(v);
+        });
         let newId: string | undefined;
+        let saved: Product | undefined = editing ?? undefined;
         if (editing) {
-          await productApi.update(editing.id, payload);
+          const res = await productApi.update(editing.id, payload);
+          saved = (res as any)?.data?.data ?? (res as any)?.data ?? res as unknown as Product;
           message.success('更新成功');
         } else {
           const res = await productApi.create(payload);
-          newId = (res as unknown as { data: { data: { id: string } } }).data?.data?.id;
+          const created = (res as any)?.data?.data ?? (res as any)?.data ?? res;
+          newId = created?.id;
+          saved = created;
           message.success('单品创建成功');
         }
-        onSuccess?.();
+        onSuccess?.(saved);
         if (!nested && newId) setCreatedSingleIds((p) => [...p, newId as string]);
         if (nested && newId) onCreated?.(newId);
         if (nested) {
@@ -221,10 +295,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           return;
         }
         if (opts?.openNext) {
-          // 保存当前并再建一个：当前已记入序列，回到「选择分类」第一步开新单品
-          setStepCrafts([]);
-          setStepAudience(undefined);
-          setStepCategory(undefined);
+          // 保存当前并再建一个：保留上一次分类作为默认，回到「选择分类」第一步开新单品
           setStepErr({});
           setCategories([]);
           setSelectedAudienceId(undefined);
@@ -234,8 +305,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           setOpen(false);
         }
       } catch (err) {
+        // 表单校验错误不弹额外提示；业务错误（500 等）由 request.ts 拦截器统一展示后端 message
         if (err && typeof err === 'object' && 'errorFields' in err) return;
-        message.error('保存失败，请检查必填项');
       } finally {
         setSubmitting(false);
       }
@@ -284,7 +355,14 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         return <Button type="primary" loading={submitting} onClick={() => handleSubmit()}>保存单品</Button>;
       }
       if (isEdit) {
-        return <Button type="primary" loading={submitting} onClick={() => handleSubmit()}>更新</Button>;
+        return [
+          <Button key="reselect" icon={<ReloadOutlined />} onClick={openReselectCategory} disabled={submitting}>
+            重选分类
+          </Button>,
+          <Button key="save" type="primary" loading={submitting} onClick={() => handleSubmit()}>
+            更新
+          </Button>,
+        ];
       }
       return [
         <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
@@ -292,6 +370,9 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           <Badge count={createdSingleIds.length} size="small" offset={[4, -2]}>
             <span>生成组合</span>
           </Badge>
+        </Button>,
+        <Button key="reselect" icon={<ReloadOutlined />} onClick={openReselectCategory} disabled={submitting}>
+          重选分类
         </Button>,
         <Button key="another" icon={<CopyOutlined />} onClick={openCreateAnother} disabled={submitting}>
           再建一个
@@ -425,9 +506,9 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
                   {skuPreview ? skuPreview : (editing?.sku || 'SKU 待生成')}
                 </span>
                 <span className="pm-sku-tags">
-                  {[...stepCrafts.map((c) => c.name), stepAudience?.name, stepCategory?.name]
-                    .filter(Boolean)
-                    .join(' / ')}
+                  {stepCrafts.length ? stepCrafts.map((c) => c.name).join('、') : ''}
+                  {stepAudience?.name ? ` / ${stepAudience.name}` : ''}
+                  {stepCategory?.name ? ` / ${stepCategory.name}` : ''}
                 </span>
               </span>
             </div>
@@ -490,10 +571,10 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
                   <div className="pm-size-row">
                     <Row gutter={10}>
-                      <Col span={6}><Form.Item name="sizeL" label={t('product.sizeL')} style={{ marginBottom: 12 }}><Input placeholder="0" /></Form.Item></Col>
-                      <Col span={6}><Form.Item name="sizeW" label={t('product.sizeW')} style={{ marginBottom: 12 }}><Input placeholder="0" /></Form.Item></Col>
-                      <Col span={6}><Form.Item name="sizeH" label={t('product.sizeH')} style={{ marginBottom: 12 }}><Input placeholder="0" /></Form.Item></Col>
-                      <Col span={6}><Form.Item name="weight" label={t('product.weight')} style={{ marginBottom: 12 }}><Input placeholder={t('product.weightPlaceholder')} allowClear /></Form.Item></Col>
+                      <Col span={6}><Form.Item name="sizeL" label={t('product.sizeL')} style={{ marginBottom: 12 }}><FloatInput placeholder="0" /></Form.Item></Col>
+                      <Col span={6}><Form.Item name="sizeW" label={t('product.sizeW')} style={{ marginBottom: 12 }}><FloatInput placeholder="0" /></Form.Item></Col>
+                      <Col span={6}><Form.Item name="sizeH" label={t('product.sizeH')} style={{ marginBottom: 12 }}><FloatInput placeholder="0" /></Form.Item></Col>
+                      <Col span={6}><Form.Item name="weight" label={t('product.weight')} style={{ marginBottom: 12 }}><FloatInput placeholder={t('product.weightPlaceholder')} allowClear /></Form.Item></Col>
                     </Row>
                   </div>
                   <Form.Item name="certificationIds" label={t('product.certificates')} style={{ marginBottom: 12 }}>

@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-  Table, Button, Modal, Form, Input, Select,
+  Table, Button, Modal, Form, Input, Select, Image, Tag,
   Popconfirm, App, DatePicker, Card,
 } from 'antd';
 import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
 import { certificateApi, Certificate } from '../api/certificates';
+import ImageUploadCropper from '../components/common/ImageUploadCropper';
 
 const { TextArea } = Input;
 
@@ -87,6 +88,21 @@ export default function CertificatePage() {
   };
 
   const columns = [
+    {
+      title: 'Logo', dataIndex: 'logo', key: 'logo', width: 80, align: 'center',
+      render: (src: string | null) =>
+        src
+          ? (
+            <Image
+              src={src}
+              width={20}
+              height={20}
+              style={{ objectFit: 'cover', borderRadius: 4 }}
+              preview={{ mask: '查看' }}
+            />
+          )
+          : <span style={{ color: '#bbb' }}>—</span>,
+    },
     { title: '证书名称', dataIndex: 'name', key: 'name', ellipsis: true },
     { title: '编号/标准', dataIndex: 'code', key: 'code', width: 130, render: (c: string | null) => c || '-' },
     { title: '分类', dataIndex: 'category', key: 'category', width: 110, render: (c: string | null) => c || '-' },
@@ -98,9 +114,7 @@ export default function CertificatePage() {
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (s: number) => (
-        <span className={`pm-status ${s === 1 ? 'pm-status--active' : 'pm-status--inactive'}`}>
-          {s === 1 ? '启用' : '停用'}
-        </span>
+        <Tag color={s === 1 ? 'success' : 'default'} variant="filled">{s === 1 ? '启用' : '停用'}</Tag>
       ),
     },
     {
@@ -167,6 +181,17 @@ export default function CertificatePage() {
           </Form.Item>
           <Form.Item name="issuer" label="发证机构">
             <Input placeholder="如 SGS" maxLength={100} />
+          </Form.Item>
+          <Form.Item name="logo" label="证书 Logo">
+            <ImageUploadCropper
+              uploadUrl="/upload"
+              urlField="data.url"
+              shape="square"
+              size={120}
+              cropSquare
+              placeholder="上传证书 Logo"
+              onUploaded={(url) => form.setFieldValue('logo', url)}
+            />
           </Form.Item>
           <Form.Item name="validUntil" label="有效期至">
             <DatePicker style={{ width: '100%' }} placeholder="选择有效期，留空表示长期" />

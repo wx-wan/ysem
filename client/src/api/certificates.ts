@@ -8,6 +8,7 @@ export interface Certificate {
   category?: string | null;
   validUntil?: string | null;
   status: number;
+  logo?: string | null;
   remark?: string | null;
   createdAt: string;
   updatedAt: string;

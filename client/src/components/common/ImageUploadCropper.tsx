@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
-import { Upload, Avatar, Button, Space, Modal, message } from 'antd';
+import { Upload, Avatar, Button, Space, Modal, Slider, App } from 'antd';
 import { PlusOutlined, ReloadOutlined, UserOutlined } from '@ant-design/icons';
+import Cropper, { type Area } from 'react-easy-crop';
 import './ImageUploadCropper.css';
 
 export interface ImageUploadCropperProps {
   /** 当前值：已上传图片的 URL 或 base64（用于回显） */
   value?: string;
-  /** 值变化：返回压缩后的 Blob/File，方便交给上传接口 */
-  onChange?: (file: Blob) => void;
+  /** 值变化：上传成功后返回 URL；非 Form 受控场景也可能返回 Blob */
+  onChange?: (value: string | Blob) => void;
   /** 裁剪比例（保留以兼容旧调用，无裁剪组件时不再使用） */
   aspect?: number;
   /** 压缩后最大体积（字节），默认 512KB */
@@ -30,6 +31,8 @@ export interface ImageUploadCropperProps {
   urlField?: string;
   /** 通过 uploadUrl 自动上传成功后，额外回传后端返回的 URL */
   onUploaded?: (url: string) => void;
+  /** 上传前居中裁剪为正方形（用于 Logo 等固定比例场景） */
+  cropSquare?: boolean;
 }
 
 const DEFAULT_MAX_SIZE = 512 * 1024;
@@ -85,6 +88,35 @@ function compressImage(file: File, maxSize: number, quality: number): Promise<Bl
   });
 }
 
+/** 按裁剪区域输出 jpeg（imageSrc 可为 dataURL 或 blob url） */
+function getCroppedImg(imageSrc: string, area: Area, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = area.width;
+      canvas.height = area.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('canvas unavailable'));
+        return;
+      }
+      ctx.drawImage(
+        img,
+        area.x, area.y, area.width, area.height,
+        0, 0, area.width, area.height,
+      );
+      canvas.toBlob(
+        (blob) => (blob ? resolve(blob) : reject(new Error('crop failed'))),
+        'image/jpeg',
+        quality,
+      );
+    };
+    img.onerror = () => reject(new Error('load failed'));
+    img.src = imageSrc;
+  });
+}
+
 async function uploadFile(blob: Blob, uploadUrl: string, urlField: string): Promise<string> {
   const form = new FormData();
   form.append('file', blob, 'image.png');
@@ -113,10 +145,15 @@ export default function ImageUploadCropper({
   uploadUrl,
   urlField = 'data.url',
   onUploaded,
+  cropSquare,
 }: ImageUploadCropperProps) {
+  const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
   const [previewSrc, setPreviewSrc] = useState<string>();
   const [open, setOpen] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedArea, setCroppedArea] = useState<Area | null>(null);
   const selectedFileRef = useRef<File | null>(null);
 
   useEffect(() => {
@@ -142,6 +179,9 @@ export default function ImageUploadCropper({
         if (previewSrc) URL.revokeObjectURL(previewSrc);
         selectedFileRef.current = file;
         setPreviewSrc(reader.result as string);
+        setCrop({ x: 0, y: 0 });
+        setZoom(1);
+        setCroppedArea(null);
         setOpen(true);
       };
       reader.readAsDataURL(file);
@@ -154,12 +194,26 @@ export default function ImageUploadCropper({
     if (!file) return;
     try {
       setUploading(true);
-      const compressed = await compressImage(file, maxSize, quality);
-      onChange?.(compressed);
+      let compressed: Blob;
+      if (cropSquare) {
+        const src = previewSrc;
+        const area = croppedArea;
+        if (!src || !area) {
+          message.error('请先裁剪图片');
+          return;
+        }
+        const cropped = await getCroppedImg(src, area, quality);
+        compressed = await compressImage(new File([cropped], 'logo.jpg', { type: 'image/jpeg' }), maxSize, quality);
+      } else {
+        compressed = await compressImage(file, maxSize, quality);
+      }
       if (uploadUrl) {
         const url = await uploadFile(compressed, uploadUrl, urlField);
+        onChange?.(url);
         onUploaded?.(url);
         message.success('上传成功');
+      } else {
+        onChange?.(compressed);
       }
     } catch {
       message.error('处理失败，请重试');
@@ -196,7 +250,7 @@ export default function ImageUploadCropper({
             aria-label="更换图片"
           >
             <div className="iuc-preview-mask">
-              <Space direction="vertical" size={2}>
+              <Space orientation="vertical" size={2}>
                 <ReloadOutlined />
                 <span style={{ fontSize: 12 }}>更换</span>
               </Space>
@@ -233,7 +287,7 @@ export default function ImageUploadCropper({
       </div>
 
       <Modal
-        title="预览头像"
+        title={cropSquare ? '裁剪 Logo' : '预览头像'}
         open={open}
         onCancel={handleCancel}
         width={480}
@@ -249,15 +303,37 @@ export default function ImageUploadCropper({
         destroyOnHidden
       >
         <div className="iuc-preview-wrap">
-          {previewSrc && (
+          {previewSrc && cropSquare ? (
+            <div className="iuc-cropper-area">
+              <Cropper
+                image={previewSrc}
+                crop={crop}
+                zoom={zoom}
+                aspect={1}
+                cropShape="rect"
+                showGrid
+                onCropChange={setCrop}
+                onZoomChange={setZoom}
+                onCropComplete={(_, area) => setCroppedArea(area)}
+              />
+            </div>
+          ) : previewSrc ? (
             shape === 'circle' ? (
               <Avatar size={200} src={previewSrc} />
             ) : (
               <img className="iuc-preview-img" src={previewSrc} alt="预览" />
             )
-          )}
+          ) : null}
         </div>
-        <div className="iuc-preview-tip">确认后将自动上传并替换当前头像</div>
+        {previewSrc && cropSquare && (
+          <div className="iuc-zoom">
+            <span>缩放</span>
+            <Slider min={0.5} max={3} step={0.01} value={zoom} onChange={setZoom} style={{ flex: 1 }} />
+          </div>
+        )}
+        <div className="iuc-preview-tip">
+          {cropSquare ? '拖动调整位置、滑动缩放裁剪框，确认即按正方形保存' : '确认后将自动上传并替换当前头像'}
+        </div>
       </Modal>
     </>
   );

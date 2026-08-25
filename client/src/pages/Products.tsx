@@ -38,13 +38,6 @@ const { Text } = Typography;
 // 类名拼接工具
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
 
-// 供货模式按角色可选范围：admin 全选 / purchaser 含深度定制+轻定制+现货 / 其他（业务等）默认深度定制、不可修改
-const SUPPLY_MODES_BY_ROLE: Record<string, string[]> = {
-  admin: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
-  purchaser: ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'],
-};
-const DEFAULT_SUPPLY_MODE = 'DEEP_CUSTOM';
-
 export default function Products() {
   const { t } = useTranslation();
   const { message } = App.useApp();
@@ -52,7 +45,7 @@ export default function Products() {
   const [list, setList] = useState<MixedItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(8);
+  const [pageSize] = useState(6);
   const [loading, setLoading] = useState(false);
 
   // 筛选
@@ -87,8 +80,6 @@ export default function Products() {
   const { user: currentUser } = useAuthStore();
   const roleCode = currentUser?.role?.code ?? '';
   const canDelete = roleCode === 'admin' || roleCode === 'ADMIN';
-  const allowedSupplyModes = SUPPLY_MODES_BY_ROLE[roleCode] ?? [DEFAULT_SUPPLY_MODE];
-  const supplyModesReadOnly = allowedSupplyModes.length <= 1; // 仅一个可用项（业务等）→ 不可修改
 
   // 编辑/新建弹窗（独立组件，命令式 ref 调用；关闭或保存成功后刷新列表）
   const editModalRef = useRef<ProductEditModalHandle>(null);
@@ -308,7 +299,7 @@ export default function Products() {
           <>
             <Row gutter={[16, 16]}>
               {list.map((item) => (
-                <Col key={`${item.type}-${item.data.id}`} xs={24} sm={12} md={12} lg={6} xl={6}>
+                <Col key={`${item.type}-${item.data.id}`} xs={24} sm={12} md={8} lg={8} xl={8}>
                   {item.type === 'PRODUCT' ? (
                     <ProductCard
                       product={item.data}
@@ -354,7 +345,22 @@ export default function Products() {
       </Card>
 
       {/* 新建 / 编辑弹窗（独立组件） */}
-      <ProductEditModal ref={editModalRef} crafts={crafts} audiences={audiences} onSuccess={fetchList} />
+      <ProductEditModal
+        ref={editModalRef}
+        crafts={crafts}
+        audiences={audiences}
+        onSuccess={async (saved?: Product) => {
+          fetchList();
+          // 若正在查看该产品，用返回的最新数据刷新详情，避免「点击更新详情不刷新」
+          if (saved?.id && viewing && saved.id === viewing.id) {
+            try {
+              const res = await productApi.getById(saved.id);
+              const full = (res.data as any)?.data ?? res.data;
+              if (full) setViewing(full);
+            } catch { /* 失败则用返回体兜底 */ if (saved) setViewing(saved); }
+          }
+        }}
+      />
 
       {/* 详情弹窗（使用项目自有 AppModal 组件，UI 参考客户详情） */}
       <ProductDetailModal

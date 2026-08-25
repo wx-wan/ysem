@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  App, Spin, theme, Row, Col, Pagination, Modal, Radio,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty,
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
 import { userApi, User } from '../api/users';
@@ -524,9 +524,8 @@ export default function CustomersPage() {
       <Spin spinning={loading}>
         {viewMode === 'card' ? renderCardView : renderListView}
         {list.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: 60, color: token.colorTextSecondary }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
-            <div>暂无客户数据</div>
+          <div style={{ textAlign: 'center', padding: '48px 0' }}>
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无客户数据" />
           </div>
         )}
       </Spin>

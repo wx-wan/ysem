@@ -9,7 +9,6 @@ import {
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product, ProductActivity } from '../../../api/products';
 import { SalesItem, STAGE_META } from '../../../api/sales';
-import { SUPPLY_MODES } from '../../../config/product';
 import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
@@ -46,17 +45,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   useEffect(() => {
     if (open) setTab('overview');
   }, [open, product?.id]);
-
-  const supplyLabels = useMemo(() => {
-    if (!product?.supplyModes) return [];
-    const arr = String(product.supplyModes)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    return arr
-      .map((m) => SUPPLY_MODES.find((o) => o.value === m)?.label)
-      .filter((l): l is string => !!l);
-  }, [product]);
 
   const creator = useMemo(() => {
     const createAct = activities
@@ -101,7 +89,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
         : '未设置',
     },
     { icon: <ColumnHeightOutlined style={{ fontSize: 14 }} />, label: '克重', value: product.weight ? `${product.weight} g` : '未设置' },
-    { icon: <HomeOutlined style={{ fontSize: 14 }} />, label: '模式', value: supplyLabels.join('、') || '未设置' },
+    {
+      icon: <HomeOutlined style={{ fontSize: 14 }} />,
+      label: '类型',
+      value: '单品',
+    },
   ];
 
   const circleBtnStyle = (bg: string): React.CSSProperties => ({

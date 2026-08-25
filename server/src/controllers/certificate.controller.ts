@@ -12,6 +12,7 @@ const certificateSchema = z.object({
   validUntil: z.string().optional(), // ISO 字符串，可选
   status: z.number().int().optional(),
   remark: z.string().trim().max(500).optional(),
+  logo: z.string().trim().max(500).optional(),
 });
 
 // 列表（不分页，证书数量有限）

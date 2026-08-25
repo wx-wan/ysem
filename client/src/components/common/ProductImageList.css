@@ -407,3 +407,28 @@
     transform: rotate(360deg);
   }
 }
+
+/* 全屏放大预览：顶部居中显示当前图片名称（固定定位，不随图片缩放） */
+.pil-preview-name {
+  position: fixed;
+  left: 50%;
+  top: 22px;
+  bottom: auto;
+  transform: translateX(-50%);
+  z-index: 1081;
+  max-width: 80vw;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(20, 20, 22, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}

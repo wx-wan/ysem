@@ -456,6 +456,7 @@ model Certificate {
   category   String? // 分类，如 安全 / 电磁兼容 / 环保
   validUntil DateTime? // 有效期至（可选）
   status     Int       @default(1) // 1 启用 0 停用
+  logo       String? // 证书 Logo 图片 URL
   remark     String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

@@ -1,13 +1,11 @@
-import { Table, Tag, Button, Space, Popconfirm } from 'antd';
+import { Table, Button, Space, Popconfirm } from 'antd';
 import {
   EyeOutlined, EditOutlined, DeleteOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { buildTablePagination } from '../../common/tablePagination';
-import { SUPPLY_MODES } from '../../../config/product';
 import type { Product } from '../../../api/products';
-import { useDs } from '../../customer/shared/ds';
 
 interface ProductListProps {
   data: Product[];
@@ -24,7 +22,6 @@ interface ProductListProps {
 export default function ProductList({
   data, total, page, pageSize, onPageChange, onView, onEdit, onDelete, canDelete,
 }: ProductListProps) {
-  const ds = useDs();
   const { t } = useTranslation();
 
   const columns: ColumnsType<Product> = [
@@ -37,14 +34,8 @@ export default function ProductList({
         r.crafts?.length ? r.crafts.map((c) => c.name).join('+') : '-',
     },
     {
-      title: '供应模式',
-      render: (_: unknown, r: Product) =>
-        r.supplyModes
-          ? r.supplyModes.split(',').map((m: string) => {
-              const f = SUPPLY_MODES.find((s) => s.value === m);
-              return f ? <Tag key={m} variant="filled">{f.label}</Tag> : null;
-            })
-          : <span style={{ color: ds.textMuted }}>未设</span>,
+      title: '类型',
+      render: () => '单品',
     },
     {
       title: t('product.visibility'),

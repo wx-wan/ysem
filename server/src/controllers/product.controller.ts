@@ -13,12 +13,12 @@ const productSchema = z.object({
   craftIds: z.array(z.string().uuid()).nullish(),
   audienceId: z.string().uuid().nullish(),
   categoryId: z.string().uuid().nullish(),
-  // 产品属性
+  // 产品属性（尺寸/克重后端以 String 存储，兼容前端传字符串或数字）
   images: z.string().nullish(),
-  sizeL: z.string().nullish(),
-  sizeW: z.string().nullish(),
-  sizeH: z.string().nullish(),
-  weight: z.string().nullish(),
+  sizeL: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
+  sizeW: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
+  sizeH: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
+  weight: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
   // 供货模式（单选，逗号分隔，最多一个值）
   supplyModes: z.string().nullish(),
   // 认证资质：关联证书 id 列表（逗号分隔）
@@ -133,6 +133,10 @@ async function buildProductDiff(
       const arr: string[] = typeof v === 'string' ? v.split(',').filter(Boolean) : [];
       return arr.map((m) => map[m] ?? m).join('、') || '空';
     },
+    images: (v) => {
+      const arr: { url: string; name?: string }[] = Array.isArray(v) ? v : [];
+      return arr.length ? arr.map((i) => i.url).join('、') : '空';
+    },
     visibility: (v) => (v === 'PUBLIC' ? '公开' : v === 'PRIVATE' ? '私密' : String(v ?? '空')),
     currency: (v) => String(v ?? '空'),
   };
@@ -142,7 +146,36 @@ async function buildProductDiff(
   const before: Record<string, any> = {};
   const after: Record<string, any> = {};
   for (const f of fields) {
-    before[f] = existing?.[f] ?? (f === 'craftIds' ? existing?.crafts?.map((c: any) => c.id) ?? [] : undefined);
+    if (f === 'craftIds') {
+      before[f] = existing?.crafts?.map((c: any) => c.id) ?? [];
+    } else if (f === 'visibleUserIds') {
+      // 可见成员存于关联表 visibleUsers，需从关联取 userId 数组，避免 undefined 与空数组误判为变更
+      before[f] = existing?.visibleUsers?.map((v: any) => v.userId) ?? [];
+    } else if (f === 'images') {
+      // 图片存为 JSON 数组 [{url,name}]，解析为结构化数组以便前端以缩略图对比，并正确识别真正变化
+      const parseImg = (raw: any): { url: string; name: string }[] | null => {
+        if (!raw) return null;
+        let arr: any = raw;
+        if (typeof raw === 'string') {
+          try {
+            arr = JSON.parse(raw);
+          } catch {
+            arr = raw.split(',').map((s) => s.trim()).filter(Boolean);
+          }
+        }
+        if (Array.isArray(arr)) {
+          const list = arr.filter((i: any) => i && i.url).map((i: any) => ({ url: i.url, name: i.name ?? '' }));
+          return list.length ? list : null; // 空数组规范为 null，避免「空 → 空」误记变更
+        }
+        return null;
+      };
+      before[f] = parseImg(existing?.images);
+      after[f] = parsed?.[f] === undefined ? before[f] : parseImg(parsed?.[f]);
+      // 已在分支内设置 after，跳过末尾统一赋值
+      continue;
+    } else {
+      before[f] = existing?.[f];
+    }
     after[f] = parsed?.[f] === undefined ? before[f] : parsed[f];
   }
 
@@ -249,6 +282,12 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
   } catch { fail(res, 500, '服务器错误'); }
 };
 
+// 供货方式由角色决定（前端不手动选择）：admin/purchaser 默认可多选，单品创建取默认首项；其他角色默认深度定制
+const defaultSupplyModeByRole = (roleCode?: string): string => {
+  if (roleCode === 'admin' || roleCode === 'purchaser') return 'DEEP_CUSTOM';
+  return 'DEEP_CUSTOM';
+};
+
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = productSchema.parse(req.body);
@@ -257,6 +296,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     // 使用 SingleProductCreateInput 支持多对多/一对多关联的嵌套写入
     const data: Prisma.SingleProductCreateInput = {
       ...rest,
+      supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
       createdBy: req.userId,
       ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
       ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
@@ -305,12 +345,13 @@ export const batchCreateProducts = async (req: AuthRequest, res: Response): Prom
       try {
         const parsed = productSchema.parse(row);
         const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-        const data = { ...rest } as Prisma.SingleProductUncheckedCreateInput;
-        data.createdBy = req.userId;
-        if (craftIds?.length) data.crafts = { connect: craftIds.map((id) => ({ id })) };
-        if (visibleUserIds?.length) {
-          data.visibleUsers = { create: visibleUserIds.map((userId) => ({ userId })) };
-        }
+        const data: Prisma.SingleProductCreateInput = {
+          ...rest,
+          supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
+          createdBy: req.userId,
+          ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
+          ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
+        };
         const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
         const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
         if (hasFullContext && sku === null) {
@@ -411,7 +452,8 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     success(res, product, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
-    fail(res, 500, '服务器错误');
+    console.error('[updateProduct] error:', err);
+    fail(res, 500, err instanceof Error ? err.message : '服务器错误');
   }
 };
 

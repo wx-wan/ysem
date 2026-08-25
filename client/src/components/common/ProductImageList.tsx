@@ -244,10 +244,16 @@ export default function ProductImageList({
               src={items[safeCurrent].url}
               alt={items[safeCurrent].name}
               preview={{
-                visible: zoomed,
-                onVisibleChange: (v) => setZoomed(v),
+                open: zoomed,
+                onOpenChange: (v) => setZoomed(v),
                 current: safeCurrent,
                 onChange: (cur) => setCurrent(cur),
+                imageRender: (current) => (
+                  <>
+                    {current}
+                    <div className="pil-preview-name">{items[safeCurrent]?.name}</div>
+                  </>
+                ),
               }}
             />
             {items.length > 1 && !zoomed && (

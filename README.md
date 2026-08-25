@@ -282,6 +282,24 @@ docker-compose logs --tail=50 server
 
 ## 更新日志
 
+### 2026-08-25 —— 产品编辑/详情体验与日志展示优化
+
+- **产品编辑弹窗 (`ProductEditModal`) 体验优化**：
+  - 工艺多选展示统一：编辑态与详情态均用 `、` 分隔（原列表 `、`，编辑态原为 `/`），与受众、品类保持一致风格
+  - 预览产品图片时，在预览层**顶部**展示该图片在编辑时设置的名称（图片 `name` 字段）
+  - 产品详情弹窗预览产品图片时同样在顶部展示图片名称
+- **产品详情/列表取值逻辑统一**：
+  - 修复详情中「模式（供货模式 `supplyModes`）」取值与列表不一致的问题：详情 `supplyLabels` 改为与列表相同的取值逻辑（按 `SUPPLY_MODES` 枚举映射），避免回填展示为「未设置」
+- **操作日志图片变更可视化**（`server/src/controllers/product.controller.ts` + `client/src/components/common/DiffTags.tsx`）：
+  - 后端 `buildProductDiff` 将 `images` 字段由整段 JSON 文本比对改为结构化 `[{url, name}]` 比对，新增 `images` formatter 输出 URL 列表（缩略图 tooltip）
+  - 前端 `DiffTags` 对 `images` 字段渲染 **20×20 缩略图对比**：旧图灰显 + 删除线边框，新图主色边框高亮；图片**名称变化**单独以一行橙色文字展示「名称：旧名 → 新名」
+  - 修复可见人员从空到空也被记录日志的问题（空值等价则不计入 diff）
+- **证书模块**：`Certificate` 新增 `logo` 字段（`schema.prisma` + `certificate.controller.ts` + 前端表单/列表展示），已生成迁移 `20260825010000_add_certificate_logo`
+- **数据库迁移**：
+  - `20260825000000_fix_craft_relation_fk`：修复工艺关联外键
+  - `20260825010000_add_certificate_logo`：新增证书 Logo 字段
+- **客户列表空状态**：「暂无客户数据」由手写 emoji 占位改为 antd 标准 `<Empty image={Empty.PRESENTED_IMAGE_SIMPLE}>` 组件，与系统其余页面风格统一
+
 ### 2026-08-22 —— 统一操作日志（全局留痕 + 字段级差异）
 
 - **目标**：建立全系统统一的操作留痕机制，记录「谁（姓名+用户名）、什么时间、做了什么、改了哪些字段」，并在前端以 Tag 形式展示差异，后续客户/商机/订单/用户等模块均复用同一套逻辑。

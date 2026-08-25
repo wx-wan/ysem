@@ -118,9 +118,7 @@ export default function ProductTaxonomy() {
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
       render: (s: number) => (
-        <span className={`pm-status ${s === 1 ? 'pm-status--active' : 'pm-status--inactive'}`}>
-          {s === 1 ? '启用' : '停用'}
-        </span>
+        <Tag color={s === 1 ? 'success' : 'default'} variant="filled">{s === 1 ? '启用' : '停用'}</Tag>
       ),
     },
     {

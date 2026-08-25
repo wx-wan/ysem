@@ -105,7 +105,7 @@ const ProductCard = memo(function ProductCard({
             </span>
           </div>
           <div className="pm-prod-meta__item">
-            <span className="pm-prod-meta__label">模式</span>
+            <span className="pm-prod-meta__label">类型</span>
             <span className="pm-prod-meta__value">
               {(product as unknown as { items?: unknown[] }).items?.length ? '组合' : '单品'}
             </span>

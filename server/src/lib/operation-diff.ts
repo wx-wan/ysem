@@ -91,8 +91,10 @@ function isEqual(a: unknown, b: unknown): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
   }
   if (a === b) return true;
-  // null/undefined 视为相等（避免 '' 与 null 反复记录）
-  if ((a === null || a === undefined || a === '') && (b === null || b === undefined || b === '')) return true;
+  // null/undefined/空串/空数组 视为相等（避免「空 → 空」反复记录）
+  const isEmpty = (v: unknown): boolean =>
+    v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0);
+  if (isEmpty(a) && isEmpty(b)) return true;
   return false;
 }
 
