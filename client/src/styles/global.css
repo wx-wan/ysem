@@ -987,6 +987,12 @@ html, body {
   max-width: 1200px;
   margin: 0 auto;
 }
+.design-title {
+  /* 与仪表盘卡片标题(.card-heading)字号层级保持一致 */
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.5px;
+}
 .design-top-nav {
   position: absolute;
   left: 50%;
