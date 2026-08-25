@@ -93,7 +93,15 @@
     "systemCertificates": "File Management",
 
     "systemArchive": "Archive Management",
-    "systemCertificateManage": "Certificate Management"  },
+    "systemCertificateManage": "Certificate Management",
+    "settingBasic": "Basic Management",
+    "settingSales": "Sales Management",
+    "settingTrade": "Trade Management",
+    "settingCommunication": "Communication Management",
+    "settingExternal": "External Integration",
+    "settingWorkflow": "Workflow & Rules",
+    "settingData": "Data Management"
+  },
   "user": {
     "title": "User Management",
     "avatar": "Avatar",

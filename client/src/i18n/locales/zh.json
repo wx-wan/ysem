@@ -93,7 +93,15 @@
     "systemCertificates": "档案管理",
 
     "systemArchive": "档案管理",
-    "systemCertificateManage": "证书管理"  },
+    "systemCertificateManage": "证书管理",
+    "settingBasic": "基础管理",
+    "settingSales": "销售管理",
+    "settingTrade": "交易管理",
+    "settingCommunication": "沟通管理",
+    "settingExternal": "外部对接",
+    "settingWorkflow": "流程规则管理",
+    "settingData": "数据管理"
+  },
   "user": {
     "title": "用户管理",
     "avatar": "头像",
