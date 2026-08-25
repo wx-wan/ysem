@@ -46,7 +46,7 @@ export default function DesignApp() {
         <Button type="link" icon={<ArrowLeftOutlined />} onClick={() => navigate('/dashboard')}>
           返回
         </Button>
-        <Title level={4} className="design-title" style={{ margin: 0 }}>{t('header.systemDesign')}</Title>
+        <Title level={4} style={{ margin: 0 }}>{t('header.systemDesign')}</Title>
         <CapsuleSwitch
           className="design-top-nav"
           tone="primary"
