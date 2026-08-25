@@ -87,7 +87,7 @@ export default function CreateOrderFromProductModal({
     setSaving(true);
     try {
       const data = {
-        title: values.title || `${productName || (type === 'QUOTE' ? '报价' : '打样')}单`,
+        title: values.title || productName || `${type === 'QUOTE' ? '报价' : '打样'}单`,
         targetType,
         targetId,
         customerId: values.customerId,

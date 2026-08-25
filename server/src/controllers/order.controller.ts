@@ -11,11 +11,11 @@ export type OrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
 
 // 生成单据号（按类型前缀）
 async function genOrderNo(type: OrderType): Promise<string> {
-  const prefix = type === "QUOTE" ? "Q" : type === "SAMPLE" ? "S" : type === "PRODUCTION" ? "P" : type === "SHIPPED" ? "H" : "O";
+  const prefix = type === "QUOTE" ? "BJ" : type === "SAMPLE" ? "S" : type === "PRODUCTION" ? "P" : type === "SHIPPED" ? "H" : "O";
   const date = new Date();
-  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  const ym = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}`;
   const count = await prisma.order.count({ where: { type } });
-  return `${prefix}-${ymd}-${String(count + 1).padStart(3, "0")}`;
+  return `${prefix}-${ym}-${String(count + 1).padStart(3, "0")}`;
 }
 
 // 当前用户是否该类型的审批人
