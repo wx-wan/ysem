@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AppModal from '../../AppModal';
 import { Avatar, Button, Empty, Tag, theme, Tooltip } from 'antd';
 import {
@@ -32,11 +32,13 @@ interface ProductDetailModalProps {
   salesLoading: boolean;
   activities: ProductActivity[];
   userMap?: Record<string, { id: string; username: string; realName?: string }>;
+  onSalesRefresh?: () => void;
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product, open, onClose, onEdit,
   salesList, salesLoading, activities, userMap,
+  onSalesRefresh,
 }) => {
   const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
   const { token } = theme.useToken();
@@ -49,8 +51,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (open) setTab('overview');
   }, [open, product?.id]);
 
-  // 该产品的相关单据（报价/打样/订单）
-  useEffect(() => {
+  // 加载该产品的相关单据（报价/打样/订单）
+  const loadRelatedOrders = useCallback(() => {
     if (!open || !product) {
       setRelatedOrders([]);
       return;
@@ -62,6 +64,15 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       .catch(() => setRelatedOrders([]))
       .finally(() => setRelatedLoading(false));
   }, [open, product?.id]);
+
+  useEffect(() => {
+    loadRelatedOrders();
+  }, [loadRelatedOrders]);
+
+  const handleOrderCreated = () => {
+    loadRelatedOrders();
+    onSalesRefresh?.();
+  };
 
   const creator = useMemo(() => {
     const createAct = activities
@@ -498,6 +509,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               ]
             : []
         }
+        onCreated={handleOrderCreated}
         onCancel={() => setCreateOpen(null)}
       />
     </AppModal>

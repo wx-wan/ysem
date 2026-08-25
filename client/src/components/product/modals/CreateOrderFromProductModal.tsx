@@ -5,6 +5,7 @@ import { salesApi } from '../../../api/sales';
 import { quoteApi, sampleApi } from '../../../api/products';
 
 interface InitialItem {
+  key?: string;
   productId?: string;
   name: string;
   spec?: string;
@@ -12,6 +13,8 @@ interface InitialItem {
   unitPrice?: number;
   pipelineId?: string;
 }
+
+const genKey = () => Math.random().toString(36).slice(2);
 
 interface Props {
   open: boolean;
@@ -46,7 +49,9 @@ export default function CreateOrderFromProductModal({
   useEffect(() => {
     if (!open) return;
     form.resetFields();
-    setItems(initialItems.length ? initialItems : (productName ? [{ name: productName, quantity: 1 }] : []));
+    const normalized = (initialItems.length ? initialItems : (productName ? [{ name: productName, quantity: 1 }] : []))
+      .map((it) => ({ ...it, key: it.key || genKey() }));
+    setItems(normalized);
     customerApi
       .listMy({ pageSize: 200 })
       .then((r) => setCustomers(r.data?.data?.list || []))
@@ -74,7 +79,7 @@ export default function CreateOrderFromProductModal({
       message.warning('请至少添加一条明细');
       return;
     }
-    const payloadItems = items.map((it) => ({
+    const payloadItems = items.map(({ key, ...it }) => ({
       ...it,
       amount: (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0),
       pipelineId: it.pipelineId || values.pipelineId,
@@ -176,12 +181,12 @@ export default function CreateOrderFromProductModal({
         <div style={{ marginBottom: 8, fontWeight: 500 }}>明细</div>
         <Table
           size="small"
-          rowKey={(r, i) => String(i)}
+          rowKey="key"
           dataSource={items}
           columns={columns as any}
           pagination={false}
           footer={() => (
-            <a onClick={() => setItems((prev) => [...prev, { name: '', quantity: 1 }])}>添加明细行</a>
+            <a onClick={() => setItems((prev) => [...prev, { name: '', quantity: 1, key: genKey() }])}>添加明细行</a>
           )}
         />
         <Form.Item name="remark" label="备注" style={{ marginTop: 12 }}>

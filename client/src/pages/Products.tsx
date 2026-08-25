@@ -92,6 +92,18 @@ export default function Products() {
   };
   const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
 
+  // 加载当前查看产品的销售记录（商机）
+  const loadSalesList = useCallback((productId: string) => {
+    setSalesLoading(true);
+    salesApi.listByProduct(productId)
+      .then((res) => {
+        if (res.data?.data?.list) setSalesList(res.data.data.list);
+        else setSalesList([]);
+      })
+      .catch(() => setSalesList([]))
+      .finally(() => setSalesLoading(false));
+  }, []);
+
   // 打开产品详情：重置 Tab、拉取完整产品（含操作记录）并加载销售记录
   const openDetail = (r: Product) => {
     setViewing(r);
@@ -104,14 +116,7 @@ export default function Products() {
         if (full) setViewing(full);
       })
       .catch(() => {});
-    setSalesLoading(true);
-    salesApi.listByProduct(r.id)
-      .then((res) => {
-        if (res.data?.data?.list) setSalesList(res.data.data.list);
-        else setSalesList([]);
-      })
-      .catch(() => setSalesList([]))
-      .finally(() => setSalesLoading(false));
+    loadSalesList(r.id);
   };
 
   const fetchList = useCallback(async () => {
@@ -356,6 +361,7 @@ export default function Products() {
         salesLoading={salesLoading}
         activities={viewing?.activities || []}
         userMap={userMap}
+        onSalesRefresh={() => viewing && loadSalesList(viewing.id)}
       />
 
       {/* Excel 导入产品 */}
