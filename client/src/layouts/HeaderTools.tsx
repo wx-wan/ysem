@@ -7,6 +7,7 @@ import {
   DollarOutlined,
   LogoutOutlined,
   KeyOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
@@ -46,10 +47,16 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
   const handleAvatarMenuClick: MenuProps['onClick'] = (info) => {
     if (info.key === 'logout') onLogout();
     else if (info.key === 'profile') navigate('/profile');
+    else if (info.key === 'settings') window.open(`${window.location.origin}/system/user`, '_blank');
     else onMenuClick?.(info);
   };
 
   const avatarMenuItems: MenuProps['items'] = [
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: t('header.settings'),
+    },
     {
       key: 'password',
       icon: <KeyOutlined />,

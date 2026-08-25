@@ -220,6 +220,7 @@
   },
   "header": {
     "profile": "个人信息",
+    "settings": "设置",
     "changePassword": "修改密码",
     "logout": "退出登录"
   },
