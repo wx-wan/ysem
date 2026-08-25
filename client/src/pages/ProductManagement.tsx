@@ -28,26 +28,27 @@ export default function ProductManagement({ systemOnly = false }: { systemOnly?:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
-  const TABS = (
-    systemOnly
-      ? [
-          { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
-          { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
-        ]
-      : [
-          { label: t('menu.products') || '产品', key: 'product' },
-          { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
-          { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
-        ]
-  );
+  const TABS = systemOnly
+    ? [
+        { label: t('menu.systemProductTaxonomy') || '产品分类', key: 'taxonomy' },
+        { label: t('menu.systemCertificates') || '证书', key: 'certificate' },
+      ]
+    : [{ label: t('menu.products') || '产品', key: 'product' }];
 
   return (
     <div className="product-management">
-      <SegmentedTabBar options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+      {systemOnly && (
+        <SegmentedTabBar options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+      )}
       <div style={{ marginTop: 16 }}>
-        {tab === 'product' && <Products />}
-        {tab === 'taxonomy' && <ProductTaxonomy />}
-        {tab === 'certificate' && <CertificatePage />}
+        {systemOnly ? (
+          <>
+            {tab === 'taxonomy' && <ProductTaxonomy />}
+            {tab === 'certificate' && <CertificatePage />}
+          </>
+        ) : (
+          <Products />
+        )}
       </div>
     </div>
   );
