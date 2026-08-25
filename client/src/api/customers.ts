@@ -87,26 +87,45 @@ export interface AllCustomersRes extends CustomerListRes {
 
 export interface Order {
   id: string;
+  type?: 'QUOTE' | 'SAMPLE' | 'ORDER';
+  title?: string;
   customerId: string;
   orderNo?: string;
   orderDate?: string;
   amountCNY?: number;
+  currency?: string;
   depositAmount?: number;
   depositPaid?: boolean;
   deliveryDate?: string;
   paymentTerms?: string;
-  // 7 阶段流程：预付款 → 下打样单 → 设计 → 开模 → 寄样 → 生产 → 出货
-  status?: 'DEPOSIT' | 'SAMPLE_ORDER' | 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | 'PRODUCTION' | 'SHIPPED' | null;
+  // 审批态（报价/打样/订单通用）
+  status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
+  // 生产阶段（仅 ORDER）：预付款 → 下打样单 → 设计 → 开模 → 寄样 → 生产 → 出货
+  stage?: 'DEPOSIT' | 'SAMPLE_ORDER' | 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | 'PRODUCTION' | 'SHIPPED' | null;
+  items?: string | OrderItem[];
+  targetType?: 'PRODUCT' | 'GROUP' | null;
+  targetId?: string;
+  pipelineId?: string;
   sampleOrderDate?: string;
   designDate?: string;
   moldDate?: string;
   sampleSentDate?: string;
   productionStartDate?: string;
   shippedDate?: string;
-  notes?: string;
+  remark?: string;
   customer?: { id: string; companyName: string; contactName?: string; ownerId?: string; email?: string; phone?: string; country?: string };
   createdAt: string;
   updatedAt: string;
+}
+
+export interface OrderItem {
+  productId?: string;
+  name?: string;
+  spec?: string;
+  quantity?: number;
+  unitPrice?: number;
+  amount?: number;
+  pipelineId?: string;
 }
 
 export interface OrderListRes {
@@ -201,4 +220,13 @@ export const orderApi = {
 
   listByCustomer: (customerId: string) =>
     request.get<ApiResponse<Order[]>>(`/orders/customer/${customerId}`),
+
+  submit: (id: string) =>
+    request.post<ApiResponse<Order>>(`/orders/${id}/submit`),
+
+  approve: (id: string) =>
+    request.post<ApiResponse<Order>>(`/orders/${id}/approve`),
+
+  reject: (id: string) =>
+    request.post<ApiResponse<Order>>(`/orders/${id}/reject`),
 };

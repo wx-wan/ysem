@@ -24,6 +24,7 @@ import PermPage from './pages/Perm';
 import ProductTaxonomyPage from './pages/ProductTaxonomy';
 import CertificatePage from './pages/Certificate';
 import OperationLogsPage from './pages/OperationLogs';
+import SettingsApprovalPage from './pages/SettingsApproval';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
 
@@ -79,6 +80,7 @@ function App() {
         <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductTaxonomyPage /></PermRoute>} />
         <Route path="system/certificates" element={<PermRoute perm="certificate:view"><CertificatePage /></PermRoute>} />
         <Route path="system/operation-logs" element={<PermRoute perm="system:perm"><OperationLogsPage /></PermRoute>} />
+        <Route path="system/approval" element={<PermRoute perm="system:perm"><SettingsApprovalPage /></PermRoute>} />
       </Route>
       <Route path="*" element={<NotFoundPage />} />
     </Routes>

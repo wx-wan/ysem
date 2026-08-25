@@ -35,8 +35,6 @@ model User {
   products            SingleProduct[]      @relation("ProductCreator")
   productGroups       ComboProduct[]       @relation("ComboProductOwner")
   comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
-  sampleApplies       SampleApply[]        @relation("SampleApplicant")
-  quotes              Quote[]              @relation("QuoteOwner")
 }
 
 // ========== 角色表 ==========
@@ -186,33 +184,67 @@ model CustomerActivity {
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 }
 
-// ========== 订单表 ==========
-// 订单阶段（统一流程，样品单融入订单）：
+// ========== 通用单据表（报价 / 打样 / 正式订单） ==========
+// type: QUOTE(报价) / SAMPLE(打样) / ORDER(正式订单)
+// status: 审批态 DRAFT → SUBMITTED → APPROVED / REJECTED
+// stage: 仅 ORDER 用，生产阶段 7 段：
 //   DEPOSIT(预付款) → SAMPLE_ORDER(下打样单) → DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样) → PRODUCTION(生产) → SHIPPED(出货)
 model Order {
-  id                  String   @id @default(uuid())
-  customerId          String
-  customer            Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  orderNo             String?
-  orderDate           String?
-  amountCNY           Float? // 订单金额（CNY）
-  depositAmount       Float? // 预付款金额（CNY）
-  depositPaid         Boolean? @default(false) // 预付款是否已付
-  deliveryDate        String?
-  paymentTerms        String?
-  // 7 阶段流程
-  status              String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
+  id          String   @id @default(uuid())
+  type        String   @default("ORDER") // QUOTE / SAMPLE / ORDER
+  orderNo     String?
+  title       String?
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // 来源（基于产品/组合创建）与商机绑定
+  targetType  String?  // PRODUCT / GROUP
+  targetId    String?
+  pipelineId  String?  // 绑定的商机 ID（可选）
+
+  // 审批态（报价/打样/订单通用）
+  status      String   @default("DRAFT") // DRAFT / SUBMITTED / APPROVED / REJECTED
+  // 生产阶段（仅 ORDER 使用），其余类型留空
+  stage       String?  @default("DEPOSIT") // DEPOSIT / SAMPLE_ORDER / DESIGN / MOLD / SAMPLE_SENT / PRODUCTION / SHIPPED
+
+  items       String?  // 单据明细 JSON：{productId,name,spec,quantity,unitPrice,amount,pipelineId?}[]
+  amountCNY   Float?   // 单据金额合计（CNY）
+  currency    String?  @default("CNY")
+
+  // 仅正式订单使用
+  orderDate     String?
+  depositAmount Float?
+  depositPaid   Boolean? @default(false)
+  deliveryDate  String?
+  paymentTerms  String?
   // 各阶段时间节点（用于进度跟踪，可选）
-  sampleOrderDate     String? // 下打样单日期
-  designDate          String? // 设计完成日期
-  moldDate            String? // 开模日期
-  sampleSentDate      String? // 寄样日期
-  productionStartDate String? // 生产开始日期
-  shippedDate         String? // 出货日期
-  notes               String?
-  createdBy           String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  sampleOrderDate     String?
+  designDate          String?
+  moldDate            String?
+  sampleSentDate      String?
+  productionStartDate String?
+  shippedDate         String?
+
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([customerId])
+  @@index([status])
+}
+
+// ========== 审批配置表 ==========
+// 用于「设置 → 审批管理」中配置各单据类型的审批人
+model ApprovalConfig {
+  id           String   @id @default(uuid())
+  type         String   @unique // QUOTE / SAMPLE / ORDER
+  approverIds  String?  // 审批人用户 ID 数组 JSON
+  approverNames String? // 审批人姓名冗余 JSON
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 // ========== 销售管道 ==========
@@ -497,31 +529,4 @@ model ComboItem {
   @@index([productId])
 }
 
-// ============ 打样申请 ============
-model SampleApply {
-  id          String   @id @default(cuid())
-  targetType  String   @default("PRODUCT") // PRODUCT | GROUP
-  targetId    String // 产品 id 或产品组 id
-  applicantId String // 申请人
-  applicant   User     @relation("SampleApplicant", fields: [applicantId], references: [id])
-  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED | DONE
-  remark      String? // 申请说明
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-// ============ 报价单 ============
-model Quote {
-  id         String   @id @default(cuid())
-  title      String // 报价单标题
-  targetType String   @default("PRODUCT") // PRODUCT | GROUP
-  targetId   String // 产品 id 或产品组 id
-  productIds String   @default("") // 关联产品 id（逗号分隔）
-  ownerId    String // 创建人
-  owner      User     @relation("QuoteOwner", fields: [ownerId], references: [id])
-  status     String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED
-  remark     String?
-  items      String? // 报价明细 JSON（前端可编辑）
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-}
+// ============ 打样申请 / 报价单 已并入通用 Order（type = SAMPLE / QUOTE） ============

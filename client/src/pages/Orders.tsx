@@ -1,366 +1,304 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Table, Button, Modal, Form, Input, Select, Tag, Space,
-  Card, Statistic, Row, Col, message, Popconfirm, DatePicker,
-  Typography,
+  Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Tag, message,
+  Space, Card, Row, Col, Statistic, Popconfirm, Typography, Segmented, Tooltip, App,
 } from 'antd';
-import {
-  PlusOutlined, SearchOutlined, ReloadOutlined,
-  ShoppingCartOutlined, DeleteOutlined, EyeOutlined,
-} from '@ant-design/icons';
-import { orderApi, Order } from '../api/customers';
-import { useCurrencyStore } from '../stores/useCurrencyStore';
-import Price from '../components/common/Price';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, FileTextOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { orderApi, customerApi, Order, OrderItem } from '../api/customers';
 import dayjs from 'dayjs';
+import './Orders.css';
 
-const { Text } = Typography;
-const { RangePicker } = DatePicker;
+const { Title, Text } = Typography;
 
-const STATUS_OPTIONS: Record<string, { label: string; color: string }> = {
-  PENDING: { label: '待确认', color: 'default' },
-  CONFIRMED: { label: '已确认', color: 'processing' },
-  IN_PRODUCTION: { label: '生产中', color: 'orange' },
-  SHIPPED: { label: '已发货', color: 'cyan' },
-  DELIVERED: { label: '已交付', color: 'green' },
-};
+type DocType = 'QUOTE' | 'SAMPLE' | 'ORDER';
+type DocStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+
+const TYPE_OPTIONS: { label: string; value: DocType }[] = [
+  { label: '报价', value: 'QUOTE' },
+  { label: '打样', value: 'SAMPLE' },
+  { label: '正式订单', value: 'ORDER' },
+];
+
+const STATUS_OPTIONS: { label: string; value: DocStatus; color: string }[] = [
+  { label: '草稿', value: 'DRAFT', color: 'default' },
+  { label: '待审批', value: 'SUBMITTED', color: 'processing' },
+  { label: '已通过', value: 'APPROVED', color: 'success' },
+  { label: '已驳回', value: 'REJECTED', color: 'error' },
+];
+
+const TYPE_COLOR: Record<DocType, string> = { QUOTE: 'blue', SAMPLE: 'orange', ORDER: 'green' };
+
+// 当前登录用户（用于判断是否展示审批按钮，实际权限后端校验）
+function useCurrentUser() {
+  try {
+    const raw = localStorage.getItem('ysem_user');
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  return null;
+}
 
 export default function OrdersPage() {
-  const { currency } = useCurrencyStore();
-
-  const [loading, setLoading] = useState(false);
-  const [list, setList] = useState<Order[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const { message: msg } = App.useApp();
+  const user = useCurrentUser();
+  const [type, setType] = useState<DocType>('ORDER');
+  const [status, setStatus] = useState<DocStatus | undefined>();
   const [keyword, setKeyword] = useState('');
-  const [status, setStatus] = useState('');
+  const [data, setData] = useState<Order[]>([]);
+  const [total, setTotal] = useState(0);
   const [totalAmount, setTotalAmount] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
-  const [form] = Form.useForm();
-
+  const [detail, setDetail] = useState<Order | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const pageSize = 15;
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+  const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
 
-  const fetchData = useCallback(async () => {
+  const load = async () => {
     setLoading(true);
     try {
-      const params: any = {
-        page,
-        pageSize,
-        keyword: keyword || undefined,
+      const res = await orderApi.list({
+        page, pageSize, type,
         status: status || undefined,
-      };
-      const res = await orderApi.list(params);
-      const data = res.data.data;
-      setList(data.list);
-      setTotal(data.total);
-      setTotalAmount(data.totalAmount);
-      setTotalCount(data.totalCount);
-    } catch (err: any) {
-      message.error(err?.message || '加载失败');
+        keyword: keyword || undefined,
+      });
+      const r = res.data?.data;
+      if (r) {
+        setData(r.list);
+        setTotal(r.total);
+        setTotalAmount(r.totalAmount || 0);
+      }
     } finally {
       setLoading(false);
     }
-  }, [page, keyword, status]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const openCreate = () => {
-    setEditingOrder(null);
-    form.resetFields();
-    form.setFieldsValue({ status: 'PENDING' });
-    setModalOpen(true);
   };
 
-  const openEdit = (order: Order) => {
-    setEditingOrder(order);
-    form.setFieldsValue({ ...order });
-    setModalOpen(true);
-  };
+  useEffect(() => { load(); }, [page, pageSize, type, status]);
 
-  const handleSave = async () => {
+  useEffect(() => {
+    if (createOpen) {
+      customerApi.listMy({ pageSize: 200 }).then((r) => setCustomers(r.data?.data?.list || []));
+      form.resetFields();
+      form.setFieldsValue({ type, status: 'DRAFT' });
+    }
+  }, [createOpen, type, form]);
+
+  const openDetail = async (id: string) => {
+    setDetailLoading(true);
+    setDetailOpen(true);
     try {
-      const values = await form.validateFields();
-      if (editingOrder) {
-        await orderApi.update(editingOrder.id, values);
-        message.success('更新成功');
-      } else {
-        await orderApi.create(values);
-        message.success('创建成功');
-      }
-      setModalOpen(false);
-      fetchData();
+      const res = await orderApi.getById(id);
+      setDetail(res.data?.data || null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const handleSubmit = async (id: string) => {
+    await orderApi.submit(id);
+    msg.success('已提交审批');
+    load();
+    if (detail?.id === id) openDetail(id);
+  };
+  const handleApprove = async (id: string) => {
+    try {
+      await orderApi.approve(id);
+      msg.success('审批通过');
+      load(); openDetail(id);
+    } catch (e: any) { msg.error(e?.response?.data?.message || '操作失败'); }
+  };
+  const handleReject = async (id: string) => {
+    try {
+      await orderApi.reject(id);
+      msg.success('已驳回');
+      load(); openDetail(id);
+    } catch (e: any) { msg.error(e?.response?.data?.message || '操作失败'); }
+  };
+
+  const handleCreate = async () => {
+    const v = await form.validateFields();
+    setSaving(true);
+    try {
+      const items: OrderItem[] = (v.items || []).map((it: any) => ({
+        productId: it.productId, name: it.name, spec: it.spec,
+        quantity: Number(it.quantity) || 1, unitPrice: it.unitPrice ? Number(it.unitPrice) : undefined,
+        amount: (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0),
+      }));
+      await orderApi.create({
+        ...v,
+        type,
+        items,
+        amountCNY: items.reduce((s, it) => s + (it.amount || 0), 0),
+      });
+      msg.success('创建成功');
+      setCreateOpen(false);
+      load();
     } catch (e: any) {
-      if (e.errorFields) return;
-      const msg = e?.response?.data?.message || e?.message || '操作失败';
-      message.error(msg);
+      msg.error(e?.response?.data?.message || '创建失败');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      await orderApi.remove(id);
-      message.success('已删除');
-      fetchData();
-    } catch (e: any) {
-      const msg = e?.response?.data?.message || e?.message || '操作失败';
-      message.error(msg);
-    }
-  };
-
-  const openDetail = async (order: Order) => {
-    try {
-      const res = await orderApi.getById(order.id);
-      setDetailOrder(res.data.data);
-      setDetailOpen(true);
-    } catch {
-      message.error('加载失败');
-    }
-  };
+  const detailItems: OrderItem[] = useMemo(() => {
+    if (!detail?.items) return [];
+    try { return typeof detail.items === 'string' ? JSON.parse(detail.items) : detail.items; }
+    catch { return []; }
+  }, [detail]);
 
   const columns = [
+    { title: '单号', dataIndex: 'orderNo', render: (t: string, r: Order) => <a onClick={() => openDetail(r.id)}>{t || r.id.slice(0, 8)}</a> },
+    { title: '客户', dataIndex: ['customer', 'companyName'], render: (_: any, r: Order) => r.customer?.companyName || '-' },
     {
-      title: '订单号',
-      dataIndex: 'orderNo',
-      key: 'orderNo',
-      width: 140,
-      render: (v: string, r: Order) => (
-        <a onClick={() => openDetail(r)}>{v || '-'}</a>
-      ),
+      title: '类型', dataIndex: 'type',
+      render: (t: DocType) => <Tag color={TYPE_COLOR[t]}>{TYPE_OPTIONS.find((x) => x.value === t)?.label}</Tag>,
     },
     {
-      title: '客户',
-      key: 'customer',
-      width: 180,
-      render: (_: any, r: Order) => r.customer?.companyName || '-',
+      title: '金额', dataIndex: 'amountCNY',
+      render: (v: number, r: Order) => (v != null ? `${r.currency || 'CNY'} ${v.toFixed(2)}` : '-'),
     },
     {
-      title: '订单日期',
-      dataIndex: 'orderDate',
-      key: 'orderDate',
-      width: 110,
-      render: (v: string) => v || '-',
-    },
-    {
-      title: '金额(CNY)',
-      dataIndex: 'amountCNY',
-      key: 'amountCNY',
-      width: 130,
-      align: 'right' as const,
-      render: (v: number) => v != null ? <Price value={v} /> : '-',
-    },
-    {
-      title: '交付日期',
-      dataIndex: 'deliveryDate',
-      key: 'deliveryDate',
-      width: 110,
-      render: (v: string) => v || '-',
-    },
-    {
-      title: '付款条件',
-      dataIndex: 'paymentTerms',
-      key: 'paymentTerms',
-      width: 110,
-      render: (v: string) => v || '-',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      width: 90,
-      render: (v: string) => {
-        const s = STATUS_OPTIONS[v] || { label: v || '-', color: 'default' };
-        return <Tag color={s.color}>{s.label}</Tag>;
+      title: '状态', dataIndex: 'status',
+      render: (st: DocStatus) => {
+        const o = STATUS_OPTIONS.find((x) => x.value === st);
+        return <Tag color={o?.color}>{o?.label}</Tag>;
       },
     },
+    { title: '创建时间', dataIndex: 'createdAt', render: (t: string) => (t ? dayjs(t).format('YYYY-MM-DD') : '-') },
     {
-      title: '操作',
-      key: 'action',
-      width: 160,
-      fixed: 'right' as const,
+      title: '操作', width: 180,
       render: (_: any, r: Order) => (
-        <Space size="small">
-          <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => openDetail(r)} />
-          <Button type="link" size="small" onClick={() => openEdit(r)}>编辑</Button>
-          <Popconfirm title="确认删除？" onConfirm={() => handleDelete(r.id)}>
-            <Button type="link" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+        <Space size={4}>
+          <Tooltip title="详情"><Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(r.id)} /></Tooltip>
+          {r.status === 'DRAFT' && <Button size="small" onClick={() => handleSubmit(r.id)}>提交</Button>}
+          {r.status === 'SUBMITTED' && (
+            <>
+              <Popconfirm title="确定通过？" onConfirm={() => handleApprove(r.id)}>
+                <Button size="small" type="primary" icon={<CheckOutlined />} />
+              </Popconfirm>
+              <Popconfirm title="确定驳回？" onConfirm={() => handleReject(r.id)}>
+                <Button size="small" danger icon={<CloseOutlined />} />
+              </Popconfirm>
+            </>
+          )}
         </Space>
       ),
     },
   ];
 
   return (
-    <div style={{ padding: '0 0 24px' }}>
-      <h2 style={{ marginBottom: 16 }}>订单管理</h2>
-
-      {/* 统计 */}
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        <Col span={8}>
-          <Card size="small">
-            <Statistic
-              title="订单总数"
-              value={totalCount}
-              prefix={<ShoppingCartOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small">
-            <Statistic
-              title={`累计金额 (${currency.code})`}
-              value={totalAmount}
-              precision={0}
-              styles={{ content: { color: '#52c41a' } }}
-              formatter={(v) => <Price value={Number(v)} />}
-            />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small">
-            <Statistic
-              title={`当前页金额 (${currency.code})`}
-              value={list.reduce((s, o) => s + (o.amountCNY || 0), 0)}
-              precision={0}
-              formatter={(v) => <Price value={Number(v)} />}
-            />
-          </Card>
-        </Col>
-      </Row>
-
-      {/* 工具栏 */}
-      <div style={{ marginBottom: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Input.Search
-          placeholder="搜索订单号/客户"
-          style={{ width: 240 }}
-          value={keyword}
-          onChange={(e) => setKeyword(e.target.value)}
-          onSearch={() => { setPage(1); fetchData(); }}
-          allowClear
-        />
-        <Select
-          placeholder="状态筛选"
-          allowClear
-          style={{ width: 130 }}
-          value={status || undefined}
-          onChange={(v) => { setStatus(v || ''); setPage(1); }}
-        >
-          <Select.Option value="PENDING">待确认</Select.Option>
-          <Select.Option value="CONFIRMED">已确认</Select.Option>
-          <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-          <Select.Option value="SHIPPED">已发货</Select.Option>
-          <Select.Option value="DELIVERED">已交付</Select.Option>
-        </Select>
-        <div style={{ flex: 1 }} />
-        <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-          新增订单
-        </Button>
+    <div className="orders-page">
+      <div className="orders-toolbar">
+        <Title level={4} style={{ margin: 0 }}>订单管理</Title>
+        <Segmented options={TYPE_OPTIONS} value={type} onChange={(v) => { setType(v as DocType); setPage(1); }} />
+        <Space>
+          <Select
+            placeholder="审批状态"
+            allowClear
+            style={{ width: 130 }}
+            options={STATUS_OPTIONS}
+            value={status}
+            onChange={(v) => { setStatus(v); setPage(1); }}
+          />
+          <Input
+            placeholder="搜索单号/客户"
+            prefix={<SearchOutlined />}
+            style={{ width: 220 }}
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            onBlur={load}
+            onPressEnter={load}
+          />
+          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建单据</Button>
+        </Space>
       </div>
 
-      {/* 表格 */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col span={8}><Card><Statistic title="单据数" value={total} /></Card></Col>
+        <Col span={8}><Card><Statistic title="总金额" value={totalAmount} precision={2} prefix="CNY" /></Card></Col>
+        <Col span={8}><Card><Statistic title="当前类型" value={TYPE_OPTIONS.find((x) => x.value === type)?.label} /></Card></Col>
+      </Row>
+
       <Table
         rowKey="id"
-        columns={columns}
-        dataSource={list}
         loading={loading}
-        scroll={{ x: 1000 }}
-        pagination={{
-          current: page,
-          pageSize,
-          total,
-          showSizeChanger: false,
-          showTotal: (t) => `共 ${t} 条`,
-          onChange: (p) => setPage(p),
-        }}
-        size="middle"
+        columns={columns}
+        dataSource={data}
+        pagination={{ current: page, pageSize, total, showSizeChanger: true, onChange: (p, ps) => { setPage(p); setPageSize(ps); } }}
       />
 
-      {/* 创建/编辑弹窗 */}
-      <Modal
-        title={editingOrder ? '编辑订单' : '新增订单'}
-        open={modalOpen}
-        onOk={handleSave}
-        onCancel={() => setModalOpen(false)}
-        width={560}
-        destroyOnHidden
-      >
-        <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
-          <Form.Item
-            name="customerId"
-            label="客户ID"
-            rules={editingOrder ? [] : [{ required: true, message: '请输入客户ID' }]}
-          >
-            <Input placeholder="从客户详情页复制客户ID" disabled={!!editingOrder} />
-          </Form.Item>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="orderNo" label="订单号" style={{ width: 170 }}>
-              <Input placeholder="订单号" />
-            </Form.Item>
-            <Form.Item name="orderDate" label="订单日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="amountCNY" label="金额(CNY)" style={{ width: 170 }}>
-              <Input type="number" placeholder="0.00" />
-            </Form.Item>
-          </Space>
-          <Space style={{ width: '100%' }} size={16}>
-            <Form.Item name="deliveryDate" label="交付日期" style={{ width: 170 }}>
-              <Input type="date" />
-            </Form.Item>
-            <Form.Item name="paymentTerms" label="付款条件" style={{ width: 170 }}>
-              <Input placeholder="如 T/T 30%" />
-            </Form.Item>
-            <Form.Item name="status" label="状态" style={{ width: 170 }}>
-              <Select>
-                <Select.Option value="PENDING">待确认</Select.Option>
-                <Select.Option value="CONFIRMED">已确认</Select.Option>
-                <Select.Option value="IN_PRODUCTION">生产中</Select.Option>
-                <Select.Option value="SHIPPED">已发货</Select.Option>
-                <Select.Option value="DELIVERED">已交付</Select.Option>
-              </Select>
-            </Form.Item>
-          </Space>
-          <Form.Item name="notes" label="备注">
-            <Input.TextArea rows={2} placeholder="备注" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 详情弹窗 */}
-      <Modal
-        title="订单详情"
-        open={detailOpen}
-        onCancel={() => setDetailOpen(false)}
-        footer={null}
-        width={560}
-      >
-        {detailOrder && (
+      {/* 详情抽屉 */}
+      <Modal title={`单据详情${detail ? ` · ${detail.orderNo}` : ''}`} open={detailOpen} onCancel={() => setDetailOpen(false)} footer={null} width={720}>
+        {detailLoading && <div>加载中…</div>}
+        {detail && (
           <div>
-            <Row gutter={[16, 12]}>
-              <Col span={12}><Text type="secondary">订单号</Text><br /><Text strong>{detailOrder.orderNo || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">客户</Text><br /><Text>{detailOrder.customer?.companyName || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">订单日期</Text><br /><Text>{detailOrder.orderDate || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">金额({currency.code})</Text><br /><Text strong style={{ fontSize: 16 }}><Price value={detailOrder.amountCNY ?? 0} /></Text></Col>
-              <Col span={12}><Text type="secondary">交付日期</Text><br /><Text>{detailOrder.deliveryDate || '-'}</Text></Col>
-              <Col span={12}><Text type="secondary">付款条件</Text><br /><Text>{detailOrder.paymentTerms || '-'}</Text></Col>
-              <Col span={12}>
-                <Text type="secondary">状态</Text><br />
-                <Tag color={STATUS_OPTIONS[detailOrder.status || '']?.color || 'default'}>
-                  {STATUS_OPTIONS[detailOrder.status || '']?.label || detailOrder.status || '-'}
-                </Tag>
-              </Col>
-              <Col span={12}><Text type="secondary">联系人</Text><br /><Text>{detailOrder.customer?.contactName || '-'}</Text></Col>
-              {detailOrder.notes && (
-                <Col span={24}><Text type="secondary">备注</Text><br /><Text>{detailOrder.notes}</Text></Col>
-              )}
+            <Row gutter={16}>
+              <Col span={12}>客户：{detail.customer?.companyName || '-'}</Col>
+              <Col span={12}>类型：<Tag color={TYPE_COLOR[detail.type!]}>{TYPE_OPTIONS.find((x) => x.value === detail.type)?.label}</Tag></Col>
+              <Col span={12}>状态：{STATUS_OPTIONS.find((x) => x.value === detail.status)?.label}</Col>
+              <Col span={12}>金额：{detail.currency || 'CNY'} {detail.amountCNY?.toFixed(2) || '-'}</Col>
+              {detail.pipelineId && <Col span={12}>绑定商机：{detail.pipelineId}</Col>}
+              {detail.remark && <Col span={24}>备注：{detail.remark}</Col>}
             </Row>
+            <Title level={5} style={{ marginTop: 16 }}>明细</Title>
+            <Table
+              size="small"
+              rowKey={(_, i) => String(i)}
+              pagination={false}
+              dataSource={detailItems}
+              columns={[
+                { title: '名称', dataIndex: 'name' },
+                { title: '规格', dataIndex: 'spec' },
+                { title: '数量', dataIndex: 'quantity' },
+                { title: '单价', dataIndex: 'unitPrice', render: (v: number) => (v != null ? v.toFixed(2) : '-') },
+                { title: '金额', dataIndex: 'amount', render: (v: number) => (v != null ? v.toFixed(2) : '-') },
+              ]}
+            />
+            <Space style={{ marginTop: 16 }}>
+              {detail.status === 'DRAFT' && <Button onClick={() => handleSubmit(detail.id)}>提交审批</Button>}
+              {detail.status === 'SUBMITTED' && (
+                <>
+                  <Popconfirm title="确定通过？" onConfirm={() => handleApprove(detail.id)}>
+                    <Button type="primary">审批通过</Button>
+                  </Popconfirm>
+                  <Popconfirm title="确定驳回？" onConfirm={() => handleReject(detail.id)}>
+                    <Button danger>驳回</Button>
+                  </Popconfirm>
+                </>
+              )}
+            </Space>
           </div>
         )}
+      </Modal>
+
+      {/* 新建单据 */}
+      <Modal title={`新建${TYPE_OPTIONS.find((x) => x.value === type)?.label}`} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={handleCreate} confirmLoading={saving} width={680}>
+        <Form form={form} layout="vertical">
+          <Form.Item name="title" label="单据标题">
+            <Input placeholder="标题" />
+          </Form.Item>
+          <Form.Item name="customerId" label="客户" rules={[{ required: true, message: '请选择客户' }]}>
+            <Select showSearch optionFilterProp="label" options={customers.map((c) => ({ label: c.companyName, value: c.id }))} />
+          </Form.Item>
+          <Form.Item name="orderDate" label="单据日期">
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="amountCNY" label="金额（CNY）">
+            <InputNumber style={{ width: '100%' }} min={0} />
+          </Form.Item>
+          <Form.Item name="depositAmount" label="预付款金额（仅正式订单）">
+            <InputNumber style={{ width: '100%' }} min={0} />
+          </Form.Item>
+          <Form.Item name="remark" label="备注">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

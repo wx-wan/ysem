@@ -12,7 +12,7 @@ import {
 import dayjs from 'dayjs';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
-  MixedItem, taxonomyApi, quoteApi, sampleApi, productGroupApi,
+  MixedItem, taxonomyApi, productGroupApi,
 } from '../api/products';
 import { userApi } from '../api/users';
 import { salesApi, SalesItem, STAGE_META } from '../api/sales';
@@ -91,32 +91,6 @@ export default function Products() {
     if (modalStack.current.length === 0) fetchList();
   };
   const closeDetail = () => { popLayer('detail'); setDetailOpen(false); };
-
-  // 基于此产品创建报价（真实报价单接口，基于单品）
-  const handleCreateQuote = async (record: Product) => {
-    try {
-      const res = await quoteApi.create({ targetType: 'PRODUCT', targetId: record.id, title: `${record.name} 报价单` });
-      if (res.data?.data) {
-        message.success('报价单已创建');
-        closeDetail();
-        navigate(`/sales?productId=${record.id}`);
-      }
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || '创建报价单失败');
-    }
-  };
-  // 基于此产品申请打样（真实打样申请接口，基于单品）
-  const handleApplySample = async (record: Product) => {
-    try {
-      const res = await sampleApi.apply({ targetType: 'PRODUCT', targetId: record.id });
-      if (res.data?.data) {
-        message.success('打样申请已提交');
-        closeDetail();
-      }
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || '提交打样申请失败');
-    }
-  };
 
   // 打开产品详情：重置 Tab、拉取完整产品（含操作记录）并加载销售记录
   const openDetail = (r: Product) => {
@@ -371,8 +345,6 @@ export default function Products() {
         open={detailOpen}
         onClose={closeDetail}
         onEdit={(r) => editModalRef.current?.open(r)}
-        onCreateQuote={handleCreateQuote}
-        onApplySample={handleApplySample}
         onDelete={() => {
           if (viewing) {
             closeDetail();

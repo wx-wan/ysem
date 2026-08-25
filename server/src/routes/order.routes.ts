@@ -51,6 +51,12 @@ router.get("/", ctrl.list);
  */
 router.get("/customer/:customerId", ctrl.listByCustomer);
 
+// 审批流转
+router.post("/:id/submit", ctrl.submit);
+router.post("/:id/approve", ctrl.approve);
+router.post("/:id/reject", ctrl.reject);
+
+
 /**
  * @swagger
  * /api/orders/{id}:

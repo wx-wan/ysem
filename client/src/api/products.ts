@@ -271,21 +271,22 @@ export const productGroupApi = {
     request.post(`/product-groups/${id}/products?mode=${mode}`, { items }),
 };
 
+// 打样 / 报价 已并入统一订单（Order），type 区分：SAMPLE / QUOTE
 export const sampleApi = {
-  apply: (data: { targetType: 'PRODUCT' | 'GROUP'; targetId: string; remark?: string }) =>
-    request.post<ApiResponse<SampleApply>>('/sample-applies', data),
-  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string }) =>
-    request.get<ApiResponse<{ list: SampleApply[]; total: number }>>('/sample-applies', { params }),
-  updateStatus: (id: string, status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'DONE') =>
-    request.put(`/sample-applies/${id}/status`, { status }),
+  apply: (data: { targetType: 'PRODUCT' | 'GROUP'; targetId: string; customerId?: string; remark?: string; items?: any[] }) =>
+    request.post<ApiResponse<Order>>('/orders', { ...data, type: 'SAMPLE' }),
+  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string; customerId?: string }) =>
+    request.get<ApiResponse<{ list: Order[]; total: number }>>('/orders', { params: { ...params, type: 'SAMPLE' } }),
 };
 
 export const quoteApi = {
-  create: (data: { title: string; targetType: 'PRODUCT' | 'GROUP'; targetId: string; remark?: string; items?: string }) =>
-    request.post<ApiResponse<Quote>>('/quotes', data),
-  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string }) =>
-    request.get<ApiResponse<{ list: Quote[]; total: number }>>('/quotes', { params }),
-  getById: (id: string) => request.get<ApiResponse<Quote>>(`/quotes/${id}`),
-  updateStatus: (id: string, status: 'SUBMITTED' | 'APPROVED' | 'REJECTED') =>
-    request.put(`/quotes/${id}/status`, { status }),
+  create: (data: { title: string; targetType: 'PRODUCT' | 'GROUP'; targetId: string; customerId?: string; pipelineId?: string; remark?: string; items?: any[] }) =>
+    request.post<ApiResponse<Order>>('/orders', { ...data, type: 'QUOTE' }),
+  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string; customerId?: string }) =>
+    request.get<ApiResponse<{ list: Order[]; total: number }>>('/orders', { params: { ...params, type: 'QUOTE' } }),
+  getById: (id: string) => request.get<ApiResponse<Order>>(`/orders/${id}`),
+  update: (id: string, data: any) => request.put(`/orders/${id}`, data),
+  submit: (id: string) => request.post(`/orders/${id}/submit`),
+  approve: (id: string) => request.post(`/orders/${id}/approve`),
+  reject: (id: string) => request.post(`/orders/${id}/reject`),
 };

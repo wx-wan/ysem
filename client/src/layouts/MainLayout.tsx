@@ -24,6 +24,7 @@ import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   FileSearchOutlined,
+  AuditOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -154,6 +155,7 @@ export default function MainLayout() {
               ...(hasPerm('product:taxonomy:view') ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }] : []),
               ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <SafetyOutlined />, label: t('menu.systemCertificates') }] : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/operation-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
+              ...(hasPerm('system:perm') ? [{ key: '/system/approval', icon: <AuditOutlined />, label: '审批管理' }] : []),
             ],
           },
         ]

@@ -4,15 +4,44 @@ import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
 
-// ========== 订单列表 ==========
+// 单据类型
+export type OrderType = "QUOTE" | "SAMPLE" | "ORDER";
+// 审批态
+export type OrderStatus = "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+
+// 生成单据号（按类型前缀）
+async function genOrderNo(type: OrderType): Promise<string> {
+  const prefix = type === "QUOTE" ? "Q" : type === "SAMPLE" ? "S" : "O";
+  const date = new Date();
+  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+  const count = await prisma.order.count({ where: { type } });
+  return `${prefix}-${ymd}-${String(count + 1).padStart(3, "0")}`;
+}
+
+// 当前用户是否该类型的审批人
+async function isApprover(type: OrderType, userId?: string): Promise<boolean> {
+  if (!userId) return false;
+  const cfg = await prisma.approvalConfig.findUnique({ where: { type } });
+  if (!cfg || !cfg.enabled || !cfg.approverIds) return false;
+  try {
+    const ids: string[] = JSON.parse(cfg.approverIds);
+    return ids.includes(userId);
+  } catch {
+    return false;
+  }
+}
+
+// ========== 单据列表（按 type 筛选） ==========
 export const list = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.userId!;
     const userRole = req.roleCode;
     const {
       keyword,
+      type,
       status,
       customerId,
+      pipelineId,
       startDate,
       endDate,
       page = "1",
@@ -23,22 +52,24 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
 
     const where: any = {};
 
-    // 非管理员只能看自己客户下的订单
     if (userRole !== "admin") {
       where.customer = { ownerId: userId };
     }
     if (customerId) where.customerId = String(customerId);
+    if (type) where.type = String(type);
     if (status) where.status = String(status);
+    if (pipelineId) where.pipelineId = String(pipelineId);
     if (keyword) {
       where.OR = [
         { orderNo: { contains: String(keyword) } },
+        { title: { contains: String(keyword) } },
         { customer: { companyName: { contains: String(keyword) } } },
       ];
     }
     if (startDate || endDate) {
-      where.orderDate = {};
-      if (startDate) where.orderDate.gte = String(startDate);
-      if (endDate) where.orderDate.lte = String(endDate);
+      where.createdAt = {};
+      if (startDate) where.createdAt.gte = new Date(String(startDate));
+      if (endDate) where.createdAt.lte = new Date(String(endDate));
     }
 
     const [list, total] = await Promise.all([
@@ -54,7 +85,6 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
       prisma.order.count({ where }),
     ]);
 
-    // 汇总金额
     const agg = await prisma.order.aggregate({
       where,
       _sum: { amountCNY: true },
@@ -74,7 +104,7 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
   }
 };
 
-// ========== 订单详情 ==========
+// ========== 单据详情 ==========
 export const getById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const order = await prisma.order.findUnique({
@@ -83,19 +113,21 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
         customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true, ownerId: true } },
       },
     });
-    if (!order) return error(res, "订单不存在", 404);
+    if (!order) return error(res, "单据不存在", 404);
     success(res, order);
   } catch (err) {
     next(err);
   }
 };
 
-// ========== 创建订单 ==========
+// ========== 创建单据（报价 / 打样 / 正式订单） ==========
 export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.userId!;
     const roleCode = req.roleCode;
     const {
+      type = "ORDER",
+      title,
       customerId,
       orderNo,
       orderDate,
@@ -105,61 +137,75 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       deliveryDate,
       paymentTerms,
       status,
-      notes,
+      stage,
+      targetType,
+      targetId,
+      pipelineId,
+      items,
+      currency,
+      remark,
     } = req.body;
 
     if (!customerId) return error(res, "请选择客户", 400);
-
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
     if (!customer) return error(res, "客户不存在", 404);
 
     // 公海客户（ownerId 为 null）需要先认领
     const isPublic = !customer.ownerId;
-    if (isPublic) return error(res, "该客户尚未认领，请先认领后再下单", 400);
-    if (customer.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权为该客户下单，请先认领", 403);
+    if (isPublic && type === "ORDER") return error(res, "该客户尚未认领，请先认领后再下单", 400);
+    if (customer.ownerId !== userId && roleCode !== "admin") {
+      return error(res, "无权为该客户操作，请先认领", 403);
+    }
+
+    const finalType = (["QUOTE", "SAMPLE", "ORDER"].includes(type) ? type : "ORDER") as OrderType;
+    const finalOrderNo = orderNo || (await genOrderNo(finalType));
+
+    // 金额合计：若未传 amountCNY 但传了 items，则按 items 计算
+    let finalAmount = amountCNY !== undefined ? (amountCNY ? Number(amountCNY) : null) : null;
+    if (finalAmount === null && items) {
+      try {
+        const arr = typeof items === "string" ? JSON.parse(items) : items;
+        if (Array.isArray(arr)) {
+          finalAmount = arr.reduce((s: number, it: any) => s + (Number(it.amount) || 0), 0);
+        }
+      } catch { /* ignore */ }
     }
 
     const order = await prisma.order.create({
       data: {
+        type: finalType,
+        orderNo: finalOrderNo,
+        title: title || finalOrderNo,
         customerId,
-        orderNo,
         orderDate,
-        amountCNY: amountCNY ? Number(amountCNY) : null,
+        amountCNY: finalAmount,
+        currency: currency || "CNY",
         depositAmount: depositAmount ? Number(depositAmount) : null,
         depositPaid: depositPaid || false,
         deliveryDate,
         paymentTerms,
-        status: status || "DEPOSIT",
-        notes,
+        status: (status as OrderStatus) || "DRAFT",
+        stage: stage || (finalType === "ORDER" ? "DEPOSIT" : null),
+        targetType,
+        targetId,
+        pipelineId,
+        items: items ? (typeof items === "string" ? items : JSON.stringify(items)) : null,
+        remark,
         createdBy: userId,
       },
     });
 
-    // 自动更新客户首次下单日期（取最早的订单日期）
-    if (orderDate) {
-      const earliestOrder = await prisma.order.findFirst({
-        where: { customerId },
-        orderBy: { orderDate: "asc" },
-      });
-      if (earliestOrder?.orderDate) {
-        await prisma.customer.update({
-          where: { id: customerId },
-          data: { firstOrderDate: earliestOrder.orderDate },
-        });
-      }
-    }
-
     // 记录到客户活动日志 & 全局操作日志
     const username = req.username!;
+    const typeLabel = finalType === "QUOTE" ? "报价单" : finalType === "SAMPLE" ? "打样单" : "订单";
     await activityLogger.log({
       userId,
       username,
-      action: 'ORDER_CREATED',
-      module: 'order',
+      action: finalType === "QUOTE" ? "QUOTE_CREATED" : finalType === "SAMPLE" ? "SAMPLE_CREATED" : "ORDER_CREATED",
+      module: "order",
       targetId: order.id,
-      target: orderNo || order.id,
-      detail: `新增订单${orderNo ? `：${orderNo}` : ''}，金额 ¥${(amountCNY || 0).toLocaleString()}`,
+      target: finalOrderNo,
+      detail: `新增${typeLabel}${finalOrderNo ? `：${finalOrderNo}` : ''}`,
       customerId,
     });
 
@@ -169,11 +215,12 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
-// ========== 更新订单 ==========
+// ========== 更新单据 ==========
 export const update = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const {
+      title,
       orderNo,
       orderDate,
       amountCNY,
@@ -182,59 +229,54 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       deliveryDate,
       paymentTerms,
       status,
-      notes,
+      stage,
+      targetType,
+      targetId,
+      pipelineId,
+      items,
+      currency,
+      remark,
     } = req.body;
 
     const existing = await prisma.order.findUnique({ where: { id } });
-    if (!existing) return error(res, "订单不存在", 404);
+    if (!existing) return error(res, "单据不存在", 404);
 
-    const order = await prisma.order.update({
-      where: { id },
-      data: {
-        orderNo: orderNo ?? existing.orderNo,
-        orderDate: orderDate !== undefined ? orderDate : existing.orderDate,
-        amountCNY: amountCNY !== undefined ? Number(amountCNY) : existing.amountCNY,
-        depositAmount: depositAmount !== undefined ? Number(depositAmount) : existing.depositAmount,
-        depositPaid: depositPaid !== undefined ? depositPaid : existing.depositPaid,
-        deliveryDate: deliveryDate !== undefined ? deliveryDate : existing.deliveryDate,
-        paymentTerms: paymentTerms !== undefined ? paymentTerms : existing.paymentTerms,
-        status: status ?? existing.status,
-        notes: notes !== undefined ? notes : existing.notes,
-      },
-    });
+    const data: any = {};
+    if (title !== undefined) data.title = title;
+    if (orderNo !== undefined) data.orderNo = orderNo;
+    if (orderDate !== undefined) data.orderDate = orderDate;
+    if (amountCNY !== undefined) data.amountCNY = amountCNY ? Number(amountCNY) : null;
+    if (depositAmount !== undefined) data.depositAmount = depositAmount ? Number(depositAmount) : null;
+    if (depositPaid !== undefined) data.depositPaid = depositPaid;
+    if (deliveryDate !== undefined) data.deliveryDate = deliveryDate;
+    if (paymentTerms !== undefined) data.paymentTerms = paymentTerms;
+    if (status !== undefined) data.status = status;
+    if (stage !== undefined) data.stage = stage;
+    if (targetType !== undefined) data.targetType = targetType;
+    if (targetId !== undefined) data.targetId = targetId;
+    if (pipelineId !== undefined) data.pipelineId = pipelineId;
+    if (items !== undefined) data.items = items ? (typeof items === "string" ? items : JSON.stringify(items)) : null;
+    if (currency !== undefined) data.currency = currency;
+    if (remark !== undefined) data.remark = remark;
 
-    // 记录变更
+    const order = await prisma.order.update({ where: { id }, data });
+
     const changes: string[] = [];
-    if (orderNo && orderNo !== existing.orderNo) changes.push('订单号');
-    if (amountCNY !== undefined && Number(amountCNY) !== existing.amountCNY) changes.push('金额');
-    if (status && status !== existing.status) changes.push('状态');
+    if (orderNo && orderNo !== existing.orderNo) changes.push("单号");
+    if (amountCNY !== undefined && Number(amountCNY) !== existing.amountCNY) changes.push("金额");
+    if (status && status !== existing.status) changes.push("状态");
     if (changes.length > 0) {
       const username = req.username!;
-      const userId = req.userId!;
       await activityLogger.log({
-        userId,
+        userId: req.userId!,
         username,
-        action: 'ORDER_UPDATED',
-        module: 'order',
+        action: "ORDER_UPDATED",
+        module: "order",
         targetId: id,
         target: existing.orderNo || id,
-        detail: `修改了订单「${existing.orderNo}」的${changes.join('、')}`,
+        detail: `修改了单据「${existing.orderNo}」的${changes.join("、")}`,
         customerId: existing.customerId,
       });
-    }
-
-    // 如果订单日期变化，重新计算客户的 firstOrderDate
-    if (orderDate && orderDate !== existing.orderDate) {
-      const earliestOrder = await prisma.order.findFirst({
-        where: { customerId: existing.customerId },
-        orderBy: { orderDate: "asc" },
-      });
-      if (earliestOrder?.orderDate) {
-        await prisma.customer.update({
-          where: { id: existing.customerId },
-          data: { firstOrderDate: earliestOrder.orderDate },
-        });
-      }
     }
 
     success(res, order, "更新成功");
@@ -243,37 +285,115 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
-// ========== 删除订单 ==========
+// ========== 提交审批 ==========
+export const submit = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.order.findUnique({ where: { id } });
+    if (!existing) return error(res, "单据不存在", 404);
+    if (existing.status !== "DRAFT") return error(res, "仅草稿状态可提交", 400);
+
+    const order = await prisma.order.update({
+      where: { id },
+      data: { status: "SUBMITTED" },
+    });
+    await activityLogger.log({
+      userId: req.userId!,
+      username: req.username!,
+      action: "ORDER_SUBMITTED",
+      module: "order",
+      targetId: id,
+      target: existing.orderNo || id,
+      detail: `提交了单据「${existing.orderNo}」审批`,
+      customerId: existing.customerId,
+    });
+    success(res, order, "已提交审批");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 审批通过 ==========
+export const approve = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.order.findUnique({ where: { id } });
+    if (!existing) return error(res, "单据不存在", 404);
+    if (existing.status !== "SUBMITTED") return error(res, "仅已提交状态可审批", 400);
+
+    const ok = await isApprover(existing.type as OrderType, req.userId);
+    if (!ok) return error(res, "您不是该类型的审批人", 403);
+
+    const order = await prisma.order.update({
+      where: { id },
+      data: { status: "APPROVED" },
+    });
+    await activityLogger.log({
+      userId: req.userId!,
+      username: req.username!,
+      action: "ORDER_APPROVED",
+      module: "order",
+      targetId: id,
+      target: existing.orderNo || id,
+      detail: `审批通过了单据「${existing.orderNo}」`,
+      customerId: existing.customerId,
+    });
+    success(res, order, "审批通过");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 审批驳回 ==========
+export const reject = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params;
+    const existing = await prisma.order.findUnique({ where: { id } });
+    if (!existing) return error(res, "单据不存在", 404);
+    if (existing.status !== "SUBMITTED") return error(res, "仅已提交状态可审批", 400);
+
+    const ok = await isApprover(existing.type as OrderType, req.userId);
+    if (!ok) return error(res, "您不是该类型的审批人", 403);
+
+    const order = await prisma.order.update({
+      where: { id },
+      data: { status: "REJECTED" },
+    });
+    await activityLogger.log({
+      userId: req.userId!,
+      username: req.username!,
+      action: "ORDER_REJECTED",
+      module: "order",
+      targetId: id,
+      target: existing.orderNo || id,
+      detail: `驳回了单据「${existing.orderNo}」`,
+      customerId: existing.customerId,
+    });
+    success(res, order, "已驳回");
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 删除单据 ==========
 export const remove = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
     const existing = await prisma.order.findUnique({ where: { id } });
-    if (!existing) return error(res, "订单不存在", 404);
+    if (!existing) return error(res, "单据不存在", 404);
 
     await prisma.order.delete({ where: { id } });
 
-    // 记录活动日志
     const username = req.username!;
-    const userId = req.userId!;
     await activityLogger.log({
-      userId,
+      userId: req.userId!,
       username,
-      action: 'ORDER_DELETED',
-      module: 'order',
+      action: "ORDER_DELETED",
+      module: "order",
       targetId: id,
       target: existing.orderNo || id,
-      detail: `删除了订单「${existing.orderNo}」`,
+      detail: `删除了单据「${existing.orderNo}」`,
       customerId: existing.customerId,
-    });
-
-    // 删除后重新计算客户的 firstOrderDate
-    const earliestOrder = await prisma.order.findFirst({
-      where: { customerId: existing.customerId },
-      orderBy: { orderDate: "asc" },
-    });
-    await prisma.customer.update({
-      where: { id: existing.customerId },
-      data: { firstOrderDate: earliestOrder?.orderDate || null },
     });
 
     success(res, null, "删除成功");
@@ -282,12 +402,15 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
-// ========== 某客户的订单列表 ==========
+// ========== 某客户的单据列表 ==========
 export const listByCustomer = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { customerId } = req.params;
+    const { type } = req.query;
+    const where: any = { customerId };
+    if (type) where.type = String(type);
     const orders = await prisma.order.findMany({
-      where: { customerId },
+      where,
       orderBy: { createdAt: "desc" },
     });
     success(res, orders);

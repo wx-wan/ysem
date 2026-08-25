@@ -4,7 +4,7 @@ import {
 } from 'antd';
 import { EditOutlined, DeleteOutlined, ExperimentOutlined, FileTextOutlined, TeamOutlined } from '@ant-design/icons';
 import { productGroupApi, ProductGroup, productApi, Product } from '../../api/products';
-import { sampleApi, quoteApi } from '../../api/products';
+import CreateOrderFromProductModal from './modals/CreateOrderFromProductModal';
 
 const { Text } = Typography;
 
@@ -27,11 +27,8 @@ export default function ProductGroupManageModal({ groupId, open, onClose, onChan
   const [memberOpen, setMemberOpen] = useState(false);
   const [memberSelected, setMemberSelected] = useState<string[]>([]);
 
-  // 打样/报价
-  const [sampleOpen, setSampleOpen] = useState(false);
-  const [quoteOpen, setQuoteOpen] = useState(false);
-  const [sampleForm] = Form.useForm();
-  const [quoteForm] = Form.useForm();
+  // 打样/报价（基于组合创建）
+  const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -118,37 +115,18 @@ export default function ProductGroupManageModal({ groupId, open, onClose, onChan
     }
   };
 
-  const openSample = () => { if (!group) return; sampleForm.resetFields(); setSampleOpen(true); };
-  const openQuote = () => {
-    if (!group) return;
-    quoteForm.resetFields();
-    quoteForm.setFieldsValue({ title: `${group.name} 报价单` });
-    setQuoteOpen(true);
-  };
+  const openSample = () => setCreateOpen('SAMPLE');
+  const openQuote = () => setCreateOpen('QUOTE');
 
-  const submitSample = async () => {
-    if (!group) return;
-    const values = await sampleForm.validateFields();
-    try {
-      await sampleApi.apply({ targetType: 'GROUP', targetId: group.id, remark: values.remark });
-      message.success('打样申请已提交');
-      setSampleOpen(false);
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || '提交失败');
-    }
-  };
-
-  const submitQuote = async () => {
-    if (!group) return;
-    const values = await quoteForm.validateFields();
-    try {
-      await quoteApi.create({ targetType: 'GROUP', targetId: group.id, title: values.title, remark: values.remark, items: values.items });
-      message.success('报价单已创建');
-      setQuoteOpen(false);
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || '创建失败');
-    }
-  };
+  // 组合成员产品生成初始明细
+  const groupInitialItems = (group?.items || group?.products || [])
+    .map((it: any) => ({
+      productId: it.productId || it.id,
+      name: it.name,
+      spec: [it.sizeL, it.sizeW, it.sizeH, it.weight].filter((v: any) => v).join(' × '),
+      quantity: 1,
+    }))
+    .filter((it: any) => it.productId);
 
   const memberTags = (group?.products || []).slice(0, 6).map((p) => (
     <span key={p.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -229,29 +207,16 @@ export default function ProductGroupManageModal({ groupId, open, onClose, onChan
         />
       </Modal>
 
-      {/* 申请打样 */}
-      <Modal title="申请打样" open={sampleOpen} onCancel={() => setSampleOpen(false)} onOk={submitSample} okText="提交申请">
-        <Form form={sampleForm} layout="vertical">
-          <Form.Item name="remark" label="打样说明">
-            <Input.TextArea rows={4} placeholder="如 需要 3 件手板，颜色红色" />
-          </Form.Item>
-        </Form>
-      </Modal>
-
-      {/* 创建报价 */}
-      <Modal title="创建报价单" open={quoteOpen} onCancel={() => setQuoteOpen(false)} onOk={submitQuote} okText="创建">
-        <Form form={quoteForm} layout="vertical">
-          <Form.Item name="title" label="报价单标题" rules={[{ required: true, message: '请输入标题' }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="remark" label="备注">
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          <Form.Item name="items" label="报价明细（JSON，可选）">
-            <Input.TextArea rows={4} placeholder='[{"productId":"...","price":10}]' />
-          </Form.Item>
-        </Form>
-      </Modal>
+      <CreateOrderFromProductModal
+        open={createOpen !== null}
+        type={createOpen || 'QUOTE'}
+        targetType="GROUP"
+        targetId={group?.id || ''}
+        productName={group?.name}
+        initialItems={groupInitialItems}
+        onCancel={() => setCreateOpen(null)}
+        onCreated={() => { setCreateOpen(null); onChanged?.(); }}
+      />
     </Modal>
   );
 }

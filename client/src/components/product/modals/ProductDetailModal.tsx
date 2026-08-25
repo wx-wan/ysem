@@ -9,11 +9,13 @@ import {
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product, ProductActivity } from '../../../api/products';
 import { SalesItem, STAGE_META } from '../../../api/sales';
+import { orderApi, Order } from '../../../api/customers';
 import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import ProductImagesStack from '../../common/ProductImagesStack';
 import DiffTags from '../../common/DiffTags';
+import CreateOrderFromProductModal from './CreateOrderFromProductModal';
 import dayjs from 'dayjs';
 import './ProductDetailModal.css';
 
@@ -25,8 +27,6 @@ interface ProductDetailModalProps {
   onClose: () => void;
   onEdit: (product: Product) => void;
   onDelete: () => void;
-  onCreateQuote?: (product: Product) => void;
-  onApplySample?: (product: Product) => void;
   canDelete?: boolean;
   salesList: SalesItem[];
   salesLoading: boolean;
@@ -35,15 +35,32 @@ interface ProductDetailModalProps {
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
-  product, open, onClose, onEdit, onCreateQuote, onApplySample,
+  product, open, onClose, onEdit,
   salesList, salesLoading, activities, userMap,
 }) => {
+  const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
   const { token } = theme.useToken();
   const { user } = useAuthStore();
   const [tab, setTab] = useState<TabKey>('overview');
+  const [relatedOrders, setRelatedOrders] = useState<Order[]>([]);
+  const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (open) setTab('overview');
+  }, [open, product?.id]);
+
+  // 该产品的相关单据（报价/打样/订单）
+  useEffect(() => {
+    if (!open || !product) {
+      setRelatedOrders([]);
+      return;
+    }
+    setRelatedLoading(true);
+    orderApi
+      .list({ targetId: product.id, pageSize: 50 })
+      .then((r) => setRelatedOrders(r.data?.data?.list || []))
+      .catch(() => setRelatedOrders([]))
+      .finally(() => setRelatedLoading(false));
   }, [open, product?.id]);
 
   const creator = useMemo(() => {
@@ -119,6 +136,31 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
     return (
       <div className="pm-sales-list">
+        {/* 相关单据：报价 / 打样 / 订单 */}
+        {!relatedLoading && relatedOrders.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 8 }}>相关单据（报价 / 打样 / 订单）</div>
+            {relatedOrders.map((o) => (
+              <div className="pm-sales-item" key={o.id} style={{ background: token.colorFillQuaternary }}>
+                <div className="pm-sales-item-main">
+                  <div className="pm-sales-item-title">
+                    <span className="pm-sales-customer">{o.orderNo || o.id.slice(0, 8)}</span>
+                    <Tag color={o.type === 'QUOTE' ? 'blue' : o.type === 'SAMPLE' ? 'orange' : 'green'}>
+                      {o.type === 'QUOTE' ? '报价' : o.type === 'SAMPLE' ? '打样' : '订单'}
+                    </Tag>
+                    <Tag color={o.status === 'APPROVED' ? 'success' : o.status === 'SUBMITTED' ? 'processing' : o.status === 'REJECTED' ? 'error' : 'default'}>
+                      {o.status === 'DRAFT' ? '草稿' : o.status === 'SUBMITTED' ? '待审批' : o.status === 'APPROVED' ? '已通过' : '已驳回'}
+                    </Tag>
+                  </div>
+                  <div className="pm-sales-item-sub">
+                    <span>客户：{o.customer?.companyName || '-'}</span>
+                    {o.amountCNY != null && <span>金额：{o.currency || 'CNY'} {o.amountCNY.toFixed(2)}</span>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {salesList.map((sale) => {
           const meta = STAGE_META[sale.stage];
           const saleAmount = sale.stage === 'ORDER' ? sale.orderAmount : sale.estimatedAmount;
@@ -280,7 +322,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               <Button
                 block
                 className="pdm-op-primary"
-                onClick={() => onCreateQuote?.(product)}
+                onClick={() => product && setCreateOpen('QUOTE')}
                 icon={<FileTextOutlined />}
               >
                 基于此产品创建报价
@@ -297,7 +339,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 <Button
                   block
                   className="pdm-op-ghost"
-                  onClick={() => onApplySample?.(product)}
+                  onClick={() => product && setCreateOpen('SAMPLE')}
                   icon={<HomeOutlined />}
                 >
                   申请打样
@@ -435,6 +477,29 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      <CreateOrderFromProductModal
+        open={createOpen !== null}
+        type={createOpen || 'QUOTE'}
+        targetType="PRODUCT"
+        targetId={product?.id || ''}
+        productName={product?.name}
+        initialItems={
+          product
+            ? [
+                {
+                  productId: product.id,
+                  name: product.name,
+                  spec: [product.sizeL, product.sizeW, product.sizeH, product.weight]
+                    .filter((v) => v)
+                    .join(' × '),
+                  quantity: 1,
+                },
+              ]
+            : []
+        }
+        onCancel={() => setCreateOpen(null)}
+      />
     </AppModal>
   );
 };
