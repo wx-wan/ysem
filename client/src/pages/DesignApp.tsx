@@ -47,7 +47,6 @@ export default function DesignApp() {
           返回
         </Button>
         <Title level={4} style={{ margin: 0 }}>{t('header.systemDesign')}</Title>
-        <div style={{ flex: 1 }} />
         <CapsuleSwitch
           className="design-top-nav"
           tone="primary"

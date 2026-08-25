@@ -987,6 +987,11 @@ html, body {
   max-width: 1200px;
   margin: 0 auto;
 }
+.design-top-nav {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
 .customer-tier-void .ant-card {
   filter: grayscale(30%) brightness(0.94);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
