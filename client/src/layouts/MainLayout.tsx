@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Spin, theme, Grid } from 'antd';
+import { Layout, Menu, Spin, theme } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -63,13 +63,8 @@ export default function MainLayout() {
   const { user, logout } = useAuthStore();
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token } = theme.useToken();
-  const screens = Grid.useBreakpoint();
-  // 屏幕宽度小于 lg(992px) 时默认收起侧边导航
-  const [collapsed, setCollapsed] = useState(!screens.lg);
-
-  useEffect(() => {
-    setCollapsed(!screens.lg);
-  }, [screens.lg]);
+  // 侧边导航默认展开，仅通过顶部折叠按钮手动控制
+  const [collapsed, setCollapsed] = useState(false);
 
   // 获取用户信息（防 StrictMode 双重挂载重复请求）
   const profileFetched = useRef(false);
@@ -194,9 +189,7 @@ export default function MainLayout() {
     if (path.startsWith('/system/')) return path;
     return path;
   })();
-  const openKeys = collapsed
-    ? []
-    : selectedKey.startsWith('/sales')
+  const openKeys = selectedKey.startsWith('/sales')
     ? ['sales-group']
     : selectedKey.startsWith('/system')
     ? (selectedKey.startsWith('/system/user') || selectedKey.startsWith('/system/role') || selectedKey.startsWith('/system/dept')
