@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Select, Input, InputNumber, Table, App } from 'antd';
+import { Modal, Form, Select, Input, InputNumber, Table, App, Alert, Tag } from 'antd';
 import { customerApi, Customer } from '../../../api/customers';
 import { salesApi } from '../../../api/sales';
 import { quoteApi, sampleApi } from '../../../api/products';
@@ -45,9 +45,11 @@ export default function CreateOrderFromProductModal({
   const [pipelines, setPipelines] = useState<any[]>([]);
   const [items, setItems] = useState<InitialItem[]>(initialItems);
   const [saving, setSaving] = useState(false);
+  const [created, setCreated] = useState<{ id: string; orderNo: string; title: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    setCreated(null);
     form.resetFields();
     const normalized = (initialItems.length ? initialItems : (productName ? [{ name: productName, quantity: 1 }] : []))
       .map((it) => ({ ...it, key: it.key || genKey() }));
@@ -74,6 +76,11 @@ export default function CreateOrderFromProductModal({
   };
 
   const handleOk = async () => {
+    // 已创建成功：再次点击「完成」即关闭弹窗
+    if (created) {
+      onCancel();
+      return;
+    }
     const values = await form.validateFields();
     if (!items.length) {
       message.warning('请至少添加一条明细');
@@ -98,10 +105,11 @@ export default function CreateOrderFromProductModal({
       const res = type === 'QUOTE'
         ? await quoteApi.create(data)
         : await sampleApi.apply(data);
-      if (res.data?.data) {
+      const order = res.data?.data;
+      if (order) {
+        setCreated({ id: order.id || '', orderNo: order.orderNo || '', title: order.title || '' });
         message.success(`${TYPE_LABEL[type]}已创建`);
-        onCreated?.(res.data.data);
-        onCancel();
+        onCreated?.(order);
       }
     } catch (err: any) {
       message.error(err?.response?.data?.message || '创建失败');
@@ -156,8 +164,22 @@ export default function CreateOrderFromProductModal({
       onOk={handleOk}
       confirmLoading={saving}
       width={680}
-      okText="创建"
+      okText={created ? '完成' : '创建'}
     >
+      {created && (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message={`${TYPE_LABEL[type]}已创建`}
+          description={
+            <div>
+              <div>报价单 ID：<Tag color="blue">{created.orderNo}</Tag></div>
+              {created.title && <div style={{ marginTop: 4 }}>标题：{created.title}</div>}
+            </div>
+          }
+        />
+      )}
       <Form form={form} layout="vertical">
         <Form.Item name="title" label="单据标题">
           <Input placeholder={`${productName || ''}${TYPE_LABEL[type]}`} />
