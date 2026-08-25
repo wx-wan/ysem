@@ -42,6 +42,8 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
       status,
       customerId,
       pipelineId,
+      targetId,
+      targetType,
       startDate,
       endDate,
       page = "1",
@@ -59,6 +61,8 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
     if (type) where.type = String(type);
     if (status) where.status = String(status);
     if (pipelineId) where.pipelineId = String(pipelineId);
+    if (targetId) where.targetId = String(targetId);
+    if (targetType) where.targetType = String(targetType);
     if (keyword) {
       where.OR = [
         { orderNo: { contains: String(keyword) } },
