@@ -56,7 +56,7 @@ export default function CountrySelect({
       placeholder={placeholder}
       getPopupContainer={getPopupContainer}
       showSearch
-      style={{ width: '100%', minHeight: 40, borderRadius: 8, ...style }}
+      style={{ width: '100%', ...style }}
       styles={{ popup: { root: { minWidth: 220 } } }}
       allowClear
       filterOption={(input, option) => {

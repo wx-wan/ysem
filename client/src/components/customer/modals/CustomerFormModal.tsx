@@ -1,16 +1,7 @@
 import React from 'react';
-import { Modal, Form, Input, Select, Tag, Row, Col, App } from 'antd';
+import { Modal, Form, Input, Select, Row, Col, App } from 'antd';
 import { customerApi, Customer } from '../../../api/customers';
-import KeyAccountStar from '../../KeyAccountStar';
-import TagSelector from '../../TagSelector';
 import CountrySelect from '../../CountrySelect';
-
-const INTENT_OPTIONS = [
-  { value: '低意向', label: '低意向', tagColor: 'default' as const },
-  { value: '中意向', label: '中意向', tagColor: 'warning' as const },
-  { value: '高意向', label: '高意向', tagColor: 'orange' as const },
-  { value: '准成交', label: '准成交', tagColor: 'red' as const },
-];
 
 interface Props {
   open: boolean;
@@ -99,31 +90,6 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         </Row>
         <Form.Item name="isKeyAccount" hidden>
           <Input />
-        </Form.Item>
-        <Form.Item
-          noStyle
-          shouldUpdate={(prev, cur) => prev.isKeyAccount !== cur.isKeyAccount}
-        >
-          {({ getFieldValue, setFieldsValue }) => (
-            <Form.Item label="重点客户">
-              <KeyAccountStar
-                isKeyAccount={getFieldValue('isKeyAccount') || false}
-                onToggle={() => setFieldsValue({ isKeyAccount: !getFieldValue('isKeyAccount') })}
-              />
-            </Form.Item>
-          )}
-        </Form.Item>
-        <Form.Item name="intentLevel" label="采购意向">
-          <Select placeholder="选择采购意向">
-            {INTENT_OPTIONS.map((o) => (
-              <Select.Option key={o.value} value={o.value}>
-                <Tag color={o.tagColor} variant="filled">{o.label}</Tag>
-              </Select.Option>
-            ))}
-          </Select>
-        </Form.Item>
-        <Form.Item name="tags" style={{ marginBottom: 0 }}>
-          <TagSelector placeholder="输入标签名称" />
         </Form.Item>
         <Form.Item name="notes" label="备注">
           <Input.TextArea rows={2} placeholder="备注信息" />
