@@ -11,20 +11,12 @@ import {
   UnorderedListOutlined,
   SolutionOutlined,
   ProfileOutlined,
-  ReconciliationOutlined,
   SendOutlined,
   TeamOutlined,
-  ApartmentOutlined,
-  FileProtectOutlined,
   FileDoneOutlined,
   BarChartOutlined,
-  SettingOutlined,
-  UserOutlined,
-  SafetyOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  FileSearchOutlined,
-  AuditOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -131,29 +123,6 @@ export default function MainLayout() {
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
     ...(hasPerm('reports') ? [{ key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') }] : []),
-    ...(hasPerm('system')
-      ? [
-          {
-            key: 'system-group',
-            icon: <SettingOutlined />,
-            label: t('menu.system'),
-            children: [
-              ...(hasPerm('system:user')
-                ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }]
-                : []),
-              ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <TeamOutlined />, label: t('menu.systemRole') }] : []),
-              ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
-              ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
-              ...(hasPerm('product:taxonomy:view')
-                ? [{ key: '/system/product-taxonomy', icon: <AppstoreOutlined />, label: t('menu.systemProductTaxonomy') }]
-                : []),
-              ...(hasPerm('certificate:view') ? [{ key: '/system/certificates', icon: <FileProtectOutlined />, label: t('menu.systemCertificates') }] : []),
-              ...(hasPerm('system:perm') ? [{ key: '/system/operation-logs', icon: <FileSearchOutlined />, label: '操作日志' }] : []),
-              ...(hasPerm('system:perm') ? [{ key: '/system/approval', icon: <AuditOutlined />, label: '审批管理' }] : []),
-            ],
-          },
-        ]
-      : []),
   ];
 
   // 当前选中项与展开项
@@ -165,10 +134,9 @@ export default function MainLayout() {
     if (path.startsWith('/quotes')) return '/quotes';
     if (path.startsWith('/samples')) return '/samples';
     if (path.startsWith('/settlement')) return '/settlement';
-    if (path.startsWith('/system/')) return path;
     return path;
   })();
-  const openKeys = selectedKey.startsWith('/system') ? ['system-group'] : [];
+  const openKeys: string[] = [];
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -199,7 +167,7 @@ export default function MainLayout() {
           mode="inline"
           theme="light"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={['system-group']}
+          defaultOpenKeys={[]}
           items={menuItems}
           onClick={handleMenuClick}
           style={{ borderInlineEnd: 'none', background: 'transparent' }}

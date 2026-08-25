@@ -25,6 +25,7 @@ import PermPage from './pages/Perm';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
+import DesignApp from './pages/DesignApp';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
 
@@ -76,15 +77,16 @@ function App() {
         <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="system/user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
-        <Route path="system/role" element={<PermRoute perm="system:role"><UserManagementPage /></PermRoute>} />
-        <Route path="system/dept" element={<PermRoute perm="system:dept"><UserManagementPage /></PermRoute>} />
-        <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
-        <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />
-        <Route path="system/certificates" element={<PermRoute perm="certificate:view"><ProductManagementPage systemOnly /></PermRoute>} />
-        <Route path="system/operation-logs" element={<PermRoute perm="system:perm"><OperationLogsPage /></PermRoute>} />
-        <Route path="system/approval" element={<PermRoute perm="system:perm"><SettingsApprovalPage /></PermRoute>} />
       </Route>
+      {/* 独立的系统设计页面（无侧边栏，与业务页面区分） */}
+      <Route
+        path="/design"
+        element={
+          <PrivateRoute>
+            <DesignApp />
+          </PrivateRoute>
+        }
+      />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

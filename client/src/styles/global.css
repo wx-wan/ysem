@@ -964,6 +964,29 @@ html, body {
 }
 
 /* --- 无商机客户(void)：灰色 --- */
+
+/* ========== 独立系统设计页（无侧边栏，与业务页面区分） ========== */
+.design-app {
+  min-height: 100vh;
+  background: #f5f7fa;
+}
+.design-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 56px;
+  padding: 0 20px;
+  background: #fff;
+  border-bottom: 1px solid #eef0f4;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.design-body {
+  padding: 20px 24px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
 .customer-tier-void .ant-card {
   filter: grayscale(30%) brightness(0.94);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
