@@ -16,6 +16,7 @@ import {
   TeamOutlined,
   ApartmentOutlined,
   FileProtectOutlined,
+  FileDoneOutlined,
   BarChartOutlined,
   SettingOutlined,
   UserOutlined,
@@ -46,6 +47,7 @@ const routeTitles: Record<string, string> = {
   '/orders': '订单',
   '/production': '生产',
   '/shipment': '出货',
+  '/settlement': '结算',
   '/reports': '报告',
   '/system/user': '用户管理',
   '/system/role': '角色管理',
@@ -127,6 +129,7 @@ export default function MainLayout() {
     ...(hasPerm('sales:orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
     ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
+    ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
     ...(hasPerm('reports') ? [{ key: '/reports', icon: <BarChartOutlined />, label: t('menu.reports') }] : []),
     ...(hasPerm('system')
       ? [
@@ -161,6 +164,7 @@ export default function MainLayout() {
     if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
     if (path.startsWith('/quotes')) return '/quotes';
     if (path.startsWith('/samples')) return '/samples';
+    if (path.startsWith('/settlement')) return '/settlement';
     if (path.startsWith('/system/')) return path;
     return path;
   })();

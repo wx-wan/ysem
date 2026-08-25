@@ -82,6 +82,7 @@
     "orders": "Orders",
     "production": "Production",
     "shipment": "Shipment",
+    "settlement": "Settlement",
     "reports": "Reports",
     "system": "Settings",
     "systemUser": "User Management",

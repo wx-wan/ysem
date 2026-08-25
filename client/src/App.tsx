@@ -15,6 +15,7 @@ import SalesOpportunitiesPage from './pages/SalesOpportunities';
 import SalesOrdersPage from './pages/SalesOrders';
 import QuotePage from './pages/QuotePage';
 import SamplePage from './pages/SamplePage';
+import SettlementPage from './pages/SettlementPage';
 import ReportsPage from './pages/Reports';
 import OrdersPage from './pages/Orders';
 import ProductionPage from './pages/Production';
@@ -72,6 +73,7 @@ function App() {
         <Route path="samples" element={<PermRoute perm="sales:orders"><SamplePage /></PermRoute>} />
         <Route path="production" element={<ProductionPage />} />
         <Route path="shipment" element={<ShipmentPage />} />
+        <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="system/user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
