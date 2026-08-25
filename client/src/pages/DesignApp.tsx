@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button, Typography } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,13 @@ export default function DesignApp() {
   const navigate = useNavigate();
   const { hasPerm } = usePermission();
   const [tab, setTab] = useState<DesignTab>('user');
+
+  useEffect(() => {
+    document.title = '设置 - Joylifetoy';
+    return () => {
+      document.title = 'Joylifetoy';
+    };
+  }, []);
 
   const TABS = [
     { label: t('menu.systemUser'), key: 'user' as const, perm: 'system:user' },

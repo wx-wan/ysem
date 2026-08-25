@@ -78,15 +78,16 @@ function App() {
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         <Route path="reports" element={<ReportsPage />} />
       </Route>
-      {/* 独立的系统设计页面（无侧边栏，与业务页面区分） */}
+      {/* 独立的系统设置页面（无侧边栏，与业务页面区分） */}
       <Route
-        path="/design"
+        path="/setting"
         element={
           <PrivateRoute>
             <DesignApp />
           </PrivateRoute>
         }
       />
+      <Route path="/design" element={<Navigate to="/setting" replace />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

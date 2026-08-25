@@ -47,7 +47,7 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
   const handleAvatarMenuClick: MenuProps['onClick'] = (info) => {
     if (info.key === 'logout') onLogout();
     else if (info.key === 'profile') navigate('/profile');
-    else if (info.key === 'settings') window.open(`${window.location.origin}/design`, '_blank');
+    else if (info.key === 'settings') window.open(`${window.location.origin}/setting`, '_blank');
     else onMenuClick?.(info);
   };
 
