@@ -12,14 +12,12 @@ import {
   UnorderedListOutlined,
   SolutionOutlined,
   ProfileOutlined,
-  ClusterOutlined,
   ReconciliationOutlined,
   SendOutlined,
   TeamOutlined,
   BarChartOutlined,
   SettingOutlined,
   UserOutlined,
-  ApartmentOutlined,
   SafetyOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
@@ -144,18 +142,7 @@ export default function MainLayout() {
             label: t('menu.system'),
             children: [
               ...(hasPerm('system:user')
-                ? [
-                    {
-                      key: 'user-group',
-                      icon: <UserOutlined />,
-                      label: t('menu.systemUser'),
-                      children: [
-                        ...(hasPerm('system:user') ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }] : []),
-                        ...(hasPerm('system:role') ? [{ key: '/system/role', icon: <ClusterOutlined />, label: t('menu.systemRole') }] : []),
-                        ...(hasPerm('system:dept') ? [{ key: '/system/dept', icon: <ApartmentOutlined />, label: t('menu.systemDept') }] : []),
-                      ],
-                    },
-                  ]
+                ? [{ key: '/system/user', icon: <UserOutlined />, label: t('menu.systemUser') }]
                 : []),
               ...(hasPerm('system:perm') ? [{ key: '/system/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
               ...(hasPerm('product:taxonomy:view')
@@ -192,9 +179,7 @@ export default function MainLayout() {
   const openKeys = selectedKey.startsWith('/sales')
     ? ['sales-group']
     : selectedKey.startsWith('/system')
-    ? (selectedKey.startsWith('/system/user') || selectedKey.startsWith('/system/role') || selectedKey.startsWith('/system/dept')
-        ? ['system-group', 'user-group']
-        : selectedKey.startsWith('/system/product-taxonomy') || selectedKey.startsWith('/system/certificates')
+    ? (selectedKey.startsWith('/system/product-taxonomy') || selectedKey.startsWith('/system/certificates')
         ? ['system-group', 'product-taxonomy-group']
         : ['system-group'])
     : [];

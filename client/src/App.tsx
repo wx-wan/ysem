@@ -17,9 +17,7 @@ import ReportsPage from './pages/Reports';
 import OrdersPage from './pages/Orders';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
-import UserPage from './pages/User';
-import RolePage from './pages/Role';
-import DeptPage from './pages/Dept';
+import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
 import ProductTaxonomyPage from './pages/ProductTaxonomy';
 import CertificatePage from './pages/Certificate';
@@ -73,9 +71,9 @@ function App() {
         <Route path="shipment" element={<ShipmentPage />} />
         <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="system/user" element={<PermRoute perm="system:user"><UserPage /></PermRoute>} />
-        <Route path="system/role" element={<PermRoute perm="system:role"><RolePage /></PermRoute>} />
-        <Route path="system/dept" element={<PermRoute perm="system:dept"><DeptPage /></PermRoute>} />
+        <Route path="system/user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
+        <Route path="system/role" element={<PermRoute perm="system:role"><UserManagementPage /></PermRoute>} />
+        <Route path="system/dept" element={<PermRoute perm="system:dept"><UserManagementPage /></PermRoute>} />
         <Route path="system/perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
         <Route path="system/product-taxonomy" element={<PermRoute perm="product:taxonomy:view"><ProductTaxonomyPage /></PermRoute>} />
         <Route path="system/certificates" element={<PermRoute perm="certificate:view"><CertificatePage /></PermRoute>} />
