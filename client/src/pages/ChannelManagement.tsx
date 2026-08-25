@@ -137,11 +137,11 @@ export default function ChannelManagement() {
   });
 
   return (
-    <div className="setting-pane">
-      <div className="setting-pane-head">
+    <div>
+      <div className="page-header">
         <div>
-          <h2 className="setting-pane-title">{t('menu.systemChannel')}</h2>
-          <p className="setting-pane-desc">{t('channel.desc')}</p>
+          <h2>{t('menu.systemChannel')}</h2>
+          <p className="page-header-desc">{t('channel.desc')}</p>
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={load}>
@@ -154,7 +154,7 @@ export default function ChannelManagement() {
       </div>
 
       {/* 概览统计 */}
-      <Row gutter={16} style={{ marginBottom: 20 }}>
+      <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col xs={12} md={8}>
           <Card size="small" variant="borderless" className="channel-platform-card">
             <Space align="center">
