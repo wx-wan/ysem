@@ -65,12 +65,13 @@ const ACTION_LABELS: Record<string, string> = {
   CREATED: '创建',
   UPDATED: '修改',
   TRANSFERRED: '转移',
+  STATUS_CHANGED: '状态变更',
 };
 const ACTION_COLORS: Record<string, string> = {
   CREATE: 'green', CREATED: 'green',
   UPDATE: 'blue', UPDATED: 'blue',
   DELETE: 'red',
-  STATUS: 'orange',
+  STATUS: 'orange', STATUS_CHANGED: 'orange',
   CLAIM: 'cyan',
   RELEASE: 'default',
   TRANSFER: 'purple', TRANSFERRED: 'purple',
