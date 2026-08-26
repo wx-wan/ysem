@@ -26,13 +26,22 @@ export const getPermissions = async (_req: AuthRequest, res: Response): Promise<
   }
 };
 
-// 获取权限树
+// 获取权限树（按 parentId 组装层级，同级按 sort 排序）
 export const getPermissionTree = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const permissions = await prisma.permission.findMany({
-      orderBy: { sort: 'asc' },
+      orderBy: [{ sort: 'asc' }, { id: 'asc' }],
     });
-    success(res, permissions);
+    const map = new Map<string, (typeof permissions)[number] & { children: any[] }>();
+    permissions.forEach((p) => map.set(p.id, { ...p, children: [] }));
+    const roots: any[] = [];
+    permissions.forEach((p) => {
+      const node = map.get(p.id)!;
+      const parent = p.parentId ? map.get(p.parentId) : null;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    });
+    success(res, roots);
   } catch {
     fail(res, 500, '服务器错误');
   }

@@ -22,6 +22,7 @@ import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
 import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
+import RolePage from './pages/Role';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
@@ -79,23 +80,24 @@ function App() {
         <Route index element={<SyncNavigate to="/dashboard" />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales" element={<SalesLayout />}>
-          <Route index element={<SalesPage />} />
-          <Route path="products" element={<ProductManagementPage />} />
-          <Route path="leads" element={<SalesLeadsPage />} />
-          <Route path="opportunities" element={<SalesOpportunitiesPage />} />
-          <Route path="orders" element={<SalesOrdersPage />} />
+          <Route index element={<PermRoute perm="sales"><SalesPage /></PermRoute>} />
+          <Route path="products" element={<PermRoute perm="sales:products"><ProductManagementPage /></PermRoute>} />
+          <Route path="leads" element={<PermRoute perm="sales:leads"><SalesLeadsPage /></PermRoute>} />
+          <Route path="opportunities" element={<PermRoute perm="sales:opportunities"><SalesOpportunitiesPage /></PermRoute>} />
+          <Route path="orders" element={<PermRoute perm="sales:orders"><SalesOrdersPage /></PermRoute>} />
         </Route>
-        <Route path="orders" element={<OrdersPage />} />
-        <Route path="quotes" element={<PermRoute perm="sales:orders"><QuotePage /></PermRoute>} />
-        <Route path="samples" element={<PermRoute perm="sales:orders"><SamplePage /></PermRoute>} />
-        <Route path="production" element={<ProductionPage />} />
-        <Route path="shipment" element={<ShipmentPage />} />
-        <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
-        <Route path="customers" element={<CustomersPage />} />
+        <Route path="orders" element={<PermRoute perm="orders"><OrdersPage /></PermRoute>} />
+        <Route path="quotes" element={<PermRoute perm="sales:quotes"><QuotePage /></PermRoute>} />
+        <Route path="samples" element={<PermRoute perm="sales:samples"><SamplePage /></PermRoute>} />
+        <Route path="production" element={<PermRoute perm="production"><ProductionPage /></PermRoute>} />
+        <Route path="shipment" element={<PermRoute perm="shipment"><ShipmentPage /></PermRoute>} />
+        <Route path="settlement" element={<PermRoute perm="sales:settlement"><SettlementPage /></PermRoute>} />
+        <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
         {/* 系统设置：并入主布局，切换仅重绘内容区，不重挂整体布局 */}
         <Route path="setting">
           <Route index element={<SettingIndex />} />
           <Route path="user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
+          <Route path="role" element={<PermRoute perm="system:role"><RolePage /></PermRoute>} />
           <Route path="perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
           <Route path="archive" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />
           <Route path="channel" element={<PermRoute perm="system:channel"><ChannelManagementPage /></PermRoute>} />

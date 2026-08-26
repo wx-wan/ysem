@@ -45,6 +45,7 @@
     "locked": "锁定",
     "active": "正常",
     "noData": "-",
+    "empty": "暂无数据",
     "all": "全部",
     "total": "共 {{count}} 条",
     "pleaseSelect": "请选择",
@@ -190,8 +191,19 @@
     "updateSuccess": "更新成功",
     "assignPerm": "分配权限",
     "assignSuccess": "权限分配成功",
+    "selectAll": "全选",
+    "clearAll": "清空",
     "nameRequired": "请输入角色名称",
-    "codeRequired": "请输入角色编码"
+    "codeRequired": "请输入角色编码",
+    "members": "成员",
+    "editMembers": "编辑成员",
+    "addMember": "添加成员",
+    "view": "查看",
+    "totalMembers": "共计 {{count}} 位",
+    "basicInfo": "基本信息",
+    "permConfig": "权限配置",
+    "roleVisibleRange": "角色可见范围",
+    "save": "保存"
   },
   "dept": {
     "title": "部门管理",
@@ -247,7 +259,9 @@
     "createSuccess": "创建成功",
     "updateSuccess": "更新成功",
     "nameRequired": "请输入权限名称",
-    "codeRequired": "请输入权限编码"
+    "codeRequired": "请输入权限编码",
+    "total": "权限总数",
+    "searchPlaceholder": "搜索权限名称 / 编码"
   },
   "header": {
     "profile": "个人信息",

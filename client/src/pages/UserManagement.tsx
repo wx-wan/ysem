@@ -1,13 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination, Tooltip, Avatar, Empty } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined, SafetyOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import UserFormModal from '../components/user/UserFormModal';
 import ResetPasswordModal from '../components/user/ResetPasswordModal';
 import RoleFormModal from '../components/role/RoleFormModal';
-import RolePermModal from '../components/role/RolePermModal';
 import DeptFormModal from '../components/dept/DeptFormModal';
 import { buildTablePagination } from '../components/common/tablePagination';
 import SegmentedTabBar from '../components/common/SegmentedTabBar';
@@ -115,9 +114,7 @@ export default function UserManagementPage() {
   const [rolesData, setRolesData] = useState<RoleRecord[]>([]);
   const [roleLoading, setRoleLoading] = useState(true);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
-  const [permModalOpen, setPermModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
-  const [currentRoleId, setCurrentRoleId] = useState<string>('');
 
   // ---------- 部门 state ----------
   const [deptsData, setDeptsData] = useState<DeptRecord[]>([]);
@@ -185,7 +182,6 @@ export default function UserManagementPage() {
     try { await request.delete(`/roles/${id}`); message.success(t('role.deleteSuccess')); fetchRoles(); }
     catch { /* handled */ }
   };
-  const openPermModal = (r: RoleRecord) => { setCurrentRoleId(r.id); setPermModalOpen(true); };
 
   // ===== 部门操作 =====
   const handleAddDept = (pid?: string) => { setEditingDept(null); setDeptParentId(pid); setDeptModalOpen(true); };
@@ -258,7 +254,6 @@ export default function UserManagementPage() {
       title: t('common.operation'), width: 220, fixed: 'right',
       render: (_, record) => (
         <Space>
-          {hasPerm('system:role:edit') && <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>{t('role.permission')}</Button>}
           {hasPerm('system:role:edit') && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>{t('common.edit')}</Button>}
           {hasPerm('system:role:delete') && (
             <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDeleteRole(record.id)}>
@@ -393,8 +388,16 @@ export default function UserManagementPage() {
       <ResetPasswordModal open={resetOpen} targetUser={resetTarget} onClose={() => { setResetOpen(false); setResetTarget(null); }} onSuccess={fetchUsers} api={userApi} t={t} />
 
       {/* 角色弹窗 */}
-      <RoleFormModal open={roleModalOpen} editingRole={editingRole} onClose={() => { setRoleModalOpen(false); setEditingRole(null); }} onSuccess={fetchRoles} api={roleApi} t={t} />
-      <RolePermModal open={permModalOpen} roleId={currentRoleId} onClose={() => { setPermModalOpen(false); setCurrentRoleId(''); }} onSuccess={fetchRoles} api={permApi} t={t} />
+      <RoleFormModal
+        open={roleModalOpen}
+        editingRole={editingRole}
+        viewRole={null}
+        onClose={() => { setRoleModalOpen(false); setEditingRole(null); }}
+        onSuccess={fetchRoles}
+        roleApi={roleApi}
+        permApi={permApi}
+        t={t}
+      />
 
       {/* 部门弹窗 */}
       <DeptFormModal open={deptModalOpen} editingDept={editingDept} parentOptions={parentDeptOptions} onClose={() => { setDeptModalOpen(false); setEditingDept(null); setDeptParentId(undefined); }} onSuccess={fetchDepts} api={deptApi} t={t} initialParentId={deptParentId} />

@@ -126,6 +126,7 @@ export default function MainLayout() {
   // 设置模式侧边栏菜单（按权限动态渲染，扁平展示设置子模块）
   const settingMenuItems: MenuProps['items'] = [
     ...(hasPerm('system:user') ? [{ key: '/setting/user', icon: <TeamOutlined />, label: t('menu.systemUser') }] : []),
+    ...(hasPerm('system:role') ? [{ key: '/setting/role', icon: <SafetyOutlined />, label: t('menu.systemRole') }] : []),
     ...(hasPerm('system:perm') ? [{ key: '/setting/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
     ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
     ...(hasPerm('system:channel') ? [{ key: '/setting/channel', icon: <ApiOutlined />, label: t('menu.systemChannel') }] : []),
@@ -138,16 +139,16 @@ export default function MainLayout() {
   const businessMenuItems: MenuProps['items'] = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
     ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
-    // 客户：所有登录用户均可查询（数据由后端按「本人 + 公海」范围过滤）
-    { key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') },
+    // 客户：需要 customers 权限（所有默认角色均已分配）
+    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
     ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
     ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/samples', icon: <ProfileOutlined />, label: t('menu.sample') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
+    ...(hasPerm('sales:quotes') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
+    ...(hasPerm('sales:samples') ? [{ key: '/samples', icon: <ProfileOutlined />, label: t('menu.sample') }] : []),
+    ...(hasPerm('orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
     ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
-    ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
+    ...(hasPerm('sales:settlement') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
   ];
 
   const menuItems = isSettingMode ? settingMenuItems : businessMenuItems;

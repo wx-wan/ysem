@@ -45,6 +45,7 @@
     "locked": "Locked",
     "active": "Active",
     "noData": "-",
+    "empty": "No data",
     "all": "All",
     "total": "Total {{count}} records",
     "pleaseSelect": "Please select",
@@ -190,8 +191,19 @@
     "updateSuccess": "Updated successfully",
     "assignPerm": "Assign Permissions",
     "assignSuccess": "Permissions assigned successfully",
+    "selectAll": "Select all",
+    "clearAll": "Clear all",
     "nameRequired": "Please enter role name",
-    "codeRequired": "Please enter role code"
+    "codeRequired": "Please enter role code",
+    "members": "Members",
+    "editMembers": "Edit Members",
+    "addMember": "Add Member",
+    "view": "View",
+    "totalMembers": "Total {{count}} members",
+    "basicInfo": "Basic Info",
+    "permConfig": "Permission Config",
+    "roleVisibleRange": "Visible Range",
+    "save": "Save"
   },
   "dept": {
     "title": "Department Management",
@@ -247,7 +259,9 @@
     "createSuccess": "Created successfully",
     "updateSuccess": "Updated successfully",
     "nameRequired": "Please enter permission name",
-    "codeRequired": "Please enter permission code"
+    "codeRequired": "Please enter permission code",
+    "total": "Total Permissions",
+    "searchPlaceholder": "Search by name / code"
   },
   "header": {
     "profile": "Profile",

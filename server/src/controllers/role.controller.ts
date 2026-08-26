@@ -15,7 +15,14 @@ const roleSchema = z.object({
 export const getRoles = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
     const roles = await prisma.role.findMany({
-      include: { _count: { select: { users: true } } },
+      include: {
+        _count: { select: { users: true } },
+        users: {
+          take: 5,
+          select: { id: true, realName: true, avatar: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
       orderBy: { sort: 'asc' },
     });
     success(res, roles);

@@ -66,13 +66,11 @@ request.interceptors.response.use(
     if (axios.isCancel(error)) {
       return Promise.reject(error);
     }
+    // 登录接口的错误提示统一由登录页 catch 处理，拦截器不弹窗，避免重复提示
+    if (error.config?.url?.includes('/auth/login')) {
+      return Promise.reject(error);
+    }
     if (error.response?.status === 401) {
-      const isLoginRequest = error.config?.url?.includes('/auth/login');
-      if (isLoginRequest) {
-        // 登录接口本身的 401（账号或密码错误）：不跳转、不在此弹提示，
-        // 交由登录页 catch 处理，避免页面跳转冲掉提示或重复提示
-        return Promise.reject(error);
-      }
       // 尝试用 refreshToken 刷新（兜底：前置拦截未覆盖到的场景）
       const refreshToken = localStorage.getItem('refreshToken');
       if (refreshToken && error.config && !(error.config as unknown as Record<string, unknown>)._retry) {

@@ -1,5 +1,17 @@
-import React from 'react';
-import { Modal, Form, Input, InputNumber, App } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  Modal, Form, Input, InputNumber, App, Checkbox, Row, Col, Divider, Card, Space, Select,
+} from 'antd';
+import type { TFunction } from 'i18next';
+import type { CheckboxChangeEvent } from 'antd/es/checkbox';
+
+interface PermNode {
+  id: string;
+  name: string;
+  code: string;
+  type: string;
+  children?: PermNode[];
+}
 
 interface RoleRecord {
   id: string;
@@ -12,76 +24,240 @@ interface RoleRecord {
 interface Props {
   open: boolean;
   editingRole: RoleRecord | null;
+  viewRole: RoleRecord | null;
   onClose: () => void;
   onSuccess: () => void;
-  api: {
+  roleApi: {
     create: (data: any) => Promise<any>;
     update: (id: string, data: any) => Promise<any>;
   };
-  t: (key: string, options?: any) => string;
+  permApi: {
+    getPermissions: () => Promise<any>;
+    getRole: (id: string) => Promise<any>;
+    assign: (roleId: string, permissionIds: string[]) => Promise<any>;
+  };
+  t: TFunction;
 }
 
-const RoleFormModal: React.FC<Props> = React.memo(({ open, editingRole, onClose, onSuccess, api, t }) => {
+// 收集节点及其所有后代（扁平）
+const collectDescendants = (node: PermNode): PermNode[] => {
+  const out: PermNode[] = [node];
+  if (node.children) {
+    node.children.forEach((c) => out.push(...collectDescendants(c)));
+  }
+  return out;
+};
+
+export default function RoleFormModal({
+  open, editingRole, viewRole, onClose, onSuccess, roleApi, permApi, t,
+}: Props) {
   const { message } = App.useApp();
   const [form] = Form.useForm();
-  const [saving, setSaving] = React.useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [permTree, setPermTree] = useState<PermNode[]>([]);
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
+  const isView = !!viewRole;
+  const isEdit = !!editingRole;
 
-  const handleSubmit = async () => {
-    try {
-      const values = await form.validateFields();
-      setSaving(true);
-      if (editingRole) {
-        await api.update(editingRole.id, values);
-        message.success(t('role.updateSuccess'));
-      } else {
-        await api.create(values);
-        message.success(t('role.createSuccess'));
-      }
-      onClose();
-      onSuccess();
-    } catch (e: any) {
-      if (e.errorFields) return;
-    } finally {
-      setSaving(false);
-    }
+  // 加载权限树 + 角色详情
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    const init = async () => {
+      try {
+        const [permRes, roleRes] = await Promise.all([
+          permApi.getPermissions(),
+          isEdit || isView ? permApi.getRole((editingRole ?? viewRole)!.id) : Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        setPermTree(permRes.data.data || []);
+        if (roleRes) {
+          const data = roleRes.data.data;
+          form.setFieldsValue({
+            name: data.name,
+            code: data.code,
+            description: data.description,
+            sort: data.sort,
+          });
+          const ids = new Set<string>(
+            (data.permissions || []).map((p: any) => p.permission?.id).filter(Boolean)
+          );
+          setCheckedIds(ids);
+        } else {
+          form.resetFields();
+          setCheckedIds(new Set());
+        }
+      } catch { /* handled */ }
+    };
+
+    init();
+    return () => { cancelled = true; };
+  }, [open, editingRole, viewRole]);
+
+  // 按顶级节点分组
+  const groups = useMemo(() => {
+    return permTree.map((top) => ({
+      top,
+      list: collectDescendants(top),
+    }));
+  }, [permTree]);
+
+  const toggleId = (id: string, checked: boolean) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
   };
 
-  React.useEffect(() => {
-    if (open) {
-      if (editingRole) {
-        form.setFieldsValue(editingRole);
+  const handleGroupCheck = (group: { top: PermNode; list: PermNode[] }, e: CheckboxChangeEvent) => {
+    const checked = e.target.checked;
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      group.list.forEach((n) => {
+        if (checked) next.add(n.id);
+        else next.delete(n.id);
+      });
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    if (isView) { onClose(); return; }
+    try {
+      const values = await form.validateFields();
+      setSubmitting(true);
+
+      let roleId: string;
+      if (isEdit) {
+        const res = await roleApi.update(editingRole!.id, values);
+        roleId = res.data.data.id;
       } else {
-        form.resetFields();
+        const res = await roleApi.create(values);
+        roleId = res.data.data.id;
       }
-    }
-  }, [open, editingRole, form]);
+
+      await permApi.assign(roleId, Array.from(checkedIds));
+      message.success(isEdit ? t('role.updateSuccess') : t('role.createSuccess'));
+      onSuccess();
+      onClose();
+    } catch { /* handled */ }
+    finally { setSubmitting(false); }
+  };
+
+  const title = isView ? t('role.view') : isEdit ? t('common.edit') : t('role.addTitle');
 
   return (
     <Modal
-      title={editingRole ? t('role.editTitle') : t('role.addTitle')}
       open={open}
+      title={title}
+      width={900}
       onCancel={onClose}
-      onOk={handleSubmit}
-      confirmLoading={saving}
-      zIndex={2000}
-      forceRender
+      onOk={handleSave}
+      confirmLoading={submitting}
+      okButtonProps={{ disabled: isView }}
+      okText={t('role.save')}
+      cancelText={t('common.cancel')}
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-        <Form.Item name="name" label={t('role.name')} rules={[{ required: true, message: t('role.nameRequired') }]}>
-          <Input placeholder={t('role.namePlaceholder')} />
-        </Form.Item>
-        <Form.Item name="code" label={t('role.code')} rules={[{ required: true, message: t('role.codeRequired') }]}>
-          <Input placeholder={t('role.codePlaceholder')} disabled={!!editingRole} />
-        </Form.Item>
-        <Form.Item name="description" label={t('role.description')}>
-          <Input.TextArea placeholder={t('role.descPlaceholder')} rows={3} />
-        </Form.Item>
-        <Form.Item name="sort" label={t('role.sort')}>
-          <InputNumber style={{ width: '100%' }} min={0} />
+      {/* 基本信息 */}
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>{t('role.basicInfo')}</div>
+      <Form form={form} layout="vertical" disabled={isView}>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name="name"
+              label={t('role.name')}
+              rules={[{ required: true, message: t('role.nameRequired') }]}
+            >
+              <Input placeholder={t('role.name')} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item
+              name="code"
+              label={t('role.code')}
+              rules={[{ required: !isEdit, message: t('role.codeRequired') }]}
+            >
+              <Input disabled={isEdit} placeholder={t('role.code')} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item name="description" label={t('role.description')}>
+              <Input.TextArea rows={2} placeholder={t('role.description')} />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="visibleRange" label={t('role.roleVisibleRange')}>
+              <Select placeholder={t('role.roleVisibleRange')} options={[
+                { label: '全公司', value: 'all' },
+                { label: '本部门', value: 'dept' },
+                { label: '仅本人', value: 'self' },
+              ]} />
+            </Form.Item>
+          </Col>
+        </Row>
+        <Form.Item name="sort" label={t('role.sort')} initialValue={0} style={{ display: 'none' }}>
+          <InputNumber />
         </Form.Item>
       </Form>
+
+      <Divider style={{ margin: '16px 0' }} />
+
+      {/* 权限配置 */}
+      <div style={{ fontWeight: 600, marginBottom: 12 }}>{t('role.permConfig')}</div>
+      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+        {groups.map((group) => {
+          const allIds = group.list.map((n) => n.id);
+          const checkedCount = allIds.filter((id) => checkedIds.has(id)).length;
+          const groupChecked = checkedCount === allIds.length && allIds.length > 0;
+          const groupIndeterminate = checkedCount > 0 && checkedCount < allIds.length;
+
+          // 子权限排除顶级节点本身（因为顶部已用 Checkbox 表示）
+          const children = group.list.filter((n) => n.id !== group.top.id);
+
+          return (
+            <Card
+              key={group.top.id}
+              size="small"
+              title={
+                <Checkbox
+                  checked={groupChecked}
+                  indeterminate={groupIndeterminate}
+                  onChange={(e) => handleGroupCheck(group, e)}
+                  disabled={isView}
+                >
+                  <span style={{ fontWeight: 500 }}>{group.top.name}</span>
+                </Checkbox>
+              }
+              bodyStyle={{ padding: '12px 16px' }}
+            >
+              {children.length > 0 ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px 16px' }}>
+                  {children.map((node) => (
+                    <Checkbox
+                      key={node.id}
+                      checked={checkedIds.has(node.id)}
+                      onChange={(e) => toggleId(node.id, e.target.checked)}
+                      disabled={isView}
+                    >
+                      {node.name}
+                    </Checkbox>
+                  ))}
+                </div>
+              ) : (
+                <span style={{ color: '#999', fontSize: 12 }}>无子权限</span>
+              )}
+            </Card>
+          );
+        })}
+        {groups.length === 0 && (
+          <div style={{ color: '#999', textAlign: 'center', padding: 24 }}>{t('common.noData')}</div>
+        )}
+      </Space>
     </Modal>
   );
-});
-
-export default RoleFormModal;
+}

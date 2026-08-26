@@ -62,10 +62,14 @@ async function main() {
     { name: '线索', code: 'sales:leads', type: 'MENU' as const, path: '/sales/leads', icon: 'ProjectOutlined', sort: 11, parent: 'sales' },
     { name: '商机', code: 'sales:opportunities', type: 'MENU' as const, path: '/sales/opportunities', icon: 'ThunderboltOutlined', sort: 12, parent: 'sales' },
     { name: '订单', code: 'sales:orders', type: 'MENU' as const, path: '/sales/orders', icon: 'ShoppingCartOutlined', sort: 13, parent: 'sales' },
-    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 2 },
-    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 3 },
-    { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 4 },
-    { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 5 },
+    { name: '报价', code: 'sales:quotes', type: 'MENU' as const, path: '/quotes', icon: 'SolutionOutlined', sort: 14, parent: 'sales' },
+    { name: '打样', code: 'sales:samples', type: 'MENU' as const, path: '/samples', icon: 'ProfileOutlined', sort: 15, parent: 'sales' },
+    { name: '结算', code: 'sales:settlement', type: 'MENU' as const, path: '/settlement', icon: 'FileDoneOutlined', sort: 16, parent: 'sales' },
+    { name: '订单中心', code: 'orders', type: 'MENU' as const, path: '/orders', icon: 'ShoppingCartOutlined', sort: 2 },
+    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 3 },
+    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 4 },
+    { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 5 },
+    { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 6 },
     { name: '设置', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
     { name: '用户管理', code: 'system:user', type: 'MENU' as const, path: '/system/user', icon: 'UserOutlined', sort: 10, parent: 'system' },
     { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11, parent: 'system' },
@@ -150,7 +154,7 @@ async function main() {
   }
 
   // 为业务人员分配业务菜单权限（仪表盘/销售/客户/订单/报表）
-  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'customers', 'orders', 'production', 'shipment', 'reports'];
+  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'sales:quotes', 'sales:samples', 'sales:settlement', 'customers', 'orders', 'production', 'shipment', 'reports'];
   for (const code of businessMenuCodes) {
     const perm = await prisma.permission.findUnique({ where: { code } });
     if (perm) {

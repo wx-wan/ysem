@@ -1,12 +1,16 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Table, Button, Space, Tag, App, Popconfirm } from 'antd';
-import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, SafetyOutlined } from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
+import { useEffect, useState } from 'react';
+import { List, Avatar, Button, Space, Popconfirm, App, Empty, Typography } from 'antd';
+import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, EyeOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
 import RoleFormModal from '../components/role/RoleFormModal';
-import RolePermModal from '../components/role/RolePermModal';
 import { usePermission } from '../hooks/usePermission';
+
+interface UserBrief {
+  id: string;
+  realName: string;
+  avatar: string | null;
+}
 
 interface RoleRecord {
   id: string;
@@ -15,6 +19,7 @@ interface RoleRecord {
   description: string;
   sort: number;
   _count: { users: number };
+  users: UserBrief[];
 }
 
 const roleApi = {
@@ -36,9 +41,8 @@ export default function RolePage() {
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [permModalOpen, setPermModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
-  const [currentRoleId, setCurrentRoleId] = useState<string>('');
+  const [viewRole, setViewRole] = useState<RoleRecord | null>(null);
 
   const fetchRoles = async () => {
     setLoading(true);
@@ -53,11 +57,19 @@ export default function RolePage() {
 
   const handleAdd = () => {
     setEditingRole(null);
+    setViewRole(null);
     setModalOpen(true);
   };
 
   const handleEdit = (record: RoleRecord) => {
     setEditingRole(record);
+    setViewRole(null);
+    setModalOpen(true);
+  };
+
+  const handleView = (record: RoleRecord) => {
+    setViewRole(record);
+    setEditingRole(null);
     setModalOpen(true);
   };
 
@@ -72,79 +84,99 @@ export default function RolePage() {
   const handleModalClose = () => {
     setModalOpen(false);
     setEditingRole(null);
+    setViewRole(null);
   };
 
-  const openPermModal = (role: RoleRecord) => {
-    setCurrentRoleId(role.id);
-    setPermModalOpen(true);
-  };
-
-  const handlePermClose = () => {
-    setPermModalOpen(false);
-    setCurrentRoleId('');
-  };
-
-  const columns: ColumnsType<RoleRecord> = useMemo(() => [
-    { title: t('role.name'), dataIndex: 'name', width: 150 },
-    { title: t('role.code'), dataIndex: 'code', width: 120,
-      render: (v: string) => <Tag color="blue">{v}</Tag> },
-    { title: t('role.description'), dataIndex: 'description', ellipsis: true },
-    { title: t('role.sort'), dataIndex: 'sort', width: 80 },
-    { title: t('role.userCount'), dataIndex: ['_count', 'users'], width: 80 },
-    {
-      title: t('common.operation'), width: 220, fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          {hasPerm('system:role:edit') && (
-            <Button type="link" size="small" icon={<SafetyOutlined />} onClick={() => openPermModal(record)}>{t('role.permission')}</Button>
-          )}
-          {hasPerm('system:role:edit') && (
-            <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>{t('common.edit')}</Button>
-          )}
-          {hasPerm('system:role:delete') && (
-            <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-              <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      ),
-    },
-  ], [t, hasPerm]);
+  const isAdminRole = (code: string) => code === 'admin';
 
   return (
     <>
-      <div className="page-header"><h2>{t('role.title')}</h2></div>
-      <div className="search-bar">
-        <Button icon={<ReloadOutlined />} onClick={fetchRoles}>{t('common.refresh')}</Button>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0 }}>{t('role.title')}</h2>
         {hasPerm('system:role:create') && (
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>{t('role.addTitle')}</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            {t('role.addTitle')}
+          </Button>
         )}
       </div>
 
-      <div className="table-container">
-        <Table
-          rowKey="id"
-          columns={columns}
-          dataSource={roles}
+      <div style={{ marginTop: 16 }}>
+        <List
           loading={loading}
-          pagination={false}
+          dataSource={roles}
+          locale={{ emptyText: <Empty description={t('common.empty')} /> }}
+          renderItem={(item) => (
+            <List.Item
+              style={{
+                padding: '16px 24px',
+                borderBottom: '1px solid #f0f0f0',
+                background: '#fff',
+              }}
+              actions={[
+                <Space key="ops" size={16}>
+                  {isAdminRole(item.code) ? (
+                    <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => handleView(item)}>
+                      {t('role.view')}
+                    </Button>
+                  ) : (
+                    <>
+                      {hasPerm('system:role:edit') && (
+                        <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEdit(item)}>
+                          {t('common.edit')}
+                        </Button>
+                      )}
+                      {hasPerm('system:role:delete') && (
+                        <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDelete(item.id)}>
+                          <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                            {t('common.delete')}
+                          </Button>
+                        </Popconfirm>
+                      )}
+                    </>
+                  )}
+                </Space>,
+              ]}
+            >
+              <List.Item.Meta
+                title={<Typography.Text strong>{item.name}</Typography.Text>}
+                description={item.description || undefined}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
+                {item.users.length > 0 ? (
+                  <>
+                    <Avatar.Group maxCount={4} size="small">
+                      {item.users.map((u) => (
+                        <Avatar key={u.id} src={u.avatar}>
+                          {u.realName?.charAt(0)}
+                        </Avatar>
+                      ))}
+                    </Avatar.Group>
+                    <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                      {t('role.totalMembers', { count: item._count.users })}
+                    </Typography.Text>
+                    <Button type="link" size="small" style={{ padding: 0, fontSize: 13 }}>
+                      {t('role.editMembers')}
+                    </Button>
+                  </>
+                ) : (
+                  <Button type="link" size="small" style={{ padding: 0, fontSize: 13 }}>
+                    {t('role.addMember')}
+                  </Button>
+                )}
+              </div>
+            </List.Item>
+          )}
         />
       </div>
 
       <RoleFormModal
         open={modalOpen}
         editingRole={editingRole}
+        viewRole={viewRole}
         onClose={handleModalClose}
         onSuccess={fetchRoles}
-        api={roleApi}
-        t={t}
-      />
-      <RolePermModal
-        open={permModalOpen}
-        roleId={currentRoleId}
-        onClose={handlePermClose}
-        onSuccess={fetchRoles}
-        api={permApi}
+        roleApi={roleApi}
+        permApi={permApi}
         t={t}
       />
     </>
