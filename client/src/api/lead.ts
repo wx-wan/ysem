@@ -1,4 +1,5 @@
 import axios from './request';
+import type { ProductImageItem } from '../utils/productImages';
 
 export type LeadSource = 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'INVALID' | 'CONVERTED';
@@ -37,7 +38,7 @@ export interface Lead {
   targetMarket?: string | null;
   productType?: string | null;
   productDesc?: string | null;
-  images?: string[] | string | null;
+  images?: ProductImageItem[] | string | null;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;
@@ -73,7 +74,7 @@ export interface LeadPayload {
   targetMarket?: string | null;
   productType?: string | null;
   productDesc?: string | null;
-  images?: string[] | string | null;
+  images?: ProductImageItem[] | string | null;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;

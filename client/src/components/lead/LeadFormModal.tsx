@@ -83,6 +83,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const watchTargetMarket = Form.useWatch('targetMarket', form);
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
+  const watchCustomerKey = Form.useWatch('customerKey', form);
 
   const channelOptions = useMemo(() => flattenChannelOptions(channels), [channels]);
 
@@ -226,7 +227,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       specialReq: values.specialReq || null,
       customerType: values.customerType || null,
       urgency: values.urgency || null,
-      images: parseImages(values.images).map((i) => i.url),
+      images: parseImages(values.images),
     };
     try {
       if (editing) {
@@ -418,14 +419,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="customerKey"
                     label={
-                      editing?.companyName && !editing.customerId ? (
+                      (editing?.companyName && !editing.customerId) ||
+                      (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
                         <Space size={4}>
                           <span>{t('lead.customer')}</span>
                           <Tag
                             color="orange"
                             style={{ cursor: 'pointer', marginInlineEnd: 0 }}
                             onClick={confirmCreateCustomer}
-                            title={t('lead.customerPendingTip', { name: editing.companyName })}
+                            title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
                           >
                             {t('lead.pendingTag')}
                           </Tag>
