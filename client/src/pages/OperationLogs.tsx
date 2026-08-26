@@ -148,15 +148,19 @@ export default function OperationLogs() {
     {
       title: '动作',
       dataIndex: 'action',
-      width: 120,
-      render: (v: string) => <Tag color={ACTION_COLORS[v] || 'default'}>{ACTION_LABELS[v] || v}</Tag>,
+      width: 130,
+      render: (v: string) => (
+        <Tag color={ACTION_COLORS[v] || 'default'} style={{ maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {ACTION_LABELS[v] || v}
+        </Tag>
+      ),
     },
     {
       title: '对象',
       dataIndex: 'target',
       width: 260,
       ellipsis: true,
-      render: (v: string | null) => (v ? <span title={v}>{v}</span> : '—'),
+      render: (v: string | null) => (v ? <span title={v} style={{ wordBreak: 'break-all' }}>{v}</span> : '—'),
     },
     {
       title: '操作内容与变更',
