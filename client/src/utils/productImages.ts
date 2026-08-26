@@ -21,8 +21,14 @@ export function parseImages(raw?: string | ProductImageItem[] | null): ProductIm
       const parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
         return parsed
-          .filter((i) => i && typeof i.url === 'string' && i.url)
-          .map((i) => ({ url: i.url, name: typeof i.name === 'string' && i.name ? i.name : '图片' }));
+          .map((i, idx) =>
+            typeof i === 'string'
+              ? { url: i, name: idx === 0 ? '主图' : `图片${idx + 1}` }
+              : i && typeof i.url === 'string' && i.url
+              ? { url: i.url, name: typeof i.name === 'string' && i.name ? i.name : (idx === 0 ? '主图' : `图片${idx + 1}`) }
+              : null,
+          )
+          .filter((i): i is ProductImageItem => i !== null);
       }
     } catch {
       /* 落入旧格式解析 */
