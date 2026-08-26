@@ -33,6 +33,8 @@ interface AuthState {
   ) => void;
   /** 刷新后更新 token（不重设 user） */
   setTokens: (accessToken: string, refreshToken: string, expiresIn?: number) => void;
+  /** 仅更新用户信息/权限（用于刷新页面后恢复 user，不触碰 token 与过期时间） */
+  setUser: (user: UserInfo, permissions?: string[]) => void;
   /** accessToken 是否已过期（或即将过期） */
   isTokenExpired: () => boolean;
   setPermissions: (permissions: string[]) => void;
@@ -67,6 +69,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (expiresAt) localStorage.setItem(TOKEN_EXPIRES_KEY, String(expiresAt));
     else localStorage.removeItem(TOKEN_EXPIRES_KEY);
     set({ user, accessToken, refreshToken, tokenExpiresAt: expiresAt, permissions, isAuthenticated: true, ready: true });
+  },
+
+  setUser: (user, permissions) => {
+    const perms = permissions ?? user.permissions ?? [];
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    localStorage.setItem('permissions', JSON.stringify(perms));
+    set({ user, permissions: perms, ready: true });
   },
 
   setTokens: (accessToken, refreshToken, expiresIn) => {

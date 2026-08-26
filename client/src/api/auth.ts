@@ -27,7 +27,8 @@ export const authApi = {
   login: (data: LoginParams) =>
     request.post<LoginParams, { data: { code: number; data: LoginResult } }>('/auth/login', data),
 
-  logout: () => request.post('/auth/logout'),
+  // 携带 refreshToken 精确移除当前端登录态，不影响其他端在线
+  logout: () => request.post('/auth/logout', { refreshToken: localStorage.getItem('refreshToken') }),
 
   getProfile: () => request.get('/auth/profile'),
 

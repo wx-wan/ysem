@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { Select } from 'antd';
 import { useTranslation } from 'react-i18next';
-import customerTypeApi from '../api/customerType';
+import { useCustomerTypeStore } from '../stores/useCustomerTypeStore';
 
 interface Props {
   value?: string;
@@ -13,27 +13,20 @@ interface Props {
 
 export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled }: Props) {
   const { t } = useTranslation();
-  const [options, setOptions] = useState<{ label: string; value: string }[]>([]);
-  const [loading, setLoading] = useState(false);
+  const types = useCustomerTypeStore((s) => s.types);
+  const loading = useCustomerTypeStore((s) => s.loading);
+  const fetchTypes = useCustomerTypeStore((s) => s.fetchTypes);
 
   useEffect(() => {
-    setLoading(true);
-    customerTypeApi
-      .getActive()
-      .then((res) => {
-        const list = res.data.data || [];
-        setOptions(list.map((item) => ({ label: item.name, value: item.name })));
-      })
-      .catch(() => setOptions([]))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchTypes();
+  }, [fetchTypes]);
 
   return (
     <Select
       value={value}
       onChange={onChange}
       placeholder={placeholder || t('customerType.selectPlaceholder')}
-      options={options}
+      options={types.map((item) => ({ label: item.name, value: item.name }))}
       loading={loading}
       allowClear={allowClear}
       disabled={disabled}

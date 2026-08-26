@@ -28,7 +28,7 @@ model User {
   createdBy           String?
   creator             User?                @relation("CreatedUsers", fields: [createdBy], references: [id])
   createdUsers        User[]               @relation("CreatedUsers")
-  refreshToken        String?
+  refreshTokens       String[]             @default([])
   salesPipelines      SalesPipeline[]
   customers           Customer[]
   productVisibilities ProductVisibleUser[]

@@ -83,10 +83,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         ? ['*']
         : user.role?.permissions.map((rp) => rp.permission.code) ?? [];
 
-    // 保存 refreshToken 并更新登录时间
+    // 保存 refreshToken（多值列表，支持多端/多标签页同时在线，最多保留最近 10 个）
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken, lastLoginAt: new Date() },
+      data: {
+        refreshTokens: { set: [...(user.refreshTokens ?? []), tokens.refreshToken].slice(-10) },
+        lastLoginAt: new Date(),
+      },
     });
 
     // 记录登录日志
@@ -166,7 +169,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     const decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as JwtPayload;
     const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
 
-    if (!user || user.refreshToken !== token) {
+    if (!user || !user.refreshTokens.includes(token)) {
       fail(res, 401, 'refreshToken 无效');
       return;
     }
@@ -178,9 +181,11 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
     };
 
     const tokens = generateTokens(payload);
+    // 轮换：移除当前 token、追加新 token（上限 10），不影响其他端在线
+    const next = user.refreshTokens.filter((t) => t !== token).concat(tokens.refreshToken).slice(-10);
     await prisma.user.update({
       where: { id: user.id },
-      data: { refreshToken: tokens.refreshToken },
+      data: { refreshTokens: { set: next } },
     });
 
     success(res, { ...tokens, expiresIn: tokens.expiresIn }, 'Token 刷新成功');
@@ -189,12 +194,20 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 登出
+// 登出（携带 refreshToken 时只移除当前端，未携带则清空全部登录态）
 export const logout = async (req: AuthRequest, res: Response): Promise<void> => {
-  await prisma.user.update({
-    where: { id: req.userId },
-    data: { refreshToken: null },
-  });
+  const { refreshToken } = req.body ?? {};
+  const user = await prisma.user.findUnique({ where: { id: req.userId } });
+  if (user) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshTokens: refreshToken
+          ? { set: user.refreshTokens.filter((t) => t !== refreshToken) }
+          : { set: [] },
+      },
+    });
+  }
   success(res, null, '登出成功');
 };
 
@@ -247,7 +260,8 @@ export const changePassword = async (req: AuthRequest, res: Response): Promise<v
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({
       where: { id: req.userId },
-      data: { password: hashedPassword, refreshToken: null },
+      // 修改密码后清除所有端登录态，强制重新登录
+      data: { password: hashedPassword, refreshTokens: { set: [] } },
     });
 
     success(res, null, '密码修改成功，请重新登录');

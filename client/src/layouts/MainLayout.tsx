@@ -78,16 +78,17 @@ export default function MainLayout() {
       profileFetched.current = true;
       authApi.getProfile().then((res) => {
         const profile = res.data.data;
-        // getProfile 返回 role.permissions（嵌套），需提取为顶层 permissions 数组，避免 setAuth 把权限清空
+        // getProfile 返回 role.permissions（嵌套），需提取为顶层 permissions 数组
         const permissions = profile?.role?.permissions?.map((rp: { permission: { code: string } }) => rp.permission.code) ?? [];
-        useAuthStore.getState().setAuth(
-          { ...profile, permissions },
-          localStorage.getItem('accessToken') || '',
-          localStorage.getItem('refreshToken') || '',
-        );
-      }).catch(() => {
-        logout();
-        navigate('/login');
+        // 只更新 user/permissions，保留 localStorage 中的 token 与过期时间，避免刷新页面后丢失"提前静默刷新"能力
+        useAuthStore.getState().setUser({ ...profile, permissions }, permissions);
+      }).catch((err: unknown) => {
+        // 仅 401（token 真实失效且 refresh 失败）视为未登录；网络错误/后端重启/5xx 保留本地登录态
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 401) {
+          logout();
+          navigate('/login');
+        }
       });
     }
   }, []);
