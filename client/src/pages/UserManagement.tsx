@@ -99,7 +99,7 @@ export default function UserManagementPage() {
   // ---------- 用户 state ----------
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [userTotal, setUserTotal] = useState(0);
-  const [userLoading, setUserLoading] = useState(false);
+  const [userLoading, setUserLoading] = useState(true);
   const [userPage, setUserPage] = useState(1);
   const [userPageSize, setUserPageSize] = useState(10);
   const [userKeyword, setUserKeyword] = useState('');
@@ -113,7 +113,7 @@ export default function UserManagementPage() {
 
   // ---------- 角色 state ----------
   const [rolesData, setRolesData] = useState<RoleRecord[]>([]);
-  const [roleLoading, setRoleLoading] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [permModalOpen, setPermModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleRecord | null>(null);
@@ -121,7 +121,7 @@ export default function UserManagementPage() {
 
   // ---------- 部门 state ----------
   const [deptsData, setDeptsData] = useState<DeptRecord[]>([]);
-  const [deptLoading, setDeptLoading] = useState(false);
+  const [deptLoading, setDeptLoading] = useState(true);
   const [deptModalOpen, setDeptModalOpen] = useState(false);
   const [editingDept, setEditingDept] = useState<DeptRecord | null>(null);
   const [deptParentId, setDeptParentId] = useState<string | undefined>(undefined);

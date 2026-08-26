@@ -3,6 +3,7 @@ import { Modal, Form, Input, DatePicker, Row, Col, App } from 'antd';
 import dayjs from 'dayjs';
 import { customerApi, Customer } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
+import CustomerTypeSelect from '../../CustomerTypeSelect';
 
 interface Props {
   open: boolean;
@@ -86,6 +87,9 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         </Row>
         <Form.Item name="country" label="国家">
           <CountrySelect />
+        </Form.Item>
+        <Form.Item name="customerType" label="客户类型">
+          <CustomerTypeSelect placeholder="请选择客户类型" />
         </Form.Item>
         <Form.Item name="email" label="邮箱">
           <Input placeholder="邮箱" />

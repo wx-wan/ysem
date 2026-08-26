@@ -15,6 +15,7 @@ export interface Customer {
   country?: string;
   region?: string;        // 所在地区（省市区）
   customerLevel?: string; // 客户等级
+  customerType?: string; // 客户类型
   source?: string;
   notes?: string;
   ownerId?: string;
@@ -183,6 +184,10 @@ export const customerApi = {
 
   listAll: (params?: Record<string, any>) =>
     request.get<ApiResponse<AllCustomersRes>>('/customers/all', { params }),
+
+  // 客户下拉选项：我的私海 + 公海（管理员为全部）
+  options: () =>
+    request.get<ApiResponse<Customer[]>>('/customers/options'),
 
   getCountries: () =>
     request.get<ApiResponse<string[]>>('/customers/countries'),

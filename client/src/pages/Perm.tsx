@@ -28,7 +28,7 @@ export default function PermPage() {
   const { message } = App.useApp();
   const { hasPerm } = usePermission();
   const [permissions, setPermissions] = useState<PermRecord[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPerm, setEditingPerm] = useState<PermRecord | null>(null);
   const [parentId, setParentId] = useState<string | undefined>(undefined);

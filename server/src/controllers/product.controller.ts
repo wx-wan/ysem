@@ -192,9 +192,21 @@ export const previewProductSku = async (req: AuthRequest, res: Response): Promis
   } catch { fail(res, 500, '服务器错误'); }
 };
 
-export const getProductOptions = async (_req: AuthRequest, res: Response): Promise<void> => {
+export const getProductOptions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // 可见性过滤：管理员可选全部；其余用户仅可选公开产品 + 私密下创建人或被指定的产品
+    const uid = req.userId;
+    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
+    const where: Record<string, unknown> = {};
+    if (uid && !isAdmin) {
+      where.OR = [
+        { visibility: 'PUBLIC' },
+        { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
+        { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
+      ];
+    }
     const list = await prisma.singleProduct.findMany({
+      where,
       select: { id: true, name: true, sku: true },
       orderBy: { name: 'asc' },
     });

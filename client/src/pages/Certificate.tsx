@@ -17,7 +17,7 @@ export default function CertificatePage() {
   const { hasPerm } = usePermission();
 
   const [list, setList] = useState<Certificate[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Certificate | null>(null);
   const [form] = Form.useForm();

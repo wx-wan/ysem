@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Spin, theme } from 'antd';
+import { Layout, Menu, Spin, theme, Skeleton } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -16,6 +16,11 @@ import {
   FileDoneOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  SafetyOutlined,
+  ApiOutlined,
+  TagsOutlined,
+  NodeIndexOutlined,
+  BarChartOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -47,13 +52,20 @@ const routeTitles: Record<string, string> = {
   '/system/certificates': '销售管理',
   '/system/operation-logs': '操作日志',
   '/system/approval': '审批管理',
+  '/setting/user': '用户管理',
+  '/setting/perm': '权限管理',
+  '/setting/archive': '产品档案',
+  '/setting/channel': '渠道管理',
+  '/setting/customer-type': '客户类型',
+  '/setting/approval': '审批管理',
+  '/setting/logs': '操作日志',
 };
 
 export default function MainLayout() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, logout, ready } = useAuthStore();
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token } = theme.useToken();
   // 侧边导航默认展开，仅通过顶部折叠按钮手动控制
@@ -107,11 +119,26 @@ export default function MainLayout() {
 
   const { hasPerm } = usePermission();
 
-  // 侧边栏菜单（按业务流程顺序扁平化，按权限动态渲染）
-  const menuItems: MenuProps['items'] = [
+  // 是否为设置模式：右上角「设置」进入，点击 logo 返回业务模式
+  const isSettingMode = location.pathname.startsWith('/setting');
+
+  // 设置模式侧边栏菜单（按权限动态渲染，扁平展示设置子模块）
+  const settingMenuItems: MenuProps['items'] = [
+    ...(hasPerm('system:user') ? [{ key: '/setting/user', icon: <TeamOutlined />, label: t('menu.systemUser') }] : []),
+    ...(hasPerm('system:perm') ? [{ key: '/setting/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
+    ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
+    ...(hasPerm('system:channel') ? [{ key: '/setting/channel', icon: <ApiOutlined />, label: t('menu.systemChannel') }] : []),
+    ...(hasPerm('system:customer-type') ? [{ key: '/setting/customer-type', icon: <TagsOutlined />, label: t('menu.customerType') }] : []),
+    ...(hasPerm('system:approval') ? [{ key: '/setting/approval', icon: <NodeIndexOutlined />, label: t('menu.systemApproval') }] : []),
+    ...(hasPerm('system:logs') ? [{ key: '/setting/logs', icon: <BarChartOutlined />, label: t('menu.systemLogs') }] : []),
+  ];
+
+  // 业务模式侧边栏菜单（按业务流程顺序扁平化，按权限动态渲染）
+  const businessMenuItems: MenuProps['items'] = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
     ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
-    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
+    // 客户：所有登录用户均可查询（数据由后端按「本人 + 公海」范围过滤）
+    { key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') },
     ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
     ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
@@ -121,6 +148,8 @@ export default function MainLayout() {
     ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
   ];
+
+  const menuItems = isSettingMode ? settingMenuItems : businessMenuItems;
 
   // 当前选中项与展开项
   const selectedKey = (() => {
@@ -133,7 +162,49 @@ export default function MainLayout() {
     if (path.startsWith('/settlement')) return '/settlement';
     return path;
   })();
-  const openKeys: string[] = [];
+
+  // 用户/权限未就绪时显示骨架屏过渡，避免首屏重渲染闪烁
+  if (!ready) {
+    return (
+      <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
+        <Sider
+          theme="light"
+          width={232}
+          style={{
+            borderRight: `1px solid ${token.colorBorderSecondary}`,
+            position: 'sticky',
+            top: 0,
+            height: '100vh',
+          }}
+        >
+          <div className="sider-brand" style={{ padding: '16px 20px' }}>
+            <Skeleton.Avatar active size={28} style={{ marginRight: 10 }} />
+            <Skeleton.Input active size="small" style={{ width: 120 }} />
+          </div>
+          <Skeleton active title={false} paragraph={{ rows: 8 }} style={{ padding: '0 16px' }} />
+        </Sider>
+        <Layout>
+          <Header
+            className="top-header"
+            style={{
+              background: token.colorBgContainer,
+              padding: '0 20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              borderBottom: `1px solid ${token.colorBorderSecondary}`,
+            }}
+          >
+            <Skeleton.Input active size="small" style={{ width: 120 }} />
+            <Skeleton.Avatar active size={28} />
+          </Header>
+          <Content className="page-container" style={{ padding: 20 }}>
+            <Skeleton active paragraph={{ rows: 10 }} />
+          </Content>
+        </Layout>
+      </Layout>
+    );
+  }
 
   return (
     <Layout style={{ minHeight: '100vh', background: token.colorBgLayout }}>
@@ -154,7 +225,7 @@ export default function MainLayout() {
       >
         <div
           className="sider-brand"
-          onClick={() => navigate('/')}
+          onClick={() => navigate('/dashboard')}
           style={{ cursor: 'pointer', userSelect: 'none' }}
         >
           <img className="brand-icon" src="/logo.png" alt="Logo" draggable={false} />

@@ -3,7 +3,7 @@ import {
   App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty,
 } from 'antd';
 import { customerApi, Customer } from '../api/customers';
-import { userApi, User } from '../api/users';
+import { userApi, User, UserSelectItem } from '../api/users';
 import { salesApi, SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
@@ -56,7 +56,7 @@ export default function CustomersPage() {
   // 转交
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
-  const [userList, setUserList] = useState<User[]>([]);
+  const [userList, setUserList] = useState<UserSelectItem[]>([]);
 
   // 导入
   const [importOpen, setImportOpen] = useState(false);
@@ -415,8 +415,8 @@ export default function CustomersPage() {
   useEffect(() => {
     if (usersFetched.current) return;
     usersFetched.current = true;
-    userApi.list({ pageSize: 200 }).then((res) => {
-      setUserList(res.data.data?.list || []);
+    userApi.listForSelect().then((res) => {
+      setUserList(res.data.data || []);
     }).catch(() => {});
   }, []);
 

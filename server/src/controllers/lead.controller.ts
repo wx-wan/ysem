@@ -3,6 +3,8 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { ownerScope, applyScope } from '../utils/scope';
+import { paginateList } from '../utils/query';
 
 const leadSchema = z.object({
   // 名称可选：未传时由系统按「渠道-平台-采购产品-数量」规则自动生成
@@ -14,33 +16,27 @@ const leadSchema = z.object({
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
   status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED']).optional(),
   companyName: z.string().trim().max(200).nullable().optional(),
-  contactName: z.string().trim().max(100).optional(),
-  email: z.string().trim().max(200).optional(),
-  phone: z.string().trim().max(50).optional(),
-  country: z.string().trim().max(100).optional(),
-  productInterest: z.string().trim().max(300).optional(),
+  contactName: z.string().trim().max(100).nullable().optional(),
+  contactMethod: z.string().trim().max(300).nullable().optional(),
+  email: z.string().trim().max(200).nullable().optional(),
+  phone: z.string().trim().max(50).nullable().optional(),
+  country: z.string().trim().max(100).nullable().optional(),
+  productInterest: z.string().trim().max(300).nullable().optional(),
   productName: z.string().trim().max(200).nullable().optional(),
-  remark: z.string().trim().max(1000).optional(),
+  remark: z.string().trim().max(1000).nullable().optional(),
+  targetMarket: z.string().trim().max(200).nullable().optional(),
+  productType: z.string().trim().max(200).nullable().optional(),
+  productDesc: z.string().trim().max(2000).nullable().optional(),
+  images: z.array(z.string().trim().max(500)).max(20).nullable().optional(),
+  targetPrice: z.string().trim().max(200).nullable().optional(),
+  certRequire: z.string().trim().max(1000).nullable().optional(),
+  packageReq: z.string().trim().max(1000).nullable().optional(),
+  deliveryReq: z.string().trim().max(1000).nullable().optional(),
+  specialReq: z.string().trim().max(1000).nullable().optional(),
+  customerType: z.string().trim().max(100).nullable().optional(),
+  urgency: z.enum(['LOW', 'MEDIUM', 'HIGH']).nullable().optional(),
   assignedTo: z.string().optional().nullable(),
 });
-
-// 按「渠道-平台-采购产品-数量」规则生成线索名称
-const buildLeadName = async (sourceChannel?: string | null, productId?: string | null, productName?: string | null, quantity?: number): Promise<string> => {
-  const parts: string[] = [];
-  if (sourceChannel) {
-    const [channel, ...rest] = sourceChannel.split(' / ');
-    parts.push(channel);
-    if (rest.length) parts.push(rest.join(' / '));
-  }
-  if (productId) {
-    const product = await prisma.singleProduct.findUnique({ where: { id: productId }, select: { name: true } });
-    if (product) parts.push(product.name);
-  } else if (productName) {
-    parts.push(productName);
-  }
-  if (quantity !== undefined && quantity !== null) parts.push(String(quantity));
-  return parts.join('-');
-};
 
 // 列表：分页 + 多维筛选
 export const getLeads = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -77,23 +73,28 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     }
     if (status) where.status = status;
     if (source) where.source = source;
-    if (assignedTo) where.assignedTo = assignedTo;
 
-    const [list, total] = await Promise.all([
-      prisma.lead.findMany({
-        where,
+    // 数据范围：管理员可用 assignedTo 自由筛选；普通用户只能看「自己负责的 + 未分配（公海）」的线索
+    if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
+      where.assignedTo = assignedTo;
+    } else {
+      applyScope(where, ownerScope(req, { field: 'assignedTo', includePublicSea: true }));
+    }
+
+    const { list, total, page: p, pageSize: ps } = await paginateList(
+      prisma.lead,
+      where,
+      {
+        page,
+        pageSize,
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
           product: { select: { id: true, name: true } },
           assignedUser: { select: { id: true, username: true, realName: true } },
         },
-        orderBy: [{ createdAt: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.lead.count({ where }),
-    ]);
-    success(res, { list, total, page, pageSize });
+      },
+    );
+    success(res, { list, total, page: p, pageSize: ps });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -118,7 +119,6 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
-    const leadName = data.leadName ?? (await buildLeadName(data.sourceChannel, data.productId, data.productName, data.quantity));
     const item = await prisma.lead.create({
       data: {
         leadName,
@@ -130,12 +130,29 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         status: data.status ?? 'NEW',
         companyName: data.companyName ?? null,
         contactName: data.contactName ?? null,
+        contactMethod: data.contactMethod ?? null,
         email: data.email ?? null,
         phone: data.phone ?? null,
         country: data.country ?? null,
         productInterest: data.productInterest ?? null,
       productName: data.productName ?? null,
         remark: data.remark ?? null,
+        targetMarket: data.targetMarket ?? null,
+        productType: data.productType ?? null,
+        productDesc: data.productDesc ?? null,
+        images:
+          typeof data.images === 'string'
+            ? data.images
+            : Array.isArray(data.images)
+            ? JSON.stringify(data.images)
+              : null,
+        targetPrice: data.targetPrice ?? null,
+        certRequire: data.certRequire ?? null,
+        packageReq: data.packageReq ?? null,
+        deliveryReq: data.deliveryReq ?? null,
+        specialReq: data.specialReq ?? null,
+        customerType: data.customerType ?? null,
+        urgency: data.urgency ?? null,
         assignedTo: data.assignedTo ?? null,
         createdBy: req.userId ?? null,
       },
@@ -160,6 +177,14 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     if (data.productId === null) update.productId = null;
     if (data.productName === null) update.productName = null;
     if (data.assignedTo === null) update.assignedTo = null;
+    if (data.images !== undefined) {
+      update.images =
+        data.images === null
+          ? null
+          : typeof data.images === 'string'
+          ? data.images
+          : JSON.stringify(data.images);
+    }
     await prisma.lead.update({ where: { id: req.params.id }, data: update });
     success(res, null, '更新成功');
   } catch (err) {

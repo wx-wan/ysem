@@ -23,8 +23,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await authApi.login(values);
-      const { user, accessToken, refreshToken } = res.data.data;
-      setAuth(user, accessToken, refreshToken);
+      const { user, accessToken, refreshToken, expiresIn } = res.data.data;
+      setAuth(user, accessToken, refreshToken, expiresIn);
       message.success(t('login.success'));
       navigate('/', { replace: true });
     } catch (err) {

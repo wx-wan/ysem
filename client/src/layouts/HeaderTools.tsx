@@ -14,6 +14,7 @@ import i18n from '../i18n';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCurrencyStore, CURRENCIES } from '../stores/useCurrencyStore';
 import { useNavigate } from 'react-router-dom';
+import { usePermission } from '../hooks/usePermission';
 import type { MenuProps } from 'antd';
 
 interface HeaderToolsProps {
@@ -25,6 +26,7 @@ interface HeaderToolsProps {
 export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderToolsProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { hasPerm } = usePermission();
   const { currency, rates } = useCurrencyStore();
   // 响应式计算汇率展示文本（直接读 getState 不会随 rates 更新重新渲染）
   const rateToCNY = useMemo(() => {
@@ -51,12 +53,29 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
     else onMenuClick?.(info);
   };
 
+  // 拥有任一设置权限才显示「设置」入口（否则普通用户不应进入系统设置）
+  const canOpenSettings = [
+    'system:user',
+    'system:role',
+    'system:dept',
+    'system:perm',
+    'product:taxonomy:view',
+    'system:channel',
+    'system:customer-type',
+    'system:approval',
+    'system:logs',
+  ].some((code) => hasPerm(code));
+
   const avatarMenuItems: MenuProps['items'] = [
-    {
-      key: 'settings',
-      icon: <SettingOutlined />,
-      label: t('header.systemDesign'),
-    },
+    ...(canOpenSettings
+      ? [
+          {
+            key: 'settings',
+            icon: <SettingOutlined />,
+            label: t('header.systemDesign'),
+          },
+        ]
+      : []),
     {
       key: 'password',
       icon: <KeyOutlined />,

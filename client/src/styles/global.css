@@ -815,6 +815,7 @@ html, body {
   color: #fff !important;
   border-radius: 8px !important;
   box-shadow: 0 2px 6px rgba(22, 119, 255, 0.25) !important;
+}
 
 /* 通用 tab 栏 SegmentedTabBar */
 .seg-tab-bar .ant-segmented-item {
@@ -822,15 +823,14 @@ html, body {
   transition: all 0.2s ease !important;
 }
 .seg-tab-bar .ant-segmented-item-selected {
-  background: var(--seg-active-bg, #1677ff) !important;
-  color: #fff !important;
+  background: #fff !important;
+  color: var(--seg-active-color, #333) !important;
   font-weight: 600 !important;
   border-radius: 8px !important;
-  box-shadow: none !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08) !important;
 }
 .seg-tab-bar .ant-segmented-item-selected .ant-segmented-item-label {
-  color: #fff !important;
-}
+  color: var(--seg-active-color, #333) !important;
 }
 
 /* 产品列表 */
@@ -985,11 +985,6 @@ html, body {
 }
 
 /* --- 无商机客户(void)：灰色 --- */
-
-/* ========== 系统设置页分组菜单（承载于独立 SettingLayout 的 Sider 内） ========== */
-.design-sider .ant-menu-submenu-title {
-  font-weight: 500;
-}
 .customer-tier-void .ant-card {
   filter: grayscale(30%) brightness(0.94);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;

@@ -12,31 +12,76 @@ interface UserInfo {
   permissions?: string[];
 }
 
+const TOKEN_EXPIRES_KEY = 'tokenExpiresAt';
+const USER_KEY = 'user';
+
 interface AuthState {
   user: UserInfo | null;
   accessToken: string | null;
   refreshToken: string | null;
+  /** accessToken 过期时刻（毫秒时间戳），用于前端判断是否需要刷新 */
+  tokenExpiresAt: number | null;
   isAuthenticated: boolean;
+  /** 用户/权限信息是否已就绪（避免布局在 getProfile 返回前重渲染闪烁） */
+  ready: boolean;
   permissions: string[];
-  setAuth: (user: UserInfo, accessToken: string, refreshToken: string) => void;
+  setAuth: (
+    user: UserInfo,
+    accessToken: string,
+    refreshToken: string,
+    expiresIn?: number,
+  ) => void;
+  /** 刷新后更新 token（不重设 user） */
+  setTokens: (accessToken: string, refreshToken: string, expiresIn?: number) => void;
+  /** accessToken 是否已过期（或即将过期） */
+  isTokenExpired: () => boolean;
   setPermissions: (permissions: string[]) => void;
+  setReady: (ready: boolean) => void;
   logout: () => void;
   restoreAuth: () => void;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+/** 计算过期时刻：expiresIn 为秒；留出 30s 缓冲，避免临界请求失败 */
+const computeExpiresAt = (expiresIn?: number): number | null => {
+  if (!expiresIn) return null;
+  const buffer = Math.min(30, Math.floor(expiresIn / 2));
+  return Date.now() + (expiresIn - buffer) * 1000;
+};
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: localStorage.getItem('accessToken'),
   refreshToken: localStorage.getItem('refreshToken'),
+  tokenExpiresAt: Number(localStorage.getItem(TOKEN_EXPIRES_KEY)) || null,
   isAuthenticated: !!localStorage.getItem('accessToken'),
+  ready: !!localStorage.getItem('user'),
   permissions: JSON.parse(localStorage.getItem('permissions') || '[]'),
 
-  setAuth: (user, accessToken, refreshToken) => {
+  setAuth: (user, accessToken, refreshToken, expiresIn) => {
     const permissions = user.permissions ?? [];
+    const expiresAt = computeExpiresAt(expiresIn);
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     localStorage.setItem('permissions', JSON.stringify(permissions));
-    set({ user, accessToken, refreshToken, permissions, isAuthenticated: true });
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    if (expiresAt) localStorage.setItem(TOKEN_EXPIRES_KEY, String(expiresAt));
+    else localStorage.removeItem(TOKEN_EXPIRES_KEY);
+    set({ user, accessToken, refreshToken, tokenExpiresAt: expiresAt, permissions, isAuthenticated: true, ready: true });
+  },
+
+  setTokens: (accessToken, refreshToken, expiresIn) => {
+    const expiresAt = computeExpiresAt(expiresIn);
+    localStorage.setItem('accessToken', accessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    if (expiresAt) localStorage.setItem(TOKEN_EXPIRES_KEY, String(expiresAt));
+    else localStorage.removeItem(TOKEN_EXPIRES_KEY);
+    set({ accessToken, refreshToken, tokenExpiresAt: expiresAt });
+  },
+
+  isTokenExpired: () => {
+    const expiresAt = get().tokenExpiresAt;
+    if (!expiresAt) return false; // 未知过期时间时交给后端 401 处理
+    return Date.now() >= expiresAt;
   },
 
   setPermissions: (permissions) => {
@@ -44,14 +89,25 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ permissions });
   },
 
+  setReady: (ready) => set({ ready }),
+
   logout: () => {
     localStorage.clear();
-    set({ user: null, accessToken: null, refreshToken: null, permissions: [], isAuthenticated: false });
+    set({ user: null, accessToken: null, refreshToken: null, tokenExpiresAt: null, permissions: [], isAuthenticated: false, ready: false });
   },
 
   restoreAuth: () => {
     const token = localStorage.getItem('accessToken');
     const permissions = JSON.parse(localStorage.getItem('permissions') || '[]');
-    set({ accessToken: token, permissions, isAuthenticated: !!token });
+    const userRaw = localStorage.getItem(USER_KEY);
+    const user = userRaw ? (JSON.parse(userRaw) as UserInfo) : null;
+    set({
+      user,
+      accessToken: token,
+      permissions,
+      tokenExpiresAt: Number(localStorage.getItem(TOKEN_EXPIRES_KEY)) || null,
+      isAuthenticated: !!token,
+      ready: !!user,
+    });
   },
 }));

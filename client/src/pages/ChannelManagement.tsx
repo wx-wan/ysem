@@ -10,6 +10,7 @@ import {
 import type { MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { channelApi, type Channel, type ChannelPayload } from '../api/channel';
+import PageSkeleton from '../components/PageSkeleton';
 
 // 类别语义色：线上=主色，线下=警示色（均走 antd 预设语义 Tag，与 --c-* 体系一致）
 const CAT_TAG: Record<string, { tag: string; icon: React.ReactNode }> = {
@@ -20,7 +21,7 @@ const CAT_TAG: Record<string, { tag: string; icon: React.ReactNode }> = {
 export default function ChannelManagement() {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [data, setData] = useState<Channel[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Channel | null>(null);
@@ -153,7 +154,11 @@ export default function ChannelManagement() {
         </Space>
       </div>
 
-      {/* 概览统计：上面显示总数，下面标注；卡片加高 */}
+      {loading && data.length === 0 ? (
+        <PageSkeleton variant="cards" statCards={3} rows={6} title={false} />
+      ) : (
+        <>
+          {/* 概览统计：上面显示总数，下面标注；卡片加高 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
         {[
           { color: 'var(--c-primary)', icon: <ApartmentOutlined />, value: data.length, label: t('channel.totalPlatform') },
@@ -246,6 +251,8 @@ export default function ChannelManagement() {
             );
           })}
         </Row>
+      )}
+        </>
       )}
 
       {/* 新建 / 编辑抽屉 */}

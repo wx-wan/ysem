@@ -20,15 +20,26 @@ const registerSchema = z.object({
   phone: z.string().optional(),
 });
 
+// 将 '30s' / '24h' / '7d' / '15m' 等格式解析为秒数
+const parseExpiresInToSeconds = (value: string): number => {
+  const match = /^(\d+)\s*(s|m|h|d)$/i.exec(value.trim());
+  if (!match) return 86400; // 兜底 24h
+  const n = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  const map: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+  return n * map[unit];
+};
+
 // 生成 token
 const generateTokens = (payload: JwtPayload) => {
+  const accessExpiresIn = process.env.JWT_EXPIRES_IN || '24h';
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET!, {
-    expiresIn: (process.env.JWT_EXPIRES_IN || '24h') as jwt.SignOptions['expiresIn'],
+    expiresIn: accessExpiresIn as jwt.SignOptions['expiresIn'],
   });
   const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET!, {
     expiresIn: (process.env.JWT_REFRESH_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'],
   });
-  return { accessToken, refreshToken };
+  return { accessToken, refreshToken, expiresIn: parseExpiresInToSeconds(accessExpiresIn) };
 };
 
 // 登录
@@ -91,6 +102,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     success(res, {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
+      expiresIn: tokens.expiresIn,
       user: {
         id: user.id,
         username: user.username,
@@ -171,7 +183,7 @@ export const refreshToken = async (req: Request, res: Response): Promise<void> =
       data: { refreshToken: tokens.refreshToken },
     });
 
-    success(res, tokens, 'Token 刷新成功');
+    success(res, { ...tokens, expiresIn: tokens.expiresIn }, 'Token 刷新成功');
   } catch {
     fail(res, 401, 'refreshToken 无效或已过期');
   }

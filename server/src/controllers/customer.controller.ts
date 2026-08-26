@@ -3,6 +3,7 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { ownerScope, publicSeaScope } from "../utils/scope";
 import * as XLSX from "xlsx";
 
 // 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
@@ -154,14 +155,11 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
 
     const currentYear = new Date().getFullYear().toString();
 
-    // 公海客户条件（仅无负责人）
-    const publicSeaFilter = [{ ownerId: null }];
-
-    // "公海客户"：仅公海；其余类型仅展示我的客户
+    // 数据范围：按当前用户角色过滤（管理员看全部，普通用户看「自己 + 公海」）
+    // 公海视图仅返回无负责人的客户；其余视图返回本人客户 + 公海（无负责人）
     const isPublic = type === "public";
-    const andConditions: any[] = isPublic
-      ? [{ OR: publicSeaFilter }]
-      : [{ ownerId: userId }];
+    const scope = isPublic ? publicSeaScope(req) : ownerScope(req, { includePublicSea: true });
+    const andConditions: any[] = scope && Object.keys(scope).length > 0 ? [scope] : [];
 
     // 关键词搜索
     if (keyword) {
@@ -349,6 +347,30 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
     }));
 
     success(res, { list: enriched, total, page: Number(page), pageSize: take });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ========== 客户下拉选项：我的私海 + 公海；管理员为全部 ==========
+export const listOptions = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const where: any = ownerScope(req, { includePublicSea: true });
+    const list = await prisma.customer.findMany({
+      where,
+      select: {
+        id: true,
+        companyName: true,
+        contactName: true,
+        customerCode: true,
+        email: true,
+        phone: true,
+        country: true,
+        ownerId: true,
+      },
+      orderBy: { companyName: "asc" },
+    });
+    success(res, list);
   } catch (err) {
     next(err);
   }
@@ -605,7 +627,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
   try {
     const userId = req.userId!;
     const username = req.username!;
-    const { companyName, contactName, email, phone, country, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount } =
+    const { companyName, contactName, email, phone, country, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount } =
       req.body;
 
     if (!companyName) return error(res, "公司名称不能为空", 400);
@@ -624,6 +646,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
         email,
         phone,
         country,
+        customerType,
         source: source || "MANUAL",
         notes,
         ownerId: finalOwnerId,
@@ -658,7 +681,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     const username = req.username!;
     const userId = req.userId!;
     const roleCode = req.roleCode;
-    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
+    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
       req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
@@ -695,6 +718,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         country: country !== undefined ? country : existing.country,
         region: region !== undefined ? region : existing.region,
         customerLevel: customerLevel !== undefined ? customerLevel : existing.customerLevel,
+        customerType: customerType !== undefined ? customerType : existing.customerType,
         source: source ?? existing.source,
         notes: notes !== undefined ? notes : existing.notes,
         ownerId: ownerId !== undefined ? ownerId : existing.ownerId,

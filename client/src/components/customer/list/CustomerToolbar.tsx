@@ -8,7 +8,7 @@ import { INTENT_LABEL } from '../shared/intentLevel';
 import ViewModeSwitch from '../../common/ViewModeSwitch';
 import PageToolbar from '../../common/page/PageToolbar';
 import CapsuleSwitch from '../../common/CapsuleSwitch';
-import type { User } from '../../../api/users';
+import type { UserSelectItem } from '../../../api/users';
 
 type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
 
@@ -55,7 +55,7 @@ interface CustomerToolbarProps {
   filterTypePublic: boolean;
   selectedOwnerId: string;
   setSelectedOwnerId: (v: string) => void;
-  userList: User[];
+  userList: UserSelectItem[];
   noOrderBreakdown?: Record<string, number>;
   doneBreakdown?: Record<string, number>;
 }
@@ -152,9 +152,7 @@ export default function CustomerToolbar({
           filterOption={(input: string, option: any) =>
             (option?.label?.toLowerCase() ?? '').includes((input ?? '').toLowerCase())
           }
-          options={userList
-            .filter((u: User) => u.status === 'ACTIVE')
-            .map((u: User) => ({
+          options={userList.map((u: UserSelectItem) => ({
               value: u.id,
               label: u.realName || u.username,
             }))}

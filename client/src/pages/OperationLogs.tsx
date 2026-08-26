@@ -5,6 +5,7 @@ import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import request from '../api/request';
 import DiffTags, { DiffItem } from '../components/common/DiffTags';
 import dayjs from 'dayjs';
+import PageSkeleton from '../components/PageSkeleton';
 
 interface OpLog {
   id: string;
@@ -89,7 +90,7 @@ const ACTION_COLORS: Record<string, string> = {
 export default function OperationLogs() {
   const [data, setData] = useState<OpLog[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [filters, setFilters] = useState<{
@@ -219,21 +220,25 @@ export default function OperationLogs() {
         </Space>
       </Card>
 
-      <Card style={{ borderRadius: 12 }}>
-        <Table
-          rowKey="id"
-          loading={loading}
-          columns={columns}
-          dataSource={data}
-          pagination={{
-            current: page,
-            pageSize,
-            total,
-            showSizeChanger: true,
-            onChange: (p, ps) => { setPage(p); setPageSize(ps); },
-          }}
-        />
-      </Card>
+      {loading && data.length === 0 ? (
+        <PageSkeleton rows={8} />
+      ) : (
+        <Card style={{ borderRadius: 12 }}>
+          <Table
+            rowKey="id"
+            loading={loading && data.length > 0}
+            columns={columns}
+            dataSource={data}
+            pagination={{
+              current: page,
+              pageSize,
+              total,
+              showSizeChanger: true,
+              onChange: (p, ps) => { setPage(p); setPageSize(ps); },
+            }}
+          />
+        </Card>
+      )}
     </div>
   );
 }

@@ -5,6 +5,8 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
+import { ownerScope, applyScope } from '../utils/scope';
+import { paginateList } from '../utils/query';
 
 // ============ 校验 ============
 
@@ -71,7 +73,6 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
       });
     }
     if (stage) where.stage = stage;
-    if (assignedTo) where.assignedTo = assignedTo;
     if (source) where.source = source;
     if (startDate || endDate) {
       const dateFilter: Record<string, string> = {};
@@ -80,20 +81,21 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
       where.createdAt = dateFilter;
     }
 
-    // 非 admin 用户只看自己或未分配
-    if (req.roleCode !== 'admin') {
-      AND.push({
-        OR: [{ assignedTo: req.userId }, { assignedTo: null }],
-      });
+    // 数据范围：管理员可用 assignedTo 自由筛选；普通用户只看「自己负责的 + 未分配（公海）」商机
+    if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
+      where.assignedTo = assignedTo;
+    } else {
+      applyScope(where, ownerScope(req, { field: 'assignedTo', includePublicSea: true }));
     }
 
     if (AND.length > 0) where.AND = AND;
 
-    const [list, total] = await Promise.all([
-      prisma.salesPipeline.findMany({
-        where,
-        skip,
-        take,
+    const { list, total, page: p, pageSize: ps } = await paginateList(
+      prisma.salesPipeline,
+      where,
+      {
+        page: Number(page),
+        pageSize: Number(pageSize),
         include: {
           assignee: { select: { id: true, realName: true, username: true } },
           leadProducts: {
@@ -102,11 +104,10 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
           },
         },
         orderBy: { updatedAt: 'desc' },
-      }),
-      prisma.salesPipeline.count({ where }),
-    ]);
+      },
+    );
 
-    success(res, { list, total, page: Number(page), pageSize: Number(pageSize) });
+    success(res, { list, total, page: p, pageSize: ps });
   } catch (e) {
     console.error(e);
     fail(res, 500, '服务器错误');

@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
+import SyncNavigate from './components/SyncNavigate';
 import { App as AntdApp } from 'antd';
 import { useAuthStore } from './stores/useAuthStore';
 import { usePermission } from './hooks/usePermission';
@@ -24,15 +25,30 @@ import PermPage from './pages/Perm';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
+import SettingsCustomerTypePage from './pages/SettingsCustomerType';
 import ChannelManagementPage from './pages/ChannelManagement';
-import SettingLayout from './layouts/SettingLayout';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
+
+// 系统设置默认页：按权限跳转到第一个可访问的设置子模块
+function SettingIndex() {
+  const { hasPerm } = usePermission();
+  const first = [
+    ['system:user', '/setting/user'],
+    ['system:perm', '/setting/perm'],
+    ['product:taxonomy:view', '/setting/archive'],
+    ['system:channel', '/setting/channel'],
+    ['system:customer-type', '/setting/customer-type'],
+    ['system:approval', '/setting/approval'],
+    ['system:logs', '/setting/logs'],
+  ].find(([perm]) => hasPerm(perm));
+  return <SyncNavigate to={first ? first[1] : '/setting/user'} />;
+}
 
 // 路由守卫 — 登录校验
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <SyncNavigate to="/login" />;
   return <>{children}</>;
 }
 
@@ -60,7 +76,7 @@ function App() {
           </PrivateRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<SyncNavigate to="/dashboard" />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales" element={<SalesLayout />}>
           <Route index element={<SalesPage />} />
@@ -75,18 +91,20 @@ function App() {
         <Route path="production" element={<ProductionPage />} />
         <Route path="shipment" element={<ShipmentPage />} />
         <Route path="settlement" element={<PermRoute perm="sales:orders"><SettlementPage /></PermRoute>} />
-        <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
+        <Route path="customers" element={<CustomersPage />} />
+        {/* 系统设置：并入主布局，切换仅重绘内容区，不重挂整体布局 */}
+        <Route path="setting">
+          <Route index element={<SettingIndex />} />
+          <Route path="user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
+          <Route path="perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
+          <Route path="archive" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />
+          <Route path="channel" element={<PermRoute perm="system:channel"><ChannelManagementPage /></PermRoute>} />
+          <Route path="logs" element={<PermRoute perm="system:logs"><OperationLogsPage /></PermRoute>} />
+          <Route path="approval" element={<PermRoute perm="system:approval"><SettingsApprovalPage /></PermRoute>} />
+          <Route path="customer-type" element={<PermRoute perm="system:customer-type"><SettingsCustomerTypePage /></PermRoute>} />
+        </Route>
       </Route>
-      {/* 系统设置：独立的一套框架（侧边栏为设置分组菜单，与业务侧边栏区分） */}
-      <Route path="/setting" element={<SettingLayout />}>
-        <Route path="user" element={<UserManagementPage />} />
-        <Route path="perm" element={<PermPage />} />
-        <Route path="archive" element={<ProductManagementPage systemOnly />} />
-        <Route path="channel" element={<ChannelManagementPage />} />
-        <Route path="logs" element={<OperationLogsPage />} />
-        <Route path="approval" element={<SettingsApprovalPage />} />
-      </Route>
-      <Route path="/design" element={<Navigate to="/setting" replace />} />
+      <Route path="/design" element={<SyncNavigate to="/setting" />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );

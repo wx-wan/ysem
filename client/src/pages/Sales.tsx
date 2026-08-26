@@ -91,9 +91,9 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
 
   const fetchCustomers = async () => {
     try {
-      const res = await customerApi.listAll({ pageSize: 9999 });
+      const res = await customerApi.options();
       setCustomerOptions(
-        (res.data.data.list || []).map((c: Customer) => ({ label: c.companyName, value: c.id, raw: c }))
+        (res.data.data || []).map((c: Customer) => ({ label: c.companyName, value: c.id, raw: c }))
       );
     } catch { /* ignore */ }
   };

@@ -60,8 +60,11 @@ export default function CountrySelect({
       styles={{ popup: { root: { minWidth: 220 } } }}
       allowClear
       filterOption={(input, option) => {
-        const children = (option?.children as unknown as string) || '';
-        return children.toLowerCase().indexOf((input ?? '').toLowerCase()) >= 0;
+        const children =
+          typeof option?.children === 'string' ? option.children : '';
+        return children
+          .toLowerCase()
+          .includes(String(input ?? '').toLowerCase());
       }}
       optionRender={({ value: optValue, label }) => {
         const info = findCountry(optValue as string);

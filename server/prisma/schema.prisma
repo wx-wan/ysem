@@ -161,6 +161,9 @@ model Customer {
   // 预计商机金额
   estimatedAmount Float?
 
+  // 客户类型（与 CustomerType 配置保持一致，但不做外键，避免历史数据/停用类型问题）
+  customerType String?
+
   // 关联数据
   orders     Order[]
   pipelines  SalesPipeline[]
@@ -611,6 +614,20 @@ model Channel {
   @@index([category])
 }
 
+// ============ 客户类型（全局配置，用于线索/客户） ============
+model CustomerType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String? // 类型说明
+  isActive    Boolean  @default(true)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sort])
+  @@index([isActive])
+}
+
 // ============ 线索 ============
 // 线索主要字段由「客户信息」+「线索名称」构成
 model Lead {
@@ -626,6 +643,7 @@ model Lead {
   status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED
   companyName  String? // 未关联客户时直接记录的客户信息
   contactName  String?
+  contactMethod String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp 等添加客户的方式
   email        String?
   phone        String?
   country      String?
@@ -636,6 +654,18 @@ model Lead {
   product    SingleProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
   quantity   Int            @default(1) // 采购数量
   remark       String?
+  // 详情扩展字段（左右结构详情视图）
+  targetMarket String? // 目标市场
+  productType  String? // 产品类型
+  productDesc  String? // 产品描述
+  images       String? // 参考图片（JSON 数组：["url1","url2"]）
+  targetPrice  String? // 目标价位
+  certRequire  String? // 认证要求
+  packageReq   String? // 包装要求
+  deliveryReq  String? // 交期要求
+  specialReq   String? // 特殊要求
+  customerType String? // 客户类型
+  urgency      String? // 客户紧急度：LOW | MEDIUM | HIGH
   assignedTo   String? // 负责人 userId
   assignedUser User?   @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   createdBy    String? // 创建人 userId

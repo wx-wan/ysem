@@ -2,6 +2,7 @@ import axios from './request';
 
 export type LeadSource = 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'INVALID' | 'CONVERTED';
+export type LeadUrgency = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface LeadCustomer {
   id: string;
@@ -22,6 +23,7 @@ export interface Lead {
   status: LeadStatus;
   companyName?: string | null;
   contactName?: string | null;
+  contactMethod?: string | null;
   email?: string | null;
   phone?: string | null;
   country?: string | null;
@@ -31,6 +33,18 @@ export interface Lead {
   product?: { id: string; name: string } | null;
   quantity?: number;
   remark?: string | null;
+  // 详情扩展字段
+  targetMarket?: string | null;
+  productType?: string | null;
+  productDesc?: string | null;
+  images?: string[] | string | null;
+  targetPrice?: string | null;
+  certRequire?: string | null;
+  packageReq?: string | null;
+  deliveryReq?: string | null;
+  specialReq?: string | null;
+  customerType?: string | null;
+  urgency?: LeadUrgency | null;
   assignedTo?: string | null;
   assignedUser?: { id: string; username: string; realName: string | null } | null;
   createdBy?: string | null;
@@ -47,13 +61,26 @@ export interface LeadPayload {
   source?: LeadSource;
   status?: LeadStatus;
   companyName?: string | null;
-  contactName?: string;
+  contactName?: string | null;
+  contactMethod?: string | null;
   email?: string;
   phone?: string;
   country?: string;
   productInterest?: string;
   productName?: string | null;
   remark?: string;
+  // 详情扩展字段
+  targetMarket?: string | null;
+  productType?: string | null;
+  productDesc?: string | null;
+  images?: string[] | string | null;
+  targetPrice?: string | null;
+  certRequire?: string | null;
+  packageReq?: string | null;
+  deliveryReq?: string | null;
+  specialReq?: string | null;
+  customerType?: string | null;
+  urgency?: LeadUrgency | null;
   assignedTo?: string | null;
 }
 

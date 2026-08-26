@@ -8,6 +8,8 @@ export interface LoginParams {
 export interface LoginResult {
   accessToken: string;
   refreshToken: string;
+  /** accessToken 有效期（秒），由后端 JWT_EXPIRES_IN 决定 */
+  expiresIn: number;
   user: {
     id: string;
     username: string;

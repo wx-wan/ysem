@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Card, Button, Space, Input, InputNumber, Select, AutoComplete, Table, Tag, Popconfirm, App, Form, Pagination, Row, Col,
+  Card, Button, Space, Input, InputNumber, Select, AutoComplete, Table, Tag, Popconfirm, App, Form, Pagination, Row, Col, Upload, Image,
 } from 'antd';
 import AppModal from '../components/AppModal';
 import { productApi, taxonomyApi, type ProductOption, type ProductCraft, type ProductAudience, type Product } from '../api/products';
@@ -8,11 +8,14 @@ import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
-  EyeOutlined, EditOutlined,
+  EyeOutlined, CheckOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { theme } from 'antd';
 import { leadApi, type Lead, type LeadStatus, type LeadPayload, type LeadSource } from '../api/lead';
+import { uploadImage } from '../api/request';
+import CountrySelect from '../components/CountrySelect';
+import CustomerTypeSelect from '../components/CustomerTypeSelect';
 import { channelApi, type Channel } from '../api/channel';
 import { customerApi, type Customer } from '../api/customers';
 import { userApi, type UserSelectItem } from '../api/users';
@@ -117,9 +120,9 @@ export default function SalesLeads() {
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const res = await customerApi.listAll({ pageSize: 9999 });
+      const res = await customerApi.options();
       setCustomerOptions(
-        (res.data.data.list || []).map((c: Customer) => ({
+        (res.data.data || []).map((c: Customer) => ({
           label: c.companyName,
           value: c.id,
           contactName: c.contactName || undefined,
@@ -164,7 +167,7 @@ export default function SalesLeads() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    // 负责人默认当前创建人（来源/状态由系统判定，无需选择）
+    // 负责人默认当前创建人（页面已挂载即加载用户列表，此处直接回填即可生效）
     form.setFieldsValue({ assignedTo: currentUser?.id });
     fetchCustomers();
     fetchUsers();
@@ -184,9 +187,25 @@ export default function SalesLeads() {
         channel: sourceParts.length > 1 ? sourceParts[0] : item.sourceChannel || '',
         sourceChannel: item.sourceChannel || undefined,
         productKey: item.product?.name || item.productName || undefined,
+        contactMethod: item.contactMethod || undefined,
         quantity: item.quantity ?? undefined,
-        remark: item.remark,
         assignedTo: item.assignedTo,
+        // 详情扩展字段
+        targetMarket: item.targetMarket || undefined,
+        productType: item.productType || undefined,
+        productDesc: item.productDesc || undefined,
+        targetPrice: item.targetPrice || undefined,
+        certRequire: item.certRequire || undefined,
+        packageReq: item.packageReq || undefined,
+        deliveryReq: item.deliveryReq || undefined,
+        specialReq: item.specialReq || undefined,
+        customerType: item.customerType || undefined,
+        urgency: item.urgency || undefined,
+        images: Array.isArray(item.images)
+          ? item.images
+          : typeof item.images === 'string' && item.images
+          ? JSON.parse(item.images)
+          : [],
       });
     } catch { /* ignore */ }
     setDrawerOpen(true);
@@ -219,15 +238,29 @@ export default function SalesLeads() {
       }
     }
     const payload: LeadPayload = {
-      leadName: leadNamePreview,
+      // 名称由前端按「目标国家+产品名称+数量」规则生成后直接保存
+      leadName: leadNamePreview || undefined,
       customerId,
       companyName,
+      contactMethod: values.contactMethod || null,
       sourceChannel: values.sourceChannel || values.channel || null,
       productId,
       productName,
-      quantity: values.quantity ?? 0,
-      remark: values.remark,
-      assignedTo: values.assignedTo || null,
+      quantity: values.quantity ? Number(values.quantity) || 0 : 0,
+      // 负责人在弹窗标题栏（Form 外）选择，直接从表单实例读取最新值
+      assignedTo: form.getFieldValue('assignedTo') || null,
+      // 详情扩展字段
+      targetMarket: values.targetMarket || null,
+      productType: values.productType || null,
+      productDesc: values.productDesc || null,
+      targetPrice: values.targetPrice || null,
+      certRequire: values.certRequire || null,
+      packageReq: values.packageReq || null,
+      deliveryReq: values.deliveryReq || null,
+      specialReq: values.specialReq || null,
+      customerType: values.customerType || null,
+      urgency: values.urgency || null,
+      images: Array.isArray(values.images) ? (values.images as string[]) : [],
     };
     try {
       if (editing) {
@@ -332,37 +365,29 @@ export default function SalesLeads() {
     }));
   }, [channels, selectedChannel]);
 
-  // 线索名称自动生成：渠道-平台-采购产品-数量
-  const watchChannel = Form.useWatch('channel', form);
-  const watchSourceChannel = Form.useWatch('sourceChannel', form);
+  // 负责人：弹窗标题栏 Select 响应式绑定（该字段在 Form 外部，需 useWatch 驱动重渲染）
+  const watchAssignedTo = Form.useWatch('assignedTo', form);
+  // 线索名称自动生成：目标国家+产品名称+数量（修改字段时同步更新）
+  const watchTargetMarket = Form.useWatch('targetMarket', form);
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
   const leadNamePreview = useMemo(() => {
     const parts: string[] = [];
-    if (watchChannel) parts.push(watchChannel);
-    if (watchSourceChannel) {
-      // 平台值可能为「渠道 / 平台」路径，取平台段；平台等于渠道（无子平台兜底）时省略
-      const platform = watchSourceChannel.split(' / ').pop() || '';
-      if (platform && platform !== watchChannel) parts.push(platform);
-    }
+    if (watchTargetMarket) parts.push(watchTargetMarket);
     if (watchProductKey) parts.push(watchProductKey);
     if (watchQuantity !== undefined && watchQuantity !== null) parts.push(String(watchQuantity));
     return parts.join('-');
-  }, [watchChannel, watchSourceChannel, watchProductKey, watchQuantity]);
+  }, [watchTargetMarket, watchProductKey, watchQuantity]);
 
   // 客户/产品 AutoComplete 选项：以名称为值，支持手输或下拉选择
-  // 客户下拉展示「公司名 · 联系人 · 编号」，搜索按整个文本模糊匹配
+  // 客户下拉展示「公司名称 · 联系人」，搜索按整个文本模糊匹配
   const customerNameOptions = useMemo(
     () =>
       customerOptions.map((c) => ({
         value: c.label,
-        label: [
-          c.label,
-          c.contactName ? `${t('lead.customerContact')}：${c.contactName}` : '',
-          c.customerCode ? `${t('lead.customerNo')}：${c.customerCode}` : '',
-        ].filter(Boolean).join(' · '),
+        label: [c.label, c.contactName].filter(Boolean).join(' · '),
       })),
-    [customerOptions, t],
+    [customerOptions],
   );
   const productNameOptions = useMemo(
     () => productOptions.map((p) => ({ label: p.name, value: p.name })),
@@ -466,11 +491,11 @@ export default function SalesLeads() {
             gap: 12, padding: '14px 18px', marginBottom: 16,
             borderRadius: token.borderRadius, cursor: 'pointer',
             background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
-            border: `1px dashed ${token.colorPrimary}`,
+            boxShadow: `0 0 0 1px ${token.colorPrimary}`,
             transition: 'all .2s',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.borderStyle = 'solid'; e.currentTarget.style.boxShadow = `0 2px 12px ${token.colorPrimaryBg}`; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderStyle = 'dashed'; e.currentTarget.style.boxShadow = 'none'; }}
+          onMouseEnter={(e) => { e.currentTarget.style.boxShadow = `0 0 0 1px ${token.colorPrimary}, 0 2px 12px ${token.colorPrimaryBg}`; }}
+          onMouseLeave={(e) => { e.currentTarget.style.boxShadow = `0 0 0 1px ${token.colorPrimary}`; }}
         >
           <Space size={10}>
             <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: 8, background: token.colorPrimary, color: '#fff', fontSize: 16 }}>
@@ -563,17 +588,32 @@ export default function SalesLeads() {
         </div>
       )}
 
-      {/* 新建 / 编辑弹窗 */}
+      {/* 新建 / 编辑 / 详情弹窗（左右两栏） */}
       <AppModal
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         title={editing ? t('lead.editTitle') : t('lead.createTitle')}
-        width={560}
+        width={960}
         bodyPadding={20}
+        extra={
+          <Space size={8}>
+            <span style={{ color: 'rgba(0,0,0,0.45)' }}>{t('lead.assignee')}</span>
+            <Select
+              style={{ width: 180 }}
+              showSearch
+              allowClear
+              placeholder={t('lead.assigneePlaceholder')}
+              optionFilterProp="label"
+              value={watchAssignedTo ?? undefined}
+              onChange={(v) => form.setFieldsValue({ assignedTo: v })}
+              options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
+            />
+          </Space>
+        }
         footer={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-            <Button type="primary" onClick={submit}>{t('common.save')}</Button>
+            <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
           </Space>
         }
       >
@@ -586,108 +626,165 @@ export default function SalesLeads() {
               style={{ color: 'rgba(0, 0, 0, 0.65)', background: '#f5f5f5', cursor: 'not-allowed' }}
             />
           </Form.Item>
-          <Row gutter={16}>
+          <Row gutter={24}>
+            {/* 左栏：原字段 */}
             <Col span={12}>
-              <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
-                <Select
-                  showSearch
-                  allowClear
-                  placeholder={t('lead.filterPlatform')}
-                  optionFilterProp="label"
-                  options={channelOptions}
-                  onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
-                />
-              </Form.Item>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
+                    <Select
+                      showSearch
+                      allowClear
+                      placeholder={t('lead.filterPlatform')}
+                      optionFilterProp="label"
+                      options={channelOptions}
+                      onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
+                    <Select
+                      showSearch
+                      allowClear
+                      disabled={!selectedChannel}
+                      placeholder={t('lead.filterShop')}
+                      optionFilterProp="label"
+                      options={formPlatformOptions}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item
+                    name="customerKey"
+                    label={
+                      editing?.companyName && !editing.customerId ? (
+                        <Space size={4}>
+                          <span>{t('lead.customer')}</span>
+                          <Tag
+                            color="orange"
+                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                            onClick={confirmCreateCustomer}
+                            title={t('lead.customerPendingTip', { name: editing.companyName })}
+                          >
+                            {t('lead.pendingLabel')}
+                          </Tag>
+                        </Space>
+                      ) : (
+                        t('lead.customer')
+                      )
+                    }
+                    rules={[{ required: true, message: t('lead.customerRequired') }]}
+                  >
+                    <AutoComplete
+                      allowClear
+                      placeholder={t('lead.customerPlaceholder')}
+                      options={customerNameOptions}
+                      filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="contactMethod" label={t('lead.contactMethod')}>
+                    <Input placeholder={t('lead.contactMethodPlaceholder')} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={12}>
+                  <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
+                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="customerType" label={t('lead.customerType')}>
+                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} />
+                  </Form.Item>
+                </Col>
+              </Row>
             </Col>
-            <Col span={12}>
-              <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
-                <Select
-                  showSearch
-                  allowClear
-                  disabled={!selectedChannel}
-                  placeholder={t('lead.filterShop')}
-                  optionFilterProp="label"
-                  options={formPlatformOptions}
-                />
-              </Form.Item>
-            </Col>
-          </Row>
-          <Form.Item
-            name="customerKey"
-            label={t('lead.customer')}
-            rules={[{ required: true, message: t('lead.customerRequired') }]}
-          >
-            <AutoComplete
-              allowClear
-              placeholder={t('lead.customerPlaceholder')}
-              options={customerNameOptions}
-              filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-            />
-          </Form.Item>
-          <Row gutter={16}>
+
+            {/* 右栏：详情扩展字段 */}
             <Col span={12}>
               <Form.Item
                 name="productKey"
-                label={t('lead.product')}
+                label={
+                  editing?.productName && !editing.productId ? (
+                    <Space size={4}>
+                      <span>{t('lead.product')}</span>
+                      <Tag
+                        color="orange"
+                        style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                        onClick={confirmCreateProduct}
+                        title={t('lead.productPendingTip', { name: editing.productName })}
+                      >
+                        {t('lead.pendingLabel')}
+                      </Tag>
+                    </Space>
+                  ) : (
+                    t('lead.product')
+                  )
+                }
                 rules={[{ required: true, message: t('lead.productRequired') }]}
               >
                 <AutoComplete
                   allowClear
                   placeholder={t('lead.productPlaceholder')}
                   options={productNameOptions}
-                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(input.toLowerCase())}
+                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                />
+              </Form.Item>
+              <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
+                <Input placeholder={t('lead.quantityRequirementPlaceholder')} />
+              </Form.Item>
+              <Form.Item name="productDesc" label={t('lead.productDesc')}>
+                <Input.TextArea rows={3} />
+              </Form.Item>
+              <Form.Item name="images" label={t('lead.images')}>
+                <Upload
+                  listType="picture-card"
+                  fileList={(form.getFieldValue('images') as string[] | undefined)?.map((url, i) => ({ uid: `${i}`, name: `img${i}`, status: 'done', url })) || []}
+                  onChange={({ fileList }) => {
+                    const urls = fileList.filter((f) => f.status === 'done').map((f) => (f.url as string));
+                    form.setFieldsValue({ images: urls });
+                  }}
+                  customRequest={({ file, onSuccess, onError }) => {
+                    uploadImage(file as File)
+                      .then((url) => onSuccess?.({ url }))
+                      .catch(() => { message.error(t('common.uploadFailed')); onError?.(new Error('upload failed')); });
+                  }}
+                >
+                  <div><PlusOutlined /><div style={{ marginTop: 8 }}>{t('common.upload')}</div></div>
+                </Upload>
+              </Form.Item>
+              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="certRequire" label={t('lead.certRequire')}>
+                <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item name="packageReq" label={t('lead.packageReq')}>
+                <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
+                <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item name="specialReq" label={t('lead.specialReq')}>
+                <Input.TextArea rows={2} />
+              </Form.Item>
+              <Form.Item name="urgency" label={t('lead.urgency')}>
+                <Select
+                  options={[
+                    { value: 'LOW', label: t('lead.urgencyLow') },
+                    { value: 'MEDIUM', label: t('lead.urgencyMedium') },
+                    { value: 'HIGH', label: t('lead.urgencyHigh') },
+                  ]}
                 />
               </Form.Item>
             </Col>
-            <Col span={12}>
-              <Form.Item name="quantity" label={t('lead.quantity')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                <InputNumber min={0} precision={0} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
           </Row>
-          <Form.Item name="remark" label={t('lead.remark')}>
-            <Input.TextArea rows={3} />
-          </Form.Item>
-          {(editing?.companyName && !editing.customerId) || (editing?.productName && !editing.productId) ? (
-            <div
-              style={{
-                marginBottom: 16,
-                padding: '10px 12px',
-                background: '#fffbe6',
-                border: '1px solid #ffe58f',
-                borderRadius: 6,
-              }}
-            >
-              {editing.companyName && !editing.customerId && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ color: '#ad6800' }}>{t('lead.customerPendingTip', { name: editing.companyName })}</span>
-                  <Button size="small" type="primary" ghost onClick={confirmCreateCustomer}>
-                    {t('lead.createCustomerNow')}
-                  </Button>
-                </div>
-              )}
-              {editing.companyName && !editing.customerId && editing.productName && !editing.productId ? (
-                <div style={{ height: 8 }} />
-              ) : null}
-              {editing.productName && !editing.productId && (
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <span style={{ color: '#ad6800' }}>{t('lead.productPendingTip', { name: editing.productName })}</span>
-                  <Button size="small" type="primary" ghost onClick={confirmCreateProduct}>
-                    {t('lead.createProductNow')}
-                  </Button>
-                </div>
-              )}
-            </div>
-          ) : null}
-          <Form.Item name="assignedTo" label={t('lead.assignee')}>
-            <Select
-              showSearch
-              allowClear
-              placeholder={t('lead.assigneePlaceholder')}
-              optionFilterProp="label"
-              options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
-            />
-          </Form.Item>
         </Form>
       </AppModal>
 

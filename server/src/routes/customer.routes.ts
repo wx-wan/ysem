@@ -60,6 +60,18 @@ router.get("/all", ctrl.listAll);
 
 /**
  * @swagger
+ * /api/customers/options:
+ *   get:
+ *     tags: [客户管理]
+ *     summary: 客户下拉选项（我的私海 + 公海；管理员为全部）
+ *     responses:
+ *       200:
+ *         description: 客户列表
+ */
+router.get("/options", ctrl.listOptions);
+
+/**
+ * @swagger
  * /api/customers/countries:
  *   get:
  *     tags: [客户管理]

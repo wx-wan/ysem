@@ -72,6 +72,10 @@ async function main() {
     { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12, parent: 'system' },
     { name: '权限管理', code: 'system:perm', type: 'MENU' as const, path: '/system/perm', icon: 'SafetyOutlined', sort: 13, parent: 'system' },
     { name: '产品分类管理', code: 'product:taxonomy:view', type: 'MENU' as const, path: '/system/product-taxonomy', icon: 'AppstoreOutlined', sort: 14, parent: 'system' },
+    { name: '渠道管理', code: 'system:channel', type: 'MENU' as const, path: '/system/channel', icon: 'ApartmentOutlined', sort: 15, parent: 'system' },
+    { name: '客户类型', code: 'system:customer-type', type: 'MENU' as const, path: '/system/customer-type', icon: 'TagsOutlined', sort: 16, parent: 'system' },
+    { name: '审批管理', code: 'system:approval', type: 'MENU' as const, path: '/system/approval', icon: 'AuditOutlined', sort: 17, parent: 'system' },
+    { name: '操作日志', code: 'system:logs', type: 'MENU' as const, path: '/system/logs', icon: 'FileSearchOutlined', sort: 18, parent: 'system' },
   ];
 
   // 先建父级菜单
@@ -122,6 +126,9 @@ async function main() {
     { name: '产品分类新增', code: 'product:taxonomy:create', type: 'BUTTON' as const, sort: 0 },
     { name: '产品分类编辑', code: 'product:taxonomy:update', type: 'BUTTON' as const, sort: 1 },
     { name: '产品分类删除', code: 'product:taxonomy:delete', type: 'BUTTON' as const, sort: 2 },
+    { name: '渠道新增', code: 'system:channel:edit', type: 'BUTTON' as const, sort: 0 },
+    { name: '客户类型编辑', code: 'system:customer-type:edit', type: 'BUTTON' as const, sort: 1 },
+    { name: '审批编辑', code: 'system:approval:edit', type: 'BUTTON' as const, sort: 2 },
   ];
 
   for (const perm of buttonPermissions) {
@@ -180,6 +187,23 @@ async function main() {
       });
     }
   }
+
+  // 3.5 初始化客户类型（全局配置，用于线索/客户）
+  console.log('🏷️  初始化客户类型...');
+  const customerTypeSeed: { name: string; description?: string; sort: number }[] = [
+    { name: '意向客户', description: '有明确采购意向，跟进中', sort: 0 },
+    { name: '成交客户', description: '已完成首单或多次成交', sort: 1 },
+    { name: '战略客户', description: '大客户/长期合作重点', sort: 2 },
+    { name: '流失客户', description: '长期无跟进或无意向', sort: 3 },
+  ];
+  for (const ct of customerTypeSeed) {
+    await prisma.customerType.upsert({
+      where: { name: ct.name },
+      update: { description: ct.description, sort: ct.sort, isActive: true },
+      create: { name: ct.name, description: ct.description, sort: ct.sort, isActive: true },
+    });
+  }
+  console.log('✅ 客户类型初始化完成！');
 
   // 4. 创建默认部门
   const rootDept = await prisma.department.upsert({
@@ -313,10 +337,15 @@ async function main() {
 
   // 6. 初始化获客渠道（线上渠道 / 线下渠道 + 平台）
   console.log('📡 初始化获客渠道...');
-  const channelSeed: { name: string; category: 'ONLINE' | 'OFFLINE'; shops?: string[] }[] = [
-    { name: '国际站', category: 'ONLINE', shops: ['寿春平台', '微它平台'] },
-    { name: '1688', category: 'ONLINE', shops: ['微它平台', '景元平台'] },
-    { name: '线下渠道', category: 'OFFLINE', shops: ['广交会', '义博会'] },
+
+  // 清理历史种子数据中已废弃的名称，避免重命名后留下脏数据
+  const obsoleteChannelNames = ['线下渠道', '寿春平台', '微它平台', '景元平台'];
+  await prisma.channel.deleteMany({ where: { name: { in: obsoleteChannelNames } } });
+
+  const channelSeed: { name: string; category: 'ONLINE' | 'OFFLINE'; shops: string[] }[] = [
+    { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
+    { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
+    { name: '展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
   ];
   for (const p of channelSeed) {
     let platform = await prisma.channel.findFirst({ where: { name: p.name, parentId: null } });
@@ -325,11 +354,15 @@ async function main() {
     } else {
       await prisma.channel.update({ where: { id: platform.id }, data: { category: p.category } });
     }
-    for (let i = 0; i < (p.shops || []).length; i++) {
-      const shopName = p.shops![i];
+    // 清理该平台下不在新种子列表中的历史店铺
+    await prisma.channel.deleteMany({ where: { parentId: platform.id, name: { notIn: p.shops } } });
+    for (let i = 0; i < p.shops.length; i++) {
+      const shopName = p.shops[i];
       const shop = await prisma.channel.findFirst({ where: { name: shopName, parentId: platform.id } });
       if (!shop) {
         await prisma.channel.create({ data: { name: shopName, category: p.category, parentId: platform.id, status: 'ENABLED', sort: i } });
+      } else {
+        await prisma.channel.update({ where: { id: shop.id }, data: { category: p.category, sort: i } });
       }
     }
   }

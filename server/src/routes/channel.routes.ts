@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { authenticate, requirePerm } from '../middleware/auth';
 import {
   getChannels,
   getChannelTree,
@@ -10,11 +11,11 @@ import {
 
 const router = Router();
 
-router.get('/tree', getChannelTree);
-router.get('/', getChannels);
-router.get('/:id', getChannel);
-router.post('/', createChannel);
-router.put('/:id', updateChannel);
-router.delete('/:id', deleteChannel);
+router.get('/tree', authenticate, getChannelTree);
+router.get('/', authenticate, requirePerm('system:channel'), getChannels);
+router.get('/:id', authenticate, requirePerm('system:channel'), getChannel);
+router.post('/', authenticate, requirePerm('system:channel:edit'), createChannel);
+router.put('/:id', authenticate, requirePerm('system:channel:edit'), updateChannel);
+router.delete('/:id', authenticate, requirePerm('system:channel:edit'), deleteChannel);
 
 export default router;

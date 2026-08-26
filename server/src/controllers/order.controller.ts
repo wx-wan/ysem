@@ -3,6 +3,8 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { ownerScope, applyScope } from "../utils/scope";
+import { paginateList } from "../utils/query";
 
 // 单据类型
 export type OrderType = "QUOTE" | "SAMPLE" | "ORDER" | "PRODUCTION" | "SHIPPED";
@@ -54,9 +56,6 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
 
     const where: any = {};
 
-    if (userRole !== "admin") {
-      where.customer = { ownerId: userId };
-    }
     if (customerId) where.customerId = String(customerId);
     if (type) where.type = String(type);
     if (status) where.status = String(status);
@@ -76,18 +75,17 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
       if (endDate) where.createdAt.lte = new Date(String(endDate));
     }
 
-    const [list, total] = await Promise.all([
-      prisma.order.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: "desc" },
-        include: {
-          customer: { select: { id: true, companyName: true, contactName: true, ownerId: true } },
-        },
-      }),
-      prisma.order.count({ where }),
-    ]);
+    // 数据范围：订单负责人=其关联客户的 ownerId；非管理员只看自己客户/公海的订单
+    applyScope(where, ownerScope(req, { field: 'ownerId', relation: 'customer', includePublicSea: true }));
+
+    const { list, total } = await paginateList(prisma.order, where, {
+      page: Number(page),
+      pageSize: Number(pageSize),
+      orderBy: { createdAt: "desc" },
+      include: {
+        customer: { select: { id: true, companyName: true, contactName: true, ownerId: true } },
+      },
+    });
 
     const agg = await prisma.order.aggregate({
       where,
@@ -99,7 +97,7 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
       list,
       total,
       page: Number(page),
-      pageSize: take,
+      pageSize: Number(pageSize),
       totalAmount: agg._sum.amountCNY || 0,
       totalCount: agg._count,
     });
