@@ -162,13 +162,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         specialReq: item.specialReq || undefined,
         customerType: item.customerType || undefined,
         urgency: item.urgency || undefined,
-        images: parseImages(
-          typeof item.images === 'string'
-            ? item.images
-            : Array.isArray(item.images)
-            ? JSON.stringify(item.images)
-            : undefined,
-        ),
+        images: typeof item.images === 'string' ? item.images : Array.isArray(item.images) ? JSON.stringify(item.images) : '',
       });
     } catch {
       /* 详情加载失败可忽略，表单保持空 */
