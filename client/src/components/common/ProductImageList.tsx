@@ -15,6 +15,10 @@ interface ProductImageListProps {
   maxCount?: number;
   /** 是否禁用 */
   disabled?: boolean;
+  /** 主图展示区高度（px），默认 200 */
+  height?: number;
+  /** 透传的 id（供 Form.Item 关联 label 使用，a11y） */
+  id?: string;
 }
 
 /** 使用原生 canvas 等比压缩（最大边 2000px，质量 0.85） */
@@ -108,6 +112,8 @@ export default function ProductImageList({
   uploadUrl = '/upload',
   maxCount = 6,
   disabled,
+  height = 200,
+  id,
 }: ProductImageListProps) {
   const { message } = App.useApp();
   const items = parseImages(value);
@@ -235,12 +241,21 @@ export default function ProductImageList({
 
   return (
     <div className={`pil ${items.length ? 'pil-has-images' : 'pil-empty'}`}>
-      {/* 大图区：撑满图片栏，在当前 div 内左右滑动预览 */}
-      <div className="pil-hero">
+      {/* 主图展示区：显示当前选中图片的缩略图（完整 contain），点击展开原始大小 */}
+      <div className="pil-hero" style={{ height }}>
         {items.length ? (
           <>
-            <AntImage
+            {/* 显示层：原生 img，样式完全可控，不受 antd 默认样式干扰 */}
+            <img
               className="pil-hero-img"
+              src={items[safeCurrent].url}
+              alt={items[safeCurrent].name}
+              title={`${items[safeCurrent].name}（点击查看原图）`}
+              onClick={() => setZoomed(true)}
+            />
+            {/* 预览层：隐藏的 AntImage，只负责管理全屏放大预览 */}
+            <AntImage
+              style={{ display: 'none' }}
               src={items[safeCurrent].url}
               alt={items[safeCurrent].name}
               preview={{
@@ -415,6 +430,8 @@ export default function ProductImageList({
       <input
         ref={fileRef}
         type="file"
+        id={id}
+        name="file"
         accept="image/png,image/jpeg,image/webp"
         multiple
         className="pil-file-input"

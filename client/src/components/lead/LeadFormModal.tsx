@@ -289,7 +289,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve={false}>
+      <Form form={form} layout="vertical" preserve={false} autoComplete="off">
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
@@ -324,6 +324,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             <Col span={12}>
               <Form.Item label={t('lead.name')} required>
                 <Input
+                  autoComplete="off"
                   value={leadNamePreview}
                   readOnly
                   placeholder={t('lead.nameAutoPlaceholder')}
@@ -334,6 +335,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             <Col span={6}>
               <Form.Item name="urgency" label={t('lead.urgency')}>
                 <Select
+                  placeholder={t('lead.urgencyPlaceholder')}
                   options={[
                     { value: 'LOW', label: t('lead.urgencyLow') },
                     { value: 'MEDIUM', label: t('lead.urgencyMedium') },
@@ -355,7 +357,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         onClick={confirmCreateProduct}
                         title={t('lead.productPendingTip', { name: editing.productName })}
                       >
-                        {t('lead.pendingLabel')}
+                        {t('lead.pendingTag')}
                       </Tag>
                     </Space>
                   ) : (
@@ -400,12 +402,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Col>
             <Col span={6}>
               <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                <Input placeholder={t('lead.quantityRequirementPlaceholder')} />
+                <Input autoComplete="off" placeholder={t('lead.quantityRequirementPlaceholder')} />
               </Form.Item>
             </Col>
             <Col span={6}>
               <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                <Input />
+                <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
               </Form.Item>
             </Col>
 
@@ -425,7 +427,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                             onClick={confirmCreateCustomer}
                             title={t('lead.customerPendingTip', { name: editing.companyName })}
                           >
-                            {t('lead.pendingLabel')}
+                            {t('lead.pendingTag')}
                           </Tag>
                         </Space>
                       ) : (
@@ -444,7 +446,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Col>
                 <Col span={12}>
                   <Form.Item name="contactMethod" label={t('lead.contactMethod')}>
-                    <Input placeholder={t('lead.contactMethodPlaceholder')} />
+                    <Input autoComplete="off" placeholder={t('lead.contactMethodPlaceholder')} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
@@ -461,7 +463,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Col>
             <Col span={12}>
               <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                <Input.TextArea rows={6} />
+                <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
               </Form.Item>
             </Col>
 
@@ -475,22 +477,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Row gutter={[16, 24]}>
                 <Col span={12}>
                   <Form.Item name="certRequire" label={t('lead.certRequire')}>
-                    <Input.TextArea rows={2} />
+                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.certRequirePlaceholder')} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="packageReq" label={t('lead.packageReq')}>
-                    <Input.TextArea rows={2} />
+                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.packageReqPlaceholder')} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
-                    <Input.TextArea rows={2} />
+                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.deliveryReqPlaceholder')} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="specialReq" label={t('lead.specialReq')}>
-                    <Input.TextArea rows={2} />
+                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.specialReqPlaceholder')} />
                   </Form.Item>
                 </Col>
               </Row>

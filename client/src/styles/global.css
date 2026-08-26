@@ -1491,3 +1491,10 @@ html, body {
   row-gap: 0;
 }
 
+/* ============ 产品图片放大预览：图片按比例缩小完整显示，不截断 ============ */
+.ant-image-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
