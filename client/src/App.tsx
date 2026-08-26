@@ -23,7 +23,6 @@ import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
 import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
-import RolePage from './pages/Role';
 import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
@@ -56,9 +55,10 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 
 // 路由守卫 — 权限校验（按页面所需的 permission code）
 // 无权限时展示无权限页，而不是静默重定向
-function PermRoute({ perm, children }: { perm: string; children: React.ReactNode }) {
-  const { hasPerm } = usePermission();
-  if (!hasPerm(perm)) return <ForbiddenPage />;
+function PermRoute({ perm, children }: { perm: string | string[]; children: React.ReactNode }) {
+  const { hasAnyPerm } = usePermission();
+  const ok = Array.isArray(perm) ? hasAnyPerm(perm) : hasAnyPerm([perm]);
+  if (!ok) return <ForbiddenPage />;
   return <>{children}</>;
 }
 
@@ -98,8 +98,8 @@ function App() {
         {/* 系统设置：并入主布局，切换仅重绘内容区，不重挂整体布局 */}
         <Route path="setting">
           <Route index element={<SettingIndex />} />
-          <Route path="user" element={<PermRoute perm="system:user"><UserManagementPage /></PermRoute>} />
-          <Route path="role" element={<PermRoute perm="system:role"><RolePage /></PermRoute>} />
+          {/* 用户管理承载「用户 / 角色 / 部门」三个分页，任一权限即可进入 */}
+          <Route path="user" element={<PermRoute perm={['system:user', 'system:role', 'system:dept']}><UserManagementPage /></PermRoute>} />
           <Route path="perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
           <Route path="archive" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />
           <Route path="channel" element={<PermRoute perm="system:channel"><ChannelManagementPage /></PermRoute>} />

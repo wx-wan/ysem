@@ -242,7 +242,7 @@ export default function UserManagementPage() {
         <Space size={0} className="user-actions">
           {hasPerm('system:user:edit') && <Tooltip title={t('common.edit')}><Button type="text" size="small" className="action-btn" icon={<EditOutlined />} onClick={() => handleEditUser(record)} /></Tooltip>}
           {hasPerm('system:user:resetpwd') && <Tooltip title={t('user.resetPwd')}><Button type="text" size="small" className="action-btn" icon={<KeyOutlined />} onClick={() => handleResetPwd(record)} /></Tooltip>}
-          {hasPerm('system:user:delete') && (
+          {hasPerm('system:user:delete') && record.role?.code !== 'admin' && (
             <Popconfirm title={t('user.deleteConfirm')} onConfirm={() => handleDeleteUser(record.id)}>
               <Tooltip title={t('common.delete')}><Button type="text" size="small" className="action-btn action-danger" icon={<DeleteOutlined />} /></Tooltip>
             </Popconfirm>
@@ -267,7 +267,7 @@ export default function UserManagementPage() {
       render: (_, record) => (
         <Space>
           {hasPerm('system:role:edit') && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => handleEditRole(record)}>{t('common.edit')}</Button>}
-          {hasPerm('system:role:delete') && (
+          {hasPerm('system:role:delete') && record.code !== 'admin' && (
             <Popconfirm title={t('role.deleteConfirm')} onConfirm={() => handleDeleteRole(record.id)}>
               <Button type="link" size="small" danger icon={<DeleteOutlined />}>{t('common.delete')}</Button>
             </Popconfirm>

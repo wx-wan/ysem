@@ -131,8 +131,8 @@ export default function MainLayout() {
 
   // 设置模式侧边栏菜单（按权限动态渲染，扁平展示设置子模块）
   const settingMenuItems: MenuProps['items'] = [
-    ...(hasPerm('system:user') ? [{ key: '/setting/user', icon: <TeamOutlined />, label: t('menu.systemUser') }] : []),
-    ...(hasPerm('system:role') ? [{ key: '/setting/role', icon: <SafetyOutlined />, label: t('menu.systemRole') }] : []),
+    // 用户管理承载「用户 / 角色 / 部门」三个分页，因此任一权限即可进入该页
+    ...(hasPerm('system:user') || hasPerm('system:role') || hasPerm('system:dept') ? [{ key: '/setting/user', icon: <TeamOutlined />, label: t('menu.systemUser') }] : []),
     ...(hasPerm('system:perm') ? [{ key: '/setting/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
     ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
     ...(hasPerm('system:channel') ? [{ key: '/setting/channel', icon: <ApiOutlined />, label: t('menu.systemChannel') }] : []),

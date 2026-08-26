@@ -67,6 +67,8 @@ export default function RoleFormModal({
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const isView = !!viewRole;
   const isEdit = !!editingRole;
+  // 超级管理员角色：默认拥有全部权限且不可更改
+  const isAdminRole = (editingRole?.code === 'admin') || (viewRole?.code === 'admin');
 
   // 加载权限树 + 角色详情
   useEffect(() => {
@@ -80,7 +82,8 @@ export default function RoleFormModal({
           isEdit || isView ? permApi.getRole((editingRole ?? viewRole)!.id) : Promise.resolve(null),
         ]);
         if (cancelled) return;
-        setPermTree(permRes.data.data || []);
+        const tree = permRes.data.data || [];
+        setPermTree(tree);
         if (roleRes) {
           const data = roleRes.data.data;
           form.setFieldsValue({
@@ -90,6 +93,14 @@ export default function RoleFormModal({
             sort: data.sort,
             dataScope: data.dataScope || 'SELF',
           });
+        }
+        if (isAdminRole) {
+          // 超级管理员：默认全选全部权限，不可更改
+          const all = new Set<string>();
+          tree.forEach((top: PermNode) => collectDescendants(top).forEach((n) => all.add(n.id)));
+          setCheckedIds(all);
+        } else if (roleRes) {
+          const data = roleRes.data.data;
           const ids = new Set<string>(
             (data.permissions || []).map((p: any) => p.permission?.id).filter(Boolean)
           );
@@ -175,7 +186,7 @@ export default function RoleFormModal({
     >
       {/* 基本信息 */}
       <div style={{ fontWeight: 600, marginBottom: 12 }}>{t('role.basicInfo')}</div>
-      <Form form={form} layout="vertical" disabled={isView}>
+      <Form form={form} layout="vertical" disabled={isView || isAdminRole}>
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
@@ -225,6 +236,9 @@ export default function RoleFormModal({
 
       {/* 权限配置 */}
       <div style={{ fontWeight: 600, marginBottom: 12 }}>{t('role.permConfig')}</div>
+      {isAdminRole && (
+        <div className="admin-perm-lock">{t('role.adminPermLocked')}</div>
+      )}
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         {groups.map((group) => {
           const allIds = group.list.map((n) => n.id);
@@ -244,7 +258,7 @@ export default function RoleFormModal({
                   checked={groupChecked}
                   indeterminate={groupIndeterminate}
                   onChange={(e) => handleGroupCheck(group, e)}
-                  disabled={isView}
+                  disabled={isView || isAdminRole}
                 >
                   <span style={{ fontWeight: 500 }}>{group.top.name}</span>
                 </Checkbox>
@@ -258,7 +272,7 @@ export default function RoleFormModal({
                       key={node.id}
                       checked={checkedIds.has(node.id)}
                       onChange={(e) => toggleId(node.id, e.target.checked)}
-                      disabled={isView}
+                      disabled={isView || isAdminRole}
                     >
                       {node.name}
                     </Checkbox>

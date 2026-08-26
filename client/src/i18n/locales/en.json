@@ -203,6 +203,7 @@
     "totalMembers": "Total {{count}} members",
     "basicInfo": "Basic Info",
     "permConfig": "Permission Config",
+    "adminPermLocked": "The super admin has all permissions by default and cannot be modified",
     "roleVisibleRange": "Visible Range",
     "dataScope": "Data Scope",
     "dataScopeTip": "Controls the business data scope visible to this role (customers / opportunities / leads / orders / settlements, etc.); public-pool / public data is open to all group members and is not restricted here",

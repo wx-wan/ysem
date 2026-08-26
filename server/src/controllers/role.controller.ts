@@ -113,6 +113,15 @@ export const updateRole = async (req: AuthRequest, res: Response): Promise<void>
 // 删除角色
 export const deleteRole = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const role = await prisma.role.findUnique({ where: { id: req.params.id } });
+    if (!role) {
+      fail(res, 404, '角色不存在');
+      return;
+    }
+    if (role.code === 'admin') {
+      fail(res, 400, '超级管理员角色不可删除');
+      return;
+    }
     await prisma.role.delete({ where: { id: req.params.id } });
     success(res, null, '角色删除成功');
   } catch {

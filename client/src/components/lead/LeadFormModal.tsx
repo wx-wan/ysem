@@ -10,9 +10,8 @@ import {
   Select,
   Space,
   Tag,
-  Upload,
 } from 'antd';
-import { CheckOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect from '../CountrySelect';
@@ -23,11 +22,12 @@ import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
-import { uploadImage } from '../../api/request';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { flattenChannelOptions } from './constants';
 import type { CustomerOption } from './useLeadOptions';
+import ProductImageList from '../common/ProductImageList';
+import { parseImages, serializeImages } from '../../utils/productImages';
 
 export interface LeadFormModalHandle {
   openCreate: () => void;
@@ -161,11 +161,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         specialReq: item.specialReq || undefined,
         customerType: item.customerType || undefined,
         urgency: item.urgency || undefined,
-        images: Array.isArray(item.images)
-          ? item.images
-          : typeof item.images === 'string' && item.images
-          ? JSON.parse(item.images)
-          : [],
+        images: serializeImages(
+          parseImages(
+            typeof item.images === 'string'
+              ? item.images
+              : Array.isArray(item.images)
+              ? JSON.stringify(item.images)
+              : undefined,
+          ),
+        ),
       });
     } catch {
       /* 详情加载失败可忽略，表单保持空 */
@@ -222,7 +226,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       specialReq: values.specialReq || null,
       customerType: values.customerType || null,
       urgency: values.urgency || null,
-      images: Array.isArray(values.images) ? (values.images as string[]) : [],
+      images: parseImages(values.images).map((i) => i.url),
     };
     try {
       if (editing) {
@@ -294,7 +298,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           bodyPadding={20}
           extra={
             <Space size={8}>
-              <span style={{ color: 'rgba(0,0,0,0.45)' }}>{t('lead.assignee')}</span>
+              <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 14, lineHeight: '32px' }}>{t('lead.assignee')}</span>
               <Form.Item name="assignedTo" noStyle>
                 <Select
                   style={{ width: 180 }}
@@ -314,44 +318,100 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Space>
           }
         >
-          <Form.Item label={t('lead.name')} required>
-            <Input
-              value={leadNamePreview}
-              readOnly
-              placeholder={t('lead.nameAutoPlaceholder')}
-              style={{ color: 'rgba(0, 0, 0, 0.65)', background: '#f5f5f5', cursor: 'not-allowed' }}
-            />
-          </Form.Item>
-          <Row gutter={24}>
-            {/* 左栏：原字段 */}
+          {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
+          <Row gutter={[16, 24]} className="lead-form-grid">
+            {/* 第一行：线索名称(占2份) / 紧急程度 / 采购产品 */}
             <Col span={12}>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
-                    <Select
-                      showSearch
-                      allowClear
-                      placeholder={t('lead.channelPlaceholder')}
-                      optionFilterProp="label"
-                      options={channelOptions}
-                      onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
-                    <Select
-                      showSearch
-                      allowClear
-                      disabled={!selectedChannel}
-                      placeholder={t('lead.platformPlaceholder')}
-                      optionFilterProp="label"
-                      options={formPlatformOptions}
-                    />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
+              <Form.Item label={t('lead.name')} required>
+                <Input
+                  value={leadNamePreview}
+                  readOnly
+                  placeholder={t('lead.nameAutoPlaceholder')}
+                  style={{ color: 'rgba(0, 0, 0, 0.65)', background: '#f5f5f5', cursor: 'not-allowed' }}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="urgency" label={t('lead.urgency')}>
+                <Select
+                  options={[
+                    { value: 'LOW', label: t('lead.urgencyLow') },
+                    { value: 'MEDIUM', label: t('lead.urgencyMedium') },
+                    { value: 'HIGH', label: t('lead.urgencyHigh') },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item
+                name="productKey"
+                label={
+                  editing?.productName && !editing.productId ? (
+                    <Space size={4}>
+                      <span>{t('lead.product')}</span>
+                      <Tag
+                        color="orange"
+                        style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                        onClick={confirmCreateProduct}
+                        title={t('lead.productPendingTip', { name: editing.productName })}
+                      >
+                        {t('lead.pendingLabel')}
+                      </Tag>
+                    </Space>
+                  ) : (
+                    t('lead.product')
+                  )
+                }
+                rules={[{ required: true, message: t('lead.productRequired') }]}
+              >
+                <AutoComplete
+                  allowClear
+                  placeholder={t('lead.productPlaceholder')}
+                  options={productNameOptions}
+                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                />
+              </Form.Item>
+            </Col>
+
+            {/* 第二行：来源渠道 / 来源平台 / 数量需求 / 目标价位 */}
+            <Col span={6}>
+              <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
+                <Select
+                  showSearch
+                  allowClear
+                  placeholder={t('lead.channelPlaceholder')}
+                  optionFilterProp="label"
+                  options={channelOptions}
+                  onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
+                <Select
+                  showSearch
+                  allowClear
+                  disabled={!selectedChannel}
+                  placeholder={t('lead.platformPlaceholder')}
+                  optionFilterProp="label"
+                  options={formPlatformOptions}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
+                <Input placeholder={t('lead.quantityRequirementPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
+                <Input />
+              </Form.Item>
+            </Col>
+
+            {/* 第三行 + 第四行：左侧 2x2（客户/沟通方式/目标市场/客户类型），右侧产品描述(占2份、跨2行) */}
+            <Col span={12}>
+              <Row gutter={[16, 24]}>
                 <Col span={12}>
                   <Form.Item
                     name="customerKey"
@@ -387,8 +447,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     <Input placeholder={t('lead.contactMethodPlaceholder')} />
                   </Form.Item>
                 </Col>
-              </Row>
-              <Row gutter={16}>
                 <Col span={12}>
                   <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
                     <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
@@ -401,90 +459,41 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Col>
               </Row>
             </Col>
-
-            {/* 右栏：详情扩展字段 */}
             <Col span={12}>
-              <Form.Item
-                name="productKey"
-                label={
-                  editing?.productName && !editing.productId ? (
-                    <Space size={4}>
-                      <span>{t('lead.product')}</span>
-                      <Tag
-                        color="orange"
-                        style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                        onClick={confirmCreateProduct}
-                        title={t('lead.productPendingTip', { name: editing.productName })}
-                      >
-                        {t('lead.pendingLabel')}
-                      </Tag>
-                    </Space>
-                  ) : (
-                    t('lead.product')
-                  )
-                }
-                rules={[{ required: true, message: t('lead.productRequired') }]}
-              >
-                <AutoComplete
-                  allowClear
-                  placeholder={t('lead.productPlaceholder')}
-                  options={productNameOptions}
-                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
-                />
-              </Form.Item>
-              <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                <Input placeholder={t('lead.quantityRequirementPlaceholder')} />
-              </Form.Item>
               <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                <Input.TextArea rows={3} />
+                <Input.TextArea rows={6} />
               </Form.Item>
+            </Col>
+
+            {/* 第五行 + 第六行：左侧参考图片(占2份、跨2行)，右侧 2x2（认证要求/包装要求/交期要求/特殊要求） */}
+            <Col span={12}>
               <Form.Item name="images" label={t('lead.images')}>
-                <Upload
-                  listType="picture-card"
-                  fileList={(form.getFieldValue('images') as string[] | undefined)?.map((url, i) => ({ uid: `${i}`, name: `img${i}`, status: 'done', url })) || []}
-                  onChange={({ fileList }) => {
-                    const urls = fileList.filter((f) => f.status === 'done').map((f) => (f.url as string));
-                    form.setFieldsValue({ images: urls });
-                  }}
-                  customRequest={({ file, onSuccess, onError }) => {
-                    uploadImage(file as File)
-                      .then((url) => onSuccess?.({ url }))
-                      .catch(() => {
-                        message.error(t('common.uploadFailed'));
-                        onError?.(new Error('upload failed'));
-                      });
-                  }}
-                >
-                  <div>
-                    <PlusOutlined />
-                    <div style={{ marginTop: 8 }}>{t('common.upload')}</div>
-                  </div>
-                </Upload>
+                <ProductImageList />
               </Form.Item>
-              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                <Input />
-              </Form.Item>
-              <Form.Item name="certRequire" label={t('lead.certRequire')}>
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Form.Item name="packageReq" label={t('lead.packageReq')}>
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Form.Item name="specialReq" label={t('lead.specialReq')}>
-                <Input.TextArea rows={2} />
-              </Form.Item>
-              <Form.Item name="urgency" label={t('lead.urgency')}>
-                <Select
-                  options={[
-                    { value: 'LOW', label: t('lead.urgencyLow') },
-                    { value: 'MEDIUM', label: t('lead.urgencyMedium') },
-                    { value: 'HIGH', label: t('lead.urgencyHigh') },
-                  ]}
-                />
-              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Row gutter={[16, 24]}>
+                <Col span={12}>
+                  <Form.Item name="certRequire" label={t('lead.certRequire')}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="packageReq" label={t('lead.packageReq')}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="specialReq" label={t('lead.specialReq')}>
+                    <Input.TextArea rows={2} />
+                  </Form.Item>
+                </Col>
+              </Row>
             </Col>
           </Row>
         </AppModal>

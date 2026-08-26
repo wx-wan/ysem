@@ -174,6 +174,15 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
 // 删除用户
 export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id }, include: { role: true } });
+    if (!target) {
+      fail(res, 404, '用户不存在');
+      return;
+    }
+    if (target.role?.code === 'admin') {
+      fail(res, 400, '超级管理员账号不可删除');
+      return;
+    }
     await prisma.user.delete({ where: { id: req.params.id } });
     success(res, null, '用户删除成功');
   } catch {

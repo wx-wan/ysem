@@ -203,6 +203,7 @@
     "totalMembers": "共计 {{count}} 位",
     "basicInfo": "基本信息",
     "permConfig": "权限配置",
+    "adminPermLocked": "超级管理员默认拥有全部权限，且不可修改",
     "roleVisibleRange": "角色可见范围",
     "dataScope": "数据范围",
     "dataScopeTip": "控制该角色可查看的业务数据范围（客户 / 商机 / 线索 / 单据 / 结算等）；公海/公开数据对集团所有成员开放，不在此范围限制内",

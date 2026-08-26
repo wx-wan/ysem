@@ -1462,3 +1462,32 @@ html, body {
   padding: 4px 28px 28px;
   border-top: none;
 }
+
+/* ========== 角色编辑：超级管理员权限锁定提示 ========== */
+.admin-perm-lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-warning, #d97706);
+  background: var(--c-warning-bg, rgba(245, 158, 11, 0.12));
+  border: 1px solid var(--c-warning-border, rgba(245, 158, 11, 0.25));
+}
+
+/* ============ 线索表单：行间距统一打磨 ============ */
+/* 让行距由 Row gutter 主导，Form.Item 默认 24px margin 改为紧凑一致，
+   消除「gutter + 默认 margin」叠加造成的不均匀与过挤观感。 */
+.lead-form-grid .ant-form-item {
+  margin-bottom: 16px;
+}
+.lead-form-grid .ant-form-item:last-child {
+  margin-bottom: 0;
+}
+.lead-form-grid .ant-row {
+  row-gap: 0;
+}
+
