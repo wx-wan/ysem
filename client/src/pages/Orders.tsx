@@ -5,14 +5,14 @@ import {
 } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { orderApi, customerApi, Order, OrderItem } from '../api/customers';
-import { ORDER_TYPES, getOrderTypeMeta } from '../api/orders';
-import SegmentedTabBar from '../components/common/SegmentedTabBar';
+import { getOrderTypeMeta } from '../api/orders';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
 
 type DocStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
-type TabKey = 'ALL' | 'QUOTE' | 'SAMPLE' | 'ORDER';
+// 报价单 / 打样单已拆分为独立模块（QuotePage / SamplePage），本页仅保留正式订单
+type TabKey = 'QUOTE' | 'SAMPLE' | 'ORDER';
 
 const STATUS_OPTIONS: { label: string; value: DocStatus; color: string }[] = [
   { label: '草稿', value: 'DRAFT', color: 'default' },
@@ -21,16 +21,7 @@ const STATUS_OPTIONS: { label: string; value: DocStatus; color: string }[] = [
   { label: '已驳回', value: 'REJECTED', color: 'error' },
 ];
 
-// 顶部 Tab（仅保留三类业务单据：报价单 / 打样单 / 正式订单）
-const TAB_WHITELIST: OrderTypeKey[] = ['QUOTE', 'SAMPLE', 'ORDER'];
-type OrderTypeKey = 'QUOTE' | 'SAMPLE' | 'ORDER';
-
-const TAB_OPTIONS: { label: string; key: TabKey }[] = [
-  { label: '全部', key: 'ALL' },
-  ...ORDER_TYPES.filter((t) => TAB_WHITELIST.includes(t.key as OrderTypeKey)).map((t) => ({ label: t.label, key: t.key as TabKey })),
-];
-
-const ORDER_TYPE_VALUE = ORDER_TYPES.map((t) => t.key) as string[];
+const ORDER_TYPE_VALUE = ['QUOTE', 'SAMPLE', 'ORDER'];
 
 // 当前登录用户（用于判断是否展示审批按钮，实际权限后端校验）
 function useCurrentUser() {
@@ -44,7 +35,8 @@ function useCurrentUser() {
 export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPLE' | 'ORDER' } = {}) {
   const { message: msg } = App.useApp();
   const user = useCurrentUser();
-  const [tab, setTab] = useState<TabKey>(fixedType || 'ALL');
+  // 报价 / 打样已拆至独立模块：fixedType 由 QuotePage / SamplePage 传入，本页默认正式订单
+  const tab: TabKey = fixedType || 'ORDER';
   const [status, setStatus] = useState<DocStatus | undefined>();
   const [keyword, setKeyword] = useState('');
   const [data, setData] = useState<Order[]>([]);
@@ -66,7 +58,7 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
   const load = async () => {
     setLoading(true);
     try {
-      const typeParam = tab === 'ALL' ? undefined : tab;
+      const typeParam = tab;
       const res = await orderApi.list({
         page, pageSize, type: typeParam,
         status: status || undefined,
@@ -89,7 +81,7 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
     if (createOpen) {
       customerApi.listMy({ pageSize: 200 }).then((r) => setCustomers(r.data?.data?.list || []));
       form.resetFields();
-      form.setFieldsValue({ type: (tab === 'ALL' ? 'ORDER' : tab) as any, status: 'DRAFT' });
+      form.setFieldsValue({ type: tab, status: 'DRAFT' });
     }
   }, [createOpen, tab, form]);
 
@@ -201,10 +193,9 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
   return (
     <div className="orders-page">
       <div className="orders-toolbar">
-        <Title level={4} style={{ margin: 0 }}>订单管理</Title>
-        {!fixedType && (
-          <SegmentedTabBar options={TAB_OPTIONS} value={tab} onChange={(v) => { setTab(v as TabKey); setPage(1); }} />
-        )}
+        <Title level={4} style={{ margin: 0 }}>
+          {fixedType === 'QUOTE' ? '报价管理' : fixedType === 'SAMPLE' ? '打样管理' : '订单管理'}
+        </Title>
         <Space>
           <Select
             placeholder="审批状态"
@@ -231,7 +222,7 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col span={8}><Card><Statistic title="单据数" value={total} /></Card></Col>
         <Col span={8}><Card><Statistic title="总金额" value={totalAmount} precision={2} prefix="CNY" /></Card></Col>
-        <Col span={8}><Card><Statistic title="当前类型" value={TAB_OPTIONS.find((x) => x.key === tab)?.label} /></Card></Col>
+        <Col span={8}><Card><Statistic title="当前类型" value={getOrderTypeMeta(tab).label} /></Card></Col>
       </Row>
 
       <Table
@@ -286,11 +277,11 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
         )}
       </Modal>
 
-      {/* 新建订单类单据 */}
-      <Modal title={`新建${tab === 'ALL' ? '单据' : getOrderTypeMeta(tab).label}`} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={handleCreate} confirmLoading={saving} width={680}>
+      {/* 新建单据（类型固定为当前模块） */}
+      <Modal title={`新建${getOrderTypeMeta(tab).label}`} open={createOpen} onCancel={() => setCreateOpen(false)} onOk={handleCreate} confirmLoading={saving} width={680}>
           <Form form={form} layout="vertical">
-            <Form.Item name="type" label="单据类型" rules={[{ required: true, message: '请选择类型' }]}>
-              <Select options={ORDER_TYPES.map((t) => ({ label: t.label, value: t.key }))} />
+            <Form.Item name="type" label="单据类型">
+              <Select options={[{ label: getOrderTypeMeta(tab).label, value: tab }]} disabled />
             </Form.Item>
             <Form.Item name="title" label="单据标题">
               <Input placeholder="标题" />

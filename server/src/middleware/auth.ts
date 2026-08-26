@@ -8,6 +8,8 @@ export interface AuthRequest extends Request {
   username?: string;
   realName?: string;
   roleCode?: string;
+  // 当前用户角色的数据范围（ALL / DEPT / SELF），由 authenticate 从角色挂载
+  dataScope?: string;
   userPermissions?: string[];
   file?: Express.Multer.File;
 }
@@ -43,6 +45,10 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
         },
       });
       req.userPermissions = user?.role?.permissions.map((rp) => rp.permission.code) ?? [];
+      // 挂载角色数据范围（无部门等边界场景由 scope 工具兜底）
+      req.dataScope = user?.role?.dataScope;
+    } else {
+      req.dataScope = 'ALL';
     }
     next();
   } catch {

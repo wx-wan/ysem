@@ -46,6 +46,8 @@ model Role {
   description String?
   status      Int              @default(1)
   sort        Int              @default(0)
+  // 数据范围：ALL 全部 | DEPT 本部门 | SELF 仅本人（默认）；公海/公开数据对集团开放，不占用档位
+  dataScope   String           @default("SELF")
   users       User[]
   permissions RolePermission[]
   createdAt   DateTime         @default(now())
@@ -243,6 +245,43 @@ model Order {
   @@index([type])
   @@index([customerId])
   @@index([status])
+}
+
+// ========== 供应商 ==========
+model Supplier {
+  id        String   @id @default(uuid())
+  name      String   // 供应商名称
+  contact   String?  // 联系人
+  phone     String?  // 联系电话
+  address   String?  // 地址
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchases PurchaseOrder[]
+}
+
+// ========== 采购单 ==========
+// status: DRAFT(草稿) → ORDERED(已下单) → PARTIAL(部分到货) → ARRIVED(已到货)，可 CANCELLED(已取消)
+model PurchaseOrder {
+  id           String   @id @default(uuid())
+  purchaseNo   String?  @unique // 采购单号 PO-xxxx
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseDate String?  // 采购日期
+  status       String   @default("DRAFT") // DRAFT / ORDERED / PARTIAL / ARRIVED / CANCELLED
+  items        String?  // 明细 JSON：{productId,name,spec,quantity,unitPrice,amount}[]
+  amountCNY    Float?   // 明细合计金额（CNY）
+  remark       String?
+  ownerId      String?  // 负责人（采购员），数据范围归属
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([supplierId])
+  @@index([ownerId])
 }
 
 // ========== 付款单（收款记录） ==========

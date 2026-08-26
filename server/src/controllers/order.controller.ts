@@ -3,7 +3,7 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
-import { ownerScope, applyScope } from "../utils/scope";
+import { ownerScope, applyScope, roleScope } from "../utils/scope";
 import { paginateList } from "../utils/query";
 
 // 单据类型
@@ -75,8 +75,8 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
       if (endDate) where.createdAt.lte = new Date(String(endDate));
     }
 
-    // 数据范围：订单负责人=其关联客户的 ownerId；非管理员只看自己客户/公海的订单
-    applyScope(where, ownerScope(req, { field: 'ownerId', relation: 'customer', includePublicSea: true }));
+    // 数据范围：订单负责人=其关联客户的 ownerId，按角色 dataScope 过滤
+    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
 
     const { list, total } = await paginateList(prisma.order, where, {
       page: Number(page),
@@ -411,6 +411,8 @@ export const listByCustomer = async (req: AuthRequest, res: Response, next: Next
     const { type } = req.query;
     const where: any = { customerId };
     if (type) where.type = String(type);
+    // 数据范围：非管理员只能查看自己有权限客户名下的单据（修复越权）
+    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const orders = await prisma.order.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -428,6 +430,8 @@ export const listPayments = async (req: AuthRequest, res: Response, next: NextFu
     const where: any = {};
     if (orderId) where.orderId = String(orderId);
     if (customerId) where.customerId = String(customerId);
+    // 数据范围：按客户负责人过滤（修复越权）
+    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const list = await prisma.paymentRecord.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -500,6 +504,8 @@ export const listProfits = async (req: AuthRequest, res: Response, next: NextFun
     const where: any = {};
     if (orderId) where.orderId = String(orderId);
     if (customerId) where.customerId = String(customerId);
+    // 数据范围：按客户负责人过滤（修复越权）
+    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const list = await prisma.profitRecord.findMany({
       where,
       orderBy: { createdAt: "desc" },

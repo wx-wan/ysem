@@ -98,6 +98,7 @@
     "quote": "报价",
     "sample": "打样",
     "orders": "订单",
+    "purchase": "采购",
     "production": "生产",
     "shipment": "出货",
     "settlement": "结算",
@@ -203,6 +204,11 @@
     "basicInfo": "基本信息",
     "permConfig": "权限配置",
     "roleVisibleRange": "角色可见范围",
+    "dataScope": "数据范围",
+    "dataScopeTip": "控制该角色可查看的业务数据范围（客户 / 商机 / 线索 / 单据 / 结算等）；公海/公开数据对集团所有成员开放，不在此范围限制内",
+    "dataScopeAll": "全部数据",
+    "dataScopeDept": "本部门数据",
+    "dataScopeSelf": "仅本人数据",
     "save": "保存"
   },
   "dept": {

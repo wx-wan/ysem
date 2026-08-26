@@ -151,7 +151,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
 
     useEffect(() => {
       if (!open) return;
-      userApi.list({ pageSize: 200 }).then((r) => setUsers(r.data?.data?.list ?? [])).catch(() => {});
+      userApi.listForSelect().then((r) => setUsers(r.data?.data ?? [])).catch(() => {});
       certificateApi.list().then((r) => setCertificates(r.data?.data ?? [])).catch(() => {});
     }, [open]);
 

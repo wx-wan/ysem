@@ -19,7 +19,15 @@ interface RoleRecord {
   code: string;
   description: string;
   sort: number;
+  dataScope?: string;
 }
+
+// 角色数据范围（与服务端 utils/scope.ts 的 DATA_SCOPES 保持一致）
+const DATA_SCOPE_OPTIONS: { value: string; i18nKey: string }[] = [
+  { value: 'ALL', i18nKey: 'role.dataScopeAll' },
+  { value: 'DEPT', i18nKey: 'role.dataScopeDept' },
+  { value: 'SELF', i18nKey: 'role.dataScopeSelf' },
+];
 
 interface Props {
   open: boolean;
@@ -79,6 +87,7 @@ export default function RoleFormModal({
             code: data.code,
             description: data.description,
             sort: data.sort,
+            dataScope: data.dataScope || 'SELF',
           });
           const ids = new Set<string>(
             (data.permissions || []).map((p: any) => p.permission?.id).filter(Boolean)
@@ -191,12 +200,16 @@ export default function RoleFormModal({
             </Form.Item>
           </Col>
           <Col span={12}>
-            <Form.Item name="visibleRange" label={t('role.roleVisibleRange')}>
-              <Select placeholder={t('role.roleVisibleRange')} options={[
-                { label: '全公司', value: 'all' },
-                { label: '本部门', value: 'dept' },
-                { label: '仅本人', value: 'self' },
-              ]} />
+            <Form.Item
+              name="dataScope"
+              label={t('role.dataScope')}
+              initialValue="SELF"
+              extra={t('role.dataScopeTip')}
+            >
+              <Select
+                placeholder={t('role.dataScope')}
+                options={DATA_SCOPE_OPTIONS.map((o) => ({ label: t(o.i18nKey), value: o.value }))}
+              />
             </Form.Item>
           </Col>
         </Row>

@@ -304,9 +304,10 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     const parsed = productSchema.parse(req.body);
     const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
 
-    // 使用 SingleProductCreateInput 支持多对多/一对多关联的嵌套写入
-    const data: Prisma.SingleProductCreateInput = {
+    // 使用 SingleProductUncheckedCreateInput 支持多对多/一对多关联的嵌套写入（createdBy 为外键标量）
+    const data: Prisma.SingleProductUncheckedCreateInput = {
       ...rest,
+      createdBy: req.userId || null,
       source: rest.source ?? 'MANUAL',
       supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
       ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
@@ -633,8 +634,9 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
 
         const parsed = productSchema.parse(payload);
         const { craftIds: cIds, sku: _ig, visibleUserIds: vIds, ...rest } = parsed;
-        const pdata: Prisma.SingleProductCreateInput = {
+        const pdata: Prisma.SingleProductUncheckedCreateInput = {
           ...rest,
+          createdBy: req.userId || null,
           source: rest.source ?? 'MANUAL',
           supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
           ...(cIds?.length ? { crafts: { connect: cIds.map((id) => ({ id })) } } : {}),

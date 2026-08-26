@@ -98,6 +98,7 @@
     "quote": "Quote",
     "sample": "Sample",
     "orders": "Orders",
+    "purchase": "Purchase",
     "production": "Production",
     "shipment": "Shipment",
     "settlement": "Settlement",
@@ -203,6 +204,11 @@
     "basicInfo": "Basic Info",
     "permConfig": "Permission Config",
     "roleVisibleRange": "Visible Range",
+    "dataScope": "Data Scope",
+    "dataScopeTip": "Controls the business data scope visible to this role (customers / opportunities / leads / orders / settlements, etc.); public-pool / public data is open to all group members and is not restricted here",
+    "dataScopeAll": "All data",
+    "dataScopeDept": "Department data",
+    "dataScopeSelf": "Own data only",
     "save": "Save"
   },
   "dept": {

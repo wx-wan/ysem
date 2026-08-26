@@ -3,12 +3,14 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { DEFAULT_DATA_SCOPE } from '../utils/scope';
 
 const roleSchema = z.object({
   name: z.string().min(1).max(50),
   code: z.string().min(1).max(50),
   description: z.string().optional().nullable(),
   sort: z.number().optional().default(0),
+  dataScope: z.enum(['ALL', 'DEPT', 'SELF']).optional().default(DEFAULT_DATA_SCOPE),
 });
 
 // 获取角色列表

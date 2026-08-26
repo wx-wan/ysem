@@ -12,12 +12,14 @@ async function main() {
   // 1. 创建默认角色
   const adminRole = await prisma.role.upsert({
     where: { code: 'admin' },
-    update: {},
+    // 超级管理员数据范围恒为全部
+    update: { dataScope: 'ALL' },
     create: {
       name: '超级管理员',
       code: 'admin',
       description: '系统超级管理员，拥有全部权限',
       sort: 0,
+      dataScope: 'ALL',
     },
   });
 
@@ -29,6 +31,7 @@ async function main() {
       code: 'user',
       description: '普通用户',
       sort: 1,
+      dataScope: 'SELF',
     },
   });
 
@@ -40,6 +43,7 @@ async function main() {
       code: 'business',
       description: '业务人员，可查看仪表盘、销售、客户、订单',
       sort: 2,
+      dataScope: 'SELF',
     },
   });
 
@@ -51,7 +55,14 @@ async function main() {
       code: 'purchaser',
       description: '采购人员，可查看仪表盘、销售、客户、订单，供货模式仅可选轻定制/成品现货',
       sort: 3,
+      dataScope: 'SELF',
     },
+  });
+
+  // 数据范围简化为 ALL / DEPT / SELF 三档：将历史旧档位（本人+公海、本部门及下级）归一为 SELF
+  await prisma.role.updateMany({
+    where: { dataScope: { in: ['SELF_PUBLIC_SEA', 'DEPT_AND_CHILD'] } },
+    data: { dataScope: 'SELF' },
   });
 
   // 2. 创建默认权限（菜单 & 按钮）
@@ -66,8 +77,9 @@ async function main() {
     { name: '打样', code: 'sales:samples', type: 'MENU' as const, path: '/samples', icon: 'ProfileOutlined', sort: 15, parent: 'sales' },
     { name: '结算', code: 'sales:settlement', type: 'MENU' as const, path: '/settlement', icon: 'FileDoneOutlined', sort: 16, parent: 'sales' },
     { name: '订单中心', code: 'orders', type: 'MENU' as const, path: '/orders', icon: 'ShoppingCartOutlined', sort: 2 },
-    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 3 },
-    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 4 },
+    { name: '采购管理', code: 'purchase', type: 'MENU' as const, path: '/purchase', icon: 'ShopOutlined', sort: 3 },
+    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 4 },
+    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 5 },
     { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 5 },
     { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 6 },
     { name: '设置', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
@@ -86,7 +98,8 @@ async function main() {
   for (const perm of menuPermissions) {
     await prisma.permission.upsert({
       where: { code: perm.code },
-      update: {},
+      // 同步菜单路径/图标/排序（支持菜单结构调整）
+      update: { path: perm.path, icon: perm.icon, sort: perm.sort },
       create: {
         name: perm.name,
         code: perm.code,
@@ -154,7 +167,7 @@ async function main() {
   }
 
   // 为业务人员分配业务菜单权限（仪表盘/销售/客户/订单/报表）
-  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'sales:quotes', 'sales:samples', 'sales:settlement', 'customers', 'orders', 'production', 'shipment', 'reports'];
+  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'sales:quotes', 'sales:samples', 'sales:settlement', 'customers', 'orders', 'purchase', 'production', 'shipment', 'reports'];
   for (const code of businessMenuCodes) {
     const perm = await prisma.permission.findUnique({ where: { code } });
     if (perm) {

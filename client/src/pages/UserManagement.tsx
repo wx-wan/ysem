@@ -50,8 +50,16 @@ interface RoleRecord {
   code: string;
   description: string;
   sort: number;
+  dataScope?: string;
   _count: { users: number };
 }
+
+// 数据范围 → i18n key（与服务端 utils/scope.ts 保持一致）
+const DATA_SCOPE_TEXT: Record<string, string> = {
+  ALL: 'role.dataScopeAll',
+  DEPT: 'role.dataScopeDept',
+  SELF: 'role.dataScopeSelf',
+};
 const roleApi = {
   create: (data: any) => request.post('/roles', data),
   update: (id: string, data: any) => request.put(`/roles/${id}`, data),
@@ -249,6 +257,10 @@ export default function UserManagementPage() {
     { title: t('role.code'), dataIndex: 'code', width: 120, render: (v: string) => <Tag color="blue">{v}</Tag> },
     { title: t('role.description'), dataIndex: 'description', ellipsis: true },
     { title: t('role.sort'), dataIndex: 'sort', width: 80 },
+    {
+      title: t('role.dataScope'), dataIndex: 'dataScope', width: 130,
+      render: (v: string) => <Tag color="cyan">{t(DATA_SCOPE_TEXT[v] || 'role.dataScopeSelf')}</Tag>,
+    },
     { title: t('role.userCount'), dataIndex: ['_count', 'users'], width: 80 },
     {
       title: t('common.operation'), width: 220, fixed: 'right',

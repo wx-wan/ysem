@@ -3,7 +3,7 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
-import { ownerScope, publicSeaScope } from "../utils/scope";
+import { ownerScope, publicSeaScope, roleScope } from "../utils/scope";
 import * as XLSX from "xlsx";
 
 // 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
@@ -155,10 +155,10 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
 
     const currentYear = new Date().getFullYear().toString();
 
-    // 数据范围：按当前用户角色过滤（管理员看全部，普通用户看「自己 + 公海」）
-    // 公海视图仅返回无负责人的客户；其余视图返回本人客户 + 公海（无负责人）
+    // 数据范围：按当前用户角色过滤（管理员看全部，普通用户按 ALL/DEPT/SELF 三档）
+    // 公海视图仅返回无负责人的客户；其余视图 = 范围数据 + 公海（公海数据对集团开放）
     const isPublic = type === "public";
-    const scope = isPublic ? publicSeaScope(req) : ownerScope(req, { includePublicSea: true });
+    const scope = isPublic ? publicSeaScope(req) : await roleScope(req);
     const andConditions: any[] = scope && Object.keys(scope).length > 0 ? [scope] : [];
 
     // 关键词搜索
@@ -355,7 +355,7 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
 // ========== 客户下拉选项：我的私海 + 公海；管理员为全部 ==========
 export const listOptions = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const where: any = ownerScope(req, { includePublicSea: true });
+    const where: any = await roleScope(req);
     const list = await prisma.customer.findMany({
       where,
       select: {
@@ -1035,14 +1035,11 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
     const roleCode = req.roleCode;
     const isAdmin = roleCode === "admin" || roleCode === "ADMIN";
 
-    // 销售管道权限
-    const pipelineWhere: any = {};
-    if (!isAdmin) {
-      pipelineWhere.OR = [{ assignedTo: userId }, { assignedTo: null }];
-    }
+    // 销售管道权限：按角色数据范围过滤（含公海）
+    const pipelineWhere: any = isAdmin ? {} : await roleScope(req, { field: 'assignedTo' });
 
-    // 客户权限
-    const customerWhere: any = isAdmin ? {} : { ownerId: userId };
+    // 客户权限：按角色数据范围过滤（统计口径不含公海）
+    const customerWhere: any = isAdmin ? {} : await roleScope(req);
 
     const currentYear = new Date().getFullYear().toString();
 

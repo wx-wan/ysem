@@ -9,9 +9,11 @@ interface Props {
   placeholder?: string;
   allowClear?: boolean;
   disabled?: boolean;
+  /** 透传给内部 Select 的 id（供 Form.Item 关联 label 使用，a11y） */
+  id?: string;
 }
 
-export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled }: Props) {
+export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id }: Props) {
   const { t } = useTranslation();
   const types = useCustomerTypeStore((s) => s.types);
   const loading = useCustomerTypeStore((s) => s.loading);
@@ -23,6 +25,7 @@ export default function CustomerTypeSelect({ value, onChange, placeholder, allow
 
   return (
     <Select
+      id={id}
       value={value}
       onChange={onChange}
       placeholder={placeholder || t('customerType.selectPlaceholder')}

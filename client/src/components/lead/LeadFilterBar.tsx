@@ -64,6 +64,7 @@ export default function LeadFilterBar({
     >
       <Space wrap>
         <Select
+          id="lead-filter-channel"
           style={{ width: 160 }}
           placeholder={t('lead.filterPlatform')}
           allowClear
@@ -74,6 +75,7 @@ export default function LeadFilterBar({
           options={channelOptions}
         />
         <Select
+          id="lead-filter-platform"
           style={{ width: 180 }}
           placeholder={t('lead.filterShop')}
           allowClear
@@ -84,6 +86,7 @@ export default function LeadFilterBar({
           options={platformOptions}
         />
         <Select
+          id="lead-filter-status"
           style={{ width: 120 }}
           placeholder={t('lead.filterStatus')}
           allowClear
@@ -92,6 +95,7 @@ export default function LeadFilterBar({
           options={Object.entries(STATUS_META).map(([k, m]) => ({ value: k, label: t(m.label) }))}
         />
         <Input
+          id="lead-filter-keyword"
           style={{ width: 200 }}
           placeholder={t('lead.searchPlaceholder')}
           prefix={<SearchOutlined />}

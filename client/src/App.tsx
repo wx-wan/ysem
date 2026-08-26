@@ -18,6 +18,7 @@ import QuotePage from './pages/QuotePage';
 import SamplePage from './pages/SamplePage';
 import SettlementPage from './pages/SettlementPage';
 import OrdersPage from './pages/Orders';
+import PurchasesPage from './pages/Purchases';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
 import UserManagementPage from './pages/UserManagement';
@@ -89,6 +90,7 @@ function App() {
         <Route path="orders" element={<PermRoute perm="orders"><OrdersPage /></PermRoute>} />
         <Route path="quotes" element={<PermRoute perm="sales:quotes"><QuotePage /></PermRoute>} />
         <Route path="samples" element={<PermRoute perm="sales:samples"><SamplePage /></PermRoute>} />
+        <Route path="purchase" element={<PermRoute perm="purchase"><PurchasesPage /></PermRoute>} />
         <Route path="production" element={<PermRoute perm="production"><ProductionPage /></PermRoute>} />
         <Route path="shipment" element={<PermRoute perm="shipment"><ShipmentPage /></PermRoute>} />
         <Route path="settlement" element={<PermRoute perm="sales:settlement"><SettlementPage /></PermRoute>} />

@@ -5,7 +5,7 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
-import { ownerScope, applyScope } from '../utils/scope';
+import { ownerScope, applyScope, roleScope } from '../utils/scope';
 import { paginateList } from '../utils/query';
 
 // ============ 校验 ============
@@ -81,11 +81,11 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
       where.createdAt = dateFilter;
     }
 
-    // 数据范围：管理员可用 assignedTo 自由筛选；普通用户只看「自己负责的 + 未分配（公海）」商机
+    // 数据范围：管理员可用 assignedTo 自由筛选；其余用户按角色 dataScope 过滤（含公海）
     if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
       where.assignedTo = assignedTo;
     } else {
-      applyScope(where, ownerScope(req, { field: 'assignedTo', includePublicSea: true }));
+      applyScope(where, await roleScope(req, { field: 'assignedTo' }));
     }
 
     if (AND.length > 0) where.AND = AND;
@@ -119,9 +119,8 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
 export const getKanban = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const where: Record<string, unknown> = {};
-    if (req.roleCode !== 'admin') {
-      where.OR = [{ assignedTo: req.userId }, { assignedTo: null }];
-    }
+    // 数据范围：按角色 dataScope 过滤（含公海）
+    Object.assign(where, await roleScope(req, { field: 'assignedTo' }));
 
     const pipelines = await prisma.salesPipeline.findMany({
       where,
@@ -189,10 +188,8 @@ export const getByProduct = async (req: AuthRequest, res: Response): Promise<voi
     const where: Record<string, unknown> = {
       leadProducts: { some: { productId } },
     };
-    // 非 admin 用户只看自己或未分配
-    if (req.roleCode !== 'admin') {
-      where.OR = [{ assignedTo: req.userId }, { assignedTo: null }];
-    }
+    // 数据范围：按角色 dataScope 过滤（含公海）
+    Object.assign(where, await roleScope(req, { field: 'assignedTo' }));
 
     const pipelines = await prisma.salesPipeline.findMany({
       where,
@@ -615,8 +612,11 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
 
 export const getByCustomer = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const where: Record<string, unknown> = { customerId: req.params.customerId };
+    // 数据范围：按角色 dataScope 过滤（修复越权）
+    Object.assign(where, await roleScope(req, { field: 'assignedTo' }));
     const pipelines = await prisma.salesPipeline.findMany({
-      where: { customerId: req.params.customerId },
+      where,
       orderBy: { updatedAt: 'desc' },
     });
     success(res, pipelines);

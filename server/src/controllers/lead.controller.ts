@@ -3,7 +3,7 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { ownerScope, applyScope } from '../utils/scope';
+import { ownerScope, applyScope, roleScope } from '../utils/scope';
 import { paginateList } from '../utils/query';
 
 const leadSchema = z.object({
@@ -74,11 +74,11 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     if (status) where.status = status;
     if (source) where.source = source;
 
-    // 数据范围：管理员可用 assignedTo 自由筛选；普通用户只能看「自己负责的 + 未分配（公海）」的线索
+    // 数据范围：管理员可用 assignedTo 自由筛选；其余用户按角色 dataScope 过滤（含公海）
     if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
       where.assignedTo = assignedTo;
     } else {
-      applyScope(where, ownerScope(req, { field: 'assignedTo', includePublicSea: true }));
+      applyScope(where, await roleScope(req, { field: 'assignedTo' }));
     }
 
     const { list, total, page: p, pageSize: ps } = await paginateList(
@@ -119,6 +119,8 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
+    // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
+    const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
     const item = await prisma.lead.create({
       data: {
         leadName,

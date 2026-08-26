@@ -10,6 +10,8 @@ interface CountrySelectProps<T = string> {
   onChange?: (value: T) => void;
   placeholder?: string;
   style?: React.CSSProperties;
+  /** 透传给内部 Select 的 id（供 Form.Item 关联 label 使用，a11y） */
+  id?: string;
   getPopupContainer?: (triggerNode: HTMLElement) => HTMLElement;
   /** 只读形态：渲染静态「国旗 + 文字」，无下拉、不可交互（用于卡片/详情展示） */
   readOnly?: boolean;
@@ -21,6 +23,7 @@ export default function CountrySelect({
   onChange,
   placeholder = '选择国家',
   style,
+  id,
   getPopupContainer,
   readOnly,
 }: CountrySelectProps) {
@@ -51,6 +54,7 @@ export default function CountrySelect({
 
   return (
     <Select
+      id={id}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
