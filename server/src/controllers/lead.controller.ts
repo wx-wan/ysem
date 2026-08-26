@@ -110,6 +110,15 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
       fail(res, 404, '线索不存在');
       return;
     }
+
+    // 数据范围校验：管理员不受限；其余角色只能查看自己负责或公海的线索
+    if (req.roleCode !== 'admin' && req.roleCode !== 'ADMIN') {
+      if (item.assignedTo && item.assignedTo !== req.userId) {
+        fail(res, 403, '无权查看该线索');
+        return;
+      }
+    }
+
     success(res, item);
   } catch {
     fail(res, 500, '服务器错误');
