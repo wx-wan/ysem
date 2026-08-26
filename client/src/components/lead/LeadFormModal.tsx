@@ -227,7 +227,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       specialReq: values.specialReq || null,
       customerType: values.customerType || null,
       urgency: values.urgency || null,
-      images: parseImages(values.images),
+      images: parseImages(values.images).map((i) => i.url),
     };
     try {
       if (editing) {

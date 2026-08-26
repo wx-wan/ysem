@@ -38,7 +38,7 @@ export interface Lead {
   targetMarket?: string | null;
   productType?: string | null;
   productDesc?: string | null;
-  images?: ProductImageItem[] | string | null;
+  images?: string[] | string | null;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;
@@ -74,7 +74,7 @@ export interface LeadPayload {
   targetMarket?: string | null;
   productType?: string | null;
   productDesc?: string | null;
-  images?: ProductImageItem[] | string | null;
+  images?: string[] | string | null;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;
