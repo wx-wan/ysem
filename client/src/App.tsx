@@ -1,5 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
-import SyncNavigate from './components/SyncNavigate';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { App as AntdApp } from 'antd';
 import { useAuthStore } from './stores/useAuthStore';
 import { usePermission } from './hooks/usePermission';
@@ -43,13 +42,13 @@ function SettingIndex() {
     ['system:approval', '/setting/approval'],
     ['system:logs', '/setting/logs'],
   ].find(([perm]) => hasPerm(perm));
-  return <SyncNavigate to={first ? first[1] : '/setting/user'} />;
+  return <Navigate to={first ? first[1] : '/setting/user'} replace />;
 }
 
 // 路由守卫 — 登录校验
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  if (!isAuthenticated) return <SyncNavigate to="/login" />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
 
@@ -78,7 +77,7 @@ function App() {
           </PrivateRoute>
         }
       >
-        <Route index element={<SyncNavigate to="/dashboard" />} />
+        <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="sales" element={<SalesLayout />}>
           <Route index element={<PermRoute perm="sales"><SalesPage /></PermRoute>} />
@@ -108,7 +107,7 @@ function App() {
           <Route path="customer-type" element={<PermRoute perm="system:customer-type"><SettingsCustomerTypePage /></PermRoute>} />
         </Route>
       </Route>
-      <Route path="/design" element={<SyncNavigate to="/setting" />} />
+      <Route path="/design" element={<Navigate to="/setting" />} />
       <Route path="*" element={<NotFoundPage />} />
     </Routes>
   );
