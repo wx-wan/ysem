@@ -11,11 +11,11 @@ import {
 
 const router = Router();
 
-router.get('/', getLeads);
-router.get('/:id', getLead);
-router.post('/', createLead);
-router.patch('/:id/status', changeLeadStatus);
-router.put('/:id', updateLead);
+router.get('/', authenticate, getLeads);
+router.get('/:id', authenticate, getLead);
+router.post('/', authenticate, createLead);
+router.patch('/:id/status', authenticate, changeLeadStatus);
+router.put('/:id', authenticate, updateLead);
 router.delete('/:id', authenticate, authorize('admin'), deleteLead);
 
 export default router;

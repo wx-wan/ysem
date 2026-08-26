@@ -59,7 +59,7 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const where: Record<string, unknown> = {};
+    let where: Record<string, unknown> = {};
     const AND: unknown[] = [];
 
     if (keyword) {
@@ -85,10 +85,12 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
     if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
       where.assignedTo = assignedTo;
     } else {
-      applyScope(where, await roleScope(req, { field: 'assignedTo' }));
+      where = applyScope(where, await roleScope(req, { field: 'assignedTo' }));
     }
 
-    if (AND.length > 0) where.AND = AND;
+    if (AND.length > 0) {
+      where.AND = [...((where.AND ?? []) as unknown[]), ...AND];
+    }
 
     const { list, total, page: p, pageSize: ps } = await paginateList(
       prisma.salesPipeline,

@@ -50,7 +50,7 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     const source = req.query.source as string;
     const assignedTo = req.query.assignedTo as string;
 
-    const where: Record<string, unknown> = {};
+    let where: Record<string, unknown> = {};
     if (keyword) {
       where.OR = [
         { leadName: { contains: keyword } },
@@ -78,7 +78,7 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
       where.assignedTo = assignedTo;
     } else {
-      applyScope(where, await roleScope(req, { field: 'assignedTo' }));
+      where = applyScope(where, await roleScope(req, { field: 'assignedTo' }));
     }
 
     const { list, total, page: p, pageSize: ps } = await paginateList(

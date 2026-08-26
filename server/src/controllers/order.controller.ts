@@ -54,7 +54,7 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const where: any = {};
+    let where: any = {};
 
     if (customerId) where.customerId = String(customerId);
     if (type) where.type = String(type);
@@ -76,7 +76,7 @@ export const list = async (req: AuthRequest, res: Response, next: NextFunction) 
     }
 
     // 数据范围：订单负责人=其关联客户的 ownerId，按角色 dataScope 过滤
-    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
+    where = applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
 
     const { list, total } = await paginateList(prisma.order, where, {
       page: Number(page),
@@ -409,10 +409,10 @@ export const listByCustomer = async (req: AuthRequest, res: Response, next: Next
   try {
     const { customerId } = req.params;
     const { type } = req.query;
-    const where: any = { customerId };
+    let where: any = { customerId };
     if (type) where.type = String(type);
     // 数据范围：非管理员只能查看自己有权限客户名下的单据（修复越权）
-    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
+    where = applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const orders = await prisma.order.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -427,11 +427,11 @@ export const listByCustomer = async (req: AuthRequest, res: Response, next: Next
 export const listPayments = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { orderId, customerId } = req.query;
-    const where: any = {};
+    let where: any = {};
     if (orderId) where.orderId = String(orderId);
     if (customerId) where.customerId = String(customerId);
     // 数据范围：按客户负责人过滤（修复越权）
-    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
+    where = applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const list = await prisma.paymentRecord.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -501,11 +501,11 @@ export const removePayment = async (req: AuthRequest, res: Response, next: NextF
 export const listProfits = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const { orderId, customerId } = req.query;
-    const where: any = {};
+    let where: any = {};
     if (orderId) where.orderId = String(orderId);
     if (customerId) where.customerId = String(customerId);
     // 数据范围：按客户负责人过滤（修复越权）
-    applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
+    where = applyScope(where, await roleScope(req, { field: 'ownerId', relation: 'customer' }));
     const list = await prisma.profitRecord.findMany({
       where,
       orderBy: { createdAt: "desc" },
