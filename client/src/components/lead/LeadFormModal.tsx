@@ -162,14 +162,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         specialReq: item.specialReq || undefined,
         customerType: item.customerType || undefined,
         urgency: item.urgency || undefined,
-        images: serializeImages(
-          parseImages(
-            typeof item.images === 'string'
-              ? item.images
-              : Array.isArray(item.images)
-              ? JSON.stringify(item.images)
-              : undefined,
-          ),
+        images: parseImages(
+          typeof item.images === 'string'
+            ? item.images
+            : Array.isArray(item.images)
+            ? JSON.stringify(item.images)
+            : undefined,
         ),
       });
     } catch {

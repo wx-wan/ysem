@@ -5,8 +5,8 @@ import { ProductImageItem, parseImages, serializeImages } from '../../utils/prod
 import './ProductImageList.css';
 
 interface ProductImageListProps {
-  /** 当前值：JSON 数组字符串 [{url,name}]，第一张为主图 */
-  value?: string;
+  /** 当前值：JSON 数组字符串 [{url,name}] 或已解析的图片对象数组 */
+  value?: string | ProductImageItem[];
   /** 值变化 */
   onChange?: (val: string) => void;
   /** 上传接口地址（baseURL 之外的完整路径，自动加 /api 前缀） */

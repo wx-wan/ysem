@@ -9,8 +9,10 @@ export interface ProductImageItem {
 }
 
 /** 解析 images 字段（JSON 数组或旧逗号分隔 URL），返回图片列表 */
-export function parseImages(raw?: string | null): ProductImageItem[] {
+export function parseImages(raw?: string | ProductImageItem[] | null): ProductImageItem[] {
   if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw !== 'string') return [];
   const trimmed = raw.trim();
   if (!trimmed) return [];
 
