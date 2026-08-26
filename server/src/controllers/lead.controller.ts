@@ -5,6 +5,16 @@ import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { ownerScope, applyScope, roleScope } from '../utils/scope';
 import { paginateList } from '../utils/query';
+import { activityLogger } from '../lib/activity-logger';
+
+const LEAD_STATUS_LABEL: Record<string, string> = {
+  NEW: '新建',
+  CONTACTED: '已联系',
+  QUALIFIED: '已确认',
+  INVALID: '无效',
+  CONVERTED: '已转化',
+  VALID: '有效',
+};
 
 const leadSchema = z.object({
   // 名称可选：未传时由系统按「渠道-平台-采购产品-数量」规则自动生成
@@ -14,7 +24,7 @@ const leadSchema = z.object({
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
-  status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED']).optional(),
+  status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED', 'VALID']).optional(),
   companyName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(100).nullable().optional(),
   contactMethod: z.string().trim().max(300).nullable().optional(),
@@ -216,11 +226,31 @@ export const deleteLead = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
-// 状态流转（如 转为已联系 / 已转化）
+// 状态流转（如 转为已联系 / 已转化 / 无效 / 有效）
 export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { status } = z.object({ status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED']) }).parse(req.body);
+    const { status } = z.object({ status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED', 'VALID']) }).parse(req.body);
+    const existing = await prisma.lead.findUnique({ where: { id: req.params.id } });
+    if (!existing) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
     await prisma.lead.update({ where: { id: req.params.id }, data: { status } });
+
+    const label = LEAD_STATUS_LABEL[status] || status;
+    void activityLogger.log({
+      userId: req.userId || '',
+      username: req.username || '',
+      realName: req.realName,
+      action: 'STATUS',
+      module: 'lead',
+      targetId: existing.id,
+      target: existing.leadName || existing.companyName || existing.id,
+      detail: `将线索状态${existing.status ? `由「${LEAD_STATUS_LABEL[existing.status] || existing.status}」` : ''}变更为「${label}」`,
+      customerId: existing.customerId || undefined,
+      productId: existing.productId || undefined,
+    });
+
     success(res, null, '状态已更新');
   } catch (err) {
     if (err instanceof z.ZodError) {

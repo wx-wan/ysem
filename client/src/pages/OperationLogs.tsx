@@ -25,6 +25,7 @@ const MODULE_LABELS: Record<string, string> = {
   quote: '报价',
   customer: '客户', sales: '商机', order: '订单',
   user: '用户', certificate: '资质',
+  lead: '线索',
 };
 // 动作中文映射
 const ACTION_LABELS: Record<string, string> = {

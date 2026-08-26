@@ -527,6 +527,7 @@
     "statusQualified": "已确认",
     "statusInvalid": "无效",
     "statusConverted": "已转化",
+    "statusValid": "有效",
     "statusUpdated": "状态已更新",
     "assignee": "负责人",
     "assigneePlaceholder": "请选择负责人（默认当前用户）",
@@ -543,6 +544,12 @@
     "createTitle": "新建线索",
     "createDesc": "录入一条新线索，关联客户与来源渠道",
     "editTitle": "线索详情",
+    "confirmLead": "确认",
+    "confirmLeadPending": "确认线索功能开发中",
+    "valid": "有效",
+    "confirmSetValid": "确定将该线索恢复为有效吗？",
+    "invalid": "无效",
+    "invalidSuccess": "已标记为无效",
     "batchDeleteConfirm": "确定删除选中的 {{n}} 条线索？"
   },
   "customerType": {

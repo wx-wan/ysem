@@ -699,7 +699,7 @@ model Lead {
   shopId       String? // 来源平台
   shop         Channel? @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
   source       String   @default("MANUAL") // MANUAL | EXCEL | RPA | SYNC
-  status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED
+  status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED | VALID
   companyName  String? // 未关联客户时直接记录的客户信息
   contactName  String?
   contactMethod String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp 等添加客户的方式

@@ -8,6 +8,7 @@ export const STATUS_META: Record<LeadStatus, { color: string; label: string }> =
   QUALIFIED: { color: 'gold', label: 'lead.statusQualified' },
   INVALID: { color: 'default', label: 'lead.statusInvalid' },
   CONVERTED: { color: 'green', label: 'lead.statusConverted' },
+  VALID: { color: 'green', label: 'lead.statusValid' },
 };
 
 /** 线索来源元数据（label 为 i18n key） */

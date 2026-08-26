@@ -20,7 +20,7 @@ import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
-import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
+import { leadApi, type Lead, type LeadPayload, type LeadStatus } from '../../api/lead';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
@@ -140,6 +140,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     try {
       const res = await leadApi.get(record.id);
       const item = res.data;
+      // 用详情接口的权威数据更新 editing（确保 status 等字段最新、完整）
+      setEditing(item);
       // 来源渠道回填：若为「渠道 / 平台」路径则拆分，渠道自动带出
       const sourceParts = (item.sourceChannel || '').split(' / ');
       form.setFieldsValue({
@@ -236,15 +238,40 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
+  // ============ 状态切换 ============
+  // NEW=新建 / VALID=有效 可编辑；INVALID=无效 不可编辑，但可切回有效
+  const changeLeadStatusTo = async (status: LeadStatus) => {
+    if (!editing) return;
+    try {
+      await leadApi.changeStatus(editing.id, status);
+      message.success(t('lead.statusUpdated'));
+      // 同步本地编辑状态，使表单禁用/启用即时生效（仅切换状态，不关闭弹窗）
+      setEditing((prev) => (prev ? { ...prev, status } : prev));
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
+  // 确认线索：新建 → 有效（转化为商机逻辑后续补充）
+  const handleConfirmLead = () => changeLeadStatusTo('VALID');
+
+  // 标记无效
+  const handleInvalidLead = () => changeLeadStatusTo('INVALID');
+
+  // 切回有效（从无效恢复）
+  const handleSetValid = () => changeLeadStatusTo('VALID');
+
   // ============ 确认建档 ============
   // 走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
   const confirmCreateCustomer = () => {
+    if (editing?.status === 'INVALID') return;
     if (!editing?.companyName) return;
     setInitialCustName(editing.companyName);
     setCustModalOpen(true);
   };
 
   const confirmCreateProduct = () => {
+    if (editing?.status === 'INVALID') return;
     if (!editing?.productName) return;
     productEditRef.current?.open(null, { name: editing.productName ?? '' });
   };
@@ -282,7 +309,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve={false} autoComplete="off">
+      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={editing?.status === 'INVALID'}>
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
@@ -305,10 +332,31 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Space>
           }
           footer={
-            <Space>
-              <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-              <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
-            </Space>
+            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+              <Space>
+                {editing && editing.status !== 'INVALID' && (
+                  <Button danger onClick={handleInvalidLead}>
+                    {t('lead.invalid')}
+                  </Button>
+                )}
+                {editing && editing.status === 'INVALID' && (
+                  <Button type="primary" disabled={false} onClick={handleSetValid}>
+                    {t('lead.valid')}
+                  </Button>
+                )}
+              </Space>
+              <Space>
+                <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
+                {editing && editing.status === 'NEW' && (
+                  <Button type="primary" onClick={handleConfirmLead}>
+                    {t('lead.confirmLead')}
+                  </Button>
+                )}
+                {editing?.status !== 'INVALID' && (
+                  <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
+                )}
+              </Space>
+            </div>
           }
         >
           {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
@@ -464,7 +512,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             {/* 第五行 + 第六行：左侧参考图片(占2份、跨2行)，右侧 2x2（认证要求/包装要求/交期要求/特殊要求） */}
             <Col span={12}>
               <Form.Item name="images" label={t('lead.images')}>
-                <ProductImageList />
+                <ProductImageList disabled={editing?.status === 'INVALID'} />
               </Form.Item>
             </Col>
             <Col span={12}>

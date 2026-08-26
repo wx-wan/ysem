@@ -489,6 +489,7 @@
     "statusQualified": "Qualified",
     "statusInvalid": "Invalid",
     "statusConverted": "Converted",
+    "statusValid": "Valid",
     "statusUpdated": "Status updated",
     "assignee": "Assignee",
     "assigneePlaceholder": "Please select assignee (defaults to current user)",
@@ -506,6 +507,12 @@
     "createDesc": "Create a lead and link customer & source channel",
     "editTitle": "Lead Detail",
     "view": "View",
+    "confirmLead": "Confirm",
+    "confirmLeadPending": "Confirm lead feature is in development",
+    "valid": "Valid",
+    "confirmSetValid": "Restore this lead to valid?",
+    "invalid": "Invalid",
+    "invalidSuccess": "Marked as invalid",
     "batchDeleteConfirm": "Delete the selected {{n}} leads?"
   },
   "customerType": {

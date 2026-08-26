@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
-import { Button, Popconfirm, Space, Table, Tag } from 'antd';
-import { DeleteOutlined, EyeOutlined } from '@ant-design/icons';
+import { Button, Popconfirm, Space, Table, Tag, Tooltip } from 'antd';
+import {
+  AuditOutlined,
+  CheckCircleOutlined,
+  DeleteOutlined,
+  StopOutlined,
+} from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import { type Lead, type LeadSource, type LeadStatus } from '../../api/lead';
@@ -15,6 +20,7 @@ interface Props {
   isAdmin: boolean;
   onEdit: (record: Lead) => void;
   onRemove: (id: string) => void;
+  onChangeStatus: (id: string, status: LeadStatus) => void;
 }
 
 /** 线索列表表格（含行选择 / 操作列） */
@@ -26,6 +32,7 @@ export default function LeadTable({
   isAdmin,
   onEdit,
   onRemove,
+  onChangeStatus,
 }: Props) {
   const { t } = useTranslation();
   const userOptions = useUserStore((s) => s.users);
@@ -44,7 +51,18 @@ export default function LeadTable({
         title: t('lead.name'),
         dataIndex: 'leadName',
         width: 200,
-        render: (v?: string) => v || '-',
+        render: (v?: string, r?: Lead) =>
+          v ? (
+            <a
+              style={{ color: '#1677ff' }}
+              onClick={() => r && onEdit(r)}
+              title={t('common.detail')}
+            >
+              {v}
+            </a>
+          ) : (
+            '-'
+          ),
       },
       {
         title: t('lead.customer'),
@@ -105,24 +123,53 @@ export default function LeadTable({
         title: t('common.operation'),
         key: 'action',
         fixed: 'right',
-        width: 130,
-        render: (_: unknown, r: Lead) => (
-          <Space size={4}>
-            <Button type="link" size="small" icon={<EyeOutlined />} onClick={() => onEdit(r)}>
-              {t('common.detail')}
-            </Button>
-            {isAdmin && (
-              <Popconfirm title={t('common.confirmDelete')} onConfirm={() => onRemove(r.id)}>
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
-                  {t('common.delete')}
-                </Button>
+        width: 200,
+        render: (_: unknown, r: Lead) => {
+          const isInvalid = r.status === 'INVALID';
+          const isNew = r.status === 'NEW';
+          return (
+            <Space size={2}>
+              {/* 确认：新建 → 有效 */}
+              <Tooltip title={t('lead.confirmLead')}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<AuditOutlined />}
+                  disabled={!isNew}
+                  onClick={() => onChangeStatus(r.id, 'VALID')}
+                />
+              </Tooltip>
+              {/* 有效：无效 → 有效（二次确认防止误触） */}
+              <Popconfirm title={t('lead.confirmSetValid')} onConfirm={() => onChangeStatus(r.id, 'VALID')}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<CheckCircleOutlined />}
+                  disabled={!isInvalid}
+                />
               </Popconfirm>
-            )}
-          </Space>
-        ),
+              {/* 无效：新建/有效 → 无效 */}
+              <Tooltip title={t('lead.invalid')}>
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<StopOutlined />}
+                  disabled={isInvalid}
+                  onClick={() => onChangeStatus(r.id, 'INVALID')}
+                />
+              </Tooltip>
+              {isAdmin && (
+                <Popconfirm title={t('common.confirmDelete')} onConfirm={() => onRemove(r.id)}>
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              )}
+            </Space>
+          );
+        },
       },
     ],
-    [t, isAdmin, userNameMap, onEdit, onRemove],
+    [t, isAdmin, userNameMap, onEdit, onRemove, onChangeStatus],
   );
 
   return (

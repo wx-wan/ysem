@@ -6,6 +6,7 @@ import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/Lead
 import LeadTable from '../components/lead/LeadTable';
 import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
+import { leadApi, type LeadStatus } from '../api/lead';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -28,6 +29,12 @@ export default function SalesLeads() {
     useLeadOptions();
 
   const formModalRef = useRef<LeadFormModalHandle>(null);
+
+  // 列表行内状态切换（确认 / 有效 / 无效）
+  const handleChangeStatus = async (id: string, status: LeadStatus) => {
+    await leadApi.changeStatus(id, status);
+    list.refresh();
+  };
 
   return (
     <div>
@@ -75,6 +82,7 @@ export default function SalesLeads() {
           isAdmin={isAdmin}
           onEdit={(r) => formModalRef.current?.openEdit(r)}
           onRemove={list.remove}
+          onChangeStatus={handleChangeStatus}
         />
       </Card>
 

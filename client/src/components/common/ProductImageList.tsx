@@ -129,6 +129,7 @@ export default function ProductImageList({
   /** 监听页面粘贴图片（打开弹窗时使用） */
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
+      if (disabled) return;
       const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
       if (!files.length) return;
       e.preventDefault();
@@ -136,7 +137,7 @@ export default function ProductImageList({
     };
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, []);
+  }, [disabled]);
 
   const safeCurrent = Math.min(current, Math.max(0, items.length - 1));
 

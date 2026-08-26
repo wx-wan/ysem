@@ -2,7 +2,7 @@ import axios from './request';
 import type { ProductImageItem } from '../utils/productImages';
 
 export type LeadSource = 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
-export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'INVALID' | 'CONVERTED';
+export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'INVALID' | 'CONVERTED' | 'VALID';
 export type LeadUrgency = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface LeadCustomer {
