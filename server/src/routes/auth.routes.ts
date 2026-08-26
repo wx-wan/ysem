@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { login, register, refreshToken, logout, getProfile, changePassword } from '../controllers/auth.controller';
+import { events } from '../controllers/notify.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -119,5 +120,16 @@ router.get('/profile', authenticate, getProfile);
  *         description: 密码修改成功
  */
 router.put('/password', authenticate, changePassword);
+
+/**
+ * @swagger
+ * /api/auth/events:
+ *   get:
+ *     tags: [认证]
+ *     summary: SSE 通知流（权限变更/审批/公告等实时推送）
+ *     description: token 通过 query 传递（EventSource 不支持自定义 Header）
+ *     security: []
+ */
+router.get('/events', events);
 
 export default router;

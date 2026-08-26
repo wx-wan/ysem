@@ -209,7 +209,10 @@
     "dataScopeAll": "All data",
     "dataScopeDept": "Department data",
     "dataScopeSelf": "Own data only",
-    "save": "Save"
+    "save": "Save",
+    "permChangedTitle": "Permissions changed",
+    "permChangedContent": "The permissions or data scope of the role assigned to the current account have changed. Refresh now to apply the latest permissions?",
+    "permChangedRefresh": "Refresh now"
   },
   "dept": {
     "title": "Department Management",

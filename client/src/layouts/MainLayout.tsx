@@ -27,6 +27,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { usePermission } from '../hooks/usePermission';
+import { useNotificationStream } from '../stores/useNotification';
+import PermChangedModal from '../components/PermChangedModal';
 import { authApi } from '../api/auth';
 import HeaderTools from './HeaderTools';
 
@@ -70,6 +72,8 @@ export default function MainLayout() {
   const { user, logout, ready } = useAuthStore();
   const { fetchRates, loading: ratesLoading } = useCurrencyStore();
   const { token } = theme.useToken();
+  // 连接 SSE 通知流：权限变更等实时推送给当前用户
+  useNotificationStream();
   // 侧边导航默认展开，仅通过顶部折叠按钮手动控制
   const [collapsed, setCollapsed] = useState(false);
 
@@ -303,6 +307,9 @@ export default function MainLayout() {
           </span>
         </div>
       )}
+
+      {/* 权限/数据范围变更确认刷新弹窗（自定义 AppModal，禁止关闭，仅可立即刷新） */}
+      <PermChangedModal />
     </Layout>
   );
 }

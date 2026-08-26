@@ -209,7 +209,10 @@
     "dataScopeAll": "全部数据",
     "dataScopeDept": "本部门数据",
     "dataScopeSelf": "仅本人数据",
-    "save": "保存"
+    "save": "保存",
+    "permChangedTitle": "权限已变更",
+    "permChangedContent": "当前账号所属角色的权限或数据范围已变更，是否立即刷新以应用最新权限？",
+    "permChangedRefresh": "立即刷新"
   },
   "dept": {
     "title": "部门管理",

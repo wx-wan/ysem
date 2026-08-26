@@ -3,6 +3,7 @@ import {
   Modal, Form, Input, InputNumber, App, Checkbox, Row, Col, Divider, Card, Space, Select,
 } from 'antd';
 import type { TFunction } from 'i18next';
+import { useUserStore } from '../../stores/useUserStore';
 import type { CheckboxChangeEvent } from 'antd/es/checkbox';
 
 interface PermNode {
@@ -150,6 +151,8 @@ export default function RoleFormModal({
 
       await permApi.assign(roleId, Array.from(checkedIds));
       message.success(isEdit ? t('role.updateSuccess') : t('role.createSuccess'));
+      // 角色权限/数据范围变更：刷新属于该角色的当前用户会话
+      useUserStore.getState().reloadRoleUsers(roleId);
       onSuccess();
       onClose();
     } catch { /* handled */ }
@@ -222,7 +225,7 @@ export default function RoleFormModal({
 
       {/* 权限配置 */}
       <div style={{ fontWeight: 600, marginBottom: 12 }}>{t('role.permConfig')}</div>
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         {groups.map((group) => {
           const allIds = group.list.map((n) => n.id);
           const checkedCount = allIds.filter((id) => checkedIds.has(id)).length;
@@ -246,7 +249,7 @@ export default function RoleFormModal({
                   <span style={{ fontWeight: 500 }}>{group.top.name}</span>
                 </Checkbox>
               }
-              bodyStyle={{ padding: '12px 16px' }}
+              styles={{ body: { padding: '12px 16px' } }}
             >
               {children.length > 0 ? (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px 16px' }}>

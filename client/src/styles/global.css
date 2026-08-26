@@ -1418,3 +1418,47 @@ html, body {
   border-color: var(--c-border-strong);
   transform: translateY(-2px);
 }
+
+/* ========== 权限变更确认刷新弹窗（PermChangedModal，基于 AppModal） ========== */
+/* 注意：className 与 app-modal-panel 同处一个元素，需用「同元素」选择器 */
+.perm-changed-modal.app-modal-panel {
+  border-radius: var(--radius-card);
+}
+.perm-changed-body {
+  display: flex;
+  gap: 16px;
+  padding: 32px 28px 12px;
+  align-items: flex-start;
+}
+.perm-changed-icon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--c-primary);
+  background: var(--c-primary-bg);
+}
+.perm-changed-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.perm-changed-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--c-text);
+  margin-bottom: 6px;
+}
+.perm-changed-desc {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--c-text-secondary);
+}
+/* footer（按钮区）内边距与正文对齐 */
+.perm-changed-modal.app-modal-panel > div:last-child {
+  padding: 4px 28px 28px;
+  border-top: none;
+}

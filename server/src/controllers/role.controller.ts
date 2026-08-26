@@ -4,6 +4,29 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { DEFAULT_DATA_SCOPE } from '../utils/scope';
+import { pushNotification } from '../utils/notify';
+
+/**
+ * 向某角色下所有用户推送通知（权限/数据范围变更时刷新其会话）。
+ * 角色下用户可能很多，这里逐个写库并推送在线连接；离线用户由首连补偿拉取。
+ */
+const notifyRoleUsers = async (roleId: string) => {
+  const users = await prisma.user.findMany({
+    where: { roleId },
+    select: { id: true },
+  });
+  await Promise.all(
+    users.map((u) =>
+      pushNotification({
+        userId: u.id,
+        type: 'PERM_CHANGED',
+        title: '权限已变更',
+        body: '您所属角色的权限或数据范围已更新',
+        payload: { roleId },
+      }),
+    ),
+  );
+};
 
 const roleSchema = z.object({
   name: z.string().min(1).max(50),
@@ -73,6 +96,10 @@ export const updateRole = async (req: AuthRequest, res: Response): Promise<void>
   try {
     const data = roleSchema.partial().parse(req.body);
     const role = await prisma.role.update({ where: { id: req.params.id }, data });
+    // 角色数据范围变更 → 通知该角色下所有用户刷新权限会话
+    if (data.dataScope !== undefined) {
+      await notifyRoleUsers(req.params.id);
+    }
     success(res, role, '角色更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -108,6 +135,9 @@ export const assignPermissions = async (req: AuthRequest, res: Response): Promis
         data: permissionIds.map(pid => ({ roleId: req.params.id, permissionId: pid })),
       }),
     ]);
+
+    // 权限变更 → 通知该角色下所有用户刷新权限会话
+    await notifyRoleUsers(req.params.id);
 
     success(res, null, '权限分配成功');
   } catch {

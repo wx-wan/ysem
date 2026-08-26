@@ -23,6 +23,20 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        // SSE 实时推送：禁用代理缓冲，确保事件流即时转发到前端
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes) => {
+            const ct = proxyRes.headers['content-type'] || '';
+            if (ct.includes('text/event-stream')) {
+              proxyRes.headers['cache-control'] = 'no-cache, no-transform';
+              proxyRes.headers['x-accel-buffering'] = 'no';
+              // http-proxy 默认对 streaming 响应即时转发，这里显式 flush 头
+              if (typeof (proxyRes as any).flushHeaders === 'function') {
+                (proxyRes as any).flushHeaders();
+              }
+            }
+          });
+        },
       },
     },
   },

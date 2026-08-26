@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { pushNotification } from '../utils/notify';
 
 const createUserSchema = z.object({
   username: z.string().min(2).max(50),
@@ -145,6 +146,21 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<void>
         status: true, roleId: true, departmentId: true,
       },
     });
+    // 角色变更 → 通知该用户（及其新角色下其他成员）刷新权限会话
+    if (data.roleId) {
+      const affected = await prisma.user.findMany({ where: { roleId: data.roleId }, select: { id: true } });
+      await Promise.all(
+        affected.map((u) =>
+          pushNotification({
+            userId: u.id,
+            type: 'PERM_CHANGED',
+            title: '权限已变更',
+            body: '您的角色或所属角色权限已更新',
+            payload: { roleId: data.roleId },
+          }),
+        ),
+      );
+    }
     success(res, user, '用户更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {

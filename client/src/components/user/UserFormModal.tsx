@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Form, Input, Select, App } from 'antd';
 import ImageUploadCropper from '../common/ImageUploadCropper';
+import { useUserStore } from '../../stores/useUserStore';
 
 interface UserRecord {
   id: string;
@@ -41,6 +42,10 @@ const UserFormModal: React.FC<Props> = React.memo(({ open, editingUser, roles, d
         const { username, password, ...rest } = values;
         await api.update(editingUser.id, rest);
         message.success(t('user.updateSuccess'));
+        // 角色可能被修改：若影响当前登录用户，刷新其会话（权限/数据范围）
+        if (rest.roleId && rest.roleId !== editingUser.role?.id) {
+          useUserStore.getState().reloadRoleUsers(rest.roleId);
+        }
       } else {
         await api.create(values);
         message.success(t('user.createSuccess'));

@@ -31,7 +31,7 @@ const CustomerList = memo(function CustomerList({
       render: (_: string, record: Customer) => {
         const grade = getGrade(record);
         return (
-          <Space direction="vertical" size={2}>
+          <Space orientation="vertical" size={2}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <KeyAccountStar
                 isKeyAccount={record.isKeyAccount || false}

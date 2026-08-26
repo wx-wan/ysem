@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { authApi } from '../api/auth';
 
 interface UserInfo {
   id: string;
@@ -35,6 +36,8 @@ interface AuthState {
   setTokens: (accessToken: string, refreshToken: string, expiresIn?: number) => void;
   /** 仅更新用户信息/权限（用于刷新页面后恢复 user，不触碰 token 与过期时间） */
   setUser: (user: UserInfo, permissions?: string[]) => void;
+  /** 重新拉取当前登录用户的资料与权限（权限/角色变更后即时生效） */
+  reloadUser: () => void;
   /** accessToken 是否已过期（或即将过期） */
   isTokenExpired: () => boolean;
   setPermissions: (permissions: string[]) => void;
@@ -76,6 +79,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     localStorage.setItem('permissions', JSON.stringify(perms));
     set({ user, permissions: perms, ready: true });
+  },
+
+  reloadUser: async () => {
+    try {
+      const res: any = await authApi.getProfile();
+      const { permissions } = res.data.data;
+      const perms = Array.isArray(permissions) ? permissions : [];
+      useAuthStore.getState().setUser(res.data.data, perms);
+    } catch {
+      /* 刷新失败不影响当前会话 */
+    }
   },
 
   setTokens: (accessToken, refreshToken, expiresIn) => {

@@ -36,6 +36,26 @@ model User {
   productGroups       ComboProduct[]       @relation("ComboProductOwner")
   comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
   leadAssignments     Lead[]               @relation("LeadAssignee")
+  notifications       Notification[]       @relation("NotificationRecipient")
+}
+
+// ========== 通知表 ==========
+// 通用通知中心：权限变更、审批、系统公告等均复用。在线用户经 SSE 实时推送，
+// 离线用户落库，下次连接时由 /api/auth/events 拉取未读。多实例部署时只需把
+// 推送环节改为 Redis pub/sub，写库与读取接口保持不变。
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   // 接收人
+  recipient User?    @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // PERM_CHANGED / APPROVAL / ANNOUNCE ...
+  title     String
+  body      String?
+  payload   Json?    // 业务附加数据，如 { roleId } 供前端决定动作
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, read])
 }
 
 // ========== 角色表 ==========
