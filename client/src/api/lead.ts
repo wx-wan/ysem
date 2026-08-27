@@ -112,4 +112,8 @@ export const leadApi = {
   delete: (id: string) => axios.delete<{ code: number; data: null }>(`/leads/${id}`).then((r) => r.data),
   changeStatus: (id: string, status: LeadStatus) =>
     axios.patch<{ code: number; data: null }>(`/leads/${id}/status`, { status }).then((r) => r.data),
+  transfer: (id: string, newOwnerId: string) =>
+    axios.post<{ code: number; data: null }>(`/leads/${id}/transfer`, { newOwnerId }).then((r) => r.data),
+  release: (id: string) =>
+    axios.post<{ code: number; data: null }>(`/leads/${id}/release`).then((r) => r.data),
 };

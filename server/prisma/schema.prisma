@@ -33,6 +33,7 @@ model User {
   customers           Customer[]
   productVisibilities ProductVisibleUser[]
   products            SingleProduct[]      @relation("ProductCreator")
+  singleProductOwnerships SingleProduct[]  @relation("SingleProductOwner")
   productGroups       ComboProduct[]       @relation("ComboProductOwner")
   comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
   leadAssignments     Lead[]               @relation("LeadAssignee")
@@ -520,6 +521,9 @@ model SingleProduct {
   activities   ProductActivity[] // 产品操作记录（时间线）
   createdBy    String? // 创建人 id
   creator      User?                @relation("ProductCreator", fields: [createdBy], references: [id])
+  // 负责人（指定人，转交线索时联动更新）
+  ownerId      String?
+  owner        User?                @relation("SingleProductOwner", fields: [ownerId], references: [id])
   createdAt    DateTime             @default(now())
   updatedAt    DateTime             @updatedAt
 }

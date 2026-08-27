@@ -13,8 +13,9 @@ import {
   Space,
   Tag,
   Modal,
+  Popconfirm,
 } from 'antd';
-import { CheckOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined, UndoOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect from '../CountrySelect';
@@ -76,6 +77,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [editing, setEditing] = useState<Lead | null>(null);
   const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
   const navigate = useNavigate();
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferUserId, setTransferUserId] = useState<string | undefined>();
   // 确认建档：新建客户弹窗（带入待确认客户名到公司名称）
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
@@ -297,6 +300,32 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
   };
 
+  // 释放线索（私海 → 公海）
+  const handleReleaseLead = async () => {
+    if (!editing) return;
+    try {
+      await leadApi.release(editing.id);
+      message.success(t('lead.releaseSuccess'));
+      onSaved?.();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
+  // 转交线索（联动客户/产品负责人）
+  const handleTransferLead = async () => {
+    if (!editing || !transferUserId) return;
+    try {
+      await leadApi.transfer(editing.id, transferUserId);
+      message.success(t('lead.transferSuccess'));
+      setTransferOpen(false);
+      setTransferUserId(undefined);
+      onSaved?.();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
   // 标记无效
   const handleInvalidLead = () => changeLeadStatusTo('INVALID');
 
@@ -360,17 +389,28 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           bodyPadding={20}
           extra={
             <Space size={8}>
-              <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: 14, lineHeight: '32px' }}>{t('lead.assignee')}</span>
-              <Form.Item name="assignedTo" noStyle>
-                <Select
-                  style={{ width: 180 }}
-                  showSearch
-                  allowClear
-                  placeholder={t('lead.assigneePlaceholder')}
-                  optionFilterProp="label"
-                  options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
-                />
-              </Form.Item>
+              <span>
+                {t('common.assignedTo')}：<b>{editing?.assignedUser?.realName || t('common.unassigned')}</b>
+              </span>
+              <Button
+                size="small"
+                icon={<SwapOutlined />}
+                disabled={!editing?.assignedTo}
+                onClick={() => setTransferOpen(true)}
+              >
+                {t('lead.transfer')}
+              </Button>
+              <Popconfirm
+                title={t('lead.confirmRelease')}
+                okText={t('common.ok')}
+                cancelText={t('common.cancel')}
+                disabled={!editing?.assignedTo}
+                onConfirm={handleReleaseLead}
+              >
+                <Button size="small" icon={<UndoOutlined />} disabled={!editing?.assignedTo}>
+                  {t('lead.release')}
+                </Button>
+              </Popconfirm>
             </Space>
           }
           footer={
@@ -401,6 +441,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </div>
           }
         >
+          {/* 负责人以只读文本显示于右上角，此处保留隐藏字段以便提交时携带 assignedTo */}
+          <Form.Item name="assignedTo" hidden>
+            <Input />
+          </Form.Item>
           {/* 溯源：已关联商机 */}
           {(editing?.pipelineId || linkedPipeline) && (
             <Alert
@@ -619,6 +663,30 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         audiences={audiences}
         onSuccess={handleProductFiled}
       />
+
+      {/* 转交线索：选择新负责人（联动客户/产品负责人） */}
+      <Modal
+        title={t('lead.transfer')}
+        open={transferOpen}
+        onOk={handleTransferLead}
+        onCancel={() => {
+          setTransferOpen(false);
+          setTransferUserId(undefined);
+        }}
+        okText={t('common.ok')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ disabled: !transferUserId }}
+      >
+        <Select
+          style={{ width: '100%' }}
+          showSearch
+          value={transferUserId}
+          onChange={setTransferUserId}
+          placeholder={t('lead.selectTransferTarget')}
+          optionFilterProp="label"
+          options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
+        />
+      </Modal>
     </>
   );
 });

@@ -561,7 +561,13 @@
     "convertCreatedCustomer": "客户未建档，已自动新建客户档案。",
     "convertCreatedProduct": "产品未建档，已自动新建产品档案。",
     "linkedPipeline": "关联商机",
-    "viewPipeline": "前往查看"
+    "viewPipeline": "前往查看",
+    "transfer": "转交",
+    "release": "释放",
+    "confirmRelease": "确认释放该线索到公海？释放后将不再归属你。",
+    "selectTransferTarget": "请选择转交的新负责人",
+    "releaseSuccess": "线索已释放到公海",
+    "transferSuccess": "线索已转交，并联动更新对应客户与产品的负责人"
   },
   "customerType": {
     "title": "客户类型",

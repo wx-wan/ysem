@@ -524,7 +524,13 @@
     "convertCreatedCustomer": "Customer was not filed; a new customer profile was created automatically.",
     "convertCreatedProduct": "Product was not filed; a new product profile was created automatically.",
     "linkedPipeline": "Linked opportunity",
-    "viewPipeline": "View"
+    "viewPipeline": "View",
+    "transfer": "Transfer",
+    "release": "Release",
+    "confirmRelease": "Release this lead to the public pool? It will no longer belong to you.",
+    "selectTransferTarget": "Select the new assignee to transfer to",
+    "releaseSuccess": "Lead released to public pool",
+    "transferSuccess": "Lead transferred; the linked customer and product owners were also updated"
   },
   "customerType": {
     "title": "Customer Type",

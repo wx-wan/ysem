@@ -228,6 +228,105 @@ export const deleteLead = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
+// ========== 释放线索（私海 → 公海） ==========
+export const releaseLead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const username = req.username || '';
+    const userId = req.userId || '';
+    const roleCode = req.roleCode;
+    const { id } = req.params;
+
+    const lead = await prisma.lead.findUnique({ where: { id } });
+    if (!lead) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+    if (!lead.assignedTo) {
+      fail(res, 400, '该线索已在公海');
+      return;
+    }
+    if (lead.assignedTo !== userId && roleCode !== 'admin') {
+      fail(res, 403, '无权释放该线索');
+      return;
+    }
+    await prisma.lead.update({ where: { id }, data: { assignedTo: null } });
+    await activityLogger.log({
+      userId,
+      username,
+      realName: req.realName,
+      action: 'RELEASE',
+      module: 'lead',
+      targetId: id,
+      target: lead.leadName || lead.companyName || id,
+      detail: `${username} 释放该线索到公海`,
+      customerId: lead.customerId || undefined,
+      productId: lead.productId || undefined,
+    });
+    success(res, null, '释放成功');
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};
+
+// ========== 转交线索（联动客户 / 产品负责人） ==========
+export const transferLead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { newOwnerId } = z.object({ newOwnerId: z.string().min(1) }).parse(req.body);
+    const username = req.username || '';
+    const userId = req.userId || '';
+    const roleCode = req.roleCode;
+
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      include: { assignedUser: { select: { id: true, realName: true } } },
+    });
+    if (!lead) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+    if (lead.assignedTo !== userId && roleCode !== 'admin') {
+      fail(res, 403, '无权转交该线索');
+      return;
+    }
+    const newOwner = await prisma.user.findUnique({ where: { id: newOwnerId } });
+    if (!newOwner || newOwner.status !== 'ACTIVE') {
+      fail(res, 400, '目标用户不存在或已停用');
+      return;
+    }
+    const oldOwnerName = lead.assignedUser?.realName || '未分配';
+
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: newOwnerId } })];
+    if (lead.customerId) {
+      updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: newOwnerId } }));
+    }
+    if (lead.productId) {
+      updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { ownerId: newOwnerId } }));
+    }
+    await prisma.$transaction(updates);
+
+    await activityLogger.log({
+      userId,
+      username,
+      realName: req.realName,
+      action: 'TRANSFERRED',
+      module: 'lead',
+      targetId: id,
+      target: lead.leadName || lead.companyName || id,
+      detail: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」`,
+      customerId: lead.customerId || undefined,
+      productId: lead.productId || undefined,
+    });
+    success(res, null, '转交成功');
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      fail(res, 400, err.errors.map((e) => e.message).join(', '));
+      return;
+    }
+    fail(res, 500, '服务器错误');
+  }
+};
+
 // 状态流转（如 转为已联系 / 已转化 / 无效 / 有效）
 export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
