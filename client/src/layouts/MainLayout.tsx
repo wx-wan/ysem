@@ -230,6 +230,9 @@ export default function MainLayout() {
           position: 'sticky',
           top: 0,
           height: '100vh',
+          flex: '0 0 232px',
+          // 高于内容区/顶部栏、低于浮层，防止 HMR 样式重排时被内容覆盖
+          zIndex: 9,
           overflow: 'auto',
         }}
       >
