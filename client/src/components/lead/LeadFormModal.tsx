@@ -10,6 +10,7 @@ import {
   Select,
   Space,
   Tag,
+  Modal,
 } from 'antd';
 import { CheckOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -25,6 +26,7 @@ import { type Product, type ProductAudience, type ProductCraft, type ProductOpti
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { flattenChannelOptions } from './constants';
+import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
 import { parseImages, serializeImages } from '../../utils/productImages';
@@ -252,8 +254,33 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 确认线索：新建 → 有效（转化为商机逻辑后续补充）
-  const handleConfirmLead = () => changeLeadStatusTo('VALID');
+  // 确认线索：检测客户/产品建档 → 未建档则新建 → 新建商机 → 标记「已确认」
+  const handleConfirmLead = () => {
+    if (!editing) return;
+    Modal.confirm({
+      title: t('lead.confirmConvertTitle'),
+      content: t('lead.confirmConvertContent'),
+      okText: t('common.ok'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        const res = await convertLeadToOpportunity(editing.id);
+        Modal.success({
+          title: t('lead.convertSuccessTitle'),
+          content: (
+            <div>
+              <p>{t('lead.convertSuccessDesc')}</p>
+              <p>
+                {t('lead.convertSuccessPipeline')}：<b>{res.pipeline?.pipelineNumber}</b>
+              </p>
+              {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
+              {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}
+            </div>
+          ),
+        });
+        onSaved?.();
+      },
+    });
+  };
 
   // 标记无效
   const handleInvalidLead = () => changeLeadStatusTo('INVALID');

@@ -1,18 +1,21 @@
 import { useEffect, useRef } from 'react';
-import { Card, Pagination, theme } from 'antd';
+import { Card, Pagination, Modal, theme } from 'antd';
+import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
 import LeadFilterBar from '../components/lead/LeadFilterBar';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
 import LeadTable from '../components/lead/LeadTable';
 import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
-import { leadApi, type LeadStatus } from '../api/lead';
+import { leadApi, type Lead, type LeadStatus } from '../api/lead';
+import { convertLeadToOpportunity } from '../utils/convertLead';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
 
 export default function SalesLeads() {
   const { token } = theme.useToken();
+  const { t } = useTranslation();
 
   // 用户 / 权限
   const currentUser = useAuthStore((s) => s.user);
@@ -34,6 +37,33 @@ export default function SalesLeads() {
   const handleChangeStatus = async (id: string, status: LeadStatus) => {
     await leadApi.changeStatus(id, status);
     list.refresh();
+  };
+
+  // 确认线索 → 转化为商机（检测客户/产品建档，未建档则新建，再建商机并标记「已确认」）
+  const handleConvert = (record: Lead) => {
+    Modal.confirm({
+      title: t('lead.confirmConvertTitle'),
+      content: t('lead.confirmConvertContent'),
+      okText: t('common.ok'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        const res = await convertLeadToOpportunity(record.id);
+        Modal.success({
+          title: t('lead.convertSuccessTitle'),
+          content: (
+            <div>
+              <p>{t('lead.convertSuccessDesc')}</p>
+              <p>
+                {t('lead.convertSuccessPipeline')}：<b>{res.pipeline?.pipelineNumber}</b>
+              </p>
+              {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
+              {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}
+            </div>
+          ),
+        });
+        list.refresh();
+      },
+    });
   };
 
   return (
@@ -83,6 +113,7 @@ export default function SalesLeads() {
           onEdit={(r) => formModalRef.current?.openEdit(r)}
           onRemove={list.remove}
           onChangeStatus={handleChangeStatus}
+          onConvert={handleConvert}
         />
       </Card>
 

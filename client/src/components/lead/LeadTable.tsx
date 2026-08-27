@@ -21,6 +21,7 @@ interface Props {
   onEdit: (record: Lead) => void;
   onRemove: (id: string) => void;
   onChangeStatus: (id: string, status: LeadStatus) => void;
+  onConvert: (record: Lead) => void;
 }
 
 /** 线索列表表格（含行选择 / 操作列） */
@@ -33,6 +34,7 @@ export default function LeadTable({
   onEdit,
   onRemove,
   onChangeStatus,
+  onConvert,
 }: Props) {
   const { t } = useTranslation();
   const userOptions = useUserStore((s) => s.users);
@@ -128,14 +130,14 @@ export default function LeadTable({
           const isInvalid = r.status === 'INVALID';
           return (
             <Space size={2}>
-              {/* 确认：→ 有效（仅无效状态禁用，与详情弹窗逻辑一致） */}
+              {/* 确认：转为商机（仅无效状态禁用，与详情弹窗逻辑一致） */}
               <Tooltip title={t('lead.confirmLead')}>
                 <Button
                   type="link"
                   size="small"
                   icon={<AuditOutlined />}
                   disabled={isInvalid}
-                  onClick={() => onChangeStatus(r.id, 'VALID')}
+                  onClick={() => onConvert(r)}
                 />
               </Tooltip>
               {/* 有效：无效 → 有效（二次确认防止误触） */}

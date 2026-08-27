@@ -513,7 +513,14 @@
     "confirmSetValid": "Restore this lead to valid?",
     "invalid": "Invalid",
     "invalidSuccess": "Marked as invalid",
-    "batchDeleteConfirm": "Delete the selected {{n}} leads?"
+    "batchDeleteConfirm": "Delete the selected {{n}} leads?",
+    "confirmConvertTitle": "Confirm converting to opportunity",
+    "confirmConvertContent": "Customer and product filing will be auto-checked: if not filed, they will be created automatically, then an opportunity is generated and the lead is marked as Confirmed. Continue?",
+    "convertSuccessTitle": "Converted to opportunity",
+    "convertSuccessDesc": "The lead has been successfully converted to an opportunity.",
+    "convertSuccessPipeline": "Opportunity No.",
+    "convertCreatedCustomer": "Customer was not filed; a new customer profile was created automatically.",
+    "convertCreatedProduct": "Product was not filed; a new product profile was created automatically."
   },
   "customerType": {
     "title": "Customer Type",

@@ -550,7 +550,14 @@
     "confirmSetValid": "确定将该线索恢复为有效吗？",
     "invalid": "无效",
     "invalidSuccess": "已标记为无效",
-    "batchDeleteConfirm": "确定删除选中的 {{n}} 条线索？"
+    "batchDeleteConfirm": "确定删除选中的 {{n}} 条线索？",
+    "confirmConvertTitle": "确认转为商机",
+    "confirmConvertContent": "将自动检测客户与产品是否已建档：未建档会自动新建，建档后生成商机记录，并把线索标记为「已确认」。确认继续？",
+    "convertSuccessTitle": "已转为商机",
+    "convertSuccessDesc": "线索已成功转化为商机。",
+    "convertSuccessPipeline": "商机单号",
+    "convertCreatedCustomer": "客户未建档，已自动新建客户档案。",
+    "convertCreatedProduct": "产品未建档，已自动新建产品档案。"
   },
   "customerType": {
     "title": "客户类型",
