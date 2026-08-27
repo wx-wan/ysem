@@ -399,6 +399,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           onClose={() => setDrawerOpen(false)}
           title={editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}
           closable={false}
+          headerBorder={false}
           width={960}
           bodyPadding={20}
           style={{ borderRadius: 20 }}
@@ -555,18 +556,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           )}
           {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
           <Row gutter={[16, 24]} className="lead-form-grid">
-            {/* 第一行：线索名称(占2份) / 紧急程度 / 采购产品 */}
-            <Col span={12}>
-              <Form.Item label={t('lead.name')} required>
-                <Input
-                  autoComplete="off"
-                  value={leadNamePreview}
-                  readOnly
-                  placeholder={t('lead.nameAutoPlaceholder')}
-                  style={{ color: 'rgba(0, 0, 0, 0.65)', background: '#f5f5f5', cursor: 'not-allowed' }}
-                />
-              </Form.Item>
-            </Col>
+            {/* 第一行：紧急程度 / 采购产品 / 来源渠道 / 来源平台（线索名称已在标题栏展示） */}
             <Col span={6}>
               <Form.Item name="urgency" label={t('lead.urgency')}>
                 <Select
@@ -646,7 +636,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Form.Item>
             </Col>
 
-            {/* 第三行 + 第四行：左侧 2x2（客户/沟通方式/目标市场/客户类型），右侧产品描述(占2份、跨2行) */}
+            {/* 客户信息 2x2（客户/沟通方式/目标市场/客户类型） */}
             <Col span={12}>
               <Row gutter={[16, 24]}>
                 <Col span={12}>
@@ -697,18 +687,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Col>
               </Row>
             </Col>
-            <Col span={12}>
-              <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
-              </Form.Item>
-            </Col>
-
-            {/* 第五行 + 第六行：左侧参考图片(占2份、跨2行)，右侧 2x2（认证要求/包装要求/交期要求/特殊要求） */}
-            <Col span={12}>
-              <Form.Item name="images" label={t('lead.images')}>
-                <ProductImageList disabled={editing?.status === 'INVALID'} />
-              </Form.Item>
-            </Col>
+            {/* 认证要求 2x2（认证要求/包装要求/交期要求/特殊要求） */}
             <Col span={12}>
               <Row gutter={[16, 24]}>
                 <Col span={12}>
@@ -732,6 +711,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Form.Item>
                 </Col>
               </Row>
+            </Col>
+
+            {/* 产品描述 / 参考图片（同一行） */}
+            <Col span={12}>
+              <Form.Item name="productDesc" label={t('lead.productDesc')}>
+                <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="images" label={t('lead.images')}>
+                <ProductImageList disabled={editing?.status === 'INVALID'} />
+              </Form.Item>
             </Col>
           </Row>
         </AppModal>

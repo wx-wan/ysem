@@ -40,6 +40,8 @@ export interface AppModalProps {
   style?: React.CSSProperties;
   /** 自定义 body style */
   bodyStyle?: React.CSSProperties;
+  /** 标题栏底部是否显示分割线，默认 true */
+  headerBorder?: boolean;
 }
 
 const AppModal: React.FC<AppModalProps> = ({
@@ -58,6 +60,7 @@ const AppModal: React.FC<AppModalProps> = ({
   className,
   style,
   bodyStyle,
+  headerBorder = true,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = React.useState(false);
@@ -130,7 +133,7 @@ const AppModal: React.FC<AppModalProps> = ({
     >
       <div ref={panelRef} className={`${className ?? ''} app-modal-panel${closing ? ' is-closing' : ''}`} style={panelStyle} onClick={(e) => e.stopPropagation()}>
         {showHeader && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid rgba(0,0,0,0.06)', flex: '0 0 auto' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', ...(headerBorder ? { borderBottom: '1px solid rgba(0,0,0,0.06)' } : {}), flex: '0 0 auto' }}>
             <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>{title}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {extra}
