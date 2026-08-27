@@ -414,9 +414,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     '?'}
                 </div>
                 <div style={{ lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{t('common.assignedTo')}</div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{t('sales.assignedTo')}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>
-                    {editing?.assignedUser?.realName || t('common.unassigned')}
+                    {editing?.assignedUser?.realName || t('sales.unassigned')}
                   </div>
                   <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
                     {editing?.assignedUser?.username || ''}
