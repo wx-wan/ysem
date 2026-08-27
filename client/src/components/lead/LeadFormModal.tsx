@@ -252,7 +252,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       images: parseImages(values.images).map((i) => i.url),
     };
     try {
-      if (editing) {
+      if (editing?.id) {
         await leadApi.update(editing.id, payload);
         message.success(t('common.updateSuccess'));
       } else {
