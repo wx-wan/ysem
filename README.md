@@ -16,8 +16,8 @@ ysem/
 ├── client/                # 前端应用
 │   └── src/
 │       ├── api/           # 接口封装（axios 实例 + 各模块 API）
-│       ├── pages/         # 页面（SalesLeads / Customers / Orders / Products / Setting* ...）
-│       ├── components/    # 公共组件（AppModal / SegmentedTabBar / CountrySelect ...）
+│       ├── pages/         # 页面（SalesLeads / Customers / Products / Sales / Orders / Setting* ...）
+│       ├── components/    # 公共组件（AppModal / CapsuleSwitch / SegmentedTabBar / CountrySelect / common/ ...）
 │       ├── store/         # Zustand 全局状态（auth / permission / menu）
 │       ├── i18n/          # 中英文文案
 │       └── styles/        # global.css 等全局样式
@@ -108,10 +108,21 @@ cd client && npm run dev
 - **线索名称**由前端按规则自动生成：`目标国家 + 产品名称 + 数量`（如 `美国-搪胶公仔-500`），新建/编辑时随字段变化实时预览，后端仅负责保存。
 - **负责人**：新建时默认当前登录用户，可在弹窗标题栏选择。
 - **获客渠道**：树形结构（渠道 → 平台/店铺），来源渠道录入为 `渠道 / 平台` 路径。
+- **我的线索 / 公海切换**：列表顶部胶囊切换（`CapsuleSwitch`，与客户页筛选组件一致）。「我的」展示当前用户负责的线索，「公海」展示无负责人（`assignedTo` 为 `null`）的线索，公海线索可认领归为自己。
+- **释放线索**：将负责人置空，线索回到公海。
+- **转交线索**：选择新的负责人后，会同步把该线索对应的**客户**与**产品**的指定人也更新为被选择的人。
+- **负责人展示**：列表与详情中的负责人只读展示文本（同客户详情交互），不支持在标题栏直接更换。
 
 ### 设置模块
 - 系统设置下的数据类页面（客户类型、角色、部门、权限、证书等）首帧直接进入加载态（骨架屏/表格遮罩），避免空白态闪烁。
 - 菜单切换路径：`/setting` 重定向到第一个子页（`/setting/customerType`）。
+
+## 前端 UI 与层级约定
+
+- **浮层层级统一管理**：所有弹窗 / 抽屉 / 浮层的 z-index 从 `client/src/zIndex.ts` 的 `Z_INDEX` 取值，禁止散落魔法数字。
+- **自定义浮层必须挂载到 `document.body`**：`AppModal`、自定义抽屉（如 `CustomerEditDrawer`）需用 `createPortal` 渲染到 body。页面容器 `.page-container` 声明了 `contain: layout style`，会创建独立层叠上下文，直接渲染在页面内的 `position: fixed` 浮层会被困住，导致被先打开的弹窗遮挡（z-index 失效）。
+- **交互组件统一**：列表/详情页的筛选、切换等使用自定义 `CapsuleSwitch`（胶囊切换）、`SegmentedTabBar`、`ViewModeSwitch`，与客户页风格保持一致。
+- **视觉规范对齐客户 / 产品页**：列表卡片阴影（`token.boxShadowSecondary`）、弹窗大圆角（`borderRadius: 20`）、链接色（`token.colorPrimary`）等在新页面 / 新组件中保持统一。
 
 ## 开发文档
 
