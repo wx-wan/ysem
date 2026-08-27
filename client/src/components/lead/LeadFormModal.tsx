@@ -437,34 +437,36 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </div>
                 </div>
               </div>
-              {/* 转交 / 释放 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Button
-                  shape="circle"
-                  size="middle"
-                  icon={<SwapOutlined style={{ color: token.colorWarning }} />}
-                  style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                  disabled={isCreate || !editing?.assignedTo}
-                  onClick={() => setTransferOpen(true)}
-                  title={t('lead.transfer')}
-                />
-                <Popconfirm
-                  title={t('lead.confirmRelease')}
-                  okText={t('common.ok')}
-                  cancelText={t('common.cancel')}
-                  disabled={isCreate || !editing?.assignedTo}
-                  onConfirm={handleReleaseLead}
-                >
+              {/* 转交 / 释放（仅已有线索详情展示，新建时隐藏） */}
+              {!isCreate && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Button
                     shape="circle"
                     size="middle"
-                    icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
+                    icon={<SwapOutlined style={{ color: token.colorWarning }} />}
                     style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                    disabled={isCreate || !editing?.assignedTo}
-                    title={t('lead.release')}
+                    disabled={!editing?.assignedTo}
+                    onClick={() => setTransferOpen(true)}
+                    title={t('lead.transfer')}
                   />
-                </Popconfirm>
-              </div>
+                  <Popconfirm
+                    title={t('lead.confirmRelease')}
+                    okText={t('common.ok')}
+                    cancelText={t('common.cancel')}
+                    disabled={!editing?.assignedTo}
+                    onConfirm={handleReleaseLead}
+                  >
+                    <Button
+                      shape="circle"
+                      size="middle"
+                      icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
+                      style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
+                      disabled={!editing?.assignedTo}
+                      title={t('lead.release')}
+                    />
+                  </Popconfirm>
+                </div>
+              )}
             </div>
           }
           footer={
