@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { Button, Input, Popconfirm, Select, Space, theme } from 'antd';
 import { DeleteOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -21,6 +22,8 @@ interface Props {
   isAdmin: boolean;
   selectedCount: number;
   onBatchDelete: () => void;
+  /** 筛选栏左侧前置内容（如「我的线索 / 公海」切换胶囊） */
+  prepend?: ReactNode;
 }
 
 /** 线索列表筛选栏（渠道 / 平台 / 状态 / 关键词 + 批量删除） */
@@ -39,6 +42,7 @@ export default function LeadFilterBar({
   isAdmin,
   selectedCount,
   onBatchDelete,
+  prepend,
 }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -63,6 +67,7 @@ export default function LeadFilterBar({
       }}
     >
       <Space wrap>
+        {prepend}
         <Select
           id="lead-filter-channel"
           style={{ width: 160 }}

@@ -79,20 +79,20 @@ export default function SalesLeads() {
       >
         <LeadCreateCard onClick={() => formModalRef.current?.openCreate()} />
 
-        <CapsuleSwitch<'mine' | 'pool'>
-          style={{ marginBottom: 12 }}
-          value={list.scope}
-          onChange={(val) => {
-            list.setScope(val);
-            list.setPage(1);
-          }}
-          options={[
-            { key: 'mine', label: t('lead.scopeMine') },
-            { key: 'pool', label: t('lead.scopePool') },
-          ]}
-        />
-
         <LeadFilterBar
+          prepend={
+            <CapsuleSwitch<'mine' | 'pool'>
+              value={list.scope}
+              onChange={(val) => {
+                list.setScope(val);
+                list.setPage(1);
+              }}
+              options={[
+                { key: 'mine', label: t('lead.scopeMine') },
+                { key: 'pool', label: t('lead.scopePool') },
+              ]}
+            />
+          }
           channels={channels}
           keyword={list.keyword}
           onKeywordChange={list.setKeyword}
