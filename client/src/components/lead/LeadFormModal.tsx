@@ -184,7 +184,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         deliveryReq: item.deliveryReq || undefined,
         specialReq: item.specialReq || undefined,
         customerType: item.customerType || undefined,
-        urgency: item.urgency || undefined,
         images: typeof item.images === 'string' ? item.images : Array.isArray(item.images) ? JSON.stringify(item.images) : '',
       });
       // 溯源：若已关联商机，加载商机信息用于展示
@@ -250,7 +249,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       deliveryReq: values.deliveryReq || null,
       specialReq: values.specialReq || null,
       customerType: values.customerType || null,
-      urgency: values.urgency || null,
       images: parseImages(values.images).map((i) => i.url),
     };
     try {
@@ -556,19 +554,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           )}
           {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
           <Row gutter={[16, 24]} className="lead-form-grid">
-            {/* 第一行：紧急程度 / 采购产品 / 来源渠道 / 来源平台（线索名称已在标题栏展示） */}
-            <Col span={6}>
-              <Form.Item name="urgency" label={t('lead.urgency')}>
-                <Select
-                  placeholder={t('lead.urgencyPlaceholder')}
-                  options={[
-                    { value: 'LOW', label: t('lead.urgencyLow') },
-                    { value: 'MEDIUM', label: t('lead.urgencyMedium') },
-                    { value: 'HIGH', label: t('lead.urgencyHigh') },
-                  ]}
-                />
-              </Form.Item>
-            </Col>
+            {/* 第一行：采购产品 / 来源渠道 / 来源平台（线索名称已在标题栏展示） */}
             <Col span={6}>
               <Form.Item
                 name="productKey"

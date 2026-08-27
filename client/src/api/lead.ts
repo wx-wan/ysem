@@ -3,7 +3,6 @@ import type { ProductImageItem } from '../utils/productImages';
 
 export type LeadSource = 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
 export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'INVALID' | 'CONVERTED' | 'VALID';
-export type LeadUrgency = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface LeadCustomer {
   id: string;
@@ -45,7 +44,6 @@ export interface Lead {
   deliveryReq?: string | null;
   specialReq?: string | null;
   customerType?: string | null;
-  urgency?: LeadUrgency | null;
   assignedTo?: string | null;
   assignedUser?: { id: string; username: string; realName: string | null } | null;
   createdBy?: string | null;
@@ -82,7 +80,6 @@ export interface LeadPayload {
   deliveryReq?: string | null;
   specialReq?: string | null;
   customerType?: string | null;
-  urgency?: LeadUrgency | null;
   assignedTo?: string | null;
 }
 

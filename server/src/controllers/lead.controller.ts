@@ -44,7 +44,6 @@ const leadSchema = z.object({
   deliveryReq: z.string().trim().max(1000).nullable().optional(),
   specialReq: z.string().trim().max(1000).nullable().optional(),
   customerType: z.string().trim().max(100).nullable().optional(),
-  urgency: z.enum(['LOW', 'MEDIUM', 'HIGH']).nullable().optional(),
   assignedTo: z.string().optional().nullable(),
   pipelineId: z.string().optional().nullable(), // 关联商机 ID（确认转商机后回填）
 });
@@ -182,7 +181,6 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         deliveryReq: data.deliveryReq ?? null,
         specialReq: data.specialReq ?? null,
         customerType: data.customerType ?? null,
-        urgency: data.urgency ?? null,
         assignedTo: data.assignedTo ?? null,
         createdBy: req.userId ?? null,
       },

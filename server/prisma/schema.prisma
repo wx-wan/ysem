@@ -734,7 +734,6 @@ model Lead {
   deliveryReq  String? // 交期要求
   specialReq   String? // 特殊要求
   customerType String? // 客户类型
-  urgency      String? // 客户紧急度：LOW | MEDIUM | HIGH
   assignedTo   String? // 负责人 userId
   assignedUser User?   @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   createdBy    String? // 创建人 userId
