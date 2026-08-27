@@ -347,7 +347,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Space>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-                {editing && editing.status === 'NEW' && (
+                {editing?.status !== 'INVALID' && (
                   <Button type="primary" onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
