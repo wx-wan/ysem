@@ -591,13 +591,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Col>
 
             {/* 参考图片纵向跨三行（左侧）；右侧三行：客户/沟通账号、采购产品/数量要求、目标价位/产品描述（最底行） */}
-            <Col span={12} style={{ display: 'flex' }}>
-              <Form.Item name="images" label={t('lead.images')} style={{ width: '100%', height: '100%' }}>
+            <Col span={12}>
+              <Form.Item name="images" label={t('lead.images')}>
                 <ProductImageList disabled={editing?.status === 'INVALID'} />
               </Form.Item>
             </Col>
-            <Col span={12} style={{ display: 'flex' }}>
-              <Row gutter={[16, 24]} style={{ width: '100%', height: '100%', alignItems: 'stretch' }}>
+            <Col span={12}>
+              <Row gutter={[16, 24]}>
                 <Col span={12}>
                   <Form.Item
                     name="customerKey"
@@ -675,18 +675,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
                   </Form.Item>
                 </Col>
-                <Col span={12} style={{ display: 'flex' }}>
-                  <Form.Item
-                    name="productDesc"
-                    label={t('lead.productDesc')}
-                    style={{ width: '100%', flex: 1, display: 'flex', flexDirection: 'column' }}
-                  >
-                    <Input.TextArea
-                      autoSize={{ minRows: 6 }}
-                      style={{ height: '100%', resize: 'none', flex: 1 }}
-                      autoComplete="off"
-                      placeholder={t('lead.productDescPlaceholder')}
-                    />
+                <Col span={12}>
+                  <Form.Item name="productDesc" label={t('lead.productDesc')}>
+                    <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
                   </Form.Item>
                 </Col>
               </Row>
