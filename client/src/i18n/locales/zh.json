@@ -483,7 +483,7 @@
     "customerContact": "联系人",
     "customerRequired": "请输入客户名称",
     "customerPlaceholder": "请输入或选择客户",
-    "contactMethod": "沟通方式",
+    "contactMethod": "沟通账号",
     "contactMethodPlaceholder": "如：微信 / 旺旺 / 邮箱 / WhatsApp 等",
     "customerPendingTip": "客户「{{name}}」尚未建档",
     "createCustomerNow": "创建客户档案",

@@ -636,7 +636,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Form.Item>
             </Col>
 
-            {/* 客户信息 2x2（客户/沟通方式/目标市场/客户类型） */}
+            {/* 客户信息 2x2（客户/沟通账号/目标市场/客户类型） */}
             <Col span={12}>
               <Row gutter={[16, 24]}>
                 <Col span={12}>

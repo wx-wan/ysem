@@ -451,7 +451,7 @@
     "customerContact": "Contact",
     "customerRequired": "Please enter the customer name",
     "customerPlaceholder": "Type or select a customer",
-    "contactMethod": "Contact Method",
+    "contactMethod": "Contact Account",
     "contactMethodPlaceholder": "e.g. WeChat / AliWangWang / Email / WhatsApp, etc.",
     "customerPendingTip": "Customer \"{{name}}\" is not filed yet",
     "createCustomerNow": "Create customer profile",
