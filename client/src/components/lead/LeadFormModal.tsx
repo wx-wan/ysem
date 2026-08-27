@@ -16,7 +16,7 @@ import {
   Popconfirm,
   theme,
 } from 'antd';
-import { CheckOutlined, SwapOutlined, UndoOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined, RollbackOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect from '../CountrySelect';
@@ -444,7 +444,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Button
                     shape="circle"
                     size="middle"
-                    icon={<UndoOutlined style={{ color: token.colorWarning }} />}
+                    icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
                     style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
                     disabled={!editing?.assignedTo}
                     title={t('lead.release')}
