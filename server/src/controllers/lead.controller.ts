@@ -119,7 +119,11 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
   try {
     const item = await prisma.lead.findUnique({
       where: { id: req.params.id },
-      include: { customer: true, product: { select: { id: true, name: true } } },
+      include: {
+        customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
+        product: { select: { id: true, name: true } },
+        assignedUser: { select: { id: true, username: true, realName: true } },
+      },
     });
     if (!item) {
       fail(res, 404, '线索不存在');
