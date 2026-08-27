@@ -16,7 +16,7 @@ import {
   Popconfirm,
   theme,
 } from 'antd';
-import { CheckOutlined, SwapOutlined, RollbackOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect from '../CountrySelect';
@@ -398,6 +398,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           title={editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}
+          closable={false}
           width={960}
           bodyPadding={20}
           style={{ borderRadius: 20 }}
@@ -464,6 +465,42 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Popconfirm>
                 </div>
               )}
+              {/* 关闭按钮（与客户详情样式一致） */}
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                title="关闭"
+                style={{
+                  width: 36,
+                  height: 36,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: 'none',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  backgroundColor: token.colorFillQuaternary,
+                  fontSize: 15,
+                  lineHeight: 1,
+                  transition: 'all 0.22s ease',
+                  padding: 0,
+                  flexShrink: 0,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = token.colorFillSecondary;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = token.colorFillQuaternary;
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.boxShadow = `0 0 0 3px ${token.colorFillSecondary}`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.boxShadow = 'none';
+                }}
+              >
+                <CloseOutlined style={{ color: token.colorTextSecondary }} />
+              </button>
             </div>
           }
           footer={
