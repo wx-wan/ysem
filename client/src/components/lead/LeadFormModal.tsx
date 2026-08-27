@@ -141,8 +141,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     form.resetFields();
     onRefreshCustomers();
     fetchUsers();
-    // 负责人已注册为表单字段（标题栏 Form.Item），同步写入即可，打开后自动回显当前创建人
-    form.setFieldsValue({ assignedTo: currentUser?.id ?? undefined });
+    // 新建线索默认负责人为当前登录用户：同时写入表单字段（用于提交）与 editing（用于右上角回显）
+    if (currentUser) {
+      const defaultAssignee = {
+        id: currentUser.id,
+        realName: currentUser.realName,
+        username: currentUser.username,
+      };
+      setEditing({ assignedTo: currentUser.id, assignedUser: defaultAssignee } as unknown as Lead);
+      form.setFieldsValue({ assignedTo: currentUser.id });
+    }
     setDrawerOpen(true);
   };
 
