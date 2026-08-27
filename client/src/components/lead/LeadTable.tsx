@@ -126,16 +126,15 @@ export default function LeadTable({
         width: 200,
         render: (_: unknown, r: Lead) => {
           const isInvalid = r.status === 'INVALID';
-          const isNew = r.status === 'NEW';
           return (
             <Space size={2}>
-              {/* 确认：新建 → 有效 */}
+              {/* 确认：→ 有效（仅无效状态禁用，与详情弹窗逻辑一致） */}
               <Tooltip title={t('lead.confirmLead')}>
                 <Button
                   type="link"
                   size="small"
                   icon={<AuditOutlined />}
-                  disabled={!isNew}
+                  disabled={isInvalid}
                   onClick={() => onChangeStatus(r.id, 'VALID')}
                 />
               </Tooltip>
