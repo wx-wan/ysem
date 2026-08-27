@@ -590,9 +590,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Form.Item>
             </Col>
 
-            {/* 第二、三行：左侧参考图片（纵向跨两行），右侧 客户 / 沟通账号 / 采购产品 / 数量要求 */}
-            <Col span={12}>
-              <Form.Item name="images" label={t('lead.images')}>
+            {/* 参考图片纵向跨三行（左侧）；右侧三行：客户/沟通账号、采购产品/数量要求、目标价位/产品描述（最底行） */}
+            <Col span={12} style={{ display: 'flex' }}>
+              <Form.Item name="images" label={t('lead.images')} style={{ width: '100%', height: '100%' }}>
                 <ProductImageList disabled={editing?.status === 'INVALID'} />
               </Form.Item>
             </Col>
@@ -669,19 +669,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     <Input autoComplete="off" placeholder={t('lead.quantityRequirementPlaceholder')} />
                   </Form.Item>
                 </Col>
+                {/* 参考图片右侧最底行：目标价位 / 产品描述 */}
+                <Col span={12}>
+                  <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
+                    <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="productDesc" label={t('lead.productDesc')}>
+                    <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
+                  </Form.Item>
+                </Col>
               </Row>
-            </Col>
-
-            {/* 第四行：目标价位 / 产品描述 */}
-            <Col span={8}>
-              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
-              </Form.Item>
-            </Col>
-            <Col span={16}>
-              <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
-              </Form.Item>
             </Col>
 
             {/* 第五行：要求（特殊要求 / 认证要求 / 包装要求 / 交期要求） */}
