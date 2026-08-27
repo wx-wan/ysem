@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Card, Pagination, Modal, Button, theme } from 'antd';
+import { Card, Pagination, Button, App, theme } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
@@ -18,6 +18,7 @@ import { useUserStore } from '../stores/useUserStore';
 export default function SalesLeads() {
   const { token } = theme.useToken();
   const { t } = useTranslation();
+  const { modal } = App.useApp();
 
   // 用户 / 权限
   const currentUser = useAuthStore((s) => s.user);
@@ -44,14 +45,14 @@ export default function SalesLeads() {
 
   // 确认线索 → 转化为商机（检测客户/产品建档，未建档则新建，再建商机并标记「已确认」）
   const handleConvert = (record: Lead) => {
-    Modal.confirm({
+    modal.confirm({
       title: t('lead.confirmConvertTitle'),
       content: t('lead.confirmConvertContent'),
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
         const res = await convertLeadToOpportunity(record.id);
-        const modal = Modal.success({
+        const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
             <div>
@@ -62,7 +63,7 @@ export default function SalesLeads() {
                   type="link"
                   style={{ padding: 0, height: 'auto', fontWeight: 700 }}
                   onClick={() => {
-                    modal.destroy();
+                    successModal.destroy();
                     navigate('/sales/opportunities');
                   }}
                 >

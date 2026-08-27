@@ -60,7 +60,7 @@ interface Props {
  */
 const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { token } = theme.useToken();
   const [form] = Form.useForm();
 
@@ -283,14 +283,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 确认线索：检测客户/产品建档 → 未建档则新建 → 新建商机 → 标记「已确认」
   const handleConfirmLead = () => {
     if (!editing) return;
-    Modal.confirm({
+    modal.confirm({
       title: t('lead.confirmConvertTitle'),
       content: t('lead.confirmConvertContent'),
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
         const res = await convertLeadToOpportunity(editing.id);
-        const modal = Modal.success({
+        const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
             <div>
@@ -301,7 +301,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   type="link"
                   style={{ padding: 0, height: 'auto', fontWeight: 700 }}
                   onClick={() => {
-                    modal.destroy();
+                    successModal.destroy();
                     onClose();
                     navigate('/sales/opportunities');
                   }}
