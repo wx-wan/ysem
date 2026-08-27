@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Input, DatePicker, App, theme, Form } from 'antd';
 import { CloseOutlined, SaveOutlined, MailOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -88,7 +89,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
 
   if (!customer) return null;
 
-  return (
+  return createPortal(
     <>
       {/* 遮罩层 */}
       {open && (
@@ -265,7 +266,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 };
 

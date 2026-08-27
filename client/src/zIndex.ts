@@ -1,5 +1,12 @@
 // 全局层级（z-index）统一管理
 // 所有涉及浮层/弹窗/抽屉层级的组件都应从这里取值，避免散落的魔法数字互相覆盖。
+//
+// 重要约定：
+// 1. 自定义浮层（AppModal、自定义 Drawer 等）必须用 createPortal 挂载到 document.body，
+//    否则会被 .page-container 的 `contain: layout style` 层叠上下文困住，
+//    导致 fixed 定位与 z-index 失效（表现为弹窗永远被先打开的浮层遮挡）。
+// 2. antd 原生 Modal/Drawer 默认已挂载到 body，只需通过 zIndex prop 引用这里的值。
+// 3. 页面内部装饰性层叠（卡片内 z-index、sticky 页头等）不属于浮层，不要占用这里的档位。
 
 export const Z_INDEX = {
   /** 基础浮层（dropdown / tooltip / message 等 antd 默认浮层） */
