@@ -21,17 +21,17 @@ export default function LeadCreateCard({ onClick }: Props) {
         gap: 12,
         padding: '14px 18px',
         marginBottom: 16,
-        borderRadius: token.borderRadius,
+        borderRadius: token.borderRadiusLG,
         cursor: 'pointer',
         background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
-        boxShadow: `0 0 0 1px ${token.colorPrimary}`,
+        boxShadow: token.boxShadowSecondary,
         transition: 'all .2s',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 0 0 1px ${token.colorPrimary}, 0 2px 12px ${token.colorPrimaryBg}`;
+        e.currentTarget.style.boxShadow = `0 4px 16px ${token.colorPrimaryBg}`;
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = `0 0 0 1px ${token.colorPrimary}`;
+        e.currentTarget.style.boxShadow = token.boxShadowSecondary;
       }}
     >
       <Space size={10}>

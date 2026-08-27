@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Card, Pagination, Modal, theme, Segmented } from 'antd';
+import { Card, Pagination, Modal, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
 import LeadFilterBar from '../components/lead/LeadFilterBar';
+import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
 import LeadTable from '../components/lead/LeadTable';
 import { useLeadList } from '../components/lead/useLeadList';
@@ -70,20 +71,24 @@ export default function SalesLeads() {
     <div>
       <Card
         variant="borderless"
-        style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}
+        style={{
+          borderRadius: token.borderRadiusLG,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          boxShadow: token.boxShadowSecondary,
+        }}
       >
         <LeadCreateCard onClick={() => formModalRef.current?.openCreate()} />
 
-        <Segmented
+        <CapsuleSwitch<'mine' | 'pool'>
           style={{ marginBottom: 12 }}
           value={list.scope}
           onChange={(val) => {
-            list.setScope(val as 'mine' | 'pool');
+            list.setScope(val);
             list.setPage(1);
           }}
           options={[
-            { label: t('lead.scopeMine'), value: 'mine' },
-            { label: t('lead.scopePool'), value: 'pool' },
+            { key: 'mine', label: t('lead.scopeMine') },
+            { key: 'pool', label: t('lead.scopePool') },
           ]}
         />
 

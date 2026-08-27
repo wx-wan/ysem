@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Button, Popconfirm, Space, Table, Tag, Tooltip } from 'antd';
+import { Button, Popconfirm, Space, Table, Tag, Tooltip, theme } from 'antd';
 import {
   AuditOutlined,
   CheckCircleOutlined,
@@ -37,6 +37,7 @@ export default function LeadTable({
   onConvert,
 }: Props) {
   const { t } = useTranslation();
+  const { token } = theme.useToken();
   const userOptions = useUserStore((s) => s.users);
 
   const userNameMap = useMemo(() => {
@@ -56,7 +57,7 @@ export default function LeadTable({
         render: (v?: string, r?: Lead) =>
           v ? (
             <a
-              style={{ color: '#1677ff' }}
+              style={{ color: token.colorPrimary }}
               onClick={() => r && onEdit(r)}
               title={t('common.detail')}
             >

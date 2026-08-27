@@ -387,6 +387,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           title={editing ? t('lead.editTitle') : t('lead.createTitle')}
           width={960}
           bodyPadding={20}
+          style={{ borderRadius: 20 }}
           extra={
             <Space size={8}>
               <span>
