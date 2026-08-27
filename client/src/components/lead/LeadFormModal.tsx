@@ -14,6 +14,7 @@ import {
   Tag,
   Modal,
   Popconfirm,
+  theme,
 } from 'antd';
 import { CheckOutlined, SwapOutlined, UndoOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -60,6 +61,7 @@ interface Props {
 const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
   const { message } = App.useApp();
+  const { token } = theme.useToken();
   const [form] = Form.useForm();
 
   const {
@@ -389,30 +391,67 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           bodyPadding={20}
           style={{ borderRadius: 20 }}
           extra={
-            <Space size={8}>
-              <span>
-                {t('common.assignedTo')}：<b>{editing?.assignedUser?.realName || t('common.unassigned')}</b>
-              </span>
-              <Button
-                size="small"
-                icon={<SwapOutlined />}
-                disabled={!editing?.assignedTo}
-                onClick={() => setTransferOpen(true)}
-              >
-                {t('lead.transfer')}
-              </Button>
-              <Popconfirm
-                title={t('lead.confirmRelease')}
-                okText={t('common.ok')}
-                cancelText={t('common.cancel')}
-                disabled={!editing?.assignedTo}
-                onConfirm={handleReleaseLead}
-              >
-                <Button size="small" icon={<UndoOutlined />} disabled={!editing?.assignedTo}>
-                  {t('lead.release')}
-                </Button>
-              </Popconfirm>
-            </Space>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {/* 负责人信息 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #fa8c16 0%, #f5a623 100%)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 600,
+                    flexShrink: 0,
+                  }}
+                >
+                  {editing?.assignedUser?.realName?.[0] ||
+                    editing?.assignedUser?.username?.[0] ||
+                    '?'}
+                </div>
+                <div style={{ lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{t('common.assignedTo')}</div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>
+                    {editing?.assignedUser?.realName || t('common.unassigned')}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
+                    {editing?.assignedUser?.username || ''}
+                  </div>
+                </div>
+              </div>
+              {/* 转交 / 释放 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Button
+                  shape="circle"
+                  size="middle"
+                  icon={<SwapOutlined style={{ color: token.colorWarning }} />}
+                  style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
+                  disabled={!editing?.assignedTo}
+                  onClick={() => setTransferOpen(true)}
+                  title={t('lead.transfer')}
+                />
+                <Popconfirm
+                  title={t('lead.confirmRelease')}
+                  okText={t('common.ok')}
+                  cancelText={t('common.cancel')}
+                  disabled={!editing?.assignedTo}
+                  onConfirm={handleReleaseLead}
+                >
+                  <Button
+                    shape="circle"
+                    size="middle"
+                    icon={<UndoOutlined style={{ color: token.colorWarning }} />}
+                    style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
+                    disabled={!editing?.assignedTo}
+                    title={t('lead.release')}
+                  />
+                </Popconfirm>
+              </div>
+            </div>
           }
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
