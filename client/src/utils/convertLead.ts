@@ -65,6 +65,7 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ConvertR
     customerId: customerId ?? undefined,
     products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
     assignedTo: lead.assignedTo ?? undefined,
+    leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
   } as any);
   const pipeline = pipelineRes?.data ?? pipelineRes;
 

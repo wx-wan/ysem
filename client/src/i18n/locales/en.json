@@ -398,7 +398,9 @@
     "transferSuccess": "Transferred successfully",
     "transferFailed": "Transfer failed",
     "selectAssignee": "Select assignee",
-    "filterByOwner": "Filter by owner"
+    "filterByOwner": "Filter by owner",
+    "sourceLead": "Source lead",
+    "viewLead": "View"
   },
   "channel": {
     "name": "Name",
@@ -520,7 +522,9 @@
     "convertSuccessDesc": "The lead has been successfully converted to an opportunity.",
     "convertSuccessPipeline": "Opportunity No.",
     "convertCreatedCustomer": "Customer was not filed; a new customer profile was created automatically.",
-    "convertCreatedProduct": "Product was not filed; a new product profile was created automatically."
+    "convertCreatedProduct": "Product was not filed; a new product profile was created automatically.",
+    "linkedPipeline": "Linked opportunity",
+    "viewPipeline": "View"
   },
   "customerType": {
     "title": "Customer Type",

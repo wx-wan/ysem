@@ -51,6 +51,7 @@ export interface Lead {
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
+  pipelineId?: string | null; // 关联商机 ID（确认转商机后回填，便于溯源）
 }
 
 export interface LeadPayload {

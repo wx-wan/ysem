@@ -38,6 +38,7 @@ export interface SalesItem {
   status?: string;
   updateTime?: string;
   quantity?: number;
+  leadId?: string | null; // 来源线索 ID（便于溯源）
 }
 
 /** 销售阶段（线索/商机/订单）中文与配色 */

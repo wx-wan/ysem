@@ -1,6 +1,8 @@
 import React from 'react';
-import { Drawer, Descriptions, Tag, Space, Button, Popconfirm, Select, Card } from 'antd';
+import { Drawer, Descriptions, Tag, Space, Button, Popconfirm, Select, Card, Alert } from 'antd';
 import { EditOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
 import { SALES_STAGES, STAGE_LABELS } from './stages';
@@ -31,6 +33,8 @@ interface Props {
 }
 
 const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClose, onStageChange, onEdit, onDelete }) => {
+  const navigate = useNavigate();
+  const { t } = useTranslation();
   if (!detailItem) return null;
   const st = STAGES.find((s) => s.key === detailItem.stage);
 
@@ -57,6 +61,24 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
         </Space>
       }
     >
+      {/* 溯源：来源线索 */}
+      {detailItem.leadId && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={
+            <Space>
+              <span>
+                {t('sales.sourceLead')}：<b>{detailItem.leadId}</b>
+              </span>
+              <Button type="link" size="small" onClick={() => navigate('/sales/leads')}>
+                {t('sales.viewLead')}
+              </Button>
+            </Space>
+          }
+        />
+      )}
       <Descriptions column={1} size="small" bordered>
         <Descriptions.Item label="标题">{detailItem.title}</Descriptions.Item>
         <Descriptions.Item label="阶段">

@@ -1,6 +1,8 @@
 import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   App,
+  Alert,
   AutoComplete,
   Button,
   Form,
@@ -22,6 +24,7 @@ import { ProductEditModal, type ProductEditModalHandle } from '../product/modals
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload, type LeadStatus } from '../../api/lead';
+import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
@@ -71,6 +74,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
+  const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
+  const navigate = useNavigate();
   // 确认建档：新建客户弹窗（带入待确认客户名到公司名称）
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
@@ -138,6 +143,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const openEdit = async (record: Lead) => {
     setEditing(record);
+    setLinkedPipeline(null);
     onRefreshCustomers();
     try {
       const res = await leadApi.get(record.id);
@@ -168,6 +174,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         urgency: item.urgency || undefined,
         images: typeof item.images === 'string' ? item.images : Array.isArray(item.images) ? JSON.stringify(item.images) : '',
       });
+      // 溯源：若已关联商机，加载商机信息用于展示
+      if (item.pipelineId) {
+        try {
+          const pRes = await salesApi.get(item.pipelineId);
+          setLinkedPipeline(pRes.data.data);
+        } catch {
+          setLinkedPipeline(null);
+        }
+      }
     } catch {
       /* 详情加载失败可忽略，表单保持空 */
     }
@@ -386,6 +401,24 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </div>
           }
         >
+          {/* 溯源：已关联商机 */}
+          {(editing?.pipelineId || linkedPipeline) && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message={
+                <Space>
+                  <span>
+                    {t('lead.linkedPipeline')}：<b>{linkedPipeline?.pipelineNumber || editing?.pipelineId}</b>
+                  </span>
+                  <Button type="link" size="small" onClick={() => navigate('/sales/opportunities')}>
+                    {t('lead.viewPipeline')}
+                  </Button>
+                </Space>
+              }
+            />
+          )}
           {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
           <Row gutter={[16, 24]} className="lead-form-grid">
             {/* 第一行：线索名称(占2份) / 紧急程度 / 采购产品 */}

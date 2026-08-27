@@ -374,6 +374,10 @@ model SalesPipeline {
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id])
 
+  // 来源线索（线索确认转商机时绑定，便于溯源）
+  leadId String? // 普通字段：来源线索 ID，用于溯源与查询
+  lead   Lead?   @relation("LeadPipeline") // 反向关系（外键在 Lead.pipelineId 一侧）
+
   // 基础信息（各阶段通用）
   title       String
   companyName String
@@ -694,6 +698,8 @@ model Lead {
   leadName     String // 线索名称（标题）
   customerId   String? // 关联客户
   customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  pipelineId   String? @unique // 关联商机（确认转商机后回填，便于溯源）
+  pipeline     SalesPipeline? @relation("LeadPipeline", fields: [pipelineId], references: [id], onDelete: SetNull)
   channelId    String? // 来源渠道
   channel      Channel? @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
   shopId       String? // 来源平台

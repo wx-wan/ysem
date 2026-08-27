@@ -431,7 +431,9 @@
     "transferSuccess": "转交成功",
     "transferFailed": "转交失败",
     "selectAssignee": "选择业务员",
-    "filterByOwner": "筛选业务员"
+    "filterByOwner": "筛选业务员",
+    "sourceLead": "来源线索",
+    "viewLead": "前往查看"
   },
   "channel": {
     "name": "名称",
@@ -557,7 +559,9 @@
     "convertSuccessDesc": "线索已成功转化为商机。",
     "convertSuccessPipeline": "商机单号",
     "convertCreatedCustomer": "客户未建档，已自动新建客户档案。",
-    "convertCreatedProduct": "产品未建档，已自动新建产品档案。"
+    "convertCreatedProduct": "产品未建档，已自动新建产品档案。",
+    "linkedPipeline": "关联商机",
+    "viewPipeline": "前往查看"
   },
   "customerType": {
     "title": "客户类型",

@@ -46,6 +46,7 @@ const leadSchema = z.object({
   customerType: z.string().trim().max(100).nullable().optional(),
   urgency: z.enum(['LOW', 'MEDIUM', 'HIGH']).nullable().optional(),
   assignedTo: z.string().optional().nullable(),
+  pipelineId: z.string().optional().nullable(), // 关联商机 ID（确认转商机后回填）
 });
 
 // 列表：分页 + 多维筛选
@@ -198,6 +199,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     if (data.productId === null) update.productId = null;
     if (data.productName === null) update.productName = null;
     if (data.assignedTo === null) update.assignedTo = null;
+    if (data.pipelineId === null) update.pipelineId = null;
     if (data.images !== undefined) {
       update.images =
         data.images === null

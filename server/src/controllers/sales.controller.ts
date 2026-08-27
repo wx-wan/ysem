@@ -38,6 +38,8 @@ const createPipelineSchema = z.object({
   orderType: z.enum(['SAMPLE', 'FORMAL']).optional().nullable(),
   orderNotes: z.string().optional().nullable(),
   assignedTo: z.string().optional().nullable(),
+  // 来源线索 ID（线索确认转商机时绑定，便于溯源）
+  leadId: z.string().optional().nullable(),
   // 线索关联产品：[{ productId, quantity }]
   products: z.array(z.object({
     productId: z.string(),
@@ -299,6 +301,14 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
         target: data.title,
         detail: `创建了商机「${data.title}」`,
         customerId: data.customerId,
+      });
+    }
+
+    // 双向绑定：若来源线索，回填线索的关联商机 ID，便于溯源
+    if (data.leadId) {
+      await prisma.lead.update({
+        where: { id: data.leadId },
+        data: { pipelineId: pipeline.id },
       });
     }
 
