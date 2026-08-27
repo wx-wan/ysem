@@ -162,7 +162,6 @@ export default function SalesLeads() {
         onRefreshCustomers={fetchCustomers}
         onRefreshProducts={fetchProducts}
         onSaved={list.refresh}
-        onCreateNew={() => formModalRef.current?.openCreate()}
       />
     </div>
   );

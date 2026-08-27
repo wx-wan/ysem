@@ -52,8 +52,6 @@ interface Props {
   onRefreshProducts: () => void;
   /** 保存 / 关联成功后刷新列表 */
   onSaved: () => void;
-  /** 详情页点击「新建线索」时触发（打开空白新建表单） */
-  onCreateNew?: () => void;
 }
 
 /**
@@ -75,7 +73,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     onRefreshCustomers,
     onRefreshProducts,
     onSaved,
-    onCreateNew,
   } = props;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -481,10 +478,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Button type="primary" disabled={false} onClick={handleSetValid}>
                     {t('lead.valid')}
                   </Button>
-                )}
-                {/* 详情页提供「新建线索」入口 */}
-                {editing?.id && onCreateNew && (
-                  <Button onClick={onCreateNew}>{t('lead.createTitle')}</Button>
                 )}
               </Space>
               <Space>
