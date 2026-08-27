@@ -554,39 +554,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           )}
           {/* 统一网格布局：每行平分四份（span=6），行间距加大更透气；stretch 让同排 Col 等高 */}
           <Row gutter={[16, 24]} className="lead-form-grid">
-            {/* 第一行：采购产品 / 来源渠道 / 来源平台（线索名称已在标题栏展示） */}
-            <Col span={6}>
-              <Form.Item
-                name="productKey"
-                label={
-                  editing?.productName && !editing.productId ? (
-                    <Space size={4}>
-                      <span>{t('lead.product')}</span>
-                      <Tag
-                        color="orange"
-                        style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                        onClick={confirmCreateProduct}
-                        title={t('lead.productPendingTip', { name: editing.productName })}
-                      >
-                        {t('lead.pendingTag')}
-                      </Tag>
-                    </Space>
-                  ) : (
-                    t('lead.product')
-                  )
-                }
-                rules={[{ required: true, message: t('lead.productRequired') }]}
-              >
-                <AutoComplete
-                  allowClear
-                  placeholder={t('lead.productPlaceholder')}
-                  options={productNameOptions}
-                  filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
-                />
-              </Form.Item>
-            </Col>
-
-            {/* 第二行：来源渠道 / 来源平台 / 数量需求 / 目标价位 */}
+            {/* 第一行：来源渠道 / 来源平台 / 目标市场 / 客户类型 */}
             <Col span={6}>
               <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
                 <Select
@@ -612,17 +580,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                <Input autoComplete="off" placeholder={t('lead.quantityRequirementPlaceholder')} />
+              <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
+                <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
+              <Form.Item name="customerType" label={t('lead.customerType')}>
+                <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} />
               </Form.Item>
             </Col>
 
-            {/* 客户信息 2x2（客户/沟通账号/目标市场/客户类型） */}
+            {/* 第二、三行：左侧参考图片（纵向跨两行），右侧 客户 / 沟通账号 / 采购产品 / 数量要求 */}
+            <Col span={12}>
+              <Form.Item name="images" label={t('lead.images')}>
+                <ProductImageList disabled={editing?.status === 'INVALID'} />
+              </Form.Item>
+            </Col>
             <Col span={12}>
               <Row gutter={[16, 24]}>
                 <Col span={12}>
@@ -662,52 +635,74 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
-                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
+                  <Form.Item
+                    name="productKey"
+                    label={
+                      editing?.productName && !editing.productId ? (
+                        <Space size={4}>
+                          <span>{t('lead.product')}</span>
+                          <Tag
+                            color="orange"
+                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                            onClick={confirmCreateProduct}
+                            title={t('lead.productPendingTip', { name: editing.productName })}
+                          >
+                            {t('lead.pendingTag')}
+                          </Tag>
+                        </Space>
+                      ) : (
+                        t('lead.product')
+                      )
+                    }
+                    rules={[{ required: true, message: t('lead.productRequired') }]}
+                  >
+                    <AutoComplete
+                      allowClear
+                      placeholder={t('lead.productPlaceholder')}
+                      options={productNameOptions}
+                      filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                    />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="customerType" label={t('lead.customerType')}>
-                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </Col>
-            {/* 认证要求 2x2（认证要求/包装要求/交期要求/特殊要求） */}
-            <Col span={12}>
-              <Row gutter={[16, 24]}>
-                <Col span={12}>
-                  <Form.Item name="certRequire" label={t('lead.certRequire')}>
-                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.certRequirePlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="packageReq" label={t('lead.packageReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.packageReqPlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.deliveryReqPlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="specialReq" label={t('lead.specialReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.specialReqPlaceholder')} />
+                  <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
+                    <Input autoComplete="off" placeholder={t('lead.quantityRequirementPlaceholder')} />
                   </Form.Item>
                 </Col>
               </Row>
             </Col>
 
-            {/* 产品描述 / 参考图片（同一行） */}
-            <Col span={12}>
+            {/* 第四行：目标价位 / 产品描述 */}
+            <Col span={8}>
+              <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
+                <Input autoComplete="off" placeholder={t('lead.targetPricePlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={16}>
               <Form.Item name="productDesc" label={t('lead.productDesc')}>
                 <Input.TextArea rows={6} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
               </Form.Item>
             </Col>
+
+            {/* 第五行：要求（特殊要求 / 认证要求 / 包装要求 / 交期要求） */}
             <Col span={12}>
-              <Form.Item name="images" label={t('lead.images')}>
-                <ProductImageList disabled={editing?.status === 'INVALID'} />
+              <Form.Item name="specialReq" label={t('lead.specialReq')}>
+                <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.specialReqPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="certRequire" label={t('lead.certRequire')}>
+                <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.certRequirePlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="packageReq" label={t('lead.packageReq')}>
+                <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.packageReqPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
+                <Input.TextArea rows={2} autoComplete="off" placeholder={t('lead.deliveryReqPlaceholder')} />
               </Form.Item>
             </Col>
           </Row>
