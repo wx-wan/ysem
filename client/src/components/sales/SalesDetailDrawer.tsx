@@ -68,7 +68,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
           type="info"
           showIcon
           style={{ marginBottom: 16 }}
-          message={
+          title={
             <Space>
               <span>
                 {t('sales.sourceLead')}：<b>{detailItem.leadId}</b>

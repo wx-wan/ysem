@@ -185,7 +185,7 @@ export default function CreateOrderFromProductModal({
           type="success"
           showIcon
           style={{ marginBottom: 12 }}
-          message={`${TYPE_LABEL[type]}已创建`}
+          title={`${TYPE_LABEL[type]}已创建`}
           description={
             <div>
               <div>报价单 ID：<Tag color="blue">{created.orderNo}</Tag></div>

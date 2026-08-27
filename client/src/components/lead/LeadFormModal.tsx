@@ -551,7 +551,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               type="info"
               showIcon
               style={{ marginBottom: 16 }}
-              message={
+              title={
                 <Space>
                   <span>
                     {t('lead.linkedPipeline')}：<b>{linkedPipeline?.pipelineNumber || editing?.pipelineId}</b>
