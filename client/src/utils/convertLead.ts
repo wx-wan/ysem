@@ -67,7 +67,9 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ConvertR
     assignedTo: lead.assignedTo ?? undefined,
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
   } as any);
-  const pipeline = pipelineRes?.data ?? pipelineRes;
+  // salesApi.create 返回完整 axios 响应；后端返回 { code, data, message }，
+  // 因此真实 pipeline 在 pipelineRes.data.data
+  const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 
   // ---- 标记线索为「已确认」 ----
   await leadApi.update(leadId, { status: 'QUALIFIED' });

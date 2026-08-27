@@ -290,13 +290,24 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       cancelText: t('common.cancel'),
       onOk: async () => {
         const res = await convertLeadToOpportunity(editing.id);
-        Modal.success({
+        const modal = Modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
             <div>
               <p>{t('lead.convertSuccessDesc')}</p>
               <p>
-                {t('lead.convertSuccessPipeline')}：<b>{res.pipeline?.pipelineNumber}</b>
+                {t('lead.convertSuccessPipeline')}：
+                <Button
+                  type="link"
+                  style={{ padding: 0, height: 'auto', fontWeight: 700 }}
+                  onClick={() => {
+                    modal.destroy();
+                    onClose();
+                    navigate('/sales/opportunities');
+                  }}
+                >
+                  {res.pipeline?.pipelineNumber}
+                </Button>
               </p>
               {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
               {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}

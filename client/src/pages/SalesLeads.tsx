@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Card, Pagination, Modal, theme } from 'antd';
+import { Card, Pagination, Modal, Button, theme } from 'antd';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
 import LeadFilterBar from '../components/lead/LeadFilterBar';
@@ -33,6 +34,7 @@ export default function SalesLeads() {
     useLeadOptions();
 
   const formModalRef = useRef<LeadFormModalHandle>(null);
+  const navigate = useNavigate();
 
   // 列表行内状态切换（确认 / 有效 / 无效）
   const handleChangeStatus = async (id: string, status: LeadStatus) => {
@@ -49,13 +51,23 @@ export default function SalesLeads() {
       cancelText: t('common.cancel'),
       onOk: async () => {
         const res = await convertLeadToOpportunity(record.id);
-        Modal.success({
+        const modal = Modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
             <div>
               <p>{t('lead.convertSuccessDesc')}</p>
               <p>
-                {t('lead.convertSuccessPipeline')}：<b>{res.pipeline?.pipelineNumber}</b>
+                {t('lead.convertSuccessPipeline')}：
+                <Button
+                  type="link"
+                  style={{ padding: 0, height: 'auto', fontWeight: 700 }}
+                  onClick={() => {
+                    modal.destroy();
+                    navigate('/sales/opportunities');
+                  }}
+                >
+                  {res.pipeline?.pipelineNumber}
+                </Button>
               </p>
               {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
               {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}
