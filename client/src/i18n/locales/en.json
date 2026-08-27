@@ -530,7 +530,9 @@
     "confirmRelease": "Release this lead to the public pool? It will no longer belong to you.",
     "selectTransferTarget": "Select the new assignee to transfer to",
     "releaseSuccess": "Lead released to public pool",
-    "transferSuccess": "Lead transferred; the linked customer and product owners were also updated"
+    "transferSuccess": "Lead transferred; the linked customer and product owners were also updated",
+    "scopeMine": "My leads",
+    "scopePool": "Public pool"
   },
   "customerType": {
     "title": "Customer Type",

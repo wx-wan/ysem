@@ -567,7 +567,9 @@
     "confirmRelease": "确认释放该线索到公海？释放后将不再归属你。",
     "selectTransferTarget": "请选择转交的新负责人",
     "releaseSuccess": "线索已释放到公海",
-    "transferSuccess": "线索已转交，并联动更新对应客户与产品的负责人"
+    "transferSuccess": "线索已转交，并联动更新对应客户与产品的负责人",
+    "scopeMine": "我的线索",
+    "scopePool": "公海"
   },
   "customerType": {
     "title": "客户类型",

@@ -85,8 +85,12 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     if (status) where.status = status;
     if (source) where.source = source;
 
-    // 数据范围：管理员可用 assignedTo 自由筛选；其余用户按角色 dataScope 过滤（含公海）
-    if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
+    // 列表范围切换：mine=我的（assignedTo=当前用户）；pool=公海（assignedTo=null）
+    const scope = req.query.scope as string;
+    if (scope === 'mine' || scope === 'pool') {
+      where.assignedTo = scope === 'mine' ? (req.userId ?? '') : null;
+    } else if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
+      // 管理员可用 assignedTo 自由筛选；其余用户按角色 dataScope 过滤（含公海）
       where.assignedTo = assignedTo;
     } else {
       where = applyScope(where, await roleScope(req, { field: 'assignedTo' }));

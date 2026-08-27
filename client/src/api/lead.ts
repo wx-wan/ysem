@@ -95,6 +95,7 @@ export interface LeadListParams {
   status?: LeadStatus;
   source?: LeadSource;
   assignedTo?: string;
+  scope?: 'mine' | 'pool';
 }
 
 export const leadApi = {

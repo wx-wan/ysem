@@ -18,6 +18,8 @@ export function useLeadList() {
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
   const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
+  // 列表范围：mine=我的线索；pool=公海（已释放、无负责人）
+  const [scope, setScope] = useState<'mine' | 'pool'>('mine');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(19);
 
@@ -31,6 +33,7 @@ export function useLeadList() {
         channel: filterChannel,
         platform: filterPlatform,
         status: filterStatus,
+        scope,
       });
       setListData(res.data.list);
       setTotal(res.data.total);
@@ -39,7 +42,7 @@ export function useLeadList() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, message, t]);
+  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, scope, message, t]);
 
   useEffect(() => {
     fetchList();
@@ -90,6 +93,8 @@ export function useLeadList() {
     setFilterPlatform,
     filterStatus,
     setFilterStatus,
+    scope,
+    setScope,
     page,
     setPage,
     pageSize,

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Card, Pagination, Modal, theme } from 'antd';
+import { Card, Pagination, Modal, theme, Segmented } from 'antd';
 import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
 import LeadFilterBar from '../components/lead/LeadFilterBar';
@@ -73,6 +73,19 @@ export default function SalesLeads() {
         style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}
       >
         <LeadCreateCard onClick={() => formModalRef.current?.openCreate()} />
+
+        <Segmented
+          style={{ marginBottom: 12 }}
+          value={list.scope}
+          onChange={(val) => {
+            list.setScope(val as 'mine' | 'pool');
+            list.setPage(1);
+          }}
+          options={[
+            { label: t('lead.scopeMine'), value: 'mine' },
+            { label: t('lead.scopePool'), value: 'pool' },
+          ]}
+        />
 
         <LeadFilterBar
           channels={channels}
