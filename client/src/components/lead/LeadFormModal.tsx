@@ -52,6 +52,8 @@ interface Props {
   onRefreshProducts: () => void;
   /** 保存 / 关联成功后刷新列表 */
   onSaved: () => void;
+  /** 详情页点击「新建线索」时触发（打开空白新建表单） */
+  onCreateNew?: () => void;
 }
 
 /**
@@ -73,6 +75,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     onRefreshCustomers,
     onRefreshProducts,
     onSaved,
+    onCreateNew,
   } = props;
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -385,6 +388,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
+  // 新建模式（无真实线索 id）下，转交/释放/无效/确认等仅对已有线索的操作不可用
+  const isCreate = !editing?.id;
+
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
   return (
@@ -438,7 +444,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   size="middle"
                   icon={<SwapOutlined style={{ color: token.colorWarning }} />}
                   style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                  disabled={!editing?.assignedTo}
+                  disabled={isCreate || !editing?.assignedTo}
                   onClick={() => setTransferOpen(true)}
                   title={t('lead.transfer')}
                 />
@@ -446,7 +452,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   title={t('lead.confirmRelease')}
                   okText={t('common.ok')}
                   cancelText={t('common.cancel')}
-                  disabled={!editing?.assignedTo}
+                  disabled={isCreate || !editing?.assignedTo}
                   onConfirm={handleReleaseLead}
                 >
                   <Button
@@ -454,7 +460,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     size="middle"
                     icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
                     style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                    disabled={!editing?.assignedTo}
+                    disabled={isCreate || !editing?.assignedTo}
                     title={t('lead.release')}
                   />
                 </Popconfirm>
@@ -464,25 +470,29 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
               <Space>
-                {editing && editing.status !== 'INVALID' && (
+                {editing?.id && editing.status !== 'INVALID' && (
                   <Button danger onClick={handleInvalidLead}>
                     {t('lead.invalid')}
                   </Button>
                 )}
-                {editing && editing.status === 'INVALID' && (
+                {editing?.id && editing.status === 'INVALID' && (
                   <Button type="primary" disabled={false} onClick={handleSetValid}>
                     {t('lead.valid')}
                   </Button>
                 )}
+                {/* 详情页提供「新建线索」入口 */}
+                {editing?.id && onCreateNew && (
+                  <Button onClick={onCreateNew}>{t('lead.createTitle')}</Button>
+                )}
               </Space>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-                {editing?.status !== 'INVALID' && (
+                {editing?.id && editing.status !== 'INVALID' && (
                   <Button type="primary" onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
                 )}
-                {editing?.status !== 'INVALID' && (
+                {(!editing?.id || editing.status !== 'INVALID') && (
                   <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
                 )}
               </Space>
