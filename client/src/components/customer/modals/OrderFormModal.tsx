@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Form, Input, Select, Space, App } from 'antd';
 import { orderApi, Customer } from '../../../api/customers';
+import { Z_INDEX } from '../../../zIndex';
 
 interface Props {
   open: boolean;
@@ -45,7 +46,7 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, customer, onClose, o
       onCancel={onClose}
       confirmLoading={saving}
       width={560}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 12 }}>

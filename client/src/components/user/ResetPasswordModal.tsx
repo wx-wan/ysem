@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, App } from 'antd';
+import { Z_INDEX } from '../../zIndex';
 
 interface UserRecord {
   id: string;
@@ -54,7 +55,7 @@ const ResetPasswordModal: React.FC<Props> = React.memo(({ open, targetUser, onCl
       onOk={handleSubmit}
       confirmLoading={saving}
       width={520}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

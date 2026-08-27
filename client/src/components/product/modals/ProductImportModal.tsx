@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, Upload, Button, Alert, App } from 'antd';
 import { UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { importProductApi, BatchCreateResult } from '../../../api/products';
+import { Z_INDEX } from '../../../zIndex';
 
 interface Props {
   open: boolean;
@@ -54,7 +55,7 @@ const ProductImportModal: React.FC<Props> = React.memo(({ open, onClose, onSucce
       onCancel={onClose}
       confirmLoading={loading}
       okText="导入"
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
     >
       <Alert
         message="请下载模板，按模板格式填写产品数据后上传。工艺/受众/品类/认证资质/可见人员填写名称（多个用「、」分隔），系统自动按名称匹配。"

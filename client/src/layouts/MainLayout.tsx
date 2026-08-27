@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Spin, theme, Skeleton } from 'antd';
+import { Z_INDEX } from '../zIndex';
 import type { MenuProps } from 'antd';
 import {
   DashboardOutlined,
@@ -291,7 +292,7 @@ export default function MainLayout() {
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 2000,
+            zIndex: Z_INDEX.top,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',

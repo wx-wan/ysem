@@ -2,6 +2,7 @@ import React from 'react';
 import { Modal, Form, Input, Select, App } from 'antd';
 import ImageUploadCropper from '../common/ImageUploadCropper';
 import { useUserStore } from '../../stores/useUserStore';
+import { Z_INDEX } from '../../zIndex';
 
 interface UserRecord {
   id: string;
@@ -86,7 +87,7 @@ const UserFormModal: React.FC<Props> = React.memo(({ open, editingUser, roles, d
       onOk={handleSubmit}
       confirmLoading={saving}
       width={560}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

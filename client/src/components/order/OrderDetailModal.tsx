@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Row, Col, Tag, Typography } from 'antd';
 import { Order } from '../../api/customers';
+import { Z_INDEX } from '../../zIndex';
 import Price from '../common/Price';
 
 const { Text } = Typography;
@@ -29,7 +30,7 @@ const OrderDetailModal: React.FC<Props> = React.memo(({ open, detailOrder, onClo
       onCancel={onClose}
       footer={null}
       width={560}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
     >
       <div>
         <Row gutter={[16, 12]}>

@@ -12,6 +12,10 @@ export const Z_INDEX = {
   drawerMask: 1990,
   /** 侧边抽屉面板 */
   drawer: 2000,
+  /** antd 原生 Modal / Drawer 统一层级（替代散落的 zIndex={2000} 硬编码） */
+  overlay: 2000,
+  /** antd 原生 Modal 嵌套弹窗层级（如表单内再弹导入框） */
+  overlayNested: 2100,
   /** 最高层级（引导/强制提示等） */
   top: 3000,
 } as const;

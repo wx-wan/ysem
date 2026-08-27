@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Upload, Button, Alert, App } from 'antd';
 import { UploadOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Z_INDEX } from '../../zIndex';
 
 interface Props {
   open: boolean;
@@ -47,7 +48,7 @@ const ImportModal: React.FC<Props> = React.memo(({ open, onClose, onSuccess, api
       onCancel={onClose}
       confirmLoading={loading}
       okText="导入"
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
     >
       <Alert
         message="请下载模板，按照模板格式填写数据后上传"

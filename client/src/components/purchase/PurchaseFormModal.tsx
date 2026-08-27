@@ -4,6 +4,7 @@ import {
 } from 'antd';
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import { purchaseApi, PurchaseOrder, PurchaseItem, Supplier } from '../../api/purchases';
+import { Z_INDEX } from '../../zIndex';
 import { productApi } from '../../api/products';
 
 interface Props {
@@ -152,7 +153,7 @@ const PurchaseFormModal: React.FC<Props> = React.memo(({ open, editing, onClose,
         onCancel={onClose}
         confirmLoading={saving}
         width={920}
-        zIndex={2000}
+        zIndex={Z_INDEX.overlay}
         forceRender
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
@@ -317,7 +318,7 @@ const PurchaseFormModal: React.FC<Props> = React.memo(({ open, editing, onClose,
         onCancel={() => setSupplierModal(false)}
         confirmLoading={creatingSupplier}
         width={420}
-        zIndex={2100}
+        zIndex={Z_INDEX.overlayNested}
         forceRender
       >
         <Form form={supplierForm} layout="vertical" style={{ marginTop: 8 }}>

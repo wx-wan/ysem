@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, Select, InputNumber, App } from 'antd';
+import { Z_INDEX } from '../../zIndex';
 
 interface PermRecord {
   id: string;
@@ -71,7 +72,7 @@ const PermFormModal: React.FC<Props> = React.memo(({ open, editingPerm, parentOp
       onCancel={onClose}
       onOk={handleSubmit}
       confirmLoading={saving}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

@@ -3,6 +3,7 @@ import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker
 import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { SalesItem } from '../../api/sales';
+import { Z_INDEX } from '../../zIndex';
 import { Customer } from '../../api/customers';
 import { productApi, ProductOption } from '../../api/products';
 import { SALES_STAGES } from './stages';
@@ -192,7 +193,7 @@ const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignU
         cancelText="取消"
         confirmLoading={saving}
         width={720}
-        zIndex={2000}
+        zIndex={Z_INDEX.overlay}
         forceRender
         styles={{
           header: { borderBottom: '1px solid rgba(0,0,0,0.06)', padding: '16px 20px' },

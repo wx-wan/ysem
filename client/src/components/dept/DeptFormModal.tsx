@@ -1,5 +1,6 @@
 import React from 'react';
 import { Modal, Form, Input, Select, InputNumber, App } from 'antd';
+import { Z_INDEX } from '../../zIndex';
 
 interface DeptRecord {
   id: string;
@@ -70,7 +71,7 @@ const DeptFormModal: React.FC<Props> = React.memo(({ open, editingDept, parentOp
       onCancel={onClose}
       onOk={handleSubmit}
       confirmLoading={saving}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       forceRender
     >
       <Form form={form} layout="vertical" style={{ marginTop: 16 }}>

@@ -4,6 +4,7 @@ import { EditOutlined, DeleteOutlined, RightOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SalesItem } from '../../api/sales';
+import { Z_INDEX } from '../../zIndex';
 import { getIntentLabel } from './SalesFormModal';
 import { SALES_STAGES, STAGE_LABELS } from './stages';
 import Price from '../common/Price';
@@ -44,7 +45,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
       open={open}
       onClose={onClose}
       size={560}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
       extra={
         <Space>
           <Select

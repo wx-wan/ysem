@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Select, App } from 'antd';
 import { customerApi, Customer } from '../../../api/customers';
+import { Z_INDEX } from '../../../zIndex';
 
 interface Props {
   open: boolean;
@@ -42,7 +43,7 @@ const TransferModal: React.FC<Props> = React.memo(({ open, customer, userList, o
       onCancel={onClose}
       confirmLoading={loading}
       okButtonProps={{ disabled: !userId }}
-      zIndex={2000}
+      zIndex={Z_INDEX.overlay}
     >
       <p style={{ marginTop: 12 }}>
         将客户 <strong>{customer?.companyName}</strong> 转移给：
