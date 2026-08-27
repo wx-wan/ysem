@@ -397,7 +397,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          title={editing ? editing.leadName || t('lead.editTitle') : t('lead.createTitle')}
+          title={editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}
           width={960}
           bodyPadding={20}
           style={{ borderRadius: 20 }}
