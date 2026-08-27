@@ -1,7 +1,8 @@
 import React from 'react';
-import { Modal, Form, Input, DatePicker, Row, Col, App } from 'antd';
+import { Button, Form, Input, DatePicker, Row, Col, App } from 'antd';
 import dayjs from 'dayjs';
 import { customerApi, Customer } from '../../../api/customers';
+import AppModal from '../../AppModal';
 import CountrySelect from '../../CountrySelect';
 import CustomerTypeSelect from '../../CustomerTypeSelect';
 
@@ -59,17 +60,22 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
   }, [open, editingCustomer, initialCompanyName, form]);
 
   return (
-    <Modal
-      title={editingCustomer ? '编辑客户' : '新增客户'}
+    <AppModal
       open={open}
-      onOk={handleSave}
-      onCancel={onClose}
-      confirmLoading={saving}
+      onClose={onClose}
+      title={editingCustomer ? '编辑客户' : '新增客户'}
       width={640}
-      zIndex={2000}
-      forceRender
+      bodyPadding={20}
+      footer={
+        <>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={saving} onClick={handleSave}>
+            保存
+          </Button>
+        </>
+      }
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 12 }}>
+      <Form form={form} layout="vertical">
         <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
           <Input placeholder="公司名称" />
         </Form.Item>
@@ -116,7 +122,7 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
           <Input.TextArea rows={2} placeholder="备注信息" />
         </Form.Item>
       </Form>
-    </Modal>
+    </AppModal>
   );
 });
 
