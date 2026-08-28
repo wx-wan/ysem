@@ -3,6 +3,7 @@ import axios from './request';
 export interface SalesItem {
   id: string;
   pipelineNumber: string;
+  /** 阶段：后端按关联单据派生（只读，不支持手动修改） */
   stage: string;
   title: string;
   companyName: string;
@@ -41,14 +42,8 @@ export interface SalesItem {
   leadId?: string | null; // 来源线索 ID（便于溯源）
 }
 
-/** 销售阶段（线索/商机/订单）中文与配色 */
-// 阶段元信息（阶段key → 颜色/背景），与 components/sales/stages.ts 保持一致
-export const STAGE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  LEAD: { label: '线索', color: '#8c8c8c', bg: 'rgba(0,0,0,0.04)', border: '#d9d9d9' },
-  OPPORTUNITY: { label: '商机', color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
-  SAMPLE: { label: '样品单', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
-  ORDER: { label: '订单', color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f' },
-};
+// 阶段配色统一由 components/sales/stages.ts 提供（STAGE_META / getStageMeta）
+// 阶段为后端派生值，仅用于展示，不支持手动修改。
 
 export interface LeadProduct {
   id: string;
@@ -95,10 +90,6 @@ export const salesApi = {
   // 更新
   update: (id: string, data: Partial<SalesItem>) =>
     axios.put<{ data: SalesItem }>(`/sales/${id}`, data),
-
-  // 阶段变更
-  changeStage: (id: string, stage: string) =>
-    axios.patch<{ data: SalesItem }>(`/sales/${id}/stage`, { stage }),
 
   // 删除
   delete: (id: string) =>

@@ -69,7 +69,6 @@ export default function CustomersPage() {
   // 商机编辑弹窗
   const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
-  const [newPipelineStage, setNewPipelineStage] = useState<string>('LEAD');
   // 从详情新建时携带的客户（公司名称固定、基础信息带出、负责人锁当前用户）
   const [newPipelineCustomer, setNewPipelineCustomer] = useState<Customer | null>(null);
 
@@ -279,11 +278,10 @@ export default function CustomersPage() {
 
   // 按类型打开对应新建表单（线索/商机走 SalesFormModal，订单走 OrderFormModal）
   // 注意：保留客户详情弹窗不关闭，新建表单叠在其上
-  const openCreatePipeline = useCallback((c: Customer, stage: 'LEAD' | 'OPPORTUNITY' = 'LEAD') => {
+  const openCreatePipeline = useCallback((c: Customer) => {
     setNewTypeOpen(false);
     setNewTypeCustomer(null);
     setEditingPipeline(null);
-    setNewPipelineStage(stage);
     setNewPipelineCustomer(c); // 携带客户：公司名称固定、基础信息带出、负责人锁当前用户
     setPipelineEditOpen(true);
   }, []);
@@ -612,7 +610,6 @@ export default function CustomersPage() {
       <SalesFormModal
         open={pipelineEditOpen}
         editingItem={editingPipeline}
-        initialStage={newPipelineStage as SalesStage}
         customer={newPipelineCustomer}
         fixedOwner={!!newPipelineCustomer}
         onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
@@ -649,8 +646,7 @@ export default function CustomersPage() {
       >
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, padding: '8px 0 4px' }}>
           {[
-            { key: 'LEAD', label: '线索', desc: '手动新建，或后续由产品链接点击同步', color: '#1677ff' },
-            { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交', color: '#d97706' },
+            { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交，阶段随关联报价/打样/订单自动推进', color: '#1677ff' },
             { key: 'ORDER', label: '订单', desc: '已成交，进入订单 7 阶段流程', color: '#16a34a' },
           ].map((opt) => (
             <div
@@ -662,7 +658,7 @@ export default function CustomersPage() {
                   setNewTypeCustomer(null);
                   openCreateOrder(newTypeCustomer.id);
                 } else {
-                  openCreatePipeline(newTypeCustomer, opt.key as 'LEAD' | 'OPPORTUNITY');
+                  openCreatePipeline(newTypeCustomer);
                 }
               }}
               style={{

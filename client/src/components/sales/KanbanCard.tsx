@@ -1,19 +1,22 @@
-import { Card, theme } from 'antd';
+import { Card, theme, Tag } from 'antd';
 import { TeamOutlined } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { SalesItem } from '../../api/sales';
 import { getIntentLabel } from './SalesFormModal';
-import StageButtons from './StageButtons';
+import { getStageMeta, getStageI18nKey } from './stages';
 import Price from '../common/Price';
 
 interface KanbanCardProps {
   item: SalesItem;
   onViewDetail: (id: string) => void;
-  onStageChange: (id: string, newStage: string) => void;
 }
 
-export default function KanbanCard({ item, onViewDetail, onStageChange }: KanbanCardProps) {
+export default function KanbanCard({ item, onViewDetail }: KanbanCardProps) {
   const { token } = theme.useToken();
-  const amount = item.stage === 'ORDER' ? (item.orderAmount || 0) : (item.estimatedAmount || 0);
+  const { t } = useTranslation();
+  const amount = item.stage === 'ORDER' || item.stage === 'SHIPPED'
+    ? (item.orderAmount || 0)
+    : (item.estimatedAmount || 0);
   return (
     <Card
       hoverable
@@ -47,9 +50,12 @@ export default function KanbanCard({ item, onViewDetail, onStageChange }: Kanban
       </div>
       <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${token.colorBorderSecondary}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 11, color: token.colorTextTertiary }}>
-          {item.assignee?.realName || '未分配'}
+          {item.assignee?.realName || t('sales.unassigned')}
         </span>
-        <StageButtons item={item} onStageChange={onStageChange} />
+        {/* 阶段只读展示：由后端按关联单据派生，不支持手动切换 */}
+        <Tag color={getStageMeta(item.stage).color} variant="filled" style={{ marginInlineEnd: 0 }}>
+          {t(`sales.stage.${getStageI18nKey(item.stage)}`)}
+        </Tag>
       </div>
     </Card>
   );

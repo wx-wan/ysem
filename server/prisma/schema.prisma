@@ -9,35 +9,35 @@ datasource db {
 
 // ========== 用户表 ==========
 model User {
-  id                  String               @id @default(uuid())
-  username            String               @unique
-  password            String
-  realName            String
-  email               String?              @unique
-  phone               String?
-  avatar              String?
-  status              String               @default("ACTIVE")
-  departmentId        String?
-  department          Department?          @relation(fields: [departmentId], references: [id])
-  roleId              String?
-  role                Role?                @relation(fields: [roleId], references: [id])
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  lastLoginAt         DateTime?
-  loginLogs           LoginLog[]
-  createdBy           String?
-  creator             User?                @relation("CreatedUsers", fields: [createdBy], references: [id])
-  createdUsers        User[]               @relation("CreatedUsers")
-  refreshTokens       String[]             @default([])
-  salesPipelines      SalesPipeline[]
-  customers           Customer[]
-  productVisibilities ProductVisibleUser[]
-  products            SingleProduct[]      @relation("ProductCreator")
-  singleProductOwnerships SingleProduct[]  @relation("SingleProductOwner")
-  productGroups       ComboProduct[]       @relation("ComboProductOwner")
-  comboCreatedBy      ComboProduct[]       @relation("ComboProductCreator")
-  leadAssignments     Lead[]               @relation("LeadAssignee")
-  notifications       Notification[]       @relation("NotificationRecipient")
+  id                      String               @id @default(uuid())
+  username                String               @unique
+  password                String
+  realName                String
+  email                   String?              @unique
+  phone                   String?
+  avatar                  String?
+  status                  String               @default("ACTIVE")
+  departmentId            String?
+  department              Department?          @relation(fields: [departmentId], references: [id])
+  roleId                  String?
+  role                    Role?                @relation(fields: [roleId], references: [id])
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  lastLoginAt             DateTime?
+  loginLogs               LoginLog[]
+  createdBy               String?
+  creator                 User?                @relation("CreatedUsers", fields: [createdBy], references: [id])
+  createdUsers            User[]               @relation("CreatedUsers")
+  refreshTokens           String[]             @default([])
+  salesPipelines          SalesPipeline[]
+  customers               Customer[]
+  productVisibilities     ProductVisibleUser[]
+  products                SingleProduct[]      @relation("ProductCreator")
+  singleProductOwnerships SingleProduct[]      @relation("SingleProductOwner")
+  productGroups           ComboProduct[]       @relation("ComboProductOwner")
+  comboCreatedBy          ComboProduct[]       @relation("ComboProductCreator")
+  leadAssignments         Lead[]               @relation("LeadAssignee")
+  notifications           Notification[]       @relation("NotificationRecipient")
 }
 
 // ========== 通知表 ==========
@@ -46,12 +46,12 @@ model User {
 // 推送环节改为 Redis pub/sub，写库与读取接口保持不变。
 model Notification {
   id        String   @id @default(cuid())
-  userId    String   // 接收人
+  userId    String // 接收人
   recipient User?    @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  type      String   // PERM_CHANGED / APPROVAL / ANNOUNCE ...
+  type      String // PERM_CHANGED / APPROVAL / ANNOUNCE ...
   title     String
   body      String?
-  payload   Json?    // 业务附加数据，如 { roleId } 供前端决定动作
+  payload   Json? // 业务附加数据，如 { roleId } 供前端决定动作
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -219,33 +219,33 @@ model CustomerActivity {
 // status: 审批态 DRAFT → SUBMITTED → APPROVED / REJECTED
 // stage: 仅 SAMPLE 用（打样阶段）：DESIGN(设计) → MOLD(开模) → SAMPLE_SENT(寄样)
 model Order {
-  id          String   @id @default(uuid())
-  type        String   @default("ORDER") // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
-  orderNo     String?
-  title       String?
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  type       String   @default("ORDER") // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
+  orderNo    String?
+  title      String?
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
   // 来源（基于产品/组合创建）与商机绑定
-  targetType  String?  // PRODUCT / GROUP
-  targetId    String?
-  pipelineId  String?  // 绑定的商机 ID（可选）
+  targetType String? // PRODUCT / GROUP
+  targetId   String?
+  pipelineId String? // 绑定的商机 ID（可选）
 
   // 审批态（报价/打样/订单通用）
-  status      String   @default("DRAFT") // DRAFT / SUBMITTED / APPROVED / REJECTED
+  status String  @default("DRAFT") // DRAFT / SUBMITTED / APPROVED / REJECTED
   // 打样阶段（仅 SAMPLE 使用）：DESIGN / MOLD / SAMPLE_SENT，其余类型留空
-  stage       String?  @default("DESIGN") // DESIGN / MOLD / SAMPLE_SENT
+  stage  String? @default("DESIGN") // DESIGN / MOLD / SAMPLE_SENT
 
-  items       String?  // 单据明细 JSON：{productId,name,spec,quantity,unitPrice,amount,pipelineId?}[]
-  amountCNY   Float?   // 单据金额合计（CNY）
-  currency    String?  @default("CNY")
+  items     String? // 单据明细 JSON：{productId,name,spec,quantity,unitPrice,amount,pipelineId?}[]
+  amountCNY Float? // 单据金额合计（CNY）
+  currency  String? @default("CNY")
 
   // 仅正式订单使用
-  orderDate     String?
-  depositAmount Float?
-  depositPaid   Boolean? @default(false)
-  deliveryDate  String?
-  paymentTerms  String?
+  orderDate           String?
+  depositAmount       Float?
+  depositPaid         Boolean? @default(false)
+  deliveryDate        String?
+  paymentTerms        String?
   // 各阶段时间节点（用于进度跟踪，可选）
   sampleOrderDate     String?
   designDate          String?
@@ -260,8 +260,8 @@ model Order {
   updatedAt DateTime @updatedAt
 
   // 关联：付款单 / 利润单（以本单为基准）
-  payments  PaymentRecord[]
-  profits   ProfitRecord[]
+  payments PaymentRecord[]
+  profits  ProfitRecord[]
 
   @@index([type])
   @@index([customerId])
@@ -271,10 +271,10 @@ model Order {
 // ========== 供应商 ==========
 model Supplier {
   id        String   @id @default(uuid())
-  name      String   // 供应商名称
-  contact   String?  // 联系人
-  phone     String?  // 联系电话
-  address   String?  // 地址
+  name      String // 供应商名称
+  contact   String? // 联系人
+  phone     String? // 联系电话
+  address   String? // 地址
   remark    String?
   createdBy String?
   createdAt DateTime @default(now())
@@ -286,19 +286,19 @@ model Supplier {
 // ========== 采购单 ==========
 // status: DRAFT(草稿) → ORDERED(已下单) → PARTIAL(部分到货) → ARRIVED(已到货)，可 CANCELLED(已取消)
 model PurchaseOrder {
-  id           String   @id @default(uuid())
-  purchaseNo   String?  @unique // 采购单号 PO-xxxx
+  id           String    @id @default(uuid())
+  purchaseNo   String?   @unique // 采购单号 PO-xxxx
   supplierId   String?
   supplier     Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  purchaseDate String?  // 采购日期
-  status       String   @default("DRAFT") // DRAFT / ORDERED / PARTIAL / ARRIVED / CANCELLED
-  items        String?  // 明细 JSON：{productId,name,spec,quantity,unitPrice,amount}[]
-  amountCNY    Float?   // 明细合计金额（CNY）
+  purchaseDate String? // 采购日期
+  status       String    @default("DRAFT") // DRAFT / ORDERED / PARTIAL / ARRIVED / CANCELLED
+  items        String? // 明细 JSON：{productId,name,spec,quantity,unitPrice,amount}[]
+  amountCNY    Float? // 明细合计金额（CNY）
   remark       String?
-  ownerId      String?  // 负责人（采购员），数据范围归属
+  ownerId      String? // 负责人（采购员），数据范围归属
   createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([status])
   @@index([supplierId])
@@ -308,22 +308,22 @@ model PurchaseOrder {
 // ========== 付款单（收款记录） ==========
 // 记录某单据的收款明细与比例，关联 Order
 model PaymentRecord {
-  id          String   @id @default(uuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  paymentNo   String?  // 付款单号
-  payDate     String?  // 收款日期
-  amount      Float?   // 本次收款金额（CNY）
-  ratio       Float?   // 收款比例（0-100，相对订单金额）
-  method      String?  // 收款方式：电汇/信用证/支付宝...
-  status      String   @default("RECEIVED") // RECEIVED / PENDING
-  remark      String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  paymentNo String? // 付款单号
+  payDate   String? // 收款日期
+  amount    Float? // 本次收款金额（CNY）
+  ratio     Float? // 收款比例（0-100，相对订单金额）
+  method    String? // 收款方式：电汇/信用证/支付宝...
+  status    String   @default("RECEIVED") // RECEIVED / PENDING
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([orderId])
   @@index([customerId])
@@ -332,22 +332,22 @@ model PaymentRecord {
 // ========== 利润单（利润核算） ==========
 // 记录某单据的利润核算，关联 Order
 model ProfitRecord {
-  id          String   @id @default(uuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  profitNo    String?  // 利润单号
-  revenue     Float?   // 收入（CNY）
-  cost        Float?   // 成本（CNY）
-  profit      Float?   // 利润 = 收入 - 成本
-  margin      Float?   // 利润率（%）
-  currency    String?  @default("CNY")
-  remark      String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  profitNo  String? // 利润单号
+  revenue   Float? // 收入（CNY）
+  cost      Float? // 成本（CNY）
+  profit    Float? // 利润 = 收入 - 成本
+  margin    Float? // 利润率（%）
+  currency  String?  @default("CNY")
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([orderId])
   @@index([customerId])
@@ -356,20 +356,21 @@ model ProfitRecord {
 // ========== 审批配置表 ==========
 // 用于「设置 → 审批管理」中配置各单据类型的审批人
 model ApprovalConfig {
-  id           String   @id @default(uuid())
-  type         String   @unique // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
-  approverIds  String?  // 审批人用户 ID 数组 JSON
+  id            String   @id @default(uuid())
+  type          String   @unique // QUOTE / SAMPLE / ORDER / PRODUCTION / SHIPPED
+  approverIds   String? // 审批人用户 ID 数组 JSON
   approverNames String? // 审批人姓名冗余 JSON
-  enabled      Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ========== 销售管道 ==========
 model SalesPipeline {
   id             String  @id @default(uuid())
   pipelineNumber String? @unique // 商机编号：BO-YYYYMMDD-序号
-  stage          String  @default("LEAD") // LEAD → OPPORTUNITY → ORDER
+  // 注意：阶段不再落库，由关联数据推导（见 server/src/utils/pipelineStage.ts）：
+  //   有关联正式订单 → ORDER；关联打样单 → SAMPLE；有报价 → QUOTED；否则机会在跟进 OPPORTUNITY；源头仍是线索 LEAD
 
   // 关联客户
   customerId String?
@@ -423,19 +424,19 @@ model SalesPipeline {
 
 // ========== 报价 ==========
 model Quotation {
-  id              String   @id @default(uuid())
-  opportunityId   String // 关联商机（SalesPipeline.id）
-  customerId      String? // 关联客户
-  productId       String? // 关联产品
-  title           String // 报价标题
-  version         Int      @default(1) // 版本号（同一商机可有多版报价）
-  amount          Float // 报价金额
-  currency        String   @default("USD")
-  validUntil      DateTime? // 报价有效期
-  status          String   @default("DRAFT") // DRAFT / SENT / ACCEPTED / REJECTED
-  notes           String? // 备注
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id            String    @id @default(uuid())
+  opportunityId String // 关联商机（SalesPipeline.id）
+  customerId    String? // 关联客户
+  productId     String? // 关联产品
+  title         String // 报价标题
+  version       Int       @default(1) // 版本号（同一商机可有多版报价）
+  amount        Float // 报价金额
+  currency      String    @default("USD")
+  validUntil    DateTime? // 报价有效期
+  status        String    @default("DRAFT") // DRAFT / SENT / ACCEPTED / REJECTED
+  notes         String? // 备注
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([opportunityId])
   @@index([customerId])
@@ -681,18 +682,18 @@ model ComboItem {
 // category 区分线上渠道(ONLINE)与线下渠道(OFFLINE)
 // 树形：父节点为渠道（如 国际站 / 1688 / 线下渠道），子节点为平台（如 寿春平台 / 微它平台 / 景元平台）
 model Channel {
-  id         String   @id @default(cuid())
-  name       String // 渠道名或平台名
-  category   String   @default("ONLINE") // ONLINE | OFFLINE
-  parentId   String? // 渠道下的平台才有父级
-  parent     Channel? @relation("ChannelTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children   Channel[] @relation("ChannelTree")
-  contact    String? // 平台联系人 / 负责人
-  status     String   @default("ENABLED") // ENABLED | DISABLED
-  sort       Int      @default(0)
-  remark     String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String    @id @default(cuid())
+  name      String // 渠道名或平台名
+  category  String    @default("ONLINE") // ONLINE | OFFLINE
+  parentId  String? // 渠道下的平台才有父级
+  parent    Channel?  @relation("ChannelTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Channel[] @relation("ChannelTree")
+  contact   String? // 平台联系人 / 负责人
+  status    String    @default("ENABLED") // ENABLED | DISABLED
+  sort      Int       @default(0)
+  remark    String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   leadChannels Lead[] @relation("LeadChannel")
   leadShops    Lead[] @relation("LeadShop")
@@ -718,48 +719,48 @@ model CustomerType {
 // ============ 线索 ============
 // 线索主要字段由「客户信息」+「线索名称」构成
 model Lead {
-  id           String   @id @default(cuid())
-  leadNumber   String? // 线索号：XS-YYYYMM-序号
-  leadName     String // 线索名称（标题）
-  customerId   String? // 关联客户
-  customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  pipelineId   String? @unique // 关联商机（确认转商机后回填，便于溯源）
-  pipeline     SalesPipeline? @relation("LeadPipeline", fields: [pipelineId], references: [id], onDelete: SetNull)
-  channelId    String? // 来源渠道
-  channel      Channel? @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
-  shopId       String? // 来源平台
-  shop         Channel? @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
-  source       String   @default("MANUAL") // MANUAL | EXCEL | RPA | SYNC
-  status       String   @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED | VALID
-  companyName  String? // 未关联客户时直接记录的客户信息
-  contactName  String?
-  contactMethod String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp 等添加客户的方式
-  email        String?
-  phone        String?
-  country      String?
+  id              String         @id @default(cuid())
+  leadNumber      String? // 线索号：XS-YYYYMM-序号
+  leadName        String // 线索名称（标题）
+  customerId      String? // 关联客户
+  customer        Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  pipelineId      String?        @unique // 关联商机（确认转商机后回填，便于溯源）
+  pipeline        SalesPipeline? @relation("LeadPipeline", fields: [pipelineId], references: [id], onDelete: SetNull)
+  channelId       String? // 来源渠道
+  channel         Channel?       @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  shopId          String? // 来源平台
+  shop            Channel?       @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
+  source          String         @default("MANUAL") // MANUAL | EXCEL | RPA | SYNC
+  status          String         @default("NEW") // NEW | CONTACTED | QUALIFIED | INVALID | CONVERTED | VALID
+  companyName     String? // 未关联客户时直接记录的客户信息
+  contactName     String?
+  contactMethod   String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp 等添加客户的方式
+  email           String?
+  phone           String?
+  country         String?
   productInterest String? // 感兴趣产品
-  sourceChannel String? // 来源渠道/平台（存渠道名或「渠道 / 平台」完整路径）
-  productName String? // 未关联产品时直接记录的产品名称（待确认建档）
-  productId  String? // 采购产品
-  product    SingleProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  quantity   Int            @default(1) // 采购数量
-  remark       String?
+  sourceChannel   String? // 来源渠道/平台（存渠道名或「渠道 / 平台」完整路径）
+  productName     String? // 未关联产品时直接记录的产品名称（待确认建档）
+  productId       String? // 采购产品
+  product         SingleProduct? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  quantity        Int            @default(1) // 采购数量
+  remark          String?
   // 详情扩展字段（左右结构详情视图）
-  targetMarket String? // 目标市场
-  productType  String? // 产品类型
-  productDesc  String? // 产品描述
-  images       String? // 参考图片（JSON 数组：["url1","url2"]）
-  targetPrice  String? // 目标价位
-  certRequire  String? // 认证要求
-  packageReq   String? // 包装要求
-  deliveryReq  String? // 交期要求
-  specialReq   String? // 特殊要求
-  customerType String? // 客户类型
-  assignedTo   String? // 负责人 userId
-  assignedUser User?   @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
-  createdBy    String? // 创建人 userId
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  targetMarket    String? // 目标市场
+  productType     String? // 产品类型
+  productDesc     String? // 产品描述
+  images          String? // 参考图片（JSON 数组：["url1","url2"]）
+  targetPrice     String? // 目标价位
+  certRequire     String? // 认证要求
+  packageReq      String? // 包装要求
+  deliveryReq     String? // 交期要求
+  specialReq      String? // 特殊要求
+  customerType    String? // 客户类型
+  assignedTo      String? // 负责人 userId
+  assignedUser    User?          @relation("LeadAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  createdBy       String? // 创建人 userId
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@index([customerId])
   @@index([channelId])

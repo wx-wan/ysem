@@ -4,6 +4,7 @@ import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
 import { ownerScope, publicSeaScope, roleScope } from "../utils/scope";
+import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
 import * as XLSX from "xlsx";
 
 // 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
@@ -1045,21 +1046,21 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
 
     // 并行查询
     const [
-      leadCount,
-      opportunityCount,
+      allPipelines,
       sampleOrderCount,
-      pipelineOrderCount,
       shippedOrderCount,
       newCustomerCount,
       oldCustomerCount,
       newCustomerOrders,
       oldCustomerOrders,
     ] = await Promise.all([
-      prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "LEAD" } }),
-      prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "OPPORTUNITY" } }),
+      // 商机阶段为派生值：先取全量管道，再按派生阶段计数
+      prisma.salesPipeline.findMany({
+        where: pipelineWhere,
+        select: { id: true, leadId: true },
+      }),
       // 订单 7 阶段中"下打样单"阶段的订单数（取代原 SAMPLE 阶段）
       prisma.order.count({ where: { status: "SAMPLE_ORDER" } }),
-      prisma.salesPipeline.count({ where: { ...pipelineWhere, stage: "ORDER" } }),
       prisma.order.count({ where: { status: "SHIPPED" } }),
       prisma.customer.count({
         where: { ...customerWhere, firstOrderDate: { startsWith: currentYear } },
@@ -1099,6 +1100,15 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
 
     const newCustomerAmount = newCustomerOrders.reduce((s, o) => s + (o.amountCNY || 0), 0);
     const oldCustomerAmount = oldCustomerOrders.reduce((s, o) => s + (o.amountCNY || 0), 0);
+
+    // 按派生阶段统计商机数量
+    const stageMap = await deriveStages(allPipelines);
+    const stageCount = (s: PipelineStage) =>
+      [...stageMap.values()].filter((v) => v === s).length;
+    const opportunityCount = stageCount('OPPORTUNITY');
+    const pipelineOrderCount = stageCount('ORDER') + stageCount('SHIPPED');
+    // 线索数：来源线索（Lead 未转商机）仍由独立的 Lead 统计口径提供，此处沿用管道层面的线索阶段计数
+    const leadCount = stageCount('LEAD') + opportunityCount + pipelineOrderCount;
 
     // 转化率
     const leadToOpportunity = leadCount > 0

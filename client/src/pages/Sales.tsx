@@ -15,9 +15,8 @@ import { salesApi, SalesItem } from '../api/sales';
 import { customerApi, Customer } from '../api/customers';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
-import StageButtons, { STAGES } from '../components/sales/StageButtons';
-import type { SalesStage } from '../components/sales/stages';
-import { getStageMeta } from '../components/sales/stages';
+import { useTranslation } from 'react-i18next';
+import { SALES_STAGES, getStageMeta, getStageI18nKey, type SalesStage } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
 import KanbanView from '../components/sales/KanbanView';
 import Price from '../components/common/Price';
@@ -25,7 +24,17 @@ import Price from '../components/common/Price';
 export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   const { message } = App.useApp();
   const { token } = theme.useToken();
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
+
+  // 阶段选项：由后端按关联单据派生，仅用于展示与筛选
+  const stageOptions = SALES_STAGES.map((s) => ({
+    value: s,
+    label: t(`sales.stage.${getStageI18nKey(s)}`),
+    color: getStageMeta(s).color,
+    bg: getStageMeta(s).bg,
+    border: getStageMeta(s).border,
+  }));
 
   // 视图模式
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>(fixedStage ? 'list' : 'kanban');
@@ -46,7 +55,6 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   // 弹窗状态
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
-  const [initialFormStage, setInitialFormStage] = useState<string>('LEAD');
   const [importOpen, setImportOpen] = useState(false);
   const [importTab, setImportTab] = useState('excel');
   const [detailOpen, setDetailOpen] = useState(false);
@@ -130,9 +138,9 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
 
   // ============ 操作 ============
 
-  const handleCreate = (stage: string = fixedStage ?? 'LEAD') => {
+  // 阶段由后端派生，新建时不再指定阶段
+  const handleCreate = () => {
     setEditingItem(null);
-    setInitialFormStage(stage);
     fetchAssignUsers();
     fetchCustomers();
     setModalOpen(true);
@@ -185,18 +193,6 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
     } catch { /* ignore */ }
   };
 
-  const handleStageChange = async (id: string, newStage: string) => {
-    try {
-      await salesApi.changeStage(id, newStage);
-      message.success('阶段已变更');
-      refresh();
-      if (detailOpen && detailItem) {
-        const res = await salesApi.get(detailItem.id);
-        setDetailItem(res.data.data);
-      }
-    } catch { /* ignore */ }
-  };
-
   const handleImport = async (file: File) => {
     try {
       const res = await salesApi.importExcel(file);
@@ -210,20 +206,24 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   // ============ 表格列定义 ============
 
   const columns: ColumnsType<SalesItem> = useMemo(() => [
-    { title: '标题', dataIndex: 'title', width: 180, ellipsis: true },
-    { title: '公司', dataIndex: 'companyName', width: 140 },
-    { title: '联系人', dataIndex: 'contactName', width: 100 },
+    { title: t('sales.title_field'), dataIndex: 'title', width: 180, ellipsis: true },
+    { title: t('sales.companyName'), dataIndex: 'companyName', width: 140 },
+    { title: t('sales.contactName'), dataIndex: 'contactName', width: 100 },
     {
-      title: '阶段', dataIndex: 'stage', width: 90,
+      title: t('sales.stage.label'), dataIndex: 'stage', width: 90,
       render: (s: string) => {
         const st = getStageMeta(s);
-        return <Tag color={st?.color} variant="filled">{st?.label || s}</Tag>;
+        return (
+          <Tag color={st?.color} variant="filled">
+            {t(`sales.stage.${getStageI18nKey(s)}`)}
+          </Tag>
+        );
       },
     },
     {
-      title: '金额', dataIndex: 'estimatedAmount', width: 120,
+      title: t('sales.amount'), dataIndex: 'estimatedAmount', width: 120,
       render: (_: unknown, r: SalesItem) => {
-        const amt = r.stage === 'ORDER' ? r.orderAmount : r.estimatedAmount;
+        const amt = r.stage === 'ORDER' || r.stage === 'SHIPPED' ? r.orderAmount : r.estimatedAmount;
         return amt ? <Price value={amt} /> : '-';
       },
     },
@@ -240,16 +240,19 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       title: '操作', key: 'action', width: 160, fixed: 'right',
       render: (_: unknown, r: SalesItem) => (
         <Space size="small">
-          <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handleViewDetail(r.id)}>详情</Button>
-          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>编辑</Button>
-          <StageButtons item={r} onStageChange={handleStageChange} />
-          <Popconfirm title="确定删除？" onConfirm={() => handleDelete(r.id)}>
+          <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handleViewDetail(r.id)}>
+            {t('sales.detail')}
+          </Button>
+          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
+            {t('common.edit')}
+          </Button>
+          <Popconfirm title={t('common.confirmDelete')} onConfirm={() => handleDelete(r.id)}>
             <Button size="small" type="link" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
       ),
     },
-  ], []);
+  ], [t]);
 
   // ============ 列表视图 ============
 
@@ -261,7 +264,7 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       >
       {/* 顶部添加区块：与表格风格统一，对齐客户页工具栏节奏 */}
       <div
-        onClick={() => handleCreate('LEAD')}
+        onClick={() => handleCreate()}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           gap: 12, padding: '14px 18px', marginBottom: 16,
@@ -291,36 +294,17 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
           </span>
           <div style={{ lineHeight: 1.3 }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
-              新建销售记录
+              {t('sales.newRecord')}
             </div>
             <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-              在这里快速添加一条线索、商机或订单
+              {t('sales.newRecordDesc')}
             </div>
           </div>
         </Space>
         <Space size={8} onClick={(e) => e.stopPropagation()}>
-          {STAGES.map((s) => (
-            <Button
-              key={s.key}
-              size="small"
-              onClick={() => handleCreate(s.key)}
-              style={{
-                borderRadius: 8,
-                borderColor: s.color,
-                color: s.color,
-                background: s.bg,
-                fontWeight: 500,
-              }}
-            >
-              <span
-                style={{
-                  display: 'inline-block', width: 6, height: 6, borderRadius: '50%',
-                  background: s.color, marginRight: 6, verticalAlign: 'middle',
-                }}
-              />
-              {s.label}
-            </Button>
-          ))}
+          <Button size="small" type="primary" onClick={() => handleCreate()}>
+            {t('common.add')}
+          </Button>
         </Space>
       </div>
 
@@ -336,11 +320,11 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
         <Space wrap>
           <Select
             style={{ width: 130 }}
-            placeholder="阶段筛选"
+            placeholder={t('sales.filterStage')}
             allowClear
             value={filterStage || undefined}
             onChange={(v) => { setFilterStage(v || ''); setPage(1); }}
-            options={STAGES.map((s) => ({ label: s.label, value: s.key }))}
+            options={stageOptions}
           />
           <Input
             style={{ width: 200 }}
@@ -391,12 +375,12 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
 
   const stats = useMemo(() => {
     const result: Record<string, number> = {};
-    for (const stage of STAGES) {
-      const col = kanbanData[stage.key];
-      result[stage.key] = col ? col.items.length : 0;
+    for (const stage of stageOptions) {
+      const col = kanbanData[stage.value];
+      result[stage.value] = col ? col.items.length : 0;
     }
     return result;
-  }, [kanbanData]);
+  }, [kanbanData, stageOptions]);
 
   // ============ 主渲染 ============
 
@@ -405,18 +389,18 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       {/* 概览卡片 */}
       {!fixedStage && (
       <Row gutter={16} style={{ marginBottom: 16 }}>
-        {STAGES.map((stage) => (
-          <Col xs={12} sm={6} key={stage.key}>
+        {stageOptions.map((stage) => (
+          <Col xs={12} sm={6} key={stage.value}>
             <Card
               variant="borderless"
               size="small"
               style={{ borderRadius: 16, cursor: 'pointer', background: stage.bg, border: '1px solid transparent', transition: 'border-color .2s' }}
               hoverable
-              onClick={() => { setViewMode('list'); setFilterStage(stage.key); setPage(1); }}
+              onClick={() => { setViewMode('list'); setFilterStage(stage.value); setPage(1); }}
             >
               <Statistic
                 title={<span style={{ color: stage.color, fontSize: 13 }}>{stage.label}</span>}
-                value={stats[stage.key] || 0}
+                value={stats[stage.value] || 0}
                 styles={{ content: { color: stage.color, fontSize: 26, fontWeight: 700 } }}
               />
             </Card>
@@ -428,9 +412,9 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       {/* 工具栏 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>新增</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>{t('common.add')}</Button>
           {!fixedStage && (
-          <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>导入</Button>
+          <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>{t('sales.import')}</Button>
           )}
         </Space>
 
@@ -442,14 +426,14 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
             icon={<AppstoreOutlined />}
             onClick={() => setViewMode('kanban')}
           >
-            看板
+            {t('sales.kanban')}
           </Button>
           <Button
             type={viewMode === 'list' ? 'primary' : 'default'}
             icon={<UnorderedListOutlined />}
             onClick={() => setViewMode('list')}
           >
-            列表
+            {t('sales.list')}
           </Button>
           </>
           )}
@@ -462,8 +446,7 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
         <KanbanView
           kanbanData={kanbanData}
           onViewDetail={handleViewDetail}
-          onStageChange={handleStageChange}
-          onAdd={(stage) => { setEditingItem(null); fetchAssignUsers(); setInitialFormStage(stage); setModalOpen(true); }}
+          onAdd={() => handleCreate()}
         />
       ) : <ListView />}
 
@@ -494,11 +477,11 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
                   </p>
                 </Upload.Dragger>
                 <div style={{ marginTop: 16, padding: '12px 16px', background: token.colorFillQuaternary, borderRadius: 12, fontSize: 12, color: token.colorTextSecondary }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>表头字段参考：</div>
-                  <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
-                  <div>预估金额、预计成交日期、采购意向</div>
-                  <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
-                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
+                  <div style={{ fontWeight: 600, marginBottom: 6 }}>{t('sales.importFieldsTitle')}</div>
+                  <div>{t('sales.importFieldsBasic')}</div>
+                  <div>{t('sales.importFieldsOpp')}</div>
+                  <div>{t('sales.importFieldsOrder')}</div>
+                  <div style={{ marginTop: 6, color: token.colorWarning }}>{t('sales.importStageNote')}</div>
                 </div>
               </div>
             ),
@@ -523,7 +506,6 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       <SalesFormModal
         open={modalOpen}
         editingItem={editingItem}
-        initialStage={initialFormStage as SalesStage}
         onClose={() => { setModalOpen(false); setEditingItem(null); }}
         onSaved={() => { setModalOpen(false); setEditingItem(null); refresh(); }}
       />
@@ -531,7 +513,6 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
         open={detailOpen}
         detailItem={detailItem}
         onClose={() => { setDetailOpen(false); setDetailItem(null); }}
-        onStageChange={handleStageChange}
         onEdit={handleEdit}
         onDelete={handleDelete}
       />

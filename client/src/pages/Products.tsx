@@ -15,7 +15,7 @@ import productApi, {
   MixedItem, taxonomyApi, productGroupApi,
 } from '../api/products';
 import { userApi } from '../api/users';
-import { salesApi, SalesItem, STAGE_META } from '../api/sales';
+import { salesApi, SalesItem } from '../api/sales';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useCardGutter } from '../components/common/tokens';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';

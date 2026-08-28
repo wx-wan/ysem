@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import {
   getPipelines, getKanban, getPipeline, createPipeline,
-  updatePipeline, changeStage, deletePipeline, batchDelete,
+  updatePipeline, deletePipeline, batchDelete,
   importExcel, getAssignUsers, getByCustomer, getByProduct,
 } from '../controllers/sales.controller';
 import { authenticate } from '../middleware/auth';
@@ -117,27 +117,6 @@ router.put('/:id', updatePipeline);
  * /api/sales/{id}/stage:
  *   patch:
  *     tags: [销售管理]
- *     summary: 修改销售阶段
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [stage]
- *             properties:
- *               stage: { type: string }
- *     responses:
- *       200:
- *         description: 阶段变更成功
- */
-router.patch('/:id/stage', changeStage);
-
 /**
  * @swagger
  * /api/sales/batch:

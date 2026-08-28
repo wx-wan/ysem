@@ -6,9 +6,11 @@ import {
   ProfileOutlined, ArrowsAltOutlined, ColumnHeightOutlined,
   HomeOutlined, FileTextOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
+import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product, ProductActivity } from '../../../api/products';
-import { SalesItem, STAGE_META } from '../../../api/sales';
+import { SalesItem } from '../../../api/sales';
+import { getStageMeta, getStageI18nKey } from '../../sales/stages';
 import { orderApi, Order } from '../../../api/customers';
 import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
@@ -41,6 +43,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onSalesRefresh,
 }) => {
   const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
+  const { t } = useTranslation();
   const { token } = theme.useToken();
   const { user } = useAuthStore();
   const [tab, setTab] = useState<TabKey>('overview');
@@ -173,8 +176,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         )}
         {salesList.map((sale) => {
-          const meta = STAGE_META[sale.stage];
-          const saleAmount = sale.stage === 'ORDER' ? sale.orderAmount : sale.estimatedAmount;
+          const meta = getStageMeta(sale.stage);
+          const saleAmount = sale.stage === 'ORDER' || sale.stage === 'SHIPPED' ? sale.orderAmount : sale.estimatedAmount;
           const saleLabel = sale.stage === 'ORDER' ? '订单金额' : '预估金额';
           const sampleLabel = sale.orderType === 'SAMPLE' ? '打样' : '正式';
           return (
@@ -186,7 +189,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     {sampleLabel}
                   </Tag>
                   <Tag color={meta?.color || 'default'} style={{ marginInlineEnd: 0 }}>
-                    {meta?.label || sale.stage}
+                    {t(`sales.stage.${getStageI18nKey(sale.stage)}`)}
                   </Tag>
                 </div>
                 <div className="pm-sales-item-sub">

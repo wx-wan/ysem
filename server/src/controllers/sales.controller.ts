@@ -7,12 +7,13 @@ import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { ownerScope, applyScope, roleScope } from '../utils/scope';
 import { paginateList } from '../utils/query';
+import { deriveStages, PIPELINE_STAGES, type PipelineStage } from '../utils/pipelineStage';
 
 // ============ 校验 ============
 
 const createPipelineSchema = z.object({
   customerId: z.string().optional().nullable(),
-  stage: z.enum(['LEAD', 'OPPORTUNITY', 'SAMPLE', 'ORDER']).default('LEAD'),
+  // 阶段不再由前端传入，统一由关联单据推导（见 utils/pipelineStage.ts）
   title: z.string().min(1, '标题不能为空'),
   companyName: z.string().min(1, '公司名称不能为空'),
   contactName: z.string().optional().nullable(),
@@ -58,8 +59,9 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
       startDate, endDate, source = '',
     } = req.query as Record<string, string>;
 
-    const skip = (Number(page) - 1) * Number(pageSize);
-    const take = Number(pageSize);
+    const pageNum = Number(page);
+    const pageSizeNum = Number(pageSize);
+    const wantStage = (stage || '').trim() as PipelineStage | '';
 
     let where: Record<string, unknown> = {};
     const AND: unknown[] = [];
@@ -74,7 +76,7 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
         ],
       });
     }
-    if (stage) where.stage = stage;
+    // 阶段为派生值，无法通过 SQL 直接过滤：先按派生结果筛选，再分页（见下方 stage 后过滤）
     if (source) where.source = source;
     if (startDate || endDate) {
       const dateFilter: Record<string, string> = {};
@@ -94,24 +96,54 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
       where.AND = [...((where.AND ?? []) as unknown[]), ...AND];
     }
 
+    const includeClause = {
+      assignee: { select: { id: true, realName: true, username: true } },
+      leadProducts: {
+        include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
+        orderBy: { createdAt: 'asc' },
+      },
+    } as const;
+
+    // 阶段为派生值：需先取全量（或按阶段过滤后）再分页
+    if (wantStage) {
+      const all = await prisma.salesPipeline.findMany({
+        where,
+        include: includeClause,
+        orderBy: { updatedAt: 'desc' },
+      });
+      const stageMap = await deriveStages(all);
+      const filtered = all.filter((p) => stageMap.get(p.id) === wantStage);
+      const total = filtered.length;
+      const slice = filtered.slice((pageNum - 1) * pageSizeNum, pageNum * pageSizeNum);
+      success(res, {
+        list: slice.map((p) => ({ ...p, stage: stageMap.get(p.id) })),
+        total,
+        page: pageNum,
+        pageSize: pageSizeNum,
+      });
+      return;
+    }
+
     const { list, total, page: p, pageSize: ps } = await paginateList(
       prisma.salesPipeline,
       where,
       {
-        page: Number(page),
-        pageSize: Number(pageSize),
-        include: {
-          assignee: { select: { id: true, realName: true, username: true } },
-          leadProducts: {
-            include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
+        page: pageNum,
+        pageSize: pageSizeNum,
+        include: includeClause,
         orderBy: { updatedAt: 'desc' },
       },
     );
 
-    success(res, { list, total, page: p, pageSize: ps });
+    // 附加派生阶段
+    const rows = list as { id: string; leadId?: string | null }[];
+    const stageMap = await deriveStages(rows);
+    success(res, {
+      list: rows.map((p) => ({ ...p, stage: stageMap.get(p.id) })),
+      total,
+      page: p,
+      pageSize: ps,
+    });
   } catch (e) {
     console.error(e);
     fail(res, 500, '服务器错误');
@@ -132,28 +164,30 @@ export const getKanban = async (req: AuthRequest, res: Response): Promise<void> 
       orderBy: { updatedAt: 'desc' },
     });
 
-    // 按阶段分组
+    // 阶段由关联单据推导，不落库
+    const stageMap = await deriveStages(pipelines);
+    const withStages = pipelines.map((p) => ({ ...p, stage: stageMap.get(p.id) }));
+
+    // 按派生阶段分组
     const columns = {
-      LEAD: { title: '线索', items: [] as typeof pipelines },
-      OPPORTUNITY: { title: '商机', items: [] as typeof pipelines },
-      SAMPLE: { title: '样品单', items: [] as typeof pipelines },
-      ORDER: { title: '订单', items: [] as typeof pipelines },
+      OPPORTUNITY: { title: '商机', items: [] as typeof withStages },
+      QUOTED: { title: '已报价', items: [] as typeof withStages },
+      SAMPLE: { title: '打样', items: [] as typeof withStages },
+      PRODUCTION: { title: '生产', items: [] as typeof withStages },
+      SHIPPED: { title: '出运', items: [] as typeof withStages },
+      ORDER: { title: '订单', items: [] as typeof withStages },
     };
 
-    for (const p of pipelines) {
-      if (columns[p.stage as keyof typeof columns]) {
-        columns[p.stage as keyof typeof columns].items.push(p);
-      }
+    for (const p of withStages) {
+      const col = columns[p.stage as keyof typeof columns];
+      if (col) col.items.push(p);
     }
 
     // 各阶段统计
-    const stats = {
-      LEAD: columns.LEAD.items.length,
-      OPPORTUNITY: columns.OPPORTUNITY.items.length,
-      SAMPLE: columns.SAMPLE.items.length,
-      ORDER: columns.ORDER.items.length,
-      total: pipelines.length,
-    };
+    const stats: Record<string, number> = { total: withStages.length };
+    for (const s of PIPELINE_STAGES) {
+      stats[s] = columns[s as keyof typeof columns]?.items.length ?? 0;
+    }
 
     success(res, { columns, stats });
   } catch {
@@ -177,7 +211,10 @@ export const getPipeline = async (req: AuthRequest, res: Response): Promise<void
       },
     });
     if (!pipeline) { fail(res, 404, '记录不存在'); return; }
-    success(res, pipeline);
+
+    // 阶段为派生值，附加到详情返回
+    const stageMap = await deriveStages([pipeline]);
+    success(res, { ...pipeline, stage: stageMap.get(pipeline.id) });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -208,6 +245,9 @@ export const getByProduct = async (req: AuthRequest, res: Response): Promise<voi
       orderBy: { updatedAt: 'desc' },
     });
 
+    // 阶段为派生值
+    const stageMap = await deriveStages(pipelines);
+
     // 仅保留该产品自身的关联数量
     const list = pipelines.map((p) => ({
       id: p.id,
@@ -215,8 +255,8 @@ export const getByProduct = async (req: AuthRequest, res: Response): Promise<voi
       title: p.title,
       companyName: p.companyName,
       contactName: p.contactName,
-      stage: p.stage,
-      status: p.stage,
+      stage: stageMap.get(p.id),
+      status: stageMap.get(p.id),
       estimatedAmount: p.estimatedAmount,
       amountCNY: p.estimatedAmount,
       updateTime: p.updatedAt,
@@ -280,12 +320,11 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
       },
     });
 
-    // 记录销售活动
+    // 记录销售活动（阶段为派生值，不再记录初始阶段）
     await prisma.salesActivity.create({
       data: {
         pipelineId: pipeline.id,
         action: 'CREATED',
-        toStage: data.stage,
         createdBy: req.userId!,
       },
     });
@@ -363,18 +402,7 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
       },
     });
 
-    // 如果阶段变更，记录活动
-    if (data.stage && data.stage !== existing.stage) {
-      await prisma.salesActivity.create({
-        data: {
-          pipelineId: pipeline.id,
-          action: 'STAGE_CHANGE',
-          fromStage: existing.stage,
-          toStage: data.stage,
-          createdBy: req.userId!,
-        },
-      });
-    }
+    // 阶段为派生值，不支持手动变更，故不再记录阶段变更活动
 
     // 如果关联了客户，同步记录到客户活动记录
     if (existing.customerId) {
@@ -382,7 +410,6 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
       if (data.title && data.title !== existing.title) changes.push('标题');
       if (data.companyName && data.companyName !== existing.companyName) changes.push('公司名称');
       if (data.estimatedAmount !== undefined && data.estimatedAmount !== existing.estimatedAmount) changes.push('预计金额');
-      if (data.stage && data.stage !== existing.stage) changes.push('阶段');
       await activityLogger.log({
         userId: req.userId!,
         username: req.username!,
@@ -404,59 +431,6 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
     console.error(err);
-    fail(res, 500, '服务器错误');
-  }
-};
-
-// ============ 阶段变更 ============
-
-export const changeStage = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { stage } = z.object({ stage: z.enum(['LEAD', 'OPPORTUNITY', 'SAMPLE', 'ORDER']) }).parse(req.body);
-
-    const existing = await prisma.salesPipeline.findUnique({ where: { id: req.params.id } });
-    if (!existing) { fail(res, 404, '记录不存在'); return; }
-
-    const pipeline = await prisma.salesPipeline.update({
-      where: { id: req.params.id },
-      data: { stage },
-      include: { assignee: { select: { id: true, realName: true, username: true } } },
-    });
-
-    await prisma.salesActivity.create({
-      data: {
-        pipelineId: pipeline.id,
-        action: 'STAGE_CHANGE',
-        fromStage: existing.stage,
-        toStage: stage,
-        createdBy: req.userId!,
-      },
-    });
-
-    const STAGE_LABELS: Record<string, string> = {
-      LEAD: '线索', OPPORTUNITY: '商机', SAMPLE: '样品', ORDER: '订单',
-    };
-
-    // 如果关联了客户，同步记录到客户活动记录
-    if (existing.customerId) {
-      await activityLogger.log({
-        userId: req.userId!,
-        username: req.username!,
-        action: 'PIPELINE_STAGE_CHANGE',
-        module: 'sales',
-        targetId: pipeline.id,
-        target: existing.title,
-        detail: `将商机「${existing.title}」从「${STAGE_LABELS[existing.stage]}」推进到「${STAGE_LABELS[stage]}」`,
-        customerId: existing.customerId,
-      });
-    }
-
-    success(res, pipeline, '阶段变更成功');
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, '参数校验失败');
-      return;
-    }
     fail(res, 500, '服务器错误');
   }
 };
@@ -533,12 +507,7 @@ const FIELD_MAP: Record<string, string> = {
   '付款条件': 'paymentTerms',
   '订单状态': 'orderStatus',
   '订单备注': 'orderNotes',
-  '阶段': 'stage',
-};
-
-const STAGE_MAP: Record<string, string> = {
-  '线索': 'LEAD', '商机': 'OPPORTUNITY', '样品单': 'SAMPLE', '订单': 'ORDER',
-  'LEAD': 'LEAD', 'OPPORTUNITY': 'OPPORTUNITY', 'SAMPLE': 'SAMPLE', 'ORDER': 'ORDER',
+  // 注意：「阶段」不再是可导入字段，阶段由关联单据推导
 };
 
 export const importExcel = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -565,8 +534,6 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
         // 数字字段转换
         if (['estimatedAmount', 'sampleQuantity', 'orderAmount'].includes(field)) {
           data[field] = value ? Number(value) : undefined;
-        } else if (field === 'stage') {
-          data[field] = STAGE_MAP[value?.trim()] || 'LEAD';
         } else {
           data[field] = value?.toString().trim() || undefined;
         }
@@ -583,7 +550,6 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
           data: {
             title: data.title as string,
             companyName: data.companyName as string,
-            stage: (data.stage as string) || 'LEAD',
             contactName: data.contactName as string | undefined,
             email: data.email as string | undefined,
             phone: data.phone as string | undefined,

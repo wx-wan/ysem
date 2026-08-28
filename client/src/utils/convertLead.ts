@@ -132,7 +132,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   const title = lead.leadName || [lead.companyName, lead.productName].filter(Boolean).join('-') || '商机';
   const pipelineRes: any = await salesApi.create({
     title,
-    stage: 'OPPORTUNITY',
+    // 阶段由后端按关联单据派生，创建时不传 stage
     companyName: lead.companyName ?? undefined,
     contactName: lead.contactName ?? undefined,
     email: lead.email ?? undefined,

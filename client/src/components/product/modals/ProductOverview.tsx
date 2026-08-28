@@ -9,7 +9,9 @@ import {
   CalendarOutlined, ExperimentOutlined, SwapOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { SalesItem, STAGE_META } from '../../../api/sales';
+import { useTranslation } from 'react-i18next';
+import { SalesItem } from '../../../api/sales';
+import { SALES_STAGES, getStageMeta, getStageI18nKey } from '../../sales/stages';
 import { Product } from '../../../api/products';
 import Price from '../../common/Price';
 
@@ -25,6 +27,7 @@ interface ProductOverviewProps {
 const MONTH_FMT = 'YYYY-MM';
 
 const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, loading }) => {
+  const { t } = useTranslation();
   const { token } = theme.useToken();
 
   // 派生指标
@@ -75,14 +78,14 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
     });
   }, [salesList]);
 
-  // 阶段分布
+  // 阶段分布（阶段为后端派生的只读值）
   const distData = useMemo(() => {
-    return (['LEAD', 'OPPORTUNITY', 'ORDER'] as const).map((stage) => ({
-      name: STAGE_META[stage].label,
+    return SALES_STAGES.map((stage) => ({
+      name: t(`sales.stage.${getStageI18nKey(stage)}`),
       value: salesList.filter((s) => s.stage === stage).length,
-      color: STAGE_META[stage].color,
+      color: getStageMeta(stage).color,
     }));
-  }, [salesList]);
+  }, [salesList, t]);
 
   const cardBase: React.CSSProperties = {
     border: `1px solid ${token.colorBorderSecondary}`,

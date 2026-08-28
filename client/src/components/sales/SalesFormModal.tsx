@@ -6,7 +6,6 @@ import AppModal from '../AppModal';
 import { salesApi } from '../../api/sales';
 import { customerApi } from '../../api/customers';
 import { productApi, ProductOption } from '../../api/products';
-import { SALES_STAGES, STAGE_META, SalesStage } from './stages';
 
 const { TextArea } = Input;
 const { Text } = Typography;
@@ -25,7 +24,7 @@ export function getIntentLabel(value?: string | null): string {
 
 export interface SalesFormValues {
   customerId?: string;
-  stage: SalesStage;
+  // 阶段由后端按关联单据派生，表单不再提交 stage
   title: string;
   companyName: string;
   contactName?: string;
@@ -58,8 +57,6 @@ export interface SalesFormValues {
 interface Props {
   open: boolean;
   editingItem?: any;
-  /** 新建时默认阶段（看板/列表按阶段新建时传入） */
-  initialStage?: SalesStage;
   /** 详情场景：传入客户信息后仅展示、不可编辑 */
   customer?: any;
   /** 详情场景：锁定负责人（不可改） */
@@ -68,7 +65,7 @@ interface Props {
   onSaved: () => void;
 }
 
-const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, customer, fixedOwner, onClose, onSaved }) => {
+const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwner, onClose, onSaved }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
@@ -113,9 +110,7 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, cust
       setLoading(false);
     } else {
       form.resetFields();
-      const defStage: SalesStage = initialStage || (customer?.opportunityStage as SalesStage) || 'OPPORTUNITY';
       form.setFieldsValue({
-        stage: defStage,
         source: 'LEAD_CONVERT',
         assignedTo: customer?.ownerId || undefined,
         leadId: customer?.id,
@@ -132,7 +127,6 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, cust
         customerId: customer.id,
         assignedTo: customer.ownerId || undefined,
         leadId: customer.id,
-        stage: (customer.opportunityStage as SalesStage) || 'OPPORTUNITY',
         title: customer.opportunityTitle || '',
         companyName: customer.companyName || '',
         contactName: customer.contactName || '',
@@ -169,7 +163,6 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, cust
     }
   };
 
-  const stageOptions = SALES_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label }));
   const sourceOptions = [
     { value: 'ALIBABA', label: t('sales.source.alibaba') },
     { value: 'MADE_IN_CHINA', label: t('sales.source.madeInChina') },
@@ -221,8 +214,12 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, cust
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="stage" label={t('sales.stage')} rules={[{ required: true }]}>
-                <Select options={stageOptions} />
+              <Form.Item name="assignedTo" label={t('sales.owner')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectOwner')}
+                  options={assignUsers.map((u) => ({ value: u.id, label: u.realName || u.username }))}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -262,17 +259,8 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, cust
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="source" label={t('sales.source')}>
+              <Form.Item name="source" label={t('sales.source.label')}>
                 <Select options={sourceOptions} allowClear placeholder={t('sales.selectSource')} />
-              </Form.Item>
-            </Col>
-            <Col span={8}>
-              <Form.Item name="assignedTo" label={t('sales.owner')}>
-                <Select
-                  allowClear
-                  placeholder={t('sales.selectOwner')}
-                  options={assignUsers.map((u) => ({ value: u.id, label: u.realName || u.username }))}
-                />
               </Form.Item>
             </Col>
           </Row>
