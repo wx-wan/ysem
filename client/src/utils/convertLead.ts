@@ -25,7 +25,7 @@ export interface ConvertOptions {
    * 当线索关联的客户在系统中不存在时，由调用方弹出「新建客户」弹窗（与客户页一致）。
    * 弹窗保存后 resolve 出新客户 id；弹窗为强制模式，不可取消跳过。
    */
-  openCustomerForm: (initial: {
+  openCustomerForm?: (initial: {
     companyName?: string;
     contactName?: string;
     email?: string;
@@ -37,7 +37,7 @@ export interface ConvertOptions {
    * 弹窗保存后 resolve 出新产品 id；弹窗为强制模式，不可取消跳过。
    * initial.description 可预填产品描述（来自线索 productDesc），避免建出半成品产品。
    */
-  openProductForm: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
+  openProductForm?: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
 }
 
 /**
@@ -105,7 +105,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   } else {
     // 回退：逐项弹出真实新建弹窗（兼容旧调用方）
     if (needCustomer) {
-      const created = await openCustomerForm({
+      const created = await openCustomerForm?.({
         companyName: lead.companyName!,
         contactName: lead.contactName ?? undefined,
         email: lead.email ?? undefined,
@@ -119,7 +119,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
       }
     }
     if (needProduct) {
-      const created = await openProductForm({ name: lead.productName!, description: lead.productDesc ?? undefined });
+      const created = await openProductForm?.({ name: lead.productName!, description: lead.productDesc ?? undefined });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;
@@ -145,8 +145,6 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
     // 商机做实：带入线索的预估数据，新商机不再是空壳
     estimatedAmount: lead.targetPrice ? Number(lead.targetPrice) : undefined,
-    probability: lead.purchaseIntent ?? undefined,
-    estimatedCloseDate: lead.expectedCloseDate ?? undefined,
   } as any);
   const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 

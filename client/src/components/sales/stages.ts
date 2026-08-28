@@ -1,34 +1,18 @@
-// 销售阶段统一配色锁 —— 全局唯一真源
-// 使用 antd Tag 预设色名（blue/gold/purple/green），避免在组件中散落 hex，
-// 既统一又可随主题语义联动（符合 impeccable 配色锁 / taste 反 slop 纪律）。
-export type StageKey = 'LEAD' | 'OPPORTUNITY' | 'ORDER';
+// 商机阶段定义（线索→商机→样品单→订单，与后端 salesPipeline.stage 枚举严格对齐）
+export type SalesStage = 'LEAD' | 'OPPORTUNITY' | 'SAMPLE' | 'ORDER';
 
-export interface SalesStage {
-  key: StageKey;
-  label: string;
-  /** antd Tag 预设色名 */
-  tagColor: string;
-  /** 语义状态色（用于点点/图表） */
-  color: string;
-  /** 浅色背景（用于阶段徽标底） */
-  bg: string;
+export const SALES_STAGES: SalesStage[] = ['LEAD', 'OPPORTUNITY', 'SAMPLE', 'ORDER'];
+
+export const STAGE_META: Record<
+  SalesStage,
+  { label: string; color: string; bg: string; border: string; next?: SalesStage }
+> = {
+  LEAD: { label: '线索', color: '#8c8c8c', bg: 'rgba(0,0,0,0.04)', border: '#d9d9d9', next: 'OPPORTUNITY' },
+  OPPORTUNITY: { label: '商机', color: '#1677ff', bg: '#e6f4ff', border: '#91caff', next: 'SAMPLE' },
+  SAMPLE: { label: '样品单', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7', next: 'ORDER' },
+  ORDER: { label: '订单', color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f' },
+};
+
+export function getStageMeta(stage: string): { label: string; color: string; bg: string; border: string; next?: SalesStage } {
+  return STAGE_META[(stage as SalesStage)] ?? STAGE_META.LEAD;
 }
-
-export const SALES_STAGES: SalesStage[] = [
-  { key: 'LEAD', label: '线索', tagColor: 'blue', color: '#1677ff', bg: '#eff6ff' },
-  { key: 'OPPORTUNITY', label: '商机', tagColor: 'gold', color: '#f59e0b', bg: '#fffbeb' },
-  { key: 'ORDER', label: '订单', tagColor: 'green', color: '#10b981', bg: '#ecfdf5' },
-];
-
-export const STAGE_MAP: Record<string, SalesStage> = SALES_STAGES.reduce(
-  (acc, s) => ({ ...acc, [s.key]: s }),
-  {} as Record<string, SalesStage>,
-);
-
-export const STAGE_LABELS: Record<string, string> = SALES_STAGES.reduce(
-  (acc, s) => ({ ...acc, [s.key]: s.label }),
-  {} as Record<string, string>,
-);
-
-export const getStage = (key?: string): SalesStage | undefined =>
-  key ? STAGE_MAP[key] : undefined;

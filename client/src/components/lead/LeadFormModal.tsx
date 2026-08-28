@@ -357,7 +357,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       style={{ padding: 0, height: 'auto', fontWeight: 700 }}
                       onClick={() => {
                         successModal.destroy();
-                        onClose();
+                        setDrawerOpen(false);
                         navigate('/sales/opportunities');
                       }}
                     >

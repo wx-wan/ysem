@@ -16,13 +16,13 @@ import { customerApi, Customer } from '../api/customers';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
 import StageButtons, { STAGES } from '../components/sales/StageButtons';
-import type { StageKey } from '../components/sales/stages';
-import { getStage } from '../components/sales/stages';
+import type { SalesStage } from '../components/sales/stages';
+import { getStageMeta } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
 import KanbanView from '../components/sales/KanbanView';
 import Price from '../components/common/Price';
 
-export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
+export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   const { message } = App.useApp();
   const { token } = theme.useToken();
   const [searchParams] = useSearchParams();
@@ -216,8 +216,8 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
     {
       title: '阶段', dataIndex: 'stage', width: 90,
       render: (s: string) => {
-        const st = getStage(s);
-        return <Tag color={st?.tagColor} variant="filled">{st?.label || s}</Tag>;
+        const st = getStageMeta(s);
+        return <Tag color={st?.color} variant="filled">{st?.label || s}</Tag>;
       },
     },
     {
@@ -498,7 +498,7 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
                   <div>标题、公司名称、联系人、邮箱、电话、国家、阶段、来源、产品兴趣</div>
                   <div>预估金额、预计成交日期、采购意向</div>
                   <div>订单金额、订单日期、交付日期、付款条件、订单状态</div>
-                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 订单</div>
+                  <div style={{ marginTop: 6, color: token.colorWarning }}>阶段可选值：线索 / 商机 / 样品单 / 订单</div>
                 </div>
               </div>
             ),
@@ -523,11 +523,9 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
       <SalesFormModal
         open={modalOpen}
         editingItem={editingItem}
-        assignUsers={assignUsers}
-        customerOptions={customerOptions}
-        initialStage={initialFormStage}
+        initialStage={initialFormStage as SalesStage}
         onClose={() => { setModalOpen(false); setEditingItem(null); }}
-        onSuccess={handleFormSuccess}
+        onSaved={() => { setModalOpen(false); setEditingItem(null); refresh(); }}
       />
       <SalesDetailDrawer
         open={detailOpen}

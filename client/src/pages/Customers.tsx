@@ -21,6 +21,7 @@ import TransferModal from '../components/customer/modals/TransferModal';
 import ImportModal from '../components/customer/modals/ImportModal';
 import OrderFormModal from '../components/customer/modals/OrderFormModal';
 import SalesFormModal from '../components/sales/SalesFormModal';
+import type { SalesStage } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
 
 export default function CustomersPage() {
@@ -611,14 +612,12 @@ export default function CustomersPage() {
       <SalesFormModal
         open={pipelineEditOpen}
         editingItem={editingPipeline}
-        initialStage={newPipelineStage}
+        initialStage={newPipelineStage as SalesStage}
         customer={newPipelineCustomer}
-        currentUserId={user?.id}
         fixedOwner={!!newPipelineCustomer}
-        assignUsers={userList.map(u => ({ id: u.id, realName: u.realName || u.username }))}
-            onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
-            onSuccess={handlePipelineEditSuccess}
-          />
+        onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
+        onSaved={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); setDetailVersion(v => v + 1); }}
+      />
 
       {/* 商机转化订单 — 选择订单类型 */}
       <Modal

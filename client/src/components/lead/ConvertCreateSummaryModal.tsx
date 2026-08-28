@@ -17,9 +17,15 @@ interface Props {
   open: boolean;
   items: ConvertSummaryItems;
   /** 点击「新建客户」：由父级打开真实新建客户弹窗并 resolve 出新 id */
-  onOpenCustomer: () => Promise<{ id: string }>;
+  onOpenCustomer: (initial: {
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }) => Promise<{ id: string }>;
   /** 点击「新建产品」：由父级打开真实新建产品弹窗并 resolve 出新 id */
-  onOpenProduct: () => Promise<{ id: string }>;
+  onOpenProduct: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
   /** 全部建档完成后确认转商机 */
   onConfirm: (ids: { customerId?: string; productId?: string }) => void;
   /** 取消（中止转商机） */
@@ -98,7 +104,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
   const handleBuildCustomer = async () => {
     setLoadingCustomer(true);
     try {
-      const r = await onOpenCustomer();
+      const r = await onOpenCustomer({ companyName: items.customerName });
       if (r?.id) setBuiltCustomerId(r.id);
     } finally {
       setLoadingCustomer(false);
@@ -108,7 +114,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
   const handleBuildProduct = async () => {
     setLoadingProduct(true);
     try {
-      const r = await onOpenProduct();
+      const r = await onOpenProduct({ name: items.productName });
       if (r?.id) setBuiltProductId(r.id);
     } finally {
       setLoadingProduct(false);

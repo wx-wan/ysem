@@ -1,417 +1,472 @@
-import React from 'react';
-import { Modal, Form, Input, Select, Row, Col, ConfigProvider, theme, DatePicker, Button, Space } from 'antd';
-import { PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import { Form, Input, Select, InputNumber, DatePicker, Row, Col, Divider, Typography, Button, Spin } from 'antd';
+import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
-import { SalesItem } from '../../api/sales';
-import { Z_INDEX } from '../../zIndex';
-import { Customer } from '../../api/customers';
+import AppModal from '../AppModal';
+import { salesApi } from '../../api/sales';
+import { customerApi } from '../../api/customers';
 import { productApi, ProductOption } from '../../api/products';
-import { SALES_STAGES } from './stages';
+import { SALES_STAGES, STAGE_META, SalesStage } from './stages';
 
-const STAGES = SALES_STAGES;
+const { TextArea } = Input;
+const { Text } = Typography;
 
-const SOURCE_OPTIONS = [
-  { label: '手动录入', value: 'MANUAL' },
-  { label: 'Excel导入', value: 'EXCEL' },
-  { label: '小满API', value: 'XIAOMAN' },
-];
-
-export const INTENT_OPTIONS = [
-  { label: '低意向', value: '低意向' },
-  { label: '中意向', value: '中意向' },
-  { label: '高意向', value: '高意向' },
-  { label: '准成交', value: '准成交' },
-];
-
-export const getIntentLabel = (probability: string | null | undefined): string => {
-  return probability || '-';
+// 采购意向（probability）中文标签
+const INTENT_LABELS: Record<string, string> = {
+  LOW: '低',
+  MEDIUM: '中',
+  HIGH: '高',
+  WIN: '赢单',
 };
+export function getIntentLabel(value?: string | null): string {
+  if (!value) return '';
+  return INTENT_LABELS[value] ?? value;
+}
+
+export interface SalesFormValues {
+  customerId?: string;
+  stage: SalesStage;
+  title: string;
+  companyName: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  country?: string;
+  source?: string;
+  productInterest?: string;
+  leadNotes?: string;
+  estimatedAmount?: number;
+  estimatedCloseDate?: string;
+  probability?: string;
+  opportunityNotes?: string;
+  sampleType?: string;
+  sampleQuantity?: number;
+  sampleStatus?: string;
+  sampleNotes?: string;
+  orderAmount?: number;
+  orderDate?: string;
+  deliveryDate?: string;
+  paymentTerms?: string;
+  orderStatus?: string;
+  orderType?: 'SAMPLE' | 'FORMAL';
+  orderNotes?: string;
+  assignedTo?: string;
+  leadId?: string;
+  products?: { productId: string; quantity?: number }[];
+}
 
 interface Props {
   open: boolean;
-  editingItem: SalesItem | null;
-  assignUsers: Array<{ id: string; realName: string }>;
-  initialStage?: string;
-  /** 详情场景：由父级传入的客户（公司名称固定、基础信息带出、负责人不可改） */
-  customer?: Customer | null;
-  /** 当前用户 id：详情场景下作为默认负责人 */
-  currentUserId?: string;
-  /** 详情场景：禁用负责人选择 */
+  editingItem?: any;
+  /** 新建时默认阶段（看板/列表按阶段新建时传入） */
+  initialStage?: SalesStage;
+  /** 详情场景：传入客户信息后仅展示、不可编辑 */
+  customer?: any;
+  /** 详情场景：锁定负责人（不可改） */
   fixedOwner?: boolean;
-  /** 销售页独立新建：全部客户下拉选项（含 raw 客户） */
-  customerOptions?: Array<{ label: string; value: string; raw?: Customer }>;
-  /** 产品选项：用于线索关联产品（由父级传入或全部加载） */
-  productOptions?: ProductOption[];
   onClose: () => void;
-  /** 保存成功：组件只负责校验并回传（数字已转换后的）值，
-   *  持久化与前端缓存更新交由父级统一处理（先更新前端缓存保持一致，最后落库） */
-  onSuccess: (values: any) => void;
+  onSaved: () => void;
 }
 
-const SalesFormModal: React.FC<Props> = React.memo(({ open, editingItem, assignUsers, initialStage, customer, currentUserId, fixedOwner, customerOptions, productOptions, onClose, onSuccess }) => {
-  const { token } = theme.useToken();
+const SalesFormModal: React.FC<Props> = ({ open, editingItem, initialStage, customer, fixedOwner, onClose, onSaved }) => {
+  const { t } = useTranslation();
   const [form] = Form.useForm();
-  const [saving, setSaving] = React.useState(false);
-  const [innerProductOptions, setInnerProductOptions] = React.useState<ProductOption[]>(productOptions || []);
-  const stageForForm = Form.useWatch('stage', form) || 'LEAD';
+  const [customers, setCustomers] = useState<{ id: string; companyName: string }[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [assignUsers, setAssignUsers] = useState<{ id: string; realName: string; username: string }[]>([]);
+  const [leadProducts, setLeadProducts] = useState<{ productId: string; quantity?: number }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // 若父级未传入产品选项，则自行加载
-  React.useEffect(() => {
-    if (productOptions && productOptions.length) {
-      setInnerProductOptions(productOptions);
-    } else if (open) {
-      productApi.options().then((res) => {
-        if (res.data.code === 200) setInnerProductOptions(res.data.data);
-      }).catch(() => {});
+  const isEdit = !!editingItem;
+  const isDetail = !!(customer || fixedOwner);
+
+  // 打开时加载下拉数据 + 回填
+  useEffect(() => {
+    if (!open) return;
+    const load = async () => {
+      try {
+        const [c, p, u] = await Promise.all([
+          customerApi.options(),
+          productApi.options(),
+          salesApi.getAssignUsers(),
+        ]);
+        setCustomers(c.data.data ?? []);
+        setProducts(p.data.data ?? []);
+        setAssignUsers(u.data.data ?? []);
+      } catch {
+        /* ignore */
+      }
+    };
+    load();
+
+    if (editingItem) {
+      setLoading(true);
+      const item = editingItem;
+      form.setFieldsValue({
+        ...item,
+        estimatedCloseDate: item.estimatedCloseDate ? dayjs(item.estimatedCloseDate) : undefined,
+        orderDate: item.orderDate ? dayjs(item.orderDate) : undefined,
+        deliveryDate: item.deliveryDate ? dayjs(item.deliveryDate) : undefined,
+      });
+      setLeadProducts(Array.isArray(item.leadProducts) ? item.leadProducts.map((lp: any) => ({ productId: lp.productId, quantity: lp.quantity })) : []);
+      setLoading(false);
+    } else {
+      form.resetFields();
+      const defStage: SalesStage = initialStage || (customer?.opportunityStage as SalesStage) || 'OPPORTUNITY';
+      form.setFieldsValue({
+        stage: defStage,
+        source: 'LEAD_CONVERT',
+        assignedTo: customer?.ownerId || undefined,
+        leadId: customer?.id,
+        customerId: customer?.id,
+      });
+      setLeadProducts([]);
     }
-  }, [productOptions, open]);
+  }, [open, editingItem, customer, fixedOwner, form]);
+
+  // 详情场景：受控回填（不依赖 rAF）
+  useEffect(() => {
+    if (open && isDetail && customer) {
+      form.setFieldsValue({
+        customerId: customer.id,
+        assignedTo: customer.ownerId || undefined,
+        leadId: customer.id,
+        stage: (customer.opportunityStage as SalesStage) || 'OPPORTUNITY',
+        title: customer.opportunityTitle || '',
+        companyName: customer.companyName || '',
+        contactName: customer.contactName || '',
+        email: customer.email || '',
+        phone: customer.phone || '',
+        country: customer.country || '',
+      });
+    }
+  }, [open, isDetail, customer, form]);
 
   const handleSubmit = async () => {
     try {
-      const raw = await form.validateFields();
-      // 将数字输入转为 number 类型
-      const values = {
-        ...raw,
-        estimatedAmount: raw.estimatedAmount ? Number(raw.estimatedAmount) : undefined,
-        orderAmount: raw.orderAmount ? Number(raw.orderAmount) : undefined,
-        estimatedCloseDate: raw.estimatedCloseDate
-          ? (dayjs.isDayjs(raw.estimatedCloseDate) ? raw.estimatedCloseDate.format('YYYY-MM-DD') : raw.estimatedCloseDate)
-          : undefined,
-        products: Array.isArray(raw.products)
-          ? raw.products
-              .filter((p: any) => p && p.productId)
-              .map((p: any) => ({ productId: p.productId, quantity: p.quantity ? Number(p.quantity) : 1 }))
-          : undefined,
-      };
+      const values = await form.validateFields();
       setSaving(true);
-      // 仅回传校验后的值，由父级负责：先更新前端缓存保持一致，再持久化到数据库
-      onSuccess(values);
-      onClose();
+      const payload: any = {
+        ...values,
+        estimatedCloseDate: values.estimatedCloseDate ? values.estimatedCloseDate.format('YYYY-MM-DD') : undefined,
+        orderDate: values.orderDate ? values.orderDate.format('YYYY-MM-DD') : undefined,
+        deliveryDate: values.deliveryDate ? values.deliveryDate.format('YYYY-MM-DD') : undefined,
+        products: leadProducts.length ? leadProducts : undefined,
+      };
+      if (isEdit) {
+        await salesApi.update(editingItem.id, payload);
+      } else {
+        await salesApi.create(payload);
+      }
+      onSaved();
     } catch (e: any) {
-      if (e.errorFields) return; // 校验失败，不关闭
+      if (e?.message) {
+        // validateFields 抛错时不提示
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  React.useEffect(() => {
-    if (open) {
-      // 详情场景：客户基础信息作为默认值带出（editingItem 已有值则优先）
-      const baseInfo: Record<string, any> = customer
-        ? {
-            companyName: customer.companyName,
-            contactName: customer.contactName,
-            phone: customer.phone,
-            email: customer.email,
-            country: customer.country,
-            assignedTo: fixedOwner ? currentUserId : undefined,
-          }
-        : {};
-      if (editingItem) {
-        // 先设置 stage，让对应阶段的条件字段先挂载，
-        // 条件字段（OPPORTUNITY / ORDER 等）依赖 Form.useWatch 异步渲染，
-        // 因此按当前 stage 精确轮询等待对应字段实例就绪后再整体赋值，
-        // 避免未挂载的字段（如预计成交金额、预计成交时间）拿不到值
-        form.setFieldsValue({ stage: editingItem.stage || 'LEAD' });
-        const stage = editingItem.stage || 'LEAD';
-        const waitFor = {
-          LEAD: undefined,
-          OPPORTUNITY: 'estimatedAmount',
-          ORDER: 'orderAmount',
-        }[stage];
-        let raf = 0;
-        const tryFill = () => {
-          if (!waitFor || form.getFieldInstance(waitFor)) {
-            form.setFieldsValue({
-              ...baseInfo,
-              ...editingItem,
-              estimatedCloseDate: editingItem.estimatedCloseDate ? dayjs(editingItem.estimatedCloseDate) : undefined,
-              products: editingItem.leadProducts?.length
-                ? editingItem.leadProducts.map((p) => ({ productId: p.productId, quantity: p.quantity }))
-                : undefined,
-            });
-          } else {
-            raf = requestAnimationFrame(tryFill);
-          }
-        };
-        raf = requestAnimationFrame(tryFill);
-        return () => cancelAnimationFrame(raf);
-      } else {
-        form.resetFields();
-        form.setFieldsValue({
-          stage: initialStage || 'LEAD',
-          ...baseInfo,
-          assignedTo: fixedOwner ? currentUserId : undefined,
-        });
-      }
-    }
-  }, [open, editingItem, form, initialStage]);
+  const stageOptions = SALES_STAGES.map((s) => ({ value: s, label: STAGE_META[s].label }));
+  const sourceOptions = [
+    { value: 'ALIBABA', label: t('sales.source.alibaba') },
+    { value: 'MADE_IN_CHINA', label: t('sales.source.madeInChina') },
+    { value: 'INDEPENDENT_SITE', label: t('sales.source.independentSite') },
+    { value: 'FACEBOOK', label: t('sales.source.facebook') },
+    { value: 'INSTAGRAM', label: t('sales.source.instagram') },
+    { value: 'LINKEDIN', label: t('sales.source.linkedin') },
+    { value: 'GOOGLE', label: t('sales.source.google') },
+    { value: 'EXHIBITION', label: t('sales.source.exhibition') },
+    { value: 'OLD_CUSTOMER', label: t('sales.source.oldCustomer') },
+    { value: 'REFERRAL', label: t('sales.source.referral') },
+    { value: 'OTHER', label: t('sales.source.other') },
+    { value: 'LEAD_CONVERT', label: t('sales.source.leadConvert') },
+  ];
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#1677ff',
-          borderRadius: 8,
-          borderRadiusLG: 16,
-          fontFamily: "'Montserrat', 'SourceHanSansCN', -apple-system, BlinkMacSystemFont, sans-serif",
-        },
-        components: {
-          Modal: {
-            borderRadiusLG: 16,
-            borderRadiusSM: 12,
-            titleFontSize: 16,
-            titleColor: 'rgba(0,0,0,0.88)',
-          },
-          Form: {
-            labelColor: '#64748b',
-            labelFontSize: 13,
-            itemMarginBottom: 18,
-          },
-          Input: {
-            borderRadius: 8,
-            hoverBorderColor: '#1677ff',
-            activeBorderColor: '#1677ff',
-          },
-          Select: {
-            borderRadius: 8,
-            hoverBorderColor: '#1677ff',
-            activeBorderColor: '#1677ff',
-          },
-          Button: {
-            primaryShadow: '0 2px 8px rgba(22,119,255,0.25)',
-          },
-        },
-      }}
+    <AppModal
+      open={open}
+      title={isEdit ? t('sales.editTitle') : t('sales.newTitle')}
+      onClose={onClose}
+      width={720}
+      footer={
+        isDetail ? (
+          <Button onClick={onClose}>{t('common.close')}</Button>
+        ) : (
+          <>
+            <Button onClick={onClose}>{t('common.cancel')}</Button>
+            <Button type="primary" loading={saving} onClick={handleSubmit}>
+              {t('common.save')}
+            </Button>
+          </>
+        )
+      }
+      bodyPadding={24}
     >
-      <Modal
-        title={editingItem ? '编辑商机' : '新增商机'}
-        open={open}
-        onCancel={onClose}
-        onOk={handleSubmit}
-        okText={editingItem ? '保存' : '创建'}
-        cancelText="取消"
-        confirmLoading={saving}
-        width={720}
-        zIndex={Z_INDEX.overlay}
-        forceRender
-        styles={{
-          header: { borderBottom: '1px solid rgba(0,0,0,0.06)', padding: '16px 20px' },
-          body: { padding: '20px 24px' },
-          footer: { borderTop: '1px solid rgba(0,0,0,0.06)', padding: '12px 20px' },
-        }}
-        okButtonProps={{ style: { background: token.colorPrimary, fontWeight: 600 } }}
-      >
-        <Form form={form} layout="vertical" preserve={false}>
+      <Spin spinning={loading}>
+        <Form form={form} layout="vertical" disabled={isDetail}>
+          <Divider titlePlacement="left">{t('sales.section.basic')}</Divider>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="title" label="标题" rules={[{ required: true }]}>
-                <Input placeholder="如：ABC公司询价" />
+              <Form.Item name="customerId" label={t('sales.customer')}>
+                <Select
+                  showSearch
+                  optionFilterProp="label"
+                  placeholder={t('sales.selectCustomer')}
+                  options={customers.map((c) => ({ value: c.id, label: c.companyName }))}
+                  allowClear
+                />
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="stage" label="阶段">
-                <Select options={STAGES.map((s) => ({ label: s.label, value: s.key }))} />
+              <Form.Item name="stage" label={t('sales.stage')} rules={[{ required: true }]}>
+                <Select options={stageOptions} />
               </Form.Item>
             </Col>
           </Row>
-
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="companyName" label="公司名称" rules={[{ required: true }]}>
-                {customer ? (
-                  <Input disabled />
-                ) : (
+              <Form.Item name="title" label={t('sales.title')} rules={[{ required: true, message: t('sales.titleRequired') }]}>
+                <Input placeholder={t('sales.titlePlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="companyName" label={t('sales.companyName')} rules={[{ required: true, message: t('sales.companyRequired') }]}>
+                <Input placeholder={t('sales.companyPlaceholder')} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="contactName" label={t('sales.contact')}>
+                <Input placeholder={t('sales.contactPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="email" label={t('sales.email')}>
+                <Input placeholder={t('sales.emailPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="phone" label={t('sales.phone')}>
+                <Input placeholder={t('sales.phonePlaceholder')} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="country" label={t('sales.country')}>
+                <Input placeholder={t('sales.countryPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="source" label={t('sales.source')}>
+                <Select options={sourceOptions} allowClear placeholder={t('sales.selectSource')} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="assignedTo" label={t('sales.owner')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectOwner')}
+                  options={assignUsers.map((u) => ({ value: u.id, label: u.realName || u.username }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="productInterest" label={t('sales.productInterest')}>
+            <Input placeholder={t('sales.productInterestPlaceholder')} />
+          </Form.Item>
+
+          <Divider titlePlacement="left">{t('sales.section.lead')}</Divider>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="estimatedAmount" label={t('sales.estAmount')}>
+                <InputNumber min={0} style={{ width: '100%' }} placeholder={t('sales.amountPlaceholder')} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="estimatedCloseDate" label={t('sales.estCloseDate')}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="probability" label={t('sales.probability')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectProbability')}
+                  options={[
+                    { value: 'LOW', label: t('sales.prob.low') },
+                    { value: 'MEDIUM', label: t('sales.prob.medium') },
+                    { value: 'HIGH', label: t('sales.prob.high') },
+                    { value: 'WIN', label: t('sales.prob.win') },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="leadNotes" label={t('sales.leadNotes')}>
+            <TextArea rows={2} placeholder={t('sales.leadNotesPlaceholder')} />
+          </Form.Item>
+          <Form.Item name="opportunityNotes" label={t('sales.opportunityNotes')}>
+            <TextArea rows={2} placeholder={t('sales.opportunityNotesPlaceholder')} />
+          </Form.Item>
+
+          <Divider titlePlacement="left">{t('sales.section.products')}</Divider>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {t('sales.productsHint')}
+          </Text>
+          <div style={{ marginTop: 8 }}>
+            {products.length === 0 ? (
+              <Text type="secondary">{t('sales.noProducts')}</Text>
+            ) : (
+              leadProducts.map((lp, idx) => (
+                <div key={idx} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
                   <Select
-                    showSearch
-                    placeholder="选择客户"
-                    optionFilterProp="label"
-                    options={customerOptions}
-                    onChange={(value) => {
-                      const opt = customerOptions?.find((o) => o.value === value);
-                      if (opt?.raw) {
-                        form.setFieldsValue({
-                          companyName: opt.raw.companyName,
-                          contactName: opt.raw.contactName,
-                          phone: opt.raw.phone,
-                          email: opt.raw.email,
-                          country: opt.raw.country,
-                        });
-                      }
+                    style={{ flex: 1 }}
+                    placeholder={t('sales.selectProduct')}
+                    value={lp.productId || undefined}
+                    onChange={(v) => {
+                      const next = [...leadProducts];
+                      next[idx] = { ...next[idx], productId: v };
+                      setLeadProducts(next);
+                    }}
+                    options={products.map((p) => ({ value: p.id, label: p.name }))}
+                  />
+                  <InputNumber
+                    min={1}
+                    placeholder={t('sales.qty')}
+                    value={lp.quantity}
+                    onChange={(v) => {
+                      const next = [...leadProducts];
+                      next[idx] = { ...next[idx], quantity: v || undefined };
+                      setLeadProducts(next);
                     }}
                   />
-                )}
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="contactName" label="联系人">
-                <Input />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item name="country" label="国家">
-                <Input />
-              </Form.Item>
-            </Col>
-          </Row>
+                  {!isDetail && (
+                    <Button
+                      danger
+                      type="text"
+                      onClick={() => setLeadProducts(leadProducts.filter((_, i) => i !== idx))}
+                    >
+                      {t('common.delete')}
+                    </Button>
+                  )}
+                </div>
+              ))
+            )}
+            {!isDetail && (
+              <Button
+                type="dashed"
+                block
+                onClick={() => setLeadProducts([...leadProducts, { productId: '', quantity: 1 }])}
+              >
+                + {t('sales.addProduct')}
+              </Button>
+            )}
+          </div>
 
+          <Divider titlePlacement="left">{t('sales.section.sample')}</Divider>
           <Row gutter={16}>
             <Col span={8}>
-              <Form.Item name="email" label="邮箱">
-                <Input />
+              <Form.Item name="sampleType" label={t('sales.sampleType')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectSampleType')}
+                  options={[
+                    { value: 'FREE', label: t('sales.sample.free') },
+                    { value: 'CHARGE', label: t('sales.sample.charge') },
+                    { value: 'REFUNDABLE', label: t('sales.sample.refundable') },
+                  ]}
+                />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="phone" label="电话">
-                <Input />
+              <Form.Item name="sampleQuantity" label={t('sales.sampleQuantity')}>
+                <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
             <Col span={8}>
-              <Form.Item name="source" label="来源">
-                <Select options={SOURCE_OPTIONS} />
+              <Form.Item name="sampleStatus" label={t('sales.sampleStatus')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectSampleStatus')}
+                  options={[
+                    { value: 'PENDING', label: t('sales.sample.pending') },
+                    { value: 'MAKING', label: t('sales.sample.making') },
+                    { value: 'SENT', label: t('sales.sample.sent') },
+                    { value: 'CONFIRMED', label: t('sales.sample.confirmed') },
+                  ]}
+                />
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="sampleNotes" label={t('sales.sampleNotes')}>
+            <TextArea rows={2} />
+          </Form.Item>
 
-          {stageForForm === 'LEAD' && (
-            <>
-              <Form.Item label="关联产品" tooltip="线索由产品产生，可关联多个产品及其数量">
-                <Form.List name="products">
-                  {(fields, { add, remove }) => (
-                    <>
-                      {fields.map(({ key, name, ...restField }) => (
-                        <Space key={key} align="baseline" style={{ display: 'flex', marginBottom: 8 }} wrap>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'productId']}
-                            rules={[{ required: true, message: '请选择产品' }]}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <Select
-                              showSearch
-                              placeholder="选择产品"
-                              style={{ width: 320 }}
-                              optionFilterProp="label"
-                              options={innerProductOptions.map((p) => ({
-                                label: `${p.name}${p.sku ? `（${p.sku}）` : ''}`,
-                                value: p.id,
-                              }))}
-                            />
-                          </Form.Item>
-                          <Form.Item
-                            {...restField}
-                            name={[name, 'quantity']}
-                            initialValue={1}
-                            style={{ marginBottom: 0 }}
-                          >
-                            <Input type="number" min={1} placeholder="数量" style={{ width: 100 }} />
-                          </Form.Item>
-                          <MinusCircleOutlined onClick={() => remove(name)} style={{ color: '#bbb' }} />
-                        </Space>
-                      ))}
-                      <Button
-                        type="dashed"
-                        onClick={() => add({ quantity: 1 })}
-                        block
-                        icon={<PlusOutlined />}
-                        style={{ marginTop: fields.length ? 0 : 0 }}
-                      >
-                        添加关联产品
-                      </Button>
-                    </>
-                  )}
-                </Form.List>
+          <Divider titlePlacement="left">{t('sales.section.order')}</Divider>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="orderType" label={t('sales.orderType')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectOrderType')}
+                  options={[
+                    { value: 'SAMPLE', label: t('sales.order.sample') },
+                    { value: 'FORMAL', label: t('sales.order.formal') },
+                  ]}
+                />
               </Form.Item>
-              <Form.Item name="leadNotes" label="备注">
-                <Input.TextArea rows={2} />
+            </Col>
+            <Col span={8}>
+              <Form.Item name="orderAmount" label={t('sales.orderAmount')}>
+                <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
-            </>
-          )}
-
-          {stageForForm === 'OPPORTUNITY' && (
-            <Row gutter={16}>
-              <Col span={8}>
-                <Form.Item name="estimatedAmount" label="预估金额（CNY）">
-                  <Input type="number" prefix="¥" />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="probability" label="采购意向">
-                  <Select
-                    placeholder="选择意向"
-                    allowClear
-                    options={INTENT_OPTIONS}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={8}>
-                <Form.Item name="estimatedCloseDate" label="预计成交日期">
-                  <DatePicker
-                    style={{ width: '100%' }}
-                    placeholder="选择预计成交日期"
-                    disabledDate={(current) => !!current && current < dayjs().startOf('day')}
-                  />
-                </Form.Item>
-              </Col>
-            </Row>
-          )}
-
-          {stageForForm === 'ORDER' && (
-            <>
-              <Row gutter={16}>
-                <Col span={8}>
-                  <Form.Item name="orderAmount" label="订单金额（CNY）">
-                    <Input type="number" prefix="¥" />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item name="orderDate" label="下单日期">
-                    <Input type="date" />
-                  </Form.Item>
-                </Col>
-                <Col span={8}>
-                  <Form.Item name="deliveryDate" label="交付日期">
-                    <Input type="date" />
-                  </Form.Item>
-                </Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={12}>
-                  <Form.Item name="paymentTerms" label="付款条件">
-                    <Input />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="orderStatus" label="订单状态">
-                    <Select options={[
-                      { label: '待确认', value: 'PENDING' },
-                      { label: '已确认', value: 'CONFIRMED' },
-                      { label: '生产中', value: 'IN_PRODUCTION' },
-                      { label: '已发货', value: 'SHIPPED' },
-                      { label: '已交付', value: 'DELIVERED' },
-                    ]} />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </>
-          )}
-
-          <Form.Item
-            name="assignedTo"
-            label="负责人"
-            tooltip={fixedOwner ? '当前场景下负责人默认为您本人，不可修改' : undefined}
-          >
-            <Select
-              allowClear={!fixedOwner}
-              disabled={fixedOwner}
-              placeholder={fixedOwner ? '默认当前用户' : '选择负责人'}
-              options={assignUsers.map((u) => ({ label: u.realName, value: u.id }))}
-            />
+            </Col>
+            <Col span={8}>
+              <Form.Item name="orderStatus" label={t('sales.orderStatus')}>
+                <Select
+                  allowClear
+                  placeholder={t('sales.selectOrderStatus')}
+                  options={[
+                    { value: 'PENDING', label: t('sales.order.pending') },
+                    { value: 'PRODUCING', label: t('sales.order.producing') },
+                    { value: 'SHIPPED', label: t('sales.order.shipped') },
+                    { value: 'DONE', label: t('sales.order.done') },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="orderDate" label={t('sales.orderDate')}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="deliveryDate" label={t('sales.deliveryDate')}>
+                <DatePicker style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="paymentTerms" label={t('sales.paymentTerms')}>
+                <Input placeholder={t('sales.paymentPlaceholder')} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="orderNotes" label={t('sales.orderNotes')}>
+            <TextArea rows={2} />
           </Form.Item>
         </Form>
-      </Modal>
-    </ConfigProvider>
+      </Spin>
+    </AppModal>
   );
-});
+};
 
 export default SalesFormModal;

@@ -42,10 +42,12 @@ export interface SalesItem {
 }
 
 /** 销售阶段（线索/商机/订单）中文与配色 */
-export const STAGE_META: Record<string, { label: string; color: string }> = {
-  LEAD: { label: '线索', color: '#1677ff' },
-  OPPORTUNITY: { label: '商机', color: '#d97706' },
-  ORDER: { label: '订单', color: '#16a34a' },
+// 阶段元信息（阶段key → 颜色/背景），与 components/sales/stages.ts 保持一致
+export const STAGE_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  LEAD: { label: '线索', color: '#8c8c8c', bg: 'rgba(0,0,0,0.04)', border: '#d9d9d9' },
+  OPPORTUNITY: { label: '商机', color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
+  SAMPLE: { label: '样品单', color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
+  ORDER: { label: '订单', color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f' },
 };
 
 export interface LeadProduct {
