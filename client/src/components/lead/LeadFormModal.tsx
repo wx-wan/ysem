@@ -354,14 +354,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // ============ 确认建档 ============
   // 走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
   const confirmCreateCustomer = () => {
-    if (editing?.status === 'INVALID') return;
+    if (readonly) return;
     if (!editing?.companyName) return;
     setInitialCustName(editing.companyName);
     setCustModalOpen(true);
   };
 
   const confirmCreateProduct = () => {
-    if (editing?.status === 'INVALID') return;
+    if (readonly) return;
     if (!editing?.productName) return;
     productEditRef.current?.open(null, { name: editing.productName ?? '' });
   };
@@ -396,13 +396,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 新建模式（无真实线索 id）下，转交/释放/无效/确认等仅对已有线索的操作不可用
   const isCreate = !editing?.id;
+  // 已确认（QUALIFIED）与无效（INVALID）一样为只读：禁用所有编辑/操作
+  const readonly = editing?.status === 'INVALID' || editing?.status === 'QUALIFIED';
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={editing?.status === 'INVALID'}>
+      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={readonly}>
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
@@ -453,7 +455,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     size="middle"
                     icon={<SwapOutlined style={{ color: token.colorWarning }} />}
                     style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                    disabled={!editing?.assignedTo}
+                    disabled={!editing?.assignedTo || readonly}
                     onClick={() => setTransferOpen(true)}
                     title={t('lead.transfer')}
                   />
@@ -461,7 +463,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     title={t('lead.confirmRelease')}
                     okText={t('common.ok')}
                     cancelText={t('common.cancel')}
-                    disabled={!editing?.assignedTo}
+                    disabled={!editing?.assignedTo || readonly}
                     onConfirm={handleReleaseLead}
                   >
                     <Button
@@ -469,7 +471,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       size="middle"
                       icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
                       style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                      disabled={!editing?.assignedTo}
+                      disabled={!editing?.assignedTo || readonly}
                       title={t('lead.release')}
                     />
                   </Popconfirm>
@@ -516,7 +518,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
               <Space>
-                {editing?.id && editing.status !== 'INVALID' && (
+                {editing?.id && !readonly && (
                   <Button danger onClick={handleInvalidLead}>
                     {t('lead.invalid')}
                   </Button>
@@ -529,12 +531,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Space>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-                {editing?.id && editing.status !== 'INVALID' && (
+                {editing?.id && !readonly && editing.status !== 'QUALIFIED' && (
                   <Button type="primary" onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
                 )}
-                {(!editing?.id || editing.status !== 'INVALID') && (
+                {(!editing?.id || !readonly) && (
                   <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
                 )}
               </Space>
@@ -604,7 +606,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             {/* 参考图片纵向跨三行（左侧）；右侧三行：客户/沟通账号、采购产品/数量要求、目标价位/产品描述（最底行） */}
             <Col span={12}>
               <Form.Item name="images" label={t('lead.images')}>
-                <ProductImageList disabled={editing?.status === 'INVALID'} />
+                <ProductImageList disabled={readonly} />
               </Form.Item>
             </Col>
             <Col span={12}>
