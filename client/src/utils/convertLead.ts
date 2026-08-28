@@ -13,11 +13,10 @@ export interface ConvertResult {
 
 export interface ConvertOptions {
   /**
-   * 当线索关联的客户/产品在系统中不存在时，由调用方决定是否新建。
-   * 返回 true 表示确认新建，false 表示跳过（不新建）。
-   * 用于弹窗确认「是否新建客户/产品」。
+   * 当线索关联的客户/产品在系统中不存在时，由调用方弹窗告知用户将强制新建。
+   * 弹窗确认后（必须创建，不可跳过）resolve。
    */
-  confirmCreate?: (type: 'customer' | 'product', name: string) => Promise<boolean>;
+  confirmCreate?: (type: 'customer' | 'product', name: string) => Promise<void>;
 }
 
 /**
@@ -55,20 +54,19 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   if (!customerId && lead.companyName) {
     customerId = await findCustomerByName(lead.companyName);
     if (!customerId) {
-      const ok = await confirmCreate('customer', lead.companyName);
-      if (ok) {
-        const cRes: any = await customerApi.create({
-          companyName: lead.companyName,
-          contactName: lead.contactName ?? undefined,
-          email: lead.email ?? undefined,
-          phone: lead.phone ?? undefined,
-          country: lead.country ?? undefined,
-        });
-        customerId = cRes?.data?.id ?? cRes?.data?.data?.id ?? null;
-        if (customerId) {
-          customerCreated = true;
-          await leadApi.update(leadId, { customerId });
-        }
+      // 未检测到客户：必须创建（不可跳过），弹窗仅用于告知
+      await confirmCreate('customer', lead.companyName);
+      const cRes: any = await customerApi.create({
+        companyName: lead.companyName,
+        contactName: lead.contactName ?? undefined,
+        email: lead.email ?? undefined,
+        phone: lead.phone ?? undefined,
+        country: lead.country ?? undefined,
+      });
+      customerId = cRes?.data?.id ?? cRes?.data?.data?.id ?? null;
+      if (customerId) {
+        customerCreated = true;
+        await leadApi.update(leadId, { customerId });
       }
     }
   }
@@ -79,14 +77,13 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   if (!productId && lead.productName) {
     productId = await findProductByName(lead.productName);
     if (!productId) {
-      const ok = await confirmCreate('product', lead.productName);
-      if (ok) {
-        const pRes: any = await productApi.create({ name: lead.productName });
-        productId = pRes?.data?.id ?? pRes?.data?.data?.id ?? null;
-        if (productId) {
-          productCreated = true;
-          await leadApi.update(leadId, { productId });
-        }
+      // 未检测到产品：必须创建（不可跳过），弹窗仅用于告知
+      await confirmCreate('product', lead.productName);
+      const pRes: any = await productApi.create({ name: lead.productName });
+      productId = pRes?.data?.id ?? pRes?.data?.data?.id ?? null;
+      if (productId) {
+        productCreated = true;
+        await leadApi.update(leadId, { productId });
       }
     }
   }
