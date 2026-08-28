@@ -16,6 +16,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import ProductEditModal, { type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
+import ConvertCreateSummaryModal from '../components/lead/ConvertCreateSummaryModal';
 
 export default function SalesLeads() {
   const { token } = theme.useToken();
@@ -45,6 +46,11 @@ export default function SalesLeads() {
   const productEditRef = useRef<ProductEditModalHandle>(null);
   // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
+  // 待建档清单汇总弹窗（方案A）
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryItems, setSummaryItems] = useState<{ customerName?: string; productName?: string }>({});
+  const summaryResolveRef = useRef<((v: { customerId?: string; productId?: string }) => void) | null>(null);
+  const summaryRejectRef = useRef<((e: Error) => void) | null>(null);
 
   // 列表行内状态切换（确认 / 有效 / 无效）
   const handleChangeStatus = async (id: string, status: LeadStatus) => {
@@ -73,6 +79,15 @@ export default function SalesLeads() {
       productEditRef.current?.open(undefined, { name: initial.name, description: initial.description }, true);
     });
 
+  // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
+  const showCreateSummary = (items: { customerName?: string; productName?: string }) =>
+    new Promise<{ customerId?: string; productId?: string }>((resolve, reject) => {
+      summaryResolveRef.current = resolve;
+      summaryRejectRef.current = reject;
+      setSummaryItems(items);
+      setSummaryOpen(true);
+    });
+
   // 确认线索 → 转化为商机（检测客户/产品建档，未建档则弹出真实新建弹窗强制建档）
   const handleConvert = (record: Lead) => {
     modal.confirm({
@@ -81,7 +96,7 @@ export default function SalesLeads() {
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
-        const res = await convertLeadToOpportunity(record.id, { openCustomerForm, openProductForm });
+        const res = await convertLeadToOpportunity(record.id, { openCustomerForm, openProductForm, showCreateSummary });
         const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
@@ -234,6 +249,27 @@ export default function SalesLeads() {
           const resolve = pendingResolveRef.current;
           pendingResolveRef.current = null;
           if (resolve && saved?.id) resolve({ id: saved.id });
+        }}
+      />
+
+      {/* 转商机·待建档清单汇总页（客户/产品均缺失时，逐项打开真实弹窗强制建档） */}
+      <ConvertCreateSummaryModal
+        open={summaryOpen}
+        items={summaryItems}
+        onOpenCustomer={openCustomerForm}
+        onOpenProduct={openProductForm}
+        onCancel={() => {
+          setSummaryOpen(false);
+          summaryRejectRef.current?.(new Error('cancelled'));
+          summaryRejectRef.current = null;
+          summaryResolveRef.current = null;
+        }}
+        onConfirm={(ids) => {
+          setSummaryOpen(false);
+          const resolve = summaryResolveRef.current;
+          summaryResolveRef.current = null;
+          summaryRejectRef.current = null;
+          resolve?.(ids);
         }}
       />
     </div>

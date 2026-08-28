@@ -23,6 +23,7 @@ import CountrySelect from '../CountrySelect';
 import CustomerTypeSelect from '../CustomerTypeSelect';
 import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
+import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload, type LeadStatus } from '../../api/lead';
@@ -318,6 +319,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       productEditRef.current?.open(undefined, { name: initial.name, description: initial.description }, true);
     });
 
+  // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const [summaryItems, setSummaryItems] = useState<{ customerName?: string; productName?: string }>({});
+  const summaryResolveRef = useRef<((v: { customerId?: string; productId?: string }) => void) | null>(null);
+  const summaryRejectRef = useRef<((e: Error) => void) | null>(null);
+  const showCreateSummary = (items: { customerName?: string; productName?: string }) =>
+    new Promise<{ customerId?: string; productId?: string }>((resolve, reject) => {
+      summaryResolveRef.current = resolve;
+      summaryRejectRef.current = reject;
+      setSummaryItems(items);
+      setSummaryOpen(true);
+    });
+
   // 确认线索：检测客户/产品建档 → 未建档则弹出真实新建弹窗强制建档 → 新建商机 → 标记「已确认」
   const handleConfirmLead = () => {
     if (!editing) return;
@@ -327,7 +341,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
-        const res = await convertLeadToOpportunity(editing.id, { openCustomerForm, openProductForm });
+        const res = await convertLeadToOpportunity(editing.id, { openCustomerForm, openProductForm, showCreateSummary });
         const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
@@ -814,6 +828,27 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         crafts={crafts}
         audiences={audiences}
         onSuccess={handleProductFiled}
+      />
+
+      {/* 转商机·待建档清单汇总页（客户/产品均缺失时，逐项打开真实弹窗强制建档） */}
+      <ConvertCreateSummaryModal
+        open={summaryOpen}
+        items={summaryItems}
+        onOpenCustomer={openCustomerForm}
+        onOpenProduct={openProductForm}
+        onCancel={() => {
+          setSummaryOpen(false);
+          summaryRejectRef.current?.(new Error('cancelled'));
+          summaryRejectRef.current = null;
+          summaryResolveRef.current = null;
+        }}
+        onConfirm={(ids) => {
+          setSummaryOpen(false);
+          const resolve = summaryResolveRef.current;
+          summaryResolveRef.current = null;
+          summaryRejectRef.current = null;
+          resolve?.(ids);
+        }}
       />
 
       {/* 转交线索：选择新负责人（联动客户/产品负责人） */}

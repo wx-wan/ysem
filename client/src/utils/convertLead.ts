@@ -13,6 +13,15 @@ export interface ConvertResult {
 
 export interface ConvertOptions {
   /**
+   * 当线索关联的客户/产品在系统中均缺失时，由调用方弹出「待建档清单」汇总弹窗，
+   * 用户在汇总页内逐项打开真实新建弹窗建档，全部就绪后 resolve 出新记录 id。
+   * 若仅缺一项或调用方未提供此回调，则回退为分别调用 openCustomerForm / openProductForm。
+   */
+  showCreateSummary?: (items: {
+    customerName?: string;
+    productName?: string;
+  }) => Promise<{ customerId?: string; productId?: string }>;
+  /**
    * 当线索关联的客户在系统中不存在时，由调用方弹出「新建客户」弹窗（与客户页一致）。
    * 弹窗保存后 resolve 出新客户 id；弹窗为强制模式，不可取消跳过。
    */
@@ -58,17 +67,46 @@ async function findProductByName(name: string): Promise<string | null> {
 export async function convertLeadToOpportunity(leadId: string, options: ConvertOptions = {}): Promise<ConvertResult> {
   const leadRes = await leadApi.get(leadId);
   const lead: Lead = leadRes.data;
-  const { openCustomerForm, openProductForm } = options;
+  const { openCustomerForm, openProductForm, showCreateSummary } = options;
 
-  // ---- 客户建档检测 ----
+  // ---- 客户建档检测（先查线索已关联 / 精确同名，判断是否需要新建） ----
   let customerId: string | null = lead.customerId ?? null;
-  let customerCreated = false;
   if (!customerId && lead.companyName) {
     customerId = await findCustomerByName(lead.companyName);
-    if (!customerId) {
-      // 未检测到客户：弹出「新建客户」弹窗（与客户页一致），强制建档
+  }
+  const needCustomer = !customerId && !!lead.companyName;
+
+  // ---- 产品建档检测 ----
+  let productId: string | null = lead.productId ?? null;
+  if (!productId && lead.productName) {
+    productId = await findProductByName(lead.productName);
+  }
+  const needProduct = !productId && !!lead.productName;
+
+  let customerCreated = false;
+  let productCreated = false;
+
+  // 两项均缺失且调用方支持汇总弹窗：先弹「待建档清单」，用户逐项建档后统一返回 ids
+  if ((needCustomer || needProduct) && showCreateSummary) {
+    const ids = await showCreateSummary({
+      customerName: needCustomer ? lead.companyName! : undefined,
+      productName: needProduct ? lead.productName! : undefined,
+    });
+    if (needCustomer && ids.customerId) {
+      customerId = ids.customerId;
+      customerCreated = true;
+      await leadApi.update(leadId, { customerId });
+    }
+    if (needProduct && ids.productId) {
+      productId = ids.productId;
+      productCreated = true;
+      await leadApi.update(leadId, { productId });
+    }
+  } else {
+    // 回退：逐项弹出真实新建弹窗（兼容旧调用方）
+    if (needCustomer) {
       const created = await openCustomerForm({
-        companyName: lead.companyName,
+        companyName: lead.companyName!,
         contactName: lead.contactName ?? undefined,
         email: lead.email ?? undefined,
         phone: lead.phone ?? undefined,
@@ -80,17 +118,8 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
         await leadApi.update(leadId, { customerId });
       }
     }
-  }
-
-  // ---- 产品建档检测 ----
-  let productId: string | null = lead.productId ?? null;
-  let productCreated = false;
-  if (!productId && lead.productName) {
-    productId = await findProductByName(lead.productName);
-    if (!productId) {
-      // 未检测到产品：弹出「新建产品」弹窗（与产品页一致），强制建档
-      // 预填产品描述（来自线索 productDesc），避免建出无描述的半成品产品
-      const created = await openProductForm({ name: lead.productName, description: lead.productDesc ?? undefined });
+    if (needProduct) {
+      const created = await openProductForm({ name: lead.productName!, description: lead.productDesc ?? undefined });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;
