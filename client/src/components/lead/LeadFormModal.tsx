@@ -603,7 +603,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 <Select
                   showSearch
                   allowClear
-                  disabled={!selectedChannel}
                   placeholder={t('lead.platformPlaceholder')}
                   optionFilterProp="label"
                   options={formPlatformOptions}
