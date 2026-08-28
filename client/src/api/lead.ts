@@ -15,6 +15,7 @@ export interface LeadCustomer {
 
 export interface Lead {
   id: string;
+  leadNumber?: string | null;
   leadName: string;
   customerId?: string | null;
   customer?: LeadCustomer | null;

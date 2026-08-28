@@ -699,6 +699,7 @@ model CustomerType {
 // 线索主要字段由「客户信息」+「线索名称」构成
 model Lead {
   id           String   @id @default(cuid())
+  leadNumber   String? // 线索号：XS-YYYYMM-序号
   leadName     String // 线索名称（标题）
   customerId   String? // 关联客户
   customer     Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)

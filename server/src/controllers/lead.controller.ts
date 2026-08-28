@@ -148,6 +148,24 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     const data = leadSchema.parse(req.body);
     // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
+
+    // 生成线索号: XS-YYYYMM-序号（查询当月最大序号避免重复）
+    const today = new Date();
+    const monthStr = today.getFullYear().toString() + String(today.getMonth() + 1).padStart(2, '0');
+    const prefix = `XS-${monthStr}-`;
+    const existing = await prisma.lead.findMany({
+      where: { leadNumber: { startsWith: prefix } },
+      select: { leadNumber: true },
+    });
+    let maxSeq = 0;
+    for (const item of existing) {
+      if (item.leadNumber) {
+        const seq = Number(item.leadNumber.slice(prefix.length));
+        if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    }
+    const leadNumber = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+
     const item = await prisma.lead.create({
       data: {
         leadName,
@@ -183,6 +201,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         customerType: data.customerType ?? null,
         assignedTo: data.assignedTo ?? null,
         createdBy: req.userId ?? null,
+        leadNumber,
       },
     });
     created(res, item);
