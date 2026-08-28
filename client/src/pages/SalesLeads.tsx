@@ -95,32 +95,39 @@ export default function SalesLeads() {
       content: t('lead.confirmConvertContent'),
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
-      onOk: async () => {
-        const res = await convertLeadToOpportunity(record.id, { openCustomerForm, openProductForm, showCreateSummary });
-        const successModal = modal.success({
-          title: t('lead.convertSuccessTitle'),
-          content: (
-            <div>
-              <p>{t('lead.convertSuccessDesc')}</p>
-              <p>
-                {t('lead.convertSuccessPipeline')}：
-                <Button
-                  type="link"
-                  style={{ padding: 0, height: 'auto', fontWeight: 700 }}
-                  onClick={() => {
-                    successModal.destroy();
-                    navigate('/sales/opportunities');
-                  }}
-                >
-                  {res.pipeline?.pipelineNumber}
-                </Button>
-              </p>
-              {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
-              {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}
-            </div>
-          ),
-        });
-        list.refresh();
+      // onOk 不返回 Promise，让确认弹窗立即关闭；convertLead 的建档流程由后续弹窗接管，避免层级堆叠。
+      onOk: () => {
+        (async () => {
+          try {
+            const res = await convertLeadToOpportunity(record.id, { openCustomerForm, openProductForm, showCreateSummary });
+            const successModal = modal.success({
+              title: t('lead.convertSuccessTitle'),
+              content: (
+                <div>
+                  <p>{t('lead.convertSuccessDesc')}</p>
+                  <p>
+                    {t('lead.convertSuccessPipeline')}：
+                    <Button
+                      type="link"
+                      style={{ padding: 0, height: 'auto', fontWeight: 700 }}
+                      onClick={() => {
+                        successModal.destroy();
+                        navigate('/sales/opportunities');
+                      }}
+                    >
+                      {res.pipeline?.pipelineNumber}
+                    </Button>
+                  </p>
+                  {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
+                  {res.productCreated && <p>{t('lead.convertCreatedProduct')}</p>}
+                </div>
+              ),
+            });
+            list.refresh();
+          } catch {
+            // convertLead 内部已 message.error，此处仅吞掉异常避免 unhandled rejection
+          }
+        })();
       },
     });
   };

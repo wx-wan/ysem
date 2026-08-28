@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Button, Tag, Space, Typography } from 'antd';
+import { Button, Tag, Space, Typography } from 'antd';
 import { CheckCircleFilled, PlusOutlined, UserAddOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import AppModal from '../AppModal';
 
 const { Text } = Typography;
 
@@ -115,25 +116,28 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
   };
 
   return (
-    <Modal
+    <AppModal
       open={open}
       title={t('lead.createSummaryTitle')}
-      onCancel={onCancel}
+      onClose={onCancel}
       maskClosable={false}
       closable={false}
-      footer={[
-        <Button key="cancel" onClick={onCancel}>
-          {t('common.cancel')}
-        </Button>,
-        <Button
-          key="ok"
-          type="primary"
-          disabled={!allReady}
-          onClick={() => onConfirm({ customerId: builtCustomerId, productId: builtProductId })}
-        >
-          {t('lead.createSummaryConfirm')}
-        </Button>,
-      ]}
+      footer={
+        <Space>
+          <Button key="cancel" onClick={onCancel}>
+            {t('common.cancel')}
+          </Button>
+          <Button
+            key="ok"
+            type="primary"
+            disabled={!allReady}
+            onClick={() => onConfirm({ customerId: builtCustomerId, productId: builtProductId })}
+          >
+            {t('lead.createSummaryConfirm')}
+          </Button>
+        </Space>
+      }
+      bodyPadding={20}
     >
       <p style={{ color: 'rgba(0,0,0,0.45)', marginBottom: 16 }}>
         {t('lead.createSummaryDesc')}
@@ -164,7 +168,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
           {!productOk && <span>· {t('lead.createSummaryProductPending')}</span>}
         </Space>
       )}
-    </Modal>
+    </AppModal>
   );
 };
 
