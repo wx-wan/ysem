@@ -410,7 +410,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           title={
-            <Space size={8}>
+            <Space size={8} align="center" style={{ width: '100%', justifyContent: 'center' }}>
               <span>{editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}</span>
               {editing?.id && editing.leadNumber && (
                 <Tag color="blue" style={{ marginInlineEnd: 0 }}>
