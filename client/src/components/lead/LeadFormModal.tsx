@@ -138,6 +138,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // ============ 打开 / 提交 ============
   const openCreate = () => {
     setEditing(null);
+    setLinkedPipeline(null);
     form.resetFields();
     onRefreshCustomers();
     fetchUsers();
