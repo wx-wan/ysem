@@ -59,7 +59,7 @@ export default function SalesLeads() {
   };
 
   // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
-  const openCustomerForm = (initial: {
+  const openCustomerForm = (initial?: {
     companyName?: string;
     contactName?: string;
     email?: string;
@@ -68,15 +68,17 @@ export default function SalesLeads() {
   }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      setCustomerInitial({ companyName: initial.companyName });
+      const { companyName } = initial || {};
+      setCustomerInitial({ companyName });
       setCustomerFormOpen(true);
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
-  const openProductForm = (initial: { name?: string; description?: string }) =>
+  const openProductForm = (initial?: { name?: string; description?: string }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      productEditRef.current?.open(undefined, { name: initial.name, description: initial.description }, true);
+      const { name, description } = initial || {};
+      productEditRef.current?.open(undefined, { name, description }, true);
     });
 
   // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档

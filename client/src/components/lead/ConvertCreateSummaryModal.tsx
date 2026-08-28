@@ -17,7 +17,7 @@ interface Props {
   open: boolean;
   items: ConvertSummaryItems;
   /** 点击「新建客户」：由父级打开真实新建客户弹窗并 resolve 出新 id */
-  onOpenCustomer: (initial: {
+  onOpenCustomer: (initial?: {
     companyName?: string;
     contactName?: string;
     email?: string;
@@ -25,7 +25,7 @@ interface Props {
     country?: string;
   }) => Promise<{ id: string }>;
   /** 点击「新建产品」：由父级打开真实新建产品弹窗并 resolve 出新 id */
-  onOpenProduct: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
+  onOpenProduct: (initial?: { name?: string; description?: string }) => Promise<{ id: string }>;
   /** 全部建档完成后确认转商机 */
   onConfirm: (ids: { customerId?: string; productId?: string }) => void;
   /** 取消（中止转商机） */

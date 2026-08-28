@@ -25,7 +25,7 @@ export interface ConvertOptions {
    * 当线索关联的客户在系统中不存在时，由调用方弹出「新建客户」弹窗（与客户页一致）。
    * 弹窗保存后 resolve 出新客户 id；弹窗为强制模式，不可取消跳过。
    */
-  openCustomerForm?: (initial: {
+  openCustomerForm?: (initial?: {
     companyName?: string;
     contactName?: string;
     email?: string;
@@ -37,7 +37,7 @@ export interface ConvertOptions {
    * 弹窗保存后 resolve 出新产品 id；弹窗为强制模式，不可取消跳过。
    * initial.description 可预填产品描述（来自线索 productDesc），避免建出半成品产品。
    */
-  openProductForm?: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
+  openProductForm?: (initial?: { name?: string; description?: string }) => Promise<{ id: string }>;
 }
 
 /**
