@@ -67,10 +67,10 @@ export default function SalesLeads() {
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
-  const openProductForm = (initial: { name?: string }) =>
+  const openProductForm = (initial: { name?: string; description?: string }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      productEditRef.current?.open(undefined, { name: initial.name }, true);
+      productEditRef.current?.open(undefined, { name: initial.name, description: initial.description }, true);
     });
 
   // 确认线索 → 转化为商机（检测客户/产品建档，未建档则弹出真实新建弹窗强制建档）

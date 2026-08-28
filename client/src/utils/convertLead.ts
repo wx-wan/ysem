@@ -26,24 +26,25 @@ export interface ConvertOptions {
   /**
    * 当线索关联的产品在系统中不存在时，由调用方弹出「新建产品」弹窗（与产品页一致）。
    * 弹窗保存后 resolve 出新产品 id；弹窗为强制模式，不可取消跳过。
+   * initial.description 可预填产品描述（来自线索 productDesc），避免建出半成品产品。
    */
-  openProductForm: (initial: { name?: string }) => Promise<{ id: string }>;
+  openProductForm: (initial: { name?: string; description?: string }) => Promise<{ id: string }>;
 }
 
 /**
  * 在客户列表/产品列表中按名称检索是否已存在
  */
 async function findCustomerByName(name: string): Promise<string | null> {
-  const res: any = await customerApi.listAll({ keyword: name, pageSize: 50 });
+  const res: any = await customerApi.listAll({ page: 1, pageSize: 200 });
   const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
-  const hit = list.find((c) => c.companyName === name || c.companyName?.includes(name) || name.includes(c.companyName ?? ''));
+  const hit = list.find((c) => c.companyName && name && c.companyName.toLowerCase() === name.toLowerCase());
   return hit?.id ?? null;
 }
 
 async function findProductByName(name: string): Promise<string | null> {
-  const res: any = await productApi.getList({ keyword: name, pageSize: 50 });
+  const res: any = await productApi.getList({ page: 1, pageSize: 200 });
   const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
-  const hit = list.find((p) => p.name === name || p.name?.includes(name) || name.includes(p.name ?? ''));
+  const hit = list.find((p) => p.name && name && p.name.toLowerCase() === name.toLowerCase());
   return hit?.id ?? null;
 }
 
@@ -88,7 +89,8 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     productId = await findProductByName(lead.productName);
     if (!productId) {
       // 未检测到产品：弹出「新建产品」弹窗（与产品页一致），强制建档
-      const created = await openProductForm({ name: lead.productName });
+      // 预填产品描述（来自线索 productDesc），避免建出无描述的半成品产品
+      const created = await openProductForm({ name: lead.productName, description: lead.productDesc ?? undefined });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;

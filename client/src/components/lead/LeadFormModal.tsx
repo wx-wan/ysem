@@ -89,6 +89,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   // 新建客户弹窗是否处于强制建档模式（隐藏取消按钮）
   const [custForceMode, setCustForceMode] = useState(false);
+  // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
+  const refreshEditing = async () => {
+    if (!editing?.id) return;
+    try {
+      const res: any = await leadApi.get(editing.id);
+      const item: Lead = res?.data?.data ?? res?.data;
+      if (item) setEditing(item);
+    } catch {
+      /* 忽略：拉取失败不影响主流程 */
+    }
+  };
 
   const currentUser = useAuthStore((s) => s.user);
   const userOptions = useUserStore((s) => s.users);
@@ -301,10 +312,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
-  const openProductForm = (initial: { name?: string }) =>
+  const openProductForm = (initial: { name?: string; description?: string }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      productEditRef.current?.open(undefined, { name: initial.name }, true);
+      productEditRef.current?.open(undefined, { name: initial.name, description: initial.description }, true);
     });
 
   // 确认线索：检测客户/产品建档 → 未建档则弹出真实新建弹窗强制建档 → 新建商机 → 标记「已确认」
@@ -402,6 +413,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setCustForceMode(false);
       setCustModalOpen(false);
       resolve({ id: customer.id });
+      refreshEditing();
       return;
     }
     if (!editing) return;
@@ -423,6 +435,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       const resolve = pendingResolveRef.current;
       pendingResolveRef.current = null;
       resolve({ id: saved.id });
+      refreshEditing();
       return;
     }
     if (!editing) return;

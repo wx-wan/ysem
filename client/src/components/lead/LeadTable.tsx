@@ -53,19 +53,18 @@ export default function LeadTable({
       {
         title: t('lead.name'),
         dataIndex: 'leadName',
-        width: 200,
-        render: (v?: string, r?: Lead) =>
-          v ? (
-            <a
-              style={{ color: token.colorPrimary }}
-              onClick={() => r && onEdit(r)}
-              title={t('common.detail')}
-            >
-              {v}
+        width: 220,
+        render: (_?: string, r?: Lead) => {
+          const number = r?.leadNumber;
+          const name = r?.leadName;
+          if (!number && !name) return '-';
+          return (
+            <a style={{ color: token.colorPrimary }} onClick={() => r && onEdit(r)} title={t('common.detail')}>
+              <div style={{ fontWeight: 600 }}>{number || '-'}</div>
+              {name ? <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{name}</div> : null}
             </a>
-          ) : (
-            '-'
-          ),
+          );
+        },
       },
       {
         title: t('lead.customer'),

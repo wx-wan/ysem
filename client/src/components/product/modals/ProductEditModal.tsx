@@ -18,7 +18,7 @@ import { StepBar } from '../../../components/common/StepBar';
 import ProductImageList from '../../../components/common/ProductImageList';
 
 export interface ProductEditModalHandle {
-  open: (record?: Product | null, initial?: { name?: string }, forceMode?: boolean) => void;
+  open: (record?: Product | null, initial?: { name?: string; description?: string }, forceMode?: boolean) => void;
 }
 
 interface ProductEditModalProps {
@@ -117,6 +117,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     const [reselectMode, setReselectMode] = useState(false);
     // 新建时预填的产品名称（线索建档等场景带入）
     const [initialName, setInitialName] = useState('');
+    // 新建时预填的产品描述（线索建档等场景带入）
+    const [initialDescription, setInitialDescription] = useState('');
     // 强制建档模式（转商机时）：禁止取消/ESC，必须保存
     const [forceOpen, setForceOpen] = useState(false);
 
@@ -160,8 +162,9 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     }, [open]);
 
     useImperativeHandle(ref, () => ({
-      open: (record?: Product | null, initial?: { name?: string }, forceMode?: boolean) => {
+      open: (record?: Product | null, initial?: { name?: string; description?: string }, forceMode?: boolean) => {
         setForceOpen(!!forceMode);
+        setInitialDescription(initial?.description ?? '');
         if (record) {
           setEditing(record);
           setCreatedSingleIds([]);
@@ -195,6 +198,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         } else {
           // 新建：先走「选择分类」第一步
           setInitialName(initial?.name ?? '');
+          setInitialDescription(initial?.description ?? '');
           setEditing(null);
           setCreatedSingleIds([]);
           setStepCrafts([]);
@@ -245,7 +249,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
       setEditing(null);
       setOpen(true);
       form.resetFields();
-      form.setFieldsValue({ ...v, visibility: 'PUBLIC', ...(initialName ? { name: initialName } : {}) });
+      form.setFieldsValue({ ...v, visibility: 'PUBLIC', ...(initialName ? { name: initialName } : {}), ...(initialDescription ? { description: initialDescription } : {}) });
       setVisValue('PUBLIC');
       if (v.audienceId) handleAudienceChange(v.audienceId);
     };
