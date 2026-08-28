@@ -4,12 +4,14 @@ import { useAuthStore } from './stores/useAuthStore';
 import { usePermission } from './hooks/usePermission';
 import { setMessageHolder } from './api/message-holder';
 import MainLayout from './layouts/MainLayout';
+import GroupLayout from './layouts/GroupLayout';
 import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
 import SalesPage from './pages/Sales';
 import CustomersPage from './pages/Customers';
 import SalesLayout from './layouts/SalesLayout';
 import ProductsPage from './pages/Products';
+import ProductManagementPage from './pages/ProductManagement';
 import SalesLeadsPage from './pages/SalesLeads';
 import SalesOpportunitiesPage from './pages/SalesOpportunities';
 import SalesOrdersPage from './pages/SalesOrders';
@@ -20,9 +22,13 @@ import OrdersPage from './pages/Orders';
 import PurchasesPage from './pages/Purchases';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
+import InventoryPage from './pages/Inventory';
+import MaterialsPage from './pages/Materials';
+import BomPage from './pages/Bom';
+import CraftPage from './pages/Craft';
+import SuppliersPage from './pages/Suppliers';
 import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
-import ProductManagementPage from './pages/ProductManagement';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
 import SettingsCustomerTypePage from './pages/SettingsCustomerType';
@@ -53,7 +59,6 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 // 路由守卫 — 权限校验（按页面所需的 permission code）
-// 无权限时展示无权限页，而不是静默重定向
 function PermRoute({ perm, children }: { perm: string | string[]; children: React.ReactNode }) {
   const { hasAnyPerm } = usePermission();
   const ok = Array.isArray(perm) ? hasAnyPerm(perm) : hasAnyPerm([perm]);
@@ -63,7 +68,6 @@ function PermRoute({ perm, children }: { perm: string | string[]; children: Reac
 
 function App() {
   const { message } = AntdApp.useApp();
-  // 注入 App.useApp() 的 message 实例，消除静态调用警告
   setMessageHolder(message);
 
   return (
@@ -79,25 +83,62 @@ function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
+
+        {/* 销售：线索 / 商机 / 报价 / 订单（ optionally 打样保留但不进导航） */}
         <Route path="sales" element={<SalesLayout />}>
           <Route index element={<PermRoute perm="sales"><SalesPage /></PermRoute>} />
-          <Route path="products" element={<PermRoute perm="sales:products"><ProductManagementPage /></PermRoute>} />
           <Route path="leads" element={<PermRoute perm="sales:leads"><SalesLeadsPage /></PermRoute>} />
           <Route path="opportunities" element={<PermRoute perm="sales:opportunities"><SalesOpportunitiesPage /></PermRoute>} />
+          <Route path="quotes" element={<PermRoute perm="sales:quotes"><QuotePage /></PermRoute>} />
           <Route path="orders" element={<PermRoute perm="sales:orders"><SalesOrdersPage /></PermRoute>} />
+          <Route path="samples" element={<PermRoute perm="sales:samples"><SamplePage /></PermRoute>} />
         </Route>
-        <Route path="orders" element={<PermRoute perm="orders"><OrdersPage /></PermRoute>} />
-        <Route path="quotes" element={<PermRoute perm="sales:quotes"><QuotePage /></PermRoute>} />
-        <Route path="samples" element={<PermRoute perm="sales:samples"><SamplePage /></PermRoute>} />
-        <Route path="purchase" element={<PermRoute perm="purchase"><PurchasesPage /></PermRoute>} />
-        <Route path="production" element={<PermRoute perm="production"><ProductionPage /></PermRoute>} />
-        <Route path="shipment" element={<PermRoute perm="shipment"><ShipmentPage /></PermRoute>} />
-        <Route path="settlement" element={<PermRoute perm="sales:settlement"><SettlementPage /></PermRoute>} />
-        <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
+
+        {/* 供应：采购 / 生产 / 库存 */}
+        <Route path="supply" element={<GroupLayout />}>
+          <Route index element={<Navigate to="/supply/purchase" replace />} />
+          <Route path="purchase" element={<PermRoute perm="purchase"><PurchasesPage /></PermRoute>} />
+          <Route path="production" element={<PermRoute perm="production"><ProductionPage /></PermRoute>} />
+          <Route path="inventory" element={<PermRoute perm="inventory"><InventoryPage /></PermRoute>} />
+        </Route>
+
+        {/* 物流：出运 */}
+        <Route path="logistics" element={<GroupLayout />}>
+          <Route index element={<Navigate to="/logistics/shipment" replace />} />
+          <Route path="shipment" element={<PermRoute perm="shipment"><ShipmentPage /></PermRoute>} />
+        </Route>
+
+        {/* 财务：结算 */}
+        <Route path="finance" element={<GroupLayout />}>
+          <Route index element={<Navigate to="/finance/settlement" replace />} />
+          <Route path="settlement" element={<PermRoute perm="sales:settlement"><SettlementPage /></PermRoute>} />
+        </Route>
+
+        {/* 数据：客户 / 产品 / 物料 / BOM / 工艺 / 供应商 */}
+        <Route path="data" element={<GroupLayout />}>
+          <Route index element={<Navigate to="/data/customers" replace />} />
+          <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
+          <Route path="products" element={<PermRoute perm="products"><ProductsPage /></PermRoute>} />
+          <Route path="materials" element={<PermRoute perm="materials"><MaterialsPage /></PermRoute>} />
+          <Route path="bom" element={<PermRoute perm="bom"><BomPage /></PermRoute>} />
+          <Route path="craft" element={<PermRoute perm="craft"><CraftPage /></PermRoute>} />
+          <Route path="suppliers" element={<PermRoute perm="suppliers"><SuppliersPage /></PermRoute>} />
+        </Route>
+
+        {/* 保留旧路径兼容性（访问 /orders、/quotes 等自动跳转到 /sales/xxx） */}
+        <Route path="orders" element={<Navigate to="/sales/orders" replace />} />
+        <Route path="quotes" element={<Navigate to="/sales/quotes" replace />} />
+        <Route path="samples" element={<Navigate to="/sales/samples" replace />} />
+        <Route path="purchase" element={<Navigate to="/supply/purchase" replace />} />
+        <Route path="production" element={<Navigate to="/supply/production" replace />} />
+        <Route path="shipment" element={<Navigate to="/logistics/shipment" replace />} />
+        <Route path="settlement" element={<Navigate to="/finance/settlement" replace />} />
+        <Route path="customers" element={<Navigate to="/data/customers" replace />} />
+        <Route path="products" element={<Navigate to="/data/products" replace />} />
+
         {/* 系统设置：并入主布局，切换仅重绘内容区，不重挂整体布局 */}
         <Route path="setting">
           <Route index element={<SettingIndex />} />
-          {/* 用户管理承载「用户 / 角色 / 部门」三个分页，任一权限即可进入 */}
           <Route path="user" element={<PermRoute perm={['system:user', 'system:role', 'system:dept']}><UserManagementPage /></PermRoute>} />
           <Route path="perm" element={<PermRoute perm="system:perm"><PermPage /></PermRoute>} />
           <Route path="archive" element={<PermRoute perm="product:taxonomy:view"><ProductManagementPage systemOnly /></PermRoute>} />

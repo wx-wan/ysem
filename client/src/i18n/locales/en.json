@@ -50,6 +50,10 @@
     "total": "Total {{count}} records",
     "pleaseSelect": "Please select",
     "pleaseInput": "Please input",
+    "inDevelopment": "In development",
+    "close": "Close",
+    "deleted": "Deleted",
+    "action": "Action",
     "actions": {
       "add": "Add",
       "addChild": "Add Child"
@@ -90,7 +94,12 @@
     "orderNo": "Order No."
   },
   "menu": {
-    "dashboard": "Dashboard",
+    "dashboard": "Board",
+    "sales": "Sales",
+    "supply": "Supply",
+    "logistics": "Logistics",
+    "finance": "Finance",
+    "data": "Data",
     "leads": "Leads",
     "customers": "Customers",
     "opportunities": "Opportunities",
@@ -100,8 +109,13 @@
     "orders": "Orders",
     "purchase": "Purchase",
     "production": "Production",
+    "inventory": "Inventory",
     "shipment": "Shipment",
     "settlement": "Settlement",
+    "materials": "Materials",
+    "bom": "BOM",
+    "craft": "Craft",
+    "suppliers": "Suppliers",
     "reports": "Reports",
     "system": "Settings",
     "systemUser": "User Management",

@@ -16,6 +16,12 @@ import {
   SendOutlined,
   TeamOutlined,
   FileDoneOutlined,
+  ToolOutlined,
+  CarOutlined,
+  DollarOutlined,
+  DatabaseOutlined,
+  ContainerOutlined,
+  ExperimentOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SafetyOutlined,
@@ -37,26 +43,28 @@ const { Sider, Header, Content } = Layout;
 
 // 路由 → 页面名映射
 const routeTitles: Record<string, string> = {
-  '/dashboard': '仪表盘',
+  '/dashboard': '看板',
+  '/sales': '销售',
   '/sales/leads': '线索',
-  '/customers': '客户',
   '/sales/opportunities': '商机',
-  '/sales/products': '产品',
-  '/quotes': '报价',
-  '/samples': '打样',
-  '/orders': '订单',
-  '/purchase': '采购',
-  '/production': '生产',
-  '/shipment': '出货',
-  '/settlement': '结算',
-  '/system/user': '用户管理',
-  '/system/role': '角色管理',
-  '/system/dept': '部门管理',
-  '/system/perm': '权限管理',
-  '/system/product-taxonomy': '产品管理',
-  '/system/certificates': '销售管理',
-  '/system/operation-logs': '操作日志',
-  '/system/approval': '审批管理',
+  '/sales/quotes': '报价',
+  '/sales/orders': '订单',
+  '/sales/samples': '打样',
+  '/supply': '供应',
+  '/supply/purchase': '采购',
+  '/supply/production': '生产',
+  '/supply/inventory': '库存',
+  '/logistics': '物流',
+  '/logistics/shipment': '出运',
+  '/finance': '财务',
+  '/finance/settlement': '结算',
+  '/data': '数据',
+  '/data/customers': '客户',
+  '/data/products': '产品',
+  '/data/materials': '物料',
+  '/data/bom': 'BOM',
+  '/data/craft': '工艺',
+  '/data/suppliers': '供应商',
   '/setting/user': '用户管理',
   '/setting/perm': '权限管理',
   '/setting/archive': '产品档案',
@@ -142,36 +150,106 @@ export default function MainLayout() {
     ...(hasPerm('system:logs') ? [{ key: '/setting/logs', icon: <BarChartOutlined />, label: t('menu.systemLogs') }] : []),
   ];
 
-  // 业务模式侧边栏菜单（按业务流程顺序扁平化，按权限动态渲染）
+  // 业务分组菜单（按销售 / 供应 / 物流 / 财务 / 数据 组织）
+  const salesChildren = [
+    ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
+    ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
+    ...(hasPerm('sales:quotes') ? [{ key: '/sales/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
+    ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
+  ].filter(Boolean);
+
+  const supplyChildren = [
+    ...(hasPerm('purchase') ? [{ key: '/supply/purchase', icon: <ShopOutlined />, label: t('menu.purchase') }] : []),
+    ...(hasPerm('production') ? [{ key: '/supply/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
+    ...(hasPerm('inventory') ? [{ key: '/supply/inventory', icon: <ContainerOutlined />, label: t('menu.inventory') }] : []),
+  ].filter(Boolean);
+
+  const logisticsChildren = [
+    ...(hasPerm('shipment') ? [{ key: '/logistics/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
+  ].filter(Boolean);
+
+  const financeChildren = [
+    ...(hasPerm('sales:settlement') ? [{ key: '/finance/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
+  ].filter(Boolean);
+
+  const dataChildren = [
+    ...(hasPerm('customers') ? [{ key: '/data/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
+    ...(hasPerm('products') ? [{ key: '/data/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
+    ...(hasPerm('materials') ? [{ key: '/data/materials', icon: <ContainerOutlined />, label: t('menu.materials') }] : []),
+    ...(hasPerm('bom') ? [{ key: '/data/bom', icon: <ProfileOutlined />, label: t('menu.bom') }] : []),
+    ...(hasPerm('craft') ? [{ key: '/data/craft', icon: <ExperimentOutlined />, label: t('menu.craft') }] : []),
+    ...(hasPerm('suppliers') ? [{ key: '/data/suppliers', icon: <TeamOutlined />, label: t('menu.suppliers') }] : []),
+  ].filter(Boolean);
+
   const businessMenuItems: MenuProps['items'] = [
     { key: '/dashboard', icon: <DashboardOutlined />, label: t('menu.dashboard') },
-    ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
-    // 客户：需要 customers 权限（所有默认角色均已分配）
-    ...(hasPerm('customers') ? [{ key: '/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
-    ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
-    ...(hasPerm('sales:products') ? [{ key: '/sales/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
-    ...(hasPerm('sales:quotes') ? [{ key: '/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
-    ...(hasPerm('sales:samples') ? [{ key: '/samples', icon: <ProfileOutlined />, label: t('menu.sample') }] : []),
-    ...(hasPerm('orders') ? [{ key: '/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
-    ...(hasPerm('purchase') ? [{ key: '/purchase', icon: <ShopOutlined />, label: t('menu.purchase') }] : []),
-    ...(hasPerm('production') ? [{ key: '/production', icon: <UnorderedListOutlined />, label: t('menu.production') }] : []),
-    ...(hasPerm('shipment') ? [{ key: '/shipment', icon: <SendOutlined />, label: t('menu.shipment') }] : []),
-    ...(hasPerm('sales:settlement') ? [{ key: '/settlement', icon: <FileDoneOutlined />, label: t('menu.settlement') }] : []),
+    ...(salesChildren.length ? [{
+      key: '/sales',
+      icon: <ShoppingCartOutlined />,
+      label: t('menu.sales'),
+      children: salesChildren,
+    }] : []),
+    ...(supplyChildren.length ? [{
+      key: '/supply',
+      icon: <ToolOutlined />,
+      label: t('menu.supply'),
+      children: supplyChildren,
+    }] : []),
+    ...(logisticsChildren.length ? [{
+      key: '/logistics',
+      icon: <CarOutlined />,
+      label: t('menu.logistics'),
+      children: logisticsChildren,
+    }] : []),
+    ...(financeChildren.length ? [{
+      key: '/finance',
+      icon: <DollarOutlined />,
+      label: t('menu.finance'),
+      children: financeChildren,
+    }] : []),
+    ...(dataChildren.length ? [{
+      key: '/data',
+      icon: <DatabaseOutlined />,
+      label: t('menu.data'),
+      children: dataChildren,
+    }] : []),
   ];
 
   const menuItems = isSettingMode ? settingMenuItems : businessMenuItems;
 
-  // 当前选中项与展开项
+  // 父级分组 key
+  const parentKeys = useMemo(() => ['/sales', '/supply', '/logistics', '/finance', '/data'], []);
+
+  // 当前选中项：叶子路由
   const selectedKey = (() => {
     const path = location.pathname;
-    if (path.startsWith('/sales/products')) return '/sales/products';
     if (path.startsWith('/sales/leads')) return '/sales/leads';
     if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
-    if (path.startsWith('/quotes')) return '/quotes';
-    if (path.startsWith('/samples')) return '/samples';
-    if (path.startsWith('/settlement')) return '/settlement';
+    if (path.startsWith('/sales/quotes')) return '/sales/quotes';
+    if (path.startsWith('/sales/orders')) return '/sales/orders';
+    if (path.startsWith('/sales/samples')) return '/sales/samples';
+    if (path.startsWith('/supply/purchase')) return '/supply/purchase';
+    if (path.startsWith('/supply/production')) return '/supply/production';
+    if (path.startsWith('/supply/inventory')) return '/supply/inventory';
+    if (path.startsWith('/logistics/shipment')) return '/logistics/shipment';
+    if (path.startsWith('/finance/settlement')) return '/finance/settlement';
+    if (path.startsWith('/data/customers')) return '/data/customers';
+    if (path.startsWith('/data/products')) return '/data/products';
+    if (path.startsWith('/data/materials')) return '/data/materials';
+    if (path.startsWith('/data/bom')) return '/data/bom';
+    if (path.startsWith('/data/craft')) return '/data/craft';
+    if (path.startsWith('/data/suppliers')) return '/data/suppliers';
     return path;
   })();
+
+  // 当前展开项：自动展开所在业务分组
+  const [openKeys, setOpenKeys] = useState<string[]>(parentKeys);
+  useEffect(() => {
+    const activeParent = parentKeys.find((p) => location.pathname.startsWith(p));
+    if (activeParent && !openKeys.includes(activeParent)) {
+      setOpenKeys((prev) => [...prev, activeParent]);
+    }
+  }, [location.pathname, openKeys, parentKeys]);
 
   // 用户/权限未就绪时显示骨架屏过渡，避免首屏重渲染闪烁
   if (!ready) {
@@ -248,9 +326,10 @@ export default function MainLayout() {
           mode="inline"
           theme="light"
           selectedKeys={[selectedKey]}
-          defaultOpenKeys={[]}
+          openKeys={openKeys}
           items={menuItems}
           onClick={handleMenuClick}
+          onOpenChange={setOpenKeys}
           style={{ borderInlineEnd: 'none', background: 'transparent' }}
         />
       </Sider>
