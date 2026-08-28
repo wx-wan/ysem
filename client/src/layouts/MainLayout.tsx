@@ -22,6 +22,7 @@ import {
   DatabaseOutlined,
   ContainerOutlined,
   ExperimentOutlined,
+  BgColorsOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   SafetyOutlined,
@@ -156,7 +157,7 @@ export default function MainLayout() {
     ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
     ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
     ...(hasPerm('sales:quotes') ? [{ key: '/sales/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
-    ...(hasPerm('sales:design') ? [{ key: '/sales/design', icon: <ExperimentOutlined />, label: t('menu.design') }] : []),
+    ...(hasPerm('sales:design') ? [{ key: '/sales/design', icon: <BgColorsOutlined />, label: t('menu.design') }] : []),
     ...(hasPerm('sales:samples') ? [{ key: '/sales/samples', icon: <ExperimentOutlined />, label: t('menu.sample') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
   ].filter(Boolean);
