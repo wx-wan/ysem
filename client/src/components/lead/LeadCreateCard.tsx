@@ -6,7 +6,7 @@ interface Props {
   onClick: () => void;
 }
 
-/** 新建线索入口卡片（渐变高亮，点击打开新建弹窗） */
+/** 新建线索入口卡片（与参考图一致：浅蓝底色 + 蓝色虚线边框 + 左侧加号） */
 export default function LeadCreateCard({ onClick }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -23,15 +23,17 @@ export default function LeadCreateCard({ onClick }: Props) {
         marginBottom: 16,
         borderRadius: token.borderRadiusLG,
         cursor: 'pointer',
-        background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
-        boxShadow: token.boxShadowSecondary,
+        background: token.colorPrimaryBg,
+        border: `1px dashed ${token.colorPrimary}`,
         transition: 'all .2s',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = `0 4px 16px ${token.colorPrimaryBg}`;
+        e.currentTarget.style.background = token.colorPrimaryBgHover;
+        e.currentTarget.style.borderStyle = 'solid';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = token.boxShadowSecondary;
+        e.currentTarget.style.background = token.colorPrimaryBg;
+        e.currentTarget.style.borderStyle = 'dashed';
       }}
     >
       <Space size={10}>
@@ -40,19 +42,19 @@ export default function LeadCreateCard({ onClick }: Props) {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 32,
-            height: 32,
-            borderRadius: 8,
+            width: 36,
+            height: 36,
+            borderRadius: token.borderRadius,
             background: token.colorPrimary,
             color: '#fff',
-            fontSize: 16,
+            fontSize: 18,
           }}
         >
           <PlusOutlined />
         </span>
-        <div style={{ lineHeight: 1.3 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>{t('lead.createTitle')}</div>
-          <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{t('lead.createDesc')}</div>
+        <div style={{ lineHeight: 1.4 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: token.colorPrimary }}>{t('lead.createTitle')}</div>
+          <div style={{ fontSize: 13, color: token.colorTextSecondary }}>{t('lead.createDesc')}</div>
         </div>
       </Space>
     </div>
