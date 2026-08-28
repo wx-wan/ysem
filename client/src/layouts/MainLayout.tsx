@@ -48,6 +48,7 @@ const routeTitles: Record<string, string> = {
   '/sales/leads': '线索',
   '/sales/opportunities': '商机',
   '/sales/quotes': '报价',
+  '/sales/design': '设计',
   '/sales/orders': '订单',
   '/sales/samples': '样品',
   '/supply': '供应',
@@ -155,6 +156,7 @@ export default function MainLayout() {
     ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
     ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
     ...(hasPerm('sales:quotes') ? [{ key: '/sales/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
+    ...(hasPerm('sales:design') ? [{ key: '/sales/design', icon: <ExperimentOutlined />, label: t('menu.design') }] : []),
     ...(hasPerm('sales:samples') ? [{ key: '/sales/samples', icon: <ExperimentOutlined />, label: t('menu.sample') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
   ].filter(Boolean);
@@ -227,6 +229,7 @@ export default function MainLayout() {
     if (path.startsWith('/sales/leads')) return '/sales/leads';
     if (path.startsWith('/sales/opportunities')) return '/sales/opportunities';
     if (path.startsWith('/sales/quotes')) return '/sales/quotes';
+    if (path.startsWith('/sales/design')) return '/sales/design';
     if (path.startsWith('/sales/orders')) return '/sales/orders';
     if (path.startsWith('/sales/samples')) return '/sales/samples';
     if (path.startsWith('/supply/purchase')) return '/supply/purchase';

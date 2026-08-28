@@ -194,7 +194,7 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
     <div className="orders-page">
       <div className="orders-toolbar">
         <Title level={4} style={{ margin: 0 }}>
-          {fixedType === 'QUOTE' ? '报价管理' : fixedType === 'SAMPLE' ? '打样管理' : '订单管理'}
+          {fixedType === 'QUOTE' ? '报价管理' : fixedType === 'SAMPLE' ? '样品管理' : '订单管理'}
         </Title>
         <Space>
           <Select
