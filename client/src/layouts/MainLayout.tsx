@@ -246,14 +246,22 @@ export default function MainLayout() {
     return path;
   })();
 
-  // 当前展开项：自动展开所在业务分组
+  // 当前展开项：非收缩状态下自动展开所在业务分组；
+  // 收缩状态下清空 openKeys，避免弹出菜单被强制打开后无法收起。
   const [openKeys, setOpenKeys] = useState<string[]>(parentKeys);
   useEffect(() => {
-    const activeParent = parentKeys.find((p) => location.pathname.startsWith(p));
-    if (activeParent && !openKeys.includes(activeParent)) {
-      setOpenKeys((prev) => [...prev, activeParent]);
+    if (collapsed) {
+      setOpenKeys([]);
+      return;
     }
-  }, [location.pathname, openKeys, parentKeys]);
+    const activeParent = parentKeys.find((p) => location.pathname.startsWith(p));
+    setOpenKeys((prev) => {
+      if (activeParent && !prev.includes(activeParent)) {
+        return [...prev, activeParent];
+      }
+      return prev;
+    });
+  }, [collapsed, location.pathname, parentKeys]);
 
   // 用户/权限未就绪时显示骨架屏过渡，避免首屏重渲染闪烁
   if (!ready) {
@@ -329,6 +337,7 @@ export default function MainLayout() {
         <Menu
           mode="inline"
           theme="light"
+          inlineCollapsed={collapsed}
           selectedKeys={[selectedKey]}
           openKeys={openKeys}
           items={menuItems}
