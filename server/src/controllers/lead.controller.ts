@@ -274,7 +274,23 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       fail(res, 403, '无权释放该线索');
       return;
     }
-    await prisma.lead.update({ where: { id }, data: { assignedTo: null } });
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: null } })];
+    // 联动释放客户到公海（ownerId 置空）
+    if (lead.customerId) {
+      updates.push(
+        prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: null, isKeyAccount: false } }),
+      );
+    }
+    // 联动产品释放：默认公开（visibility -> PUBLIC），并清空负责人
+    if (lead.productId) {
+      updates.push(
+        prisma.singleProduct.update({
+          where: { id: lead.productId },
+          data: { visibility: 'PUBLIC', ownerId: null },
+        }),
+      );
+    }
+    await prisma.$transaction(updates);
     await activityLogger.log({
       userId,
       username,
@@ -283,7 +299,7 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       module: 'lead',
       targetId: id,
       target: lead.leadName || lead.companyName || id,
-      detail: `${username} 释放该线索到公海`,
+      detail: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${lead.productId ? '，关联产品置为公开' : ''}`,
       customerId: lead.customerId || undefined,
       productId: lead.productId || undefined,
     });
@@ -304,7 +320,10 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
 
     const lead = await prisma.lead.findUnique({
       where: { id },
-      include: { assignedUser: { select: { id: true, realName: true } } },
+      include: {
+        assignedUser: { select: { id: true, realName: true } },
+        product: { select: { id: true, visibility: true, visibleUsers: true } },
+      },
     });
     if (!lead) {
       fail(res, 404, '线索不存在');
@@ -323,10 +342,19 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
 
     const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: newOwnerId } })];
     if (lead.customerId) {
+      // 转移客户：负责人改为当前(目标)用户
       updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: newOwnerId } }));
     }
     if (lead.productId) {
-      updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { ownerId: newOwnerId } }));
+      // 转移产品：私密(PRIVATE)则把目标用户加入可见人，公开(PUBLIC)保持
+      if (lead.product?.visibility === 'PRIVATE') {
+        const product = lead.product;
+        const visible = (product.visibleUsers || []).filter((u: string) => u !== newOwnerId);
+        visible.push(newOwnerId);
+        updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { visibleUsers: visible } }));
+      } else {
+        // 公开产品默认所有人可见，无需变更
+      }
     }
     await prisma.$transaction(updates);
 
@@ -338,7 +366,7 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       module: 'lead',
       targetId: id,
       target: lead.leadName || lead.companyName || id,
-      detail: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」`,
+      detail: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${lead.productId ? '，关联产品(私密)加入可见人' : ''}`,
       customerId: lead.customerId || undefined,
       productId: lead.productId || undefined,
     });

@@ -290,7 +290,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
-        const res = await convertLeadToOpportunity(editing.id);
+        const res = await convertLeadToOpportunity(editing.id, {
+          confirmCreate: async (type, name) =>
+            new Promise<boolean>((resolve) => {
+              modal.confirm({
+                title: type === 'customer' ? t('lead.createCustomerConfirmTitle') : t('lead.createProductConfirmTitle'),
+                content: type === 'customer' ? t('lead.createCustomerConfirmContent', { name }) : t('lead.createProductConfirmContent', { name }),
+                okText: t('common.ok'),
+                cancelText: t('common.cancel'),
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false),
+              });
+            }),
+        });
         const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (

@@ -11,32 +11,65 @@ export interface ConvertResult {
   productId: string | null;
 }
 
+export interface ConvertOptions {
+  /**
+   * 当线索关联的客户/产品在系统中不存在时，由调用方决定是否新建。
+   * 返回 true 表示确认新建，false 表示跳过（不新建）。
+   * 用于弹窗确认「是否新建客户/产品」。
+   */
+  confirmCreate?: (type: 'customer' | 'product', name: string) => Promise<boolean>;
+}
+
+/**
+ * 在客户列表/产品列表中按名称检索是否已存在
+ */
+async function findCustomerByName(name: string): Promise<string | null> {
+  const res: any = await customerApi.listAll({ keyword: name, pageSize: 50 });
+  const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
+  const hit = list.find((c) => c.companyName === name || c.companyName?.includes(name) || name.includes(c.companyName ?? ''));
+  return hit?.id ?? null;
+}
+
+async function findProductByName(name: string): Promise<string | null> {
+  const res: any = await productApi.getList({ keyword: name, pageSize: 50 });
+  const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
+  const hit = list.find((p) => p.name === name || p.name?.includes(name) || name.includes(p.name ?? ''));
+  return hit?.id ?? null;
+}
+
 /**
  * 线索确认 → 转化为商机：
- * 1. 检测客户是否已建档（customerId），未建档则按线索信息新建客户
- * 2. 检测产品是否已建档（productId），未建档则按线索信息新建产品
+ * 1. 检测客户是否已建档（customerId 或按名称在客户列表检索）；不存在则确认后新建客户
+ * 2. 检测产品是否已建档（productId 或按名称在产品列表检索）；不存在则确认后新建产品
  * 3. 新建一条商机记录，关联建档后的客户与产品
  * 4. 将线索状态标记为「已确认」（QUALIFIED）
  */
-export async function convertLeadToOpportunity(leadId: string): Promise<ConvertResult> {
+export async function convertLeadToOpportunity(leadId: string, options: ConvertOptions = {}): Promise<ConvertResult> {
   const leadRes = await leadApi.get(leadId);
   const lead: Lead = leadRes.data;
+  const confirmCreate = options.confirmCreate ?? (async () => true);
 
   // ---- 客户建档检测 ----
   let customerId: string | null = lead.customerId ?? null;
   let customerCreated = false;
   if (!customerId && lead.companyName) {
-    const cRes: any = await customerApi.create({
-      companyName: lead.companyName,
-      contactName: lead.contactName ?? undefined,
-      email: lead.email ?? undefined,
-      phone: lead.phone ?? undefined,
-      country: lead.country ?? undefined,
-    });
-    customerId = cRes?.data?.id ?? null;
-    if (customerId) {
-      customerCreated = true;
-      await leadApi.update(leadId, { customerId });
+    customerId = await findCustomerByName(lead.companyName);
+    if (!customerId) {
+      const ok = await confirmCreate('customer', lead.companyName);
+      if (ok) {
+        const cRes: any = await customerApi.create({
+          companyName: lead.companyName,
+          contactName: lead.contactName ?? undefined,
+          email: lead.email ?? undefined,
+          phone: lead.phone ?? undefined,
+          country: lead.country ?? undefined,
+        });
+        customerId = cRes?.data?.id ?? cRes?.data?.data?.id ?? null;
+        if (customerId) {
+          customerCreated = true;
+          await leadApi.update(leadId, { customerId });
+        }
+      }
     }
   }
 
@@ -44,16 +77,22 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ConvertR
   let productId: string | null = lead.productId ?? null;
   let productCreated = false;
   if (!productId && lead.productName) {
-    const pRes: any = await productApi.create({ name: lead.productName });
-    productId = pRes?.data?.id ?? null;
-    if (productId) {
-      productCreated = true;
-      await leadApi.update(leadId, { productId });
+    productId = await findProductByName(lead.productName);
+    if (!productId) {
+      const ok = await confirmCreate('product', lead.productName);
+      if (ok) {
+        const pRes: any = await productApi.create({ name: lead.productName });
+        productId = pRes?.data?.id ?? pRes?.data?.data?.id ?? null;
+        if (productId) {
+          productCreated = true;
+          await leadApi.update(leadId, { productId });
+        }
+      }
     }
   }
 
   // ---- 新建商机 ----
-  const  title = lead.leadName || [lead.companyName, lead.productName].filter(Boolean).join('-') || '商机';
+  const title = lead.leadName || [lead.companyName, lead.productName].filter(Boolean).join('-') || '商机';
   const pipelineRes: any = await salesApi.create({
     title,
     companyName: lead.companyName ?? undefined,
@@ -67,8 +106,6 @@ export async function convertLeadToOpportunity(leadId: string): Promise<ConvertR
     assignedTo: lead.assignedTo ?? undefined,
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
   } as any);
-  // salesApi.create 返回完整 axios 响应；后端返回 { code, data, message }，
-  // 因此真实 pipeline 在 pipelineRes.data.data
   const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 
   // ---- 标记线索为「已确认」 ----
