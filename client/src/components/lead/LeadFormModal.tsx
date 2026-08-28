@@ -408,7 +408,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
-          title={editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}
+          title={
+            <Space size={8}>
+              <span>{editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}</span>
+              {editing?.id && editing.leadNumber && (
+                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
+                  {editing.leadNumber}
+                </Tag>
+              )}
+            </Space>
+          }
           closable={false}
           headerBorder={false}
           width={960}
@@ -558,7 +567,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <span>
                     {t('lead.linkedPipeline')}：<b>{linkedPipeline?.pipelineNumber || editing?.pipelineId}</b>
                   </span>
-                  <Button type="link" size="small" onClick={() => navigate('/sales/opportunities')}>
+                  <Button
+                    type="link"
+                    size="small"
+                    disabled={!editing?.pipelineId && !linkedPipeline?.id}
+                    onClick={() => {
+                      const id = editing?.pipelineId || linkedPipeline?.id;
+                      if (id) navigate(`/sales/opportunities?pipelineId=${id}`);
+                      else navigate('/sales/opportunities');
+                    }}
+                  >
                     {t('lead.viewPipeline')}
                   </Button>
                 </Space>

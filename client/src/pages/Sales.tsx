@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Card, Button, Space, Input, Select, Table, Tag, Popconfirm, App, Upload, Tabs, Modal,
   Statistic, Row, Col, Pagination,
@@ -24,6 +25,7 @@ import Price from '../components/common/Price';
 export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
   const { message } = App.useApp();
   const { token } = theme.useToken();
+  const [searchParams] = useSearchParams();
 
   // 视图模式
   const [viewMode, setViewMode] = useState<'kanban' | 'list'>(fixedStage ? 'list' : 'kanban');
@@ -109,6 +111,22 @@ export default function Sales({ fixedStage }: { fixedStage?: StageKey }) {
     if (viewMode === 'kanban') fetchKanban();
     else fetchList();
   };
+
+  // 从线索页「前往查看」跳转过来时，携带 ?pipelineId= 自动打开对应商机详情抽屉
+  useEffect(() => {
+    const pipelineId = searchParams.get('pipelineId');
+    if (!pipelineId) return;
+    (async () => {
+      try {
+        const res = await salesApi.get(pipelineId);
+        setDetailItem(res.data.data);
+        setDetailOpen(true);
+      } catch {
+        // 找不到则不打开，停留在列表
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // ============ 操作 ============
 
