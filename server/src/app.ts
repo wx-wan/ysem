@@ -24,6 +24,7 @@ import certificateRoutes from './routes/certificate.routes';
 import channelRoutes from './routes/channel.routes';
 import customerTypeRoutes from './routes/customerType.routes';
 import leadRoutes from './routes/lead.routes';
+import quotationRoutes from './routes/quotation.routes';
 import uploadRoutes from './routes/upload.routes';
 import operationLogRoutes from './routes/operationLog.routes';
 import { UPLOAD_DIR } from './controllers/upload.controller';
@@ -121,6 +122,7 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/channels', channelRoutes);
 app.use('/api/customer-types', customerTypeRoutes);
 app.use('/api/leads', leadRoutes);
+app.use('/api/quotations', quotationRoutes);
 app.use('/api/operations', operationLogRoutes);
 app.use('/api/upload', uploadRoutes);
 

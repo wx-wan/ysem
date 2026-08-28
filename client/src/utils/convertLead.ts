@@ -132,6 +132,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   const title = lead.leadName || [lead.companyName, lead.productName].filter(Boolean).join('-') || '商机';
   const pipelineRes: any = await salesApi.create({
     title,
+    stage: 'OPPORTUNITY',
     companyName: lead.companyName ?? undefined,
     contactName: lead.contactName ?? undefined,
     email: lead.email ?? undefined,
@@ -142,6 +143,10 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
     assignedTo: lead.assignedTo ?? undefined,
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
+    // 商机做实：带入线索的预估数据，新商机不再是空壳
+    estimatedAmount: lead.targetPrice ? Number(lead.targetPrice) : undefined,
+    probability: lead.purchaseIntent ?? undefined,
+    estimatedCloseDate: lead.expectedCloseDate ?? undefined,
   } as any);
   const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 

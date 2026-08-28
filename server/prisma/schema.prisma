@@ -421,6 +421,26 @@ model SalesPipeline {
   updatedAt    DateTime        @updatedAt
 }
 
+// ========== 报价 ==========
+model Quotation {
+  id              String   @id @default(uuid())
+  opportunityId   String // 关联商机（SalesPipeline.id）
+  customerId      String? // 关联客户
+  productId       String? // 关联产品
+  title           String // 报价标题
+  version         Int      @default(1) // 版本号（同一商机可有多版报价）
+  amount          Float // 报价金额
+  currency        String   @default("USD")
+  validUntil      DateTime? // 报价有效期
+  status          String   @default("DRAFT") // DRAFT / SENT / ACCEPTED / REJECTED
+  notes           String? // 备注
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([opportunityId])
+  @@index([customerId])
+}
+
 // ========== 工艺 ==========
 model ProductCraft {
   id        String          @id @default(uuid())

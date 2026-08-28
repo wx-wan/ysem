@@ -8,6 +8,7 @@ import { Z_INDEX } from '../../zIndex';
 import { getIntentLabel } from './SalesFormModal';
 import { SALES_STAGES, STAGE_LABELS } from './stages';
 import Price from '../common/Price';
+import QuotationSection from './QuotationSection';
 
 const STAGES = SALES_STAGES;
 
@@ -127,6 +128,13 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
             </div>
           ))}
         </Card>
+      )}
+
+      {detailItem.stage !== 'LEAD' && (
+        <QuotationSection
+          opportunityId={detailItem.id}
+          productId={detailItem.leadProducts?.[0]?.productId}
+        />
       )}
 
       <div style={{ marginTop: 16 }}>
