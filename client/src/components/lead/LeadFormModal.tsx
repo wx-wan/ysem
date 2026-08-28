@@ -85,6 +85,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
   const productEditRef = useRef<ProductEditModalHandle>(null);
+  // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
+  const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
+  // 新建客户弹窗是否处于强制建档模式（隐藏取消按钮）
+  const [custForceMode, setCustForceMode] = useState(false);
 
   const currentUser = useAuthStore((s) => s.user);
   const userOptions = useUserStore((s) => s.users);
@@ -281,7 +285,29 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 确认线索：检测客户/产品建档 → 未建档则新建 → 新建商机 → 标记「已确认」
+  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
+  const openCustomerForm = (initial: {
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }) =>
+    new Promise<{ id: string }>((resolve) => {
+      pendingResolveRef.current = resolve;
+      setCustForceMode(true);
+      setInitialCustName(initial.companyName ?? '');
+      setCustModalOpen(true);
+    });
+
+  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
+  const openProductForm = (initial: { name?: string }) =>
+    new Promise<{ id: string }>((resolve) => {
+      pendingResolveRef.current = resolve;
+      productEditRef.current?.open(undefined, { name: initial.name }, true);
+    });
+
+  // 确认线索：检测客户/产品建档 → 未建档则弹出真实新建弹窗强制建档 → 新建商机 → 标记「已确认」
   const handleConfirmLead = () => {
     if (!editing) return;
     modal.confirm({
@@ -290,17 +316,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
-        const res = await convertLeadToOpportunity(editing.id, {
-          confirmCreate: async (type, name) =>
-            new Promise<void>((resolve) => {
-              modal.info({
-                title: type === 'customer' ? t('lead.createCustomerConfirmTitle') : t('lead.createProductConfirmTitle'),
-                content: type === 'customer' ? t('lead.createCustomerConfirmContent', { name }) : t('lead.createProductConfirmContent', { name }),
-                okText: t('common.ok'),
-                onOk: () => resolve(),
-              });
-            }),
-        });
+        const res = await convertLeadToOpportunity(editing.id, { openCustomerForm, openProductForm });
         const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
@@ -377,9 +393,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     productEditRef.current?.open(null, { name: editing.productName ?? '' });
   };
 
-  // 新建客户弹窗保存成功后：关联到当前线索
+  // 新建客户弹窗保存成功后：转商机流程则解锁 Promise；否则关联到当前线索
   const handleCustomerFiled = async (customer?: Customer) => {
-    if (!customer?.id || !editing) return;
+    if (!customer?.id) return;
+    if (pendingResolveRef.current) {
+      const resolve = pendingResolveRef.current;
+      pendingResolveRef.current = null;
+      setCustForceMode(false);
+      setCustModalOpen(false);
+      resolve({ id: customer.id });
+      return;
+    }
+    if (!editing) return;
     try {
       await leadApi.update(editing.id, { customerId: customer.id, companyName: null });
       message.success(t('common.createSuccess'));
@@ -391,9 +416,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 新建产品弹窗保存成功后：关联到当前线索
+  // 新建产品弹窗保存成功后：转商机流程则解锁 Promise；否则关联到当前线索
   const handleProductFiled = async (saved?: Product) => {
-    if (!saved?.id || !editing) return;
+    if (!saved?.id) return;
+    if (pendingResolveRef.current) {
+      const resolve = pendingResolveRef.current;
+      pendingResolveRef.current = null;
+      resolve({ id: saved.id });
+      return;
+    }
+    if (!editing) return;
     try {
       await leadApi.update(editing.id, { productId: saved.id, productName: null });
       message.success(t('common.createSuccess'));
@@ -758,6 +790,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         open={custModalOpen}
         editingCustomer={null}
         initialCompanyName={initialCustName}
+        force={custForceMode}
         onClose={() => setCustModalOpen(false)}
         onSuccess={handleCustomerFiled}
       />

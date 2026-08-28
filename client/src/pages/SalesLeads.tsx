@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, Pagination, Button, App, theme } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +14,8 @@ import { convertLeadToOpportunity } from '../utils/convertLead';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
+import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
+import ProductEditModal, { type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
 
 export default function SalesLeads() {
   const { token } = theme.useToken();
@@ -37,13 +39,41 @@ export default function SalesLeads() {
   const formModalRef = useRef<LeadFormModalHandle>(null);
   const navigate = useNavigate();
 
+  // 转商机强制建档：真实「新建客户 / 新建产品」弹窗（与客户页 / 产品页一致）
+  const [customerFormOpen, setCustomerFormOpen] = useState(false);
+  const [customerInitial, setCustomerInitial] = useState<{ companyName?: string }>({});
+  const productEditRef = useRef<ProductEditModalHandle>(null);
+  // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
+  const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
+
   // 列表行内状态切换（确认 / 有效 / 无效）
   const handleChangeStatus = async (id: string, status: LeadStatus) => {
     await leadApi.changeStatus(id, status);
     list.refresh();
   };
 
-  // 确认线索 → 转化为商机（检测客户/产品建档，未建档则新建，再建商机并标记「已确认」）
+  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
+  const openCustomerForm = (initial: {
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }) =>
+    new Promise<{ id: string }>((resolve) => {
+      pendingResolveRef.current = resolve;
+      setCustomerInitial({ companyName: initial.companyName });
+      setCustomerFormOpen(true);
+    });
+
+  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
+  const openProductForm = (initial: { name?: string }) =>
+    new Promise<{ id: string }>((resolve) => {
+      pendingResolveRef.current = resolve;
+      productEditRef.current?.open(undefined, { name: initial.name }, true);
+    });
+
+  // 确认线索 → 转化为商机（检测客户/产品建档，未建档则弹出真实新建弹窗强制建档）
   const handleConvert = (record: Lead) => {
     modal.confirm({
       title: t('lead.confirmConvertTitle'),
@@ -51,17 +81,7 @@ export default function SalesLeads() {
       okText: t('common.ok'),
       cancelText: t('common.cancel'),
       onOk: async () => {
-        const res = await convertLeadToOpportunity(record.id, {
-          confirmCreate: async (type, name) =>
-            new Promise<void>((resolve) => {
-              modal.info({
-                title: type === 'customer' ? t('lead.createCustomerConfirmTitle') : t('lead.createProductConfirmTitle'),
-                content: type === 'customer' ? t('lead.createCustomerConfirmContent', { name }) : t('lead.createProductConfirmContent', { name }),
-                okText: t('common.ok'),
-                onOk: () => resolve(),
-              });
-            }),
-        });
+        const res = await convertLeadToOpportunity(record.id, { openCustomerForm, openProductForm });
         const successModal = modal.success({
           title: t('lead.convertSuccessTitle'),
           content: (
@@ -88,6 +108,14 @@ export default function SalesLeads() {
         list.refresh();
       },
     });
+  };
+
+  // 「新建客户」弹窗（强制建档）保存成功
+  const handleCustomerFormSuccess = (customer?: { id: string }) => {
+    setCustomerFormOpen(false);
+    const resolve = pendingResolveRef.current;
+    pendingResolveRef.current = null;
+    if (resolve && customer?.id) resolve({ id: customer.id });
   };
 
   return (
@@ -185,6 +213,28 @@ export default function SalesLeads() {
         onRefreshCustomers={fetchCustomers}
         onRefreshProducts={fetchProducts}
         onSaved={list.refresh}
+      />
+
+      {/* 转商机时未检测到客户：弹出「新建客户」弹窗（与客户页一致），强制建档 */}
+      <CustomerFormModal
+        open={customerFormOpen}
+        editingCustomer={null}
+        initialCompanyName={customerInitial.companyName}
+        force
+        onClose={() => setCustomerFormOpen(false)}
+        onSuccess={handleCustomerFormSuccess}
+      />
+
+      {/* 转商机时未检测到产品：弹出「新建产品」弹窗（与产品页一致），强制建档 */}
+      <ProductEditModal
+        ref={productEditRef}
+        crafts={crafts}
+        audiences={audiences}
+        onSuccess={(saved) => {
+          const resolve = pendingResolveRef.current;
+          pendingResolveRef.current = null;
+          if (resolve && saved?.id) resolve({ id: saved.id });
+        }}
       />
     </div>
   );

@@ -18,7 +18,7 @@ import { StepBar } from '../../../components/common/StepBar';
 import ProductImageList from '../../../components/common/ProductImageList';
 
 export interface ProductEditModalHandle {
-  open: (record?: Product | null, initial?: { name?: string }) => void;
+  open: (record?: Product | null, initial?: { name?: string }, forceMode?: boolean) => void;
 }
 
 interface ProductEditModalProps {
@@ -30,6 +30,8 @@ interface ProductEditModalProps {
   onCreated?: (productId: string) => void;
   /** 创建 / 更新成功后回调（用于刷新列表，带回保存后的产品对象） */
   onSuccess?: (saved?: Product) => void;
+  /** 强制模式：隐藏取消/上一步按钮，禁用 ESC，必须填完保存（用于转商机时强制建档） */
+  force?: boolean;
 }
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
@@ -79,7 +81,7 @@ const FloatInput = (props: React.ComponentProps<typeof InputNumber> & { allowCle
 };
 
 export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditModalProps>(
-  ({ crafts, audiences, nested, onCreated, onSuccess }, ref) => {
+  ({ crafts, audiences, nested, onCreated, onSuccess, force }, ref) => {
     const { t } = useTranslation();
     const { message } = App.useApp();
     const { user: currentUser } = useAuthStore();
@@ -115,6 +117,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     const [reselectMode, setReselectMode] = useState(false);
     // 新建时预填的产品名称（线索建档等场景带入）
     const [initialName, setInitialName] = useState('');
+    // 强制建档模式（转商机时）：禁止取消/ESC，必须保存
+    const [forceOpen, setForceOpen] = useState(false);
 
     const isEdit = !!editing;
 
@@ -156,7 +160,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     }, [open]);
 
     useImperativeHandle(ref, () => ({
-      open: (record?: Product | null, initial?: { name?: string }) => {
+      open: (record?: Product | null, initial?: { name?: string }, forceMode?: boolean) => {
+        setForceOpen(!!forceMode);
         if (record) {
           setEditing(record);
           setCreatedSingleIds([]);
@@ -328,7 +333,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         <Button key="prev" icon={<ArrowLeftOutlined />} onClick={openReselectCategory} disabled={submitting}>
           上一步
         </Button>,
-        <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
+        !forceOpen && <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
         <Button key="save" type="primary" loading={submitting} onClick={() => handleSubmit()}>
           保存
         </Button>,
@@ -340,14 +345,15 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         {/* 第一步：选择分类（工艺 / 受众 / 品类） */}
         <AppModal
           open={stepOpen}
-          onClose={() => setStepOpen(false)}
+          onClose={() => { if (!forceOpen) setStepOpen(false); }}
           title={isEdit ? '重选分类' : '新建产品 · 选择分类'}
           width={680}
           maskClosable={false}
+          closable={!forceOpen}
           bodyPadding={24}
           footer={(
             <>
-              <Button onClick={() => setStepOpen(false)}>取消</Button>
+              {!forceOpen && <Button onClick={() => setStepOpen(false)}>取消</Button>}
               <Button type="primary" onClick={handleStepNext}>下一步</Button>
             </>
           )}
@@ -449,7 +455,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         {/* 主弹窗：单品卡片 */}
         <AppModal
           open={open}
-          onClose={() => setOpen(false)}
+          onClose={() => { if (!forceOpen) setOpen(false); }}
+          closable={!forceOpen}
           title={
             <div className="pm-modal-title">
               <span className="pm-modal-title-main">{isEdit ? t('product.editTitle') : t('product.addTitle')}</span>

@@ -13,10 +13,21 @@ export interface ConvertResult {
 
 export interface ConvertOptions {
   /**
-   * 当线索关联的客户/产品在系统中不存在时，由调用方弹窗告知用户将强制新建。
-   * 弹窗确认后（必须创建，不可跳过）resolve。
+   * 当线索关联的客户在系统中不存在时，由调用方弹出「新建客户」弹窗（与客户页一致）。
+   * 弹窗保存后 resolve 出新客户 id；弹窗为强制模式，不可取消跳过。
    */
-  confirmCreate?: (type: 'customer' | 'product', name: string) => Promise<void>;
+  openCustomerForm: (initial: {
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }) => Promise<{ id: string }>;
+  /**
+   * 当线索关联的产品在系统中不存在时，由调用方弹出「新建产品」弹窗（与产品页一致）。
+   * 弹窗保存后 resolve 出新产品 id；弹窗为强制模式，不可取消跳过。
+   */
+  openProductForm: (initial: { name?: string }) => Promise<{ id: string }>;
 }
 
 /**
@@ -46,7 +57,7 @@ async function findProductByName(name: string): Promise<string | null> {
 export async function convertLeadToOpportunity(leadId: string, options: ConvertOptions = {}): Promise<ConvertResult> {
   const leadRes = await leadApi.get(leadId);
   const lead: Lead = leadRes.data;
-  const confirmCreate = options.confirmCreate ?? (async () => true);
+  const { openCustomerForm, openProductForm } = options;
 
   // ---- 客户建档检测 ----
   let customerId: string | null = lead.customerId ?? null;
@@ -54,16 +65,15 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   if (!customerId && lead.companyName) {
     customerId = await findCustomerByName(lead.companyName);
     if (!customerId) {
-      // 未检测到客户：必须创建（不可跳过），弹窗仅用于告知
-      await confirmCreate('customer', lead.companyName);
-      const cRes: any = await customerApi.create({
+      // 未检测到客户：弹出「新建客户」弹窗（与客户页一致），强制建档
+      const created = await openCustomerForm({
         companyName: lead.companyName,
         contactName: lead.contactName ?? undefined,
         email: lead.email ?? undefined,
         phone: lead.phone ?? undefined,
         country: lead.country ?? undefined,
       });
-      customerId = cRes?.data?.id ?? cRes?.data?.data?.id ?? null;
+      customerId = created?.id ?? null;
       if (customerId) {
         customerCreated = true;
         await leadApi.update(leadId, { customerId });
@@ -77,10 +87,9 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   if (!productId && lead.productName) {
     productId = await findProductByName(lead.productName);
     if (!productId) {
-      // 未检测到产品：必须创建（不可跳过），弹窗仅用于告知
-      await confirmCreate('product', lead.productName);
-      const pRes: any = await productApi.create({ name: lead.productName });
-      productId = pRes?.data?.id ?? pRes?.data?.data?.id ?? null;
+      // 未检测到产品：弹出「新建产品」弹窗（与产品页一致），强制建档
+      const created = await openProductForm({ name: lead.productName });
+      productId = created?.id ?? null;
       if (productId) {
         productCreated = true;
         await leadApi.update(leadId, { productId });

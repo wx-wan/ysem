@@ -11,12 +11,14 @@ interface Props {
   editingCustomer: Customer | null;
   /** 新增模式下预填的公司名称（用于线索建档等场景带入） */
   initialCompanyName?: string;
+  /** 强制模式：隐藏取消/关闭按钮，必须填完保存（用于转商机时强制建档） */
+  force?: boolean;
   onClose: () => void;
   /** 保存成功后回调；新建成功时携带新客户对象 */
   onSuccess?: (customer?: Customer) => void;
 }
 
-const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, onClose, onSuccess }) => {
+const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, force, onClose, onSuccess }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
@@ -66,9 +68,11 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
       title={editingCustomer ? '编辑客户' : '新增客户'}
       width={640}
       bodyPadding={20}
+      closable={!force}
+      maskClosable={!force}
       footer={
         <>
-          <Button onClick={onClose}>取消</Button>
+          {!force && <Button onClick={onClose}>取消</Button>}
           <Button type="primary" loading={saving} onClick={handleSave}>
             保存
           </Button>
