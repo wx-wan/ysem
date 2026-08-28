@@ -129,15 +129,17 @@ export default function LeadTable({
         width: 200,
         render: (_: unknown, r: Lead) => {
           const isInvalid = r.status === 'INVALID';
+          const isQualified = r.status === 'QUALIFIED';
+          const readonly = isInvalid || isQualified;
           return (
             <Space size={2}>
-              {/* 确认：转为商机（仅无效状态禁用，与详情弹窗逻辑一致） */}
+              {/* 确认：转为商机（无效/已确认状态禁用，与详情弹窗 readonly 逻辑一致） */}
               <Tooltip title={t('lead.confirmLead')}>
                 <Button
                   type="link"
                   size="small"
                   icon={<AuditOutlined />}
-                  disabled={isInvalid}
+                  disabled={readonly}
                   onClick={() => onConvert(r)}
                 />
               </Tooltip>
@@ -150,20 +152,20 @@ export default function LeadTable({
                   disabled={!isInvalid}
                 />
               </Popconfirm>
-              {/* 无效：新建/有效 → 无效 */}
+              {/* 无效：新建/有效 → 无效（无效/已确认状态禁用） */}
               <Tooltip title={t('lead.invalid')}>
                 <Button
                   type="link"
                   size="small"
                   danger
                   icon={<StopOutlined />}
-                  disabled={isInvalid}
+                  disabled={readonly}
                   onClick={() => onChangeStatus(r.id, 'INVALID')}
                 />
               </Tooltip>
               {isAdmin && (
                 <Popconfirm title={t('common.confirmDelete')} onConfirm={() => onRemove(r.id)}>
-                  <Button type="link" size="small" danger icon={<DeleteOutlined />} />
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={readonly} />
                 </Popconfirm>
               )}
             </Space>

@@ -460,31 +460,35 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               {/* 转交 / 释放（仅已有线索详情展示，新建时隐藏） */}
               {!isCreate && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {/* 转交：未分配也允许（便于指派负责人）；只读态禁用 */}
                   <Button
                     shape="circle"
                     size="middle"
                     icon={<SwapOutlined style={{ color: token.colorWarning }} />}
                     style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                    disabled={!editing?.assignedTo || readonly}
+                    disabled={readonly}
                     onClick={() => setTransferOpen(true)}
                     title={t('lead.transfer')}
                   />
-                  <Popconfirm
-                    title={t('lead.confirmRelease')}
-                    okText={t('common.ok')}
-                    cancelText={t('common.cancel')}
-                    disabled={!editing?.assignedTo || readonly}
-                    onConfirm={handleReleaseLead}
-                  >
-                    <Button
-                      shape="circle"
-                      size="middle"
-                      icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
-                      style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                      disabled={!editing?.assignedTo || readonly}
-                      title={t('lead.release')}
-                    />
-                  </Popconfirm>
+                  {/* 释放：仅已分配负责人时显示；只读态禁用 */}
+                  {editing?.assignedTo && (
+                    <Popconfirm
+                      title={t('lead.confirmRelease')}
+                      okText={t('common.ok')}
+                      cancelText={t('common.cancel')}
+                      disabled={readonly}
+                      onConfirm={handleReleaseLead}
+                    >
+                      <Button
+                        shape="circle"
+                        size="middle"
+                        icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
+                        style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
+                        disabled={readonly}
+                        title={t('lead.release')}
+                      />
+                    </Popconfirm>
+                  )}
                 </div>
               )}
               {/* 关闭按钮（与客户详情样式一致） */}
