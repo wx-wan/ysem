@@ -414,17 +414,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // ============ 确认建档 ============
   // 走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
+  // 客户 / 产品「未建档」标签点击：优先用已保存记录的名称，回退到当前表单输入值
   const confirmCreateCustomer = () => {
     if (readonly) return;
-    if (!editing?.companyName) return;
-    setInitialCustName(editing.companyName);
+    const name = editing?.companyName || watchCustomerKey;
+    if (!name) return;
+    setInitialCustName(name);
     setCustModalOpen(true);
   };
 
   const confirmCreateProduct = () => {
     if (readonly) return;
-    if (!editing?.productName) return;
-    productEditRef.current?.open(null, { name: editing.productName ?? '' });
+    const name = editing?.productName || watchProductKey;
+    if (!name) return;
+    productEditRef.current?.open(null, { name });
   };
 
   // 新建客户弹窗保存成功后：转商机流程则解锁 Promise；否则关联到当前线索
@@ -439,7 +442,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       refreshEditing();
       return;
     }
-    if (!editing) return;
+    // 新建线索（尚无 id）：客户已建档，刷新下拉后标签自动消失，后续保存线索时即可匹配到 customerId
+    if (!editing?.id) {
+      message.success(t('common.createSuccess'));
+      onRefreshCustomers();
+      return;
+    }
     try {
       await leadApi.update(editing.id, { customerId: customer.id, companyName: null });
       message.success(t('common.createSuccess'));
@@ -461,7 +469,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       refreshEditing();
       return;
     }
-    if (!editing) return;
+    // 新建线索（尚无 id）：产品已建档，刷新下拉后标签自动消失，后续保存线索时即可匹配到 productId
+    if (!editing?.id) {
+      message.success(t('common.createSuccess'));
+      onRefreshProducts();
+      return;
+    }
     try {
       await leadApi.update(editing.id, { productId: saved.id, productName: null });
       message.success(t('common.createSuccess'));
@@ -751,14 +764,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="productKey"
                     label={
-                      editing?.productName && !editing.productId ? (
+                      (editing?.productName && !editing.productId) ||
+                      (watchProductKey && !productNameOptions.some((p) => p.label === watchProductKey)) ? (
                         <Space size={4}>
                           <span>{t('lead.product')}</span>
                           <Tag
                             color="orange"
                             style={{ cursor: 'pointer', marginInlineEnd: 0 }}
                             onClick={confirmCreateProduct}
-                            title={t('lead.productPendingTip', { name: editing.productName })}
+                            title={t('lead.productPendingTip', { name: editing?.productName || watchProductKey })}
                           >
                             {t('lead.pendingTag')}
                           </Tag>

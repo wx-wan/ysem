@@ -49,7 +49,7 @@ const routeTitles: Record<string, string> = {
   '/sales/opportunities': '商机',
   '/sales/quotes': '报价',
   '/sales/orders': '订单',
-  '/sales/samples': '打样',
+  '/sales/samples': '样品',
   '/supply': '供应',
   '/supply/purchase': '采购',
   '/supply/production': '生产',
@@ -155,6 +155,7 @@ export default function MainLayout() {
     ...(hasPerm('sales:leads') ? [{ key: '/sales/leads', icon: <ProjectOutlined />, label: t('sales.lead') }] : []),
     ...(hasPerm('sales:opportunities') ? [{ key: '/sales/opportunities', icon: <ThunderboltOutlined />, label: t('sales.opportunity') }] : []),
     ...(hasPerm('sales:quotes') ? [{ key: '/sales/quotes', icon: <SolutionOutlined />, label: t('menu.quote') }] : []),
+    ...(hasPerm('sales:samples') ? [{ key: '/sales/samples', icon: <ExperimentOutlined />, label: t('menu.sample') }] : []),
     ...(hasPerm('sales:orders') ? [{ key: '/sales/orders', icon: <ShoppingCartOutlined />, label: t('menu.orders') }] : []),
   ].filter(Boolean);
 
