@@ -172,7 +172,8 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   const pipelineRes: any = await salesApi.create({
     title,
     // 阶段由后端按关联单据派生，创建时不传 stage
-    companyName: lead.companyName ?? undefined,
+    // 线索可能没有公司名（已关联客户时 companyName 为空）：依次回退客户公司名、商机标题，避免后端必填校验 400
+    companyName: lead.companyName ?? lead.customer?.companyName ?? title,
     contactName: lead.contactName ?? undefined,
     email: lead.email ?? undefined,
     phone: lead.phone ?? undefined,

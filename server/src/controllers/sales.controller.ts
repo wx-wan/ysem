@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import prisma from '../lib/prisma';
@@ -15,7 +16,8 @@ const createPipelineSchema = z.object({
   customerId: z.string().optional().nullable(),
   // 阶段不再由前端传入，统一由关联单据推导（见 utils/pipelineStage.ts）
   title: z.string().min(1, '标题不能为空'),
-  companyName: z.string().min(1, '公司名称不能为空'),
+  // 公司名称改为可选：线索转商机等场景可能没有公司名，创建时用标题兜底（库字段非空）
+  companyName: z.string().optional().nullable(),
   contactName: z.string().optional().nullable(),
   email: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
@@ -98,6 +100,7 @@ export const getPipelines = async (req: AuthRequest, res: Response): Promise<voi
 
     const includeClause = {
       assignee: { select: { id: true, realName: true, username: true } },
+      lead: { select: { id: true, leadNumber: true, leadName: true } },
       leadProducts: {
         include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
         orderBy: { createdAt: 'asc' },
@@ -203,6 +206,7 @@ export const getPipeline = async (req: AuthRequest, res: Response): Promise<void
       where: { id: req.params.id },
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
+        lead: { select: { id: true, leadNumber: true, leadName: true } },
         activities: { orderBy: { createdAt: 'desc' }, take: 30 },
         leadProducts: {
           include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
@@ -236,6 +240,7 @@ export const getByProduct = async (req: AuthRequest, res: Response): Promise<voi
       where,
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
+        lead: { select: { id: true, leadNumber: true, leadName: true } },
         leadProducts: {
           where: { productId },
           select: { quantity: true },
@@ -302,6 +307,8 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
     const pipeline = await prisma.salesPipeline.create({
       data: {
         ...pipelineData,
+        // 公司名称兜底：未传时用商机标题占位（库字段非空）
+        companyName: data.companyName ?? data.title,
         pipelineNumber,
         leadProducts: products?.length
           ? {
@@ -314,6 +321,7 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
       },
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
+        lead: { select: { id: true, leadNumber: true, leadName: true } },
         leadProducts: {
           include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
         },
@@ -344,11 +352,18 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
     }
 
     // 双向绑定：若来源线索，回填线索的关联商机 ID，便于溯源
+    // 校验 leadId 确实指向线索，避免脏数据（如误传客户 ID）导致更新失败
     if (data.leadId) {
-      await prisma.lead.update({
+      const sourceLead = await prisma.lead.findUnique({
         where: { id: data.leadId },
-        data: { pipelineId: pipeline.id },
+        select: { id: true },
       });
+      if (sourceLead) {
+        await prisma.lead.update({
+          where: { id: sourceLead.id },
+          data: { pipelineId: pipeline.id },
+        });
+      }
     }
 
     created(res, pipeline, '创建成功');
@@ -381,6 +396,7 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
 
     const pipeline = await prisma.salesPipeline.update({
       where: { id: req.params.id },
+      // 部分字段均可空（如 companyName/customerId），显式指定 Unchecked 入参类型，避开 Prisma 联合类型推断歧义
       data: {
         ...pipelineData,
         leadProducts: products?.length
@@ -393,9 +409,10 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
           : products !== undefined
             ? { deleteMany: {} }
             : undefined,
-      },
+      } as Prisma.SalesPipelineUncheckedUpdateInput,
       include: {
         assignee: { select: { id: true, realName: true, username: true } },
+        lead: { select: { id: true, leadNumber: true, leadName: true } },
         leadProducts: {
           include: { product: { select: { id: true, name: true, sku: true, audienceId: true, categoryId: true } } },
         },

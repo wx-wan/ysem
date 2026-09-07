@@ -56,7 +56,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
         </Space>
       }
     >
-      {/* 溯源：来源线索 */}
+      {/* 溯源：来源线索（优先展示线索号，无线索号时回退为 ID） */}
       {detailItem.leadId && (
         <Alert
           type="info"
@@ -65,7 +65,8 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
           title={
             <Space>
               <span>
-                {t('sales.sourceLead')}：<b>{detailItem.leadId}</b>
+                {t('sales.sourceLead')}：<b>{detailItem.lead?.leadNumber || detailItem.leadId}</b>
+                {detailItem.lead?.leadName ? `（${detailItem.lead.leadName}）` : ''}
               </span>
               <Button type="link" size="small" onClick={() => navigate('/sales/leads')}>
                 {t('sales.viewLead')}

@@ -113,7 +113,6 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwn
       form.setFieldsValue({
         source: 'LEAD_CONVERT',
         assignedTo: customer?.ownerId || undefined,
-        leadId: customer?.id,
         customerId: customer?.id,
       });
       setLeadProducts([]);
@@ -126,7 +125,6 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwn
       form.setFieldsValue({
         customerId: customer.id,
         assignedTo: customer.ownerId || undefined,
-        leadId: customer.id,
         title: customer.opportunityTitle || '',
         companyName: customer.companyName || '',
         contactName: customer.contactName || '',

@@ -35,7 +35,7 @@ import { flattenChannelOptions } from './constants';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
-import { parseImages, serializeImages } from '../../utils/productImages';
+import { parseImages, serializeImages, type ProductImageItem } from '../../utils/productImages';
 
 export interface LeadFormModalHandle {
   openCreate: () => void;
@@ -314,11 +314,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
-  const openProductForm = (initial?: { name?: string; description?: string }) =>
+  // 线索参考图（即产品图）一并带入新建产品弹窗，仅写入产品表
+  const openProductForm = (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      const { name, description } = initial || {};
-      productEditRef.current?.open(undefined, { name, description }, true);
+      const { name, description, images } = initial || {};
+      productEditRef.current?.open(undefined, { name, description, images }, true);
     });
 
   // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
@@ -841,7 +842,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         editingCustomer={null}
         initialCompanyName={initialCustName}
         initialCountry={editing?.country ? findCountry(editing.country)?.zh : undefined}
-        initialImages={editing?.images ? parseImages(typeof editing.images === 'string' ? editing.images : JSON.stringify(editing.images)) : undefined}
         force={custForceMode}
         onClose={() => setCustModalOpen(false)}
         onSuccess={handleCustomerFiled}

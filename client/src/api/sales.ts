@@ -40,6 +40,8 @@ export interface SalesItem {
   updateTime?: string;
   quantity?: number;
   leadId?: string | null; // 来源线索 ID（便于溯源）
+  /** 来源线索（后端 include 带回，用于展示线索号而非内部 ID） */
+  lead?: { id: string; leadNumber?: string | null; leadName?: string | null } | null;
 }
 
 // 阶段配色统一由 components/sales/stages.ts 提供（STAGE_META / getStageMeta）
