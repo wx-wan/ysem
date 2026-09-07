@@ -14,6 +14,7 @@ export interface Customer {
   wechat?: string;        // 微信
   country?: string;
   region?: string;        // 所在地区（省市区）
+  images?: string;        // 客户参考图片（JSON 数组 [{url,name}]）
   customerLevel?: string; // 客户等级
   customerType?: string; // 客户类型
   source?: string;

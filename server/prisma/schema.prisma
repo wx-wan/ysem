@@ -163,6 +163,7 @@ model Customer {
   wechat        String? // 微信
   country       String?
   region        String? // 所在地区（省市区，如 "广东省·广州市"）
+  images        String? // 客户参考图片（JSON 数组 [{url,name}]，转线索建档时带入）
   customerLevel String? @default("普通客户") // 客户等级：钻石客户/战略客户/优质客户/普通客户/潜在客户
   source        String? // MANUAL / EXCEL / XIAOMAN
   notes         String?

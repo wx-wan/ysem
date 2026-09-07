@@ -5,6 +5,7 @@ import { CloseOutlined, SaveOutlined, MailOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
+import ProductImageList from '../../common/ProductImageList';
 import { Z_INDEX, createPopupContainer } from '../../../zIndex';
 import { useDs } from '../shared/ds';
 
@@ -177,6 +178,10 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
 
             <Form.Item name="country" label="所在地区">
               <CountrySelect placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
+            </Form.Item>
+
+            <Form.Item name="images" label="参考图片" valuePropName="value">
+              <ProductImageList uploadUrl="/upload" />
             </Form.Item>
 
             <Form.Item name="email" label="邮箱">

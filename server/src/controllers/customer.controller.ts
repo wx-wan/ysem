@@ -628,7 +628,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
   try {
     const userId = req.userId!;
     const username = req.username!;
-    const { companyName, contactName, email, phone, country, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount } =
+    const { companyName, contactName, email, phone, country, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount, images } =
       req.body;
 
     if (!companyName) return error(res, "公司名称不能为空", 400);
@@ -648,6 +648,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
         phone,
         country,
         customerType,
+        images: images ?? null,
         source: source || "MANUAL",
         notes,
         ownerId: finalOwnerId,
@@ -682,7 +683,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     const username = req.username!;
     const userId = req.userId!;
     const roleCode = req.roleCode;
-    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount } =
+    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount, images } =
       req.body;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
@@ -718,6 +719,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         wechat: wechat !== undefined ? wechat : existing.wechat,
         country: country !== undefined ? country : existing.country,
         region: region !== undefined ? region : existing.region,
+        images: images !== undefined ? images : existing.images,
         customerLevel: customerLevel !== undefined ? customerLevel : existing.customerLevel,
         customerType: customerType !== undefined ? customerType : existing.customerType,
         source: source ?? existing.source,

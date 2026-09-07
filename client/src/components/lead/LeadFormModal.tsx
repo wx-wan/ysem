@@ -841,6 +841,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         editingCustomer={null}
         initialCompanyName={initialCustName}
         initialCountry={editing?.country ? findCountry(editing.country)?.zh : undefined}
+        initialImages={editing?.images ? parseImages(typeof editing.images === 'string' ? editing.images : JSON.stringify(editing.images)) : undefined}
         force={custForceMode}
         onClose={() => setCustModalOpen(false)}
         onSuccess={handleCustomerFiled}

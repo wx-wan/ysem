@@ -17,6 +17,7 @@ import { useUserStore } from '../stores/useUserStore';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import ProductEditModal, { type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
 import { findCountry } from '../data/countries';
+import { type ProductImageItem } from '../utils/productImages';
 import ConvertCreateSummaryModal from '../components/lead/ConvertCreateSummaryModal';
 
 export default function SalesLeads() {
@@ -49,6 +50,7 @@ export default function SalesLeads() {
     email?: string;
     phone?: string;
     country?: string;
+    images?: ProductImageItem[];
   }>({});
   const productEditRef = useRef<ProductEditModalHandle>(null);
   // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
@@ -72,13 +74,14 @@ export default function SalesLeads() {
     email?: string;
     phone?: string;
     country?: string;
+    images?: ProductImageItem[];
   }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      const { companyName, contactName, email, phone, country } = initial || {};
+      const { companyName, contactName, email, phone, country, images } = initial || {};
       // 线索国家可能是代码/英文名，统一转成中文名以便 CountrySelect 正确选中
       const countryZh = country ? findCountry(country)?.zh : undefined;
-      setCustomerInitial({ companyName, contactName, email, phone, country: countryZh });
+      setCustomerInitial({ companyName, contactName, email, phone, country: countryZh, images });
       setCustomerFormOpen(true);
     });
 
@@ -257,6 +260,7 @@ export default function SalesLeads() {
         initialEmail={customerInitial.email}
         initialPhone={customerInitial.phone}
         initialCountry={customerInitial.country}
+        initialImages={customerInitial.images}
         force
         onClose={() => setCustomerFormOpen(false)}
         onSuccess={handleCustomerFormSuccess}

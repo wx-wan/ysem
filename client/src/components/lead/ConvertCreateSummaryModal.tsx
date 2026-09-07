@@ -26,6 +26,8 @@ interface Props {
     email?: string;
     phone?: string;
     country?: string;
+    /** 线索参考图片（产品图片格式 [{url,name}]），带入客户表 */
+    images?: ProductImageItem[];
   }) => Promise<{ id: string }>;
   /** 点击「新建产品」：由父级打开真实新建产品弹窗并 resolve 出新 id */
   onOpenProduct: (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) => Promise<{ id: string }>;
@@ -107,7 +109,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
   const handleBuildCustomer = async () => {
     setLoadingCustomer(true);
     try {
-      const r = await onOpenCustomer({ companyName: items.customerName });
+      const r = await onOpenCustomer({ companyName: items.customerName, images: items.images });
       if (r?.id) setBuiltCustomerId(r.id);
     } finally {
       setLoadingCustomer(false);

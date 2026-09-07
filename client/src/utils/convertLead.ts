@@ -64,6 +64,8 @@ export interface ConvertOptions {
     email?: string;
     phone?: string;
     country?: string;
+    /** 线索参考图片（产品图片格式 [{url,name}]），转线索建档时带入客户表 */
+    images?: ProductImageItem[];
   }) => Promise<{ id: string }>;
   /**
    * 当线索关联的产品在系统中不存在时，由调用方弹出「新建产品」弹窗（与产品页一致）。
@@ -147,6 +149,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
         email: lead.email ?? undefined,
         phone: lead.phone ?? undefined,
         country: lead.country ?? undefined,
+        images: productImages,
       });
       customerId = created?.id ?? null;
       if (customerId) {

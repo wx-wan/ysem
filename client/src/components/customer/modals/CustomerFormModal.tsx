@@ -5,6 +5,8 @@ import { customerApi, Customer } from '../../../api/customers';
 import AppModal from '../../AppModal';
 import CountrySelect from '../../CountrySelect';
 import CustomerTypeSelect from '../../CustomerTypeSelect';
+import ProductImageList from '../../common/ProductImageList';
+import { type ProductImageItem, serializeImages } from '../../../utils/productImages';
 
 interface Props {
   open: boolean;
@@ -19,6 +21,8 @@ interface Props {
   initialPhone?: string;
   /** 新增模式下预填的国家（线索建档场景带入，需为中文名以便 CountrySelect 选中） */
   initialCountry?: string;
+  /** 新增模式下预填的参考图片（线索建档场景带入，产品图片格式 [{url,name}]） */
+  initialImages?: ProductImageItem[];
   /** 强制模式：隐藏取消/关闭按钮，必须填完保存（用于转商机时强制建档） */
   force?: boolean;
   onClose: () => void;
@@ -26,7 +30,7 @@ interface Props {
   onSuccess?: (customer?: Customer) => void;
 }
 
-const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, initialContactName, initialEmail, initialPhone, initialCountry, force, onClose, onSuccess }) => {
+const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, initialContactName, initialEmail, initialPhone, initialCountry, initialImages, force, onClose, onSuccess }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
@@ -71,6 +75,7 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
           ...(initialEmail ? { email: initialEmail } : {}),
           ...(initialPhone ? { phone: initialPhone } : {}),
           ...(initialCountry ? { country: initialCountry } : {}),
+          ...(initialImages?.length ? { images: serializeImages(initialImages) } : {}),
         });
       }
     }
@@ -112,6 +117,9 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         </Row>
         <Form.Item name="country" label="国家">
           <CountrySelect />
+        </Form.Item>
+        <Form.Item name="images" label="参考图片" valuePropName="value">
+          <ProductImageList uploadUrl="/upload" />
         </Form.Item>
         <Form.Item name="customerType" label="客户类型">
           <CustomerTypeSelect placeholder="请选择客户类型" />
