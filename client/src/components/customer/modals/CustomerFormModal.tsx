@@ -11,6 +11,14 @@ interface Props {
   editingCustomer: Customer | null;
   /** 新增模式下预填的公司名称（用于线索建档等场景带入） */
   initialCompanyName?: string;
+  /** 新增模式下预填的联系人（线索建档场景带入） */
+  initialContactName?: string;
+  /** 新增模式下预填的邮箱（线索建档场景带入） */
+  initialEmail?: string;
+  /** 新增模式下预填的电话（线索建档场景带入） */
+  initialPhone?: string;
+  /** 新增模式下预填的国家（线索建档场景带入，需为中文名以便 CountrySelect 选中） */
+  initialCountry?: string;
   /** 强制模式：隐藏取消/关闭按钮，必须填完保存（用于转商机时强制建档） */
   force?: boolean;
   onClose: () => void;
@@ -18,7 +26,7 @@ interface Props {
   onSuccess?: (customer?: Customer) => void;
 }
 
-const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, force, onClose, onSuccess }) => {
+const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, initialCompanyName, initialContactName, initialEmail, initialPhone, initialCountry, force, onClose, onSuccess }) => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
@@ -56,7 +64,14 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
         form.setFieldsValue(editingCustomer);
       } else {
         form.resetFields();
-        form.setFieldsValue({ isKeyAccount: false, ...(initialCompanyName ? { companyName: initialCompanyName } : {}) });
+        form.setFieldsValue({
+          isKeyAccount: false,
+          ...(initialCompanyName ? { companyName: initialCompanyName } : {}),
+          ...(initialContactName ? { contactName: initialContactName } : {}),
+          ...(initialEmail ? { email: initialEmail } : {}),
+          ...(initialPhone ? { phone: initialPhone } : {}),
+          ...(initialCountry ? { country: initialCountry } : {}),
+        });
       }
     }
   }, [open, editingCustomer, initialCompanyName, form]);

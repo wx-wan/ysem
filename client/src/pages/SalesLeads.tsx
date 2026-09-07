@@ -16,6 +16,7 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import ProductEditModal, { type ProductEditModalHandle } from '../components/product/modals/ProductEditModal';
+import { findCountry } from '../data/countries';
 import ConvertCreateSummaryModal from '../components/lead/ConvertCreateSummaryModal';
 
 export default function SalesLeads() {
@@ -42,7 +43,13 @@ export default function SalesLeads() {
 
   // 转商机强制建档：真实「新建客户 / 新建产品」弹窗（与客户页 / 产品页一致）
   const [customerFormOpen, setCustomerFormOpen] = useState(false);
-  const [customerInitial, setCustomerInitial] = useState<{ companyName?: string }>({});
+  const [customerInitial, setCustomerInitial] = useState<{
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }>({});
   const productEditRef = useRef<ProductEditModalHandle>(null);
   // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
@@ -68,8 +75,10 @@ export default function SalesLeads() {
   }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      const { companyName } = initial || {};
-      setCustomerInitial({ companyName });
+      const { companyName, contactName, email, phone, country } = initial || {};
+      // 线索国家可能是代码/英文名，统一转成中文名以便 CountrySelect 正确选中
+      const countryZh = country ? findCountry(country)?.zh : undefined;
+      setCustomerInitial({ companyName, contactName, email, phone, country: countryZh });
       setCustomerFormOpen(true);
     });
 
@@ -244,6 +253,10 @@ export default function SalesLeads() {
         open={customerFormOpen}
         editingCustomer={null}
         initialCompanyName={customerInitial.companyName}
+        initialContactName={customerInitial.contactName}
+        initialEmail={customerInitial.email}
+        initialPhone={customerInitial.phone}
+        initialCountry={customerInitial.country}
         force
         onClose={() => setCustomerFormOpen(false)}
         onSuccess={handleCustomerFormSuccess}

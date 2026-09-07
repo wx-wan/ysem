@@ -19,7 +19,7 @@ import {
 import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
-import CountrySelect from '../CountrySelect';
+import CountrySelect, { findCountry } from '../CountrySelect';
 import CustomerTypeSelect from '../CustomerTypeSelect';
 import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
@@ -840,6 +840,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         open={custModalOpen}
         editingCustomer={null}
         initialCompanyName={initialCustName}
+        initialCountry={editing?.country ? findCountry(editing.country)?.zh : undefined}
         force={custForceMode}
         onClose={() => setCustModalOpen(false)}
         onSuccess={handleCustomerFiled}
