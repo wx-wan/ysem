@@ -3,6 +3,7 @@ import { Button, Tag, Space, Typography } from 'antd';
 import { CheckCircleFilled, PlusOutlined, UserAddOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
+import { type ProductImageItem } from '../../utils/productImages';
 
 const { Text } = Typography;
 
@@ -11,6 +12,8 @@ export interface ConvertSummaryItems {
   customerName?: string;
   /** 待建档产品名称（缺产品时传入） */
   productName?: string;
+  /** 待建档产品的初始图片（来自线索参考图，已转为产品格式 [{url,name}]） */
+  images?: ProductImageItem[];
 }
 
 interface Props {
@@ -25,7 +28,7 @@ interface Props {
     country?: string;
   }) => Promise<{ id: string }>;
   /** 点击「新建产品」：由父级打开真实新建产品弹窗并 resolve 出新 id */
-  onOpenProduct: (initial?: { name?: string; description?: string }) => Promise<{ id: string }>;
+  onOpenProduct: (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) => Promise<{ id: string }>;
   /** 全部建档完成后确认转商机 */
   onConfirm: (ids: { customerId?: string; productId?: string }) => void;
   /** 取消（中止转商机） */
@@ -114,7 +117,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
   const handleBuildProduct = async () => {
     setLoadingProduct(true);
     try {
-      const r = await onOpenProduct({ name: items.productName });
+      const r = await onOpenProduct({ name: items.productName, images: items.images });
       if (r?.id) setBuiltProductId(r.id);
     } finally {
       setLoadingProduct(false);
@@ -162,7 +165,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
         <Row
           icon={<AppstoreAddOutlined />}
           label={t('lead.createProductConfirmTitle')}
-          name={items.productName || ''}
+          name={[items.productName, items.images?.length ? `（含 ${items.images.length} 张参考图）` : ''].join(' ')}
           built={!!builtProductId}
           loading={loadingProduct}
           onBuild={handleBuildProduct}

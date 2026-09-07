@@ -2,6 +2,37 @@ import { leadApi, type Lead } from '../api/lead';
 import { customerApi } from '../api/customers';
 import { productApi } from '../api/products';
 import { salesApi } from '../api/sales';
+import { type ProductImageItem } from '../utils/productImages';
+
+/**
+ * 将线索图片（string[] / 逗号分隔 URL / JSON 数组）转换为产品图片格式 [{url,name}]，
+ * 便于在「确认转商机 → 新建产品」时把线索参考图带入产品。
+ */
+function leadImagesToProductImages(leadImages?: string[] | string | null): ProductImageItem[] {
+  if (!leadImages) return [];
+  let urls: string[] = [];
+  if (Array.isArray(leadImages)) {
+    urls = leadImages;
+  } else {
+    const t = leadImages.trim();
+    if (!t) return [];
+    if (t.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(t);
+        if (Array.isArray(parsed)) {
+          urls = parsed
+            .map((i: unknown) => (typeof i === 'string' ? i : (i as { url?: string })?.url))
+            .filter((u): u is string => typeof u === 'string' && !!u);
+        }
+      } catch {
+        urls = t.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+    } else {
+      urls = t.split(',').map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return urls.map((url, i) => ({ url, name: i === 0 ? '主图' : `图片${i + 1}` }));
+}
 
 export interface ConvertResult {
   pipeline: any;
@@ -20,6 +51,8 @@ export interface ConvertOptions {
   showCreateSummary?: (items: {
     customerName?: string;
     productName?: string;
+    /** 待建档产品的初始图片（来自线索参考图，转为产品格式 [{url,name}]） */
+    images?: ProductImageItem[];
   }) => Promise<{ customerId?: string; productId?: string }>;
   /**
    * 当线索关联的客户在系统中不存在时，由调用方弹出「新建客户」弹窗（与客户页一致）。
@@ -37,7 +70,7 @@ export interface ConvertOptions {
    * 弹窗保存后 resolve 出新产品 id；弹窗为强制模式，不可取消跳过。
    * initial.description 可预填产品描述（来自线索 productDesc），避免建出半成品产品。
    */
-  openProductForm?: (initial?: { name?: string; description?: string }) => Promise<{ id: string }>;
+  openProductForm?: (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) => Promise<{ id: string }>;
 }
 
 /**
@@ -68,6 +101,8 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   const leadRes = await leadApi.get(leadId);
   const lead: Lead = leadRes.data;
   const { openCustomerForm, openProductForm, showCreateSummary } = options;
+  // 线索参考图转换为产品图片格式，带入新建产品流程
+  const productImages = leadImagesToProductImages(lead.images);
 
   // ---- 客户建档检测（先查线索已关联 / 精确同名，判断是否需要新建） ----
   let customerId: string | null = lead.customerId ?? null;
@@ -91,6 +126,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     const ids = await showCreateSummary({
       customerName: needCustomer ? lead.companyName! : undefined,
       productName: needProduct ? lead.productName! : undefined,
+      images: needProduct ? productImages : undefined,
     });
     if (needCustomer && ids.customerId) {
       customerId = ids.customerId;
@@ -119,7 +155,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
       }
     }
     if (needProduct) {
-      const created = await openProductForm?.({ name: lead.productName!, description: lead.productDesc ?? undefined });
+      const created = await openProductForm?.({ name: lead.productName!, description: lead.productDesc ?? undefined, images: productImages });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;

@@ -16,9 +16,10 @@ import { certificateApi, Certificate } from '../../../api/certificates';
 import { userApi } from '../../../api/users';
 import { StepBar } from '../../../components/common/StepBar';
 import ProductImageList from '../../../components/common/ProductImageList';
+import { type ProductImageItem, serializeImages } from '../../../utils/productImages';
 
 export interface ProductEditModalHandle {
-  open: (record?: Product | null, initial?: { name?: string; description?: string }, forceMode?: boolean) => void;
+  open: (record?: Product | null, initial?: { name?: string; description?: string; images?: ProductImageItem[] }, forceMode?: boolean) => void;
 }
 
 interface ProductEditModalProps {
@@ -119,6 +120,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     const [initialName, setInitialName] = useState('');
     // 新建时预填的产品描述（线索建档等场景带入）
     const [initialDescription, setInitialDescription] = useState('');
+    // 新建时预填的产品图片（线索建档等场景带入的参考图）
+    const [initialImages, setInitialImages] = useState<ProductImageItem[] | undefined>();
     // 强制建档模式（转商机时）：禁止取消/ESC，必须保存
     const [forceOpen, setForceOpen] = useState(false);
 
@@ -162,9 +165,10 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     }, [open]);
 
     useImperativeHandle(ref, () => ({
-      open: (record?: Product | null, initial?: { name?: string; description?: string }, forceMode?: boolean) => {
+      open: (record?: Product | null, initial?: { name?: string; description?: string; images?: ProductImageItem[] }, forceMode?: boolean) => {
         setForceOpen(!!forceMode);
         setInitialDescription(initial?.description ?? '');
+        setInitialImages(initial?.images);
         if (record) {
           setEditing(record);
           setCreatedSingleIds([]);
@@ -249,7 +253,14 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
       setEditing(null);
       setOpen(true);
       form.resetFields();
-      form.setFieldsValue({ ...v, visibility: 'PUBLIC', ...(initialName ? { name: initialName } : {}), ...(initialDescription ? { description: initialDescription } : {}) });
+      form.setFieldsValue({
+        ...v,
+        visibility: 'PUBLIC',
+        ...(initialName ? { name: initialName } : {}),
+        ...(initialDescription ? { description: initialDescription } : {}),
+        ...(initialImages ? { images: serializeImages(initialImages) } : {}),
+      });
+      setInitialImages(undefined); // 仅首次带入，避免「再建一个」沿用同一批图片
       setVisValue('PUBLIC');
       if (v.audienceId) handleAudienceChange(v.audienceId);
     };

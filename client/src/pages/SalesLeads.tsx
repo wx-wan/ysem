@@ -74,11 +74,11 @@ export default function SalesLeads() {
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
-  const openProductForm = (initial?: { name?: string; description?: string }) =>
+  const openProductForm = (initial?: { name?: string; description?: string; images?: import('../utils/productImages').ProductImageItem[] }) =>
     new Promise<{ id: string }>((resolve) => {
       pendingResolveRef.current = resolve;
-      const { name, description } = initial || {};
-      productEditRef.current?.open(undefined, { name, description }, true);
+      const { name, description, images } = initial || {};
+      productEditRef.current?.open(undefined, { name, description, images }, true);
     });
 
   // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
