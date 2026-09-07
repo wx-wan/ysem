@@ -4,7 +4,7 @@ import {
   DatePicker, Modal, Descriptions, Empty, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, EditOutlined,
+  PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined,
   DeleteOutlined, ArrowRightOutlined, CloseCircleOutlined, CheckOutlined, InboxOutlined,
 } from '@ant-design/icons';
 import { theme } from 'antd';
@@ -267,7 +267,6 @@ const PurchasesPage: React.FC = () => {
               setPage(1);
             }}
           />
-          <Button icon={<ReloadOutlined />} onClick={fetchList}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建采购单</Button>
         </Space>
       </Card>

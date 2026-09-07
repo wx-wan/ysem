@@ -4,7 +4,7 @@ import {
   Row, Col, Card, Dropdown, Empty, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined,
   ApartmentOutlined, ShopOutlined, MoreOutlined, GlobalOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
@@ -145,9 +145,6 @@ export default function ChannelManagement() {
           <p className="page-header-desc">{t('channel.desc')}</p>
         </div>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={load}>
-            {t('common.refresh')}
-          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreate()}>
             {t('channel.addPlatform')}
           </Button>

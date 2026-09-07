@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import * as AntIcons from '@ant-design/icons';
 import {
-  PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, ApiOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, ApiOutlined,
   AppstoreOutlined, ControlOutlined, DatabaseOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -229,7 +229,6 @@ export default function PermPage() {
           onChange={(e) => setKeyword(e.target.value)}
           style={{ width: 260 }}
         />
-        <Button icon={<ReloadOutlined />} onClick={fetchPerms}>{t('common.refresh')}</Button>
         {hasPerm('system:perm:create') && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('perm.addTitle')}</Button>
         )}

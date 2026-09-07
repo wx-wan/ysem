@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination, Tooltip, Avatar, Empty } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
@@ -339,7 +339,6 @@ export default function UserManagementPage() {
             />
             <SegmentedTabBar options={statusOptions} value={statusFilter} onChange={(v) => { setStatusFilter(v as string); setUserPage(1); }} />
             <div className="um-toolbar-spacer" />
-            <Tooltip title={t('common.refresh')}><Button className="um-refresh" icon={<ReloadOutlined />} onClick={fetchUsers} /></Tooltip>
             {hasPerm('system:user:create') && (
               <Button type="primary" size="middle" icon={<PlusOutlined />} onClick={handleAddUser} className="um-add-btn">{t('user.addTitle')}</Button>
             )}
@@ -373,7 +372,6 @@ export default function UserManagementPage() {
       {tab === 'role' && (
         <>
           <div className="search-bar" style={{ marginTop: 16 }}>
-            <Button icon={<ReloadOutlined />} onClick={fetchRoles}>{t('common.refresh')}</Button>
             {hasPerm('system:role:create') && <Button type="primary" icon={<PlusOutlined />} onClick={handleAddRole}>{t('role.addTitle')}</Button>}
           </div>
           <div className="table-container">
@@ -386,7 +384,6 @@ export default function UserManagementPage() {
       {tab === 'dept' && (
         <>
           <div className="search-bar" style={{ marginTop: 16 }}>
-            <Button icon={<ReloadOutlined />} onClick={fetchDepts}>{t('common.refresh')}</Button>
             {hasPerm('system:dept:create') && <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAddDept()}>{t('dept.addTitle')}</Button>}
           </div>
           <div className="table-container">

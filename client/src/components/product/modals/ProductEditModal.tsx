@@ -6,7 +6,7 @@ import {
 } from 'antd';
 import AppModal from '../../../components/AppModal';
 import {
-  CheckCircleFilled, ReloadOutlined, ArrowLeftOutlined,
+  CheckCircleFilled, ArrowLeftOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import productApi, {

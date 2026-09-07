@@ -3,7 +3,7 @@ import {
   Table, Button, Modal, Form, Input, Select, Image, Tag,
   Popconfirm, App, DatePicker, Card, type TableProps,
 } from 'antd';
-import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
 import { certificateApi, Certificate } from '../api/certificates';
@@ -145,7 +145,6 @@ export default function CertificatePage() {
 
       <Card className="pt-card" styles={{ body: { padding: 0 } }}>
         <div className="pt-toolbar">
-          <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
           {hasPerm('certificate:create') && (
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增证书</Button>
           )}

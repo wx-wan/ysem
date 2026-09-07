@@ -3,7 +3,7 @@ import {
   Table, Button, Modal, Form, Input, InputNumber, Select, DatePicker, Tag, message,
   Space, Card, Row, Col, Statistic, Popconfirm, Typography, Tooltip, App,
 } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { orderApi, customerApi, Order, OrderItem } from '../api/customers';
 import { getOrderTypeMeta } from '../api/orders';
 import dayjs from 'dayjs';
@@ -214,7 +214,6 @@ export default function OrdersPage({ fixedType }: { fixedType?: 'QUOTE' | 'SAMPL
             onBlur={load}
             onPressEnter={load}
           />
-          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新建单据</Button>
         </Space>
       </div>

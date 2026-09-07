@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Table, Button, Space, Tag, App, Popconfirm } from 'antd';
-import { PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
@@ -110,7 +110,6 @@ export default function DeptPage() {
     <>
       <div className="page-header"><h2>{t('dept.title')}</h2></div>
       <div className="search-bar">
-        <Button icon={<ReloadOutlined />} onClick={fetchDepts}>{t('common.refresh')}</Button>
         {hasPerm('system:dept:create') && (
           <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>{t('dept.addTitle')}</Button>
         )}

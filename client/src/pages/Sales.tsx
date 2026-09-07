@@ -5,7 +5,7 @@ import {
   Statistic, Row, Col, Pagination,
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, ReloadOutlined, DeleteOutlined,
+  PlusOutlined, SearchOutlined, DeleteOutlined,
   AppstoreOutlined, UnorderedListOutlined, ImportOutlined,
   InboxOutlined, EditOutlined, EyeOutlined,
 } from '@ant-design/icons';
@@ -20,6 +20,7 @@ import { SALES_STAGES, getStageMeta, getStageI18nKey, type SalesStage } from '..
 import { buildTablePagination } from '../components/common/tablePagination';
 import KanbanView from '../components/sales/KanbanView';
 import Price from '../components/common/Price';
+import CreateEntryCard from '../components/common/CreateEntryCard';
 
 export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   const { message } = App.useApp();
@@ -262,51 +263,12 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
         variant="borderless"
         style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}
       >
-      {/* 顶部添加区块：与表格风格统一，对齐客户页工具栏节奏 */}
-      <div
+      {/* 顶部新建入口卡片：与线索列表样式统一，作为商机列表的唯一新增入口 */}
+      <CreateEntryCard
         onClick={() => handleCreate()}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 12, padding: '14px 18px', marginBottom: 16,
-          borderRadius: token.borderRadius, cursor: 'pointer',
-          background: `linear-gradient(90deg, ${token.colorPrimaryBg} 0%, ${token.colorPrimaryBgHover} 100%)`,
-          border: `1px dashed ${token.colorPrimary}`,
-          transition: 'all .2s',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderStyle = 'solid';
-          e.currentTarget.style.boxShadow = `0 2px 12px ${token.colorPrimaryBg}`;
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderStyle = 'dashed';
-          e.currentTarget.style.boxShadow = 'none';
-        }}
-      >
-        <Space size={10}>
-          <span
-            style={{
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              width: 32, height: 32, borderRadius: 8,
-              background: token.colorPrimary, color: '#fff', fontSize: 16,
-            }}
-          >
-            <PlusOutlined />
-          </span>
-          <div style={{ lineHeight: 1.3 }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: token.colorText }}>
-              {t('sales.newRecord')}
-            </div>
-            <div style={{ fontSize: 12, color: token.colorTextSecondary }}>
-              {t('sales.newRecordDesc')}
-            </div>
-          </div>
-        </Space>
-        <Space size={8} onClick={(e) => e.stopPropagation()}>
-          <Button size="small" type="primary" onClick={() => handleCreate()}>
-            {t('common.add')}
-          </Button>
-        </Space>
-      </div>
+        title={t('sales.newRecord')}
+        description={t('sales.newRecordDesc')}
+      />
 
       {/* 搜索与筛选栏：对齐客户页工具栏（白卡内 dashed 底边框） */}
       <div
@@ -335,7 +297,6 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
             onPressEnter={() => { setPage(1); fetchList(); }}
           />
           <Button onClick={() => { setPage(1); fetchList(); }}>搜索</Button>
-          <Button icon={<ReloadOutlined />} onClick={refresh}>刷新</Button>
         </Space>
         <Space>
           {selectedKeys.length > 0 && (
@@ -409,18 +370,17 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
       </Row>
       )}
 
-      {/* 工具栏 */}
+      {/* 工具栏：商机列表等固定阶段页面以顶部「新建商机」卡片为唯一新增入口；仅看板视图保留工具栏快捷新增 */}
+      {!fixedStage && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
         <Space>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>{t('common.add')}</Button>
-          {!fixedStage && (
-          <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>{t('sales.import')}</Button>
+          {viewMode === 'kanban' && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>{t('common.add')}</Button>
           )}
+          <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>{t('sales.import')}</Button>
         </Space>
 
         <Space>
-          {!fixedStage && (
-          <>
           <Button
             type={viewMode === 'kanban' ? 'primary' : 'default'}
             icon={<AppstoreOutlined />}
@@ -435,11 +395,9 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
           >
             {t('sales.list')}
           </Button>
-          </>
-          )}
-          <Button icon={<ReloadOutlined />} onClick={refresh} />
         </Space>
       </div>
+      )}
 
       {/* 内容区 */}
       {viewMode === 'kanban' ? (

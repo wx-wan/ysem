@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Button, Input, Space, Tag, Card, Row, Col, Statistic, Typography, Tooltip } from 'antd';
-import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
 import { paymentApi, profitApi, PaymentRecord, ProfitRecord } from '../api/customers';
 import SegmentedTabBar from '../components/common/SegmentedTabBar';
 import dayjs from 'dayjs';
@@ -86,7 +86,6 @@ export default function SettlementPage() {
             onPressEnter={load}
             style={{ width: 220 }}
           />
-          <Button icon={<ReloadOutlined />} onClick={load}>刷新</Button>
         </Space>
       </div>
 

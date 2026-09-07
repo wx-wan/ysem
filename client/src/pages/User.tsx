@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { Table, Button, Input, Space, Tag, App, Popconfirm, Pagination, Segmented, Tooltip, Avatar, Empty } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, KeyOutlined, UserOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
 import request from '../api/request';
@@ -249,9 +249,6 @@ export default function UserPage() {
           onChange={(v) => { setStatusFilter(v as string); setPage(1); }}
         />
         <div className="um-toolbar-spacer" />
-        <Tooltip title={t('common.refresh')}>
-          <Button className="um-refresh" icon={<ReloadOutlined />} onClick={fetchUsers} />
-        </Tooltip>
       </div>
 
       <div className="um-card">

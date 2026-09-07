@@ -176,21 +176,16 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         )}
         {salesList.map((sale) => {
+          // 阶段由真实关联单据推导（报价/打样/订单），以阶段标签作为类型展示，不再使用遗留的 orderType（打样/正式）
           const meta = getStageMeta(sale.stage);
           const saleAmount = sale.stage === 'ORDER' || sale.stage === 'SHIPPED' ? sale.orderAmount : sale.estimatedAmount;
           const saleLabel = sale.stage === 'ORDER' ? '订单金额' : '预估金额';
-          const sampleLabel = sale.orderType === 'SAMPLE' ? '打样' : '正式';
           return (
             <div className="pm-sales-item" key={sale.id}>
               <div className="pm-sales-item-main">
                 <div className="pm-sales-item-title">
                   <span className="pm-sales-customer">{sale.companyName || sale.title || '未知客户'}</span>
-                  <Tag color={sale.orderType === 'SAMPLE' ? 'purple' : 'blue'} style={{ marginInlineEnd: 4 }}>
-                    {sampleLabel}
-                  </Tag>
-                  <Tag color={meta?.color || 'default'} style={{ marginInlineEnd: 0 }}>
-                    {t(`sales.stage.${getStageI18nKey(sale.stage)}`)}
-                  </Tag>
+                  <Tag color={meta?.color || 'default'}>{t(`sales.stage.${getStageI18nKey(sale.stage)}`)}</Tag>
                 </div>
                 <div className="pm-sales-item-sub">
                   <span>商机号：{sale.pipelineNumber}</span>

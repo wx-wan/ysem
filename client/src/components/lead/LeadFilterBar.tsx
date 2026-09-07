@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import { Button, Input, Popconfirm, Select, Space, theme } from 'antd';
-import { DeleteOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import type { Channel } from '../../api/channel';
 import type { LeadStatus } from '../../api/lead';
@@ -18,7 +18,6 @@ interface Props {
   filterStatus: LeadStatus | undefined;
   onStatusChange: (v: LeadStatus | undefined) => void;
   onSearch: () => void;
-  onRefresh: () => void;
   isAdmin: boolean;
   selectedCount: number;
   onBatchDelete: () => void;
@@ -38,7 +37,6 @@ export default function LeadFilterBar({
   filterStatus,
   onStatusChange,
   onSearch,
-  onRefresh,
   isAdmin,
   selectedCount,
   onBatchDelete,
@@ -109,9 +107,6 @@ export default function LeadFilterBar({
           onPressEnter={onSearch}
         />
         <Button onClick={onSearch}>{t('common.search')}</Button>
-        <Button icon={<ReloadOutlined />} onClick={onRefresh}>
-          {t('common.refresh')}
-        </Button>
       </Space>
       <Space>
         {isAdmin && selectedCount > 0 && (

@@ -217,7 +217,6 @@ export default function SalesLeads() {
             list.setPage(1);
             list.refresh();
           }}
-          onRefresh={list.refresh}
           isAdmin={isAdmin}
           selectedCount={list.selectedKeys.length}
           onBatchDelete={() => list.batchRemove(list.selectedKeys)}

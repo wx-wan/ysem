@@ -4,7 +4,7 @@ import {
   Popconfirm, App, Tabs, Card,
 } from 'antd';
 import {
-  PlusOutlined, ReloadOutlined, EditOutlined, DeleteOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined,
   ArrowUpOutlined, ArrowDownOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -174,7 +174,6 @@ export default function ProductTaxonomy() {
           }))} />
 
         <div className="pt-toolbar">
-          <Button icon={<ReloadOutlined />} onClick={fetchData}>刷新</Button>
           {hasPerm('product:taxonomy:create') && (
             <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增</Button>
           )}

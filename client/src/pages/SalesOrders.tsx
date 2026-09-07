@@ -4,7 +4,7 @@ import {
   Empty, Tooltip, Statistic, Row, Col,
 } from 'antd';
 import {
-  PlusOutlined, ReloadOutlined, AppstoreOutlined, UnorderedListOutlined,
+  PlusOutlined, AppstoreOutlined, UnorderedListOutlined,
   ArrowRightOutlined, EditOutlined, DeleteOutlined, DollarOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -272,7 +272,6 @@ const SalesOrdersPage: React.FC = () => {
           />
         </Space>
         <Space>
-          <Button icon={<ReloadOutlined />} onClick={fetchList}>刷新</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建订单</Button>
         </Space>
       </div>
