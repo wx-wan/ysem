@@ -13,10 +13,9 @@ import {
   Space,
   Tag,
   Modal,
-  Popconfirm,
   theme,
 } from 'antd';
-import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -24,6 +23,7 @@ import CustomerTypeSelect from '../CustomerTypeSelect';
 import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
+import TransferOwnerModal from '../common/TransferOwnerModal';
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload, type LeadStatus } from '../../api/lead';
@@ -31,6 +31,7 @@ import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
+import { useReleaseToPool } from '../../hooks/useReleaseToPool';
 import { flattenChannelOptions } from './constants';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
@@ -62,6 +63,7 @@ interface Props {
 const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
   const { message, modal } = App.useApp();
+  const releaseToPool = useReleaseToPool();
   const { token } = theme.useToken();
   const [form] = Form.useForm();
 
@@ -81,7 +83,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
   const navigate = useNavigate();
   const [transferOpen, setTransferOpen] = useState(false);
-  const [transferUserId, setTransferUserId] = useState<string | undefined>();
   // 确认建档：新建客户弹窗（带入待确认客户名到公司名称）
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
@@ -103,7 +104,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   };
 
   const currentUser = useAuthStore((s) => s.user);
-  const userOptions = useUserStore((s) => s.users);
   const fetchUsers = useUserStore((s) => s.fetchUsers);
 
   // ============ 表单联动 ============
@@ -381,26 +381,30 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
   };
 
-  // 释放线索（私海 → 公海）
-  const handleReleaseLead = async () => {
+  // 释放线索（私海 → 公海）：弹窗二次确认后执行（与客户释放同一套确认逻辑）
+  const handleReleaseLead = () => {
     if (!editing) return;
-    try {
-      await leadApi.release(editing.id);
-      message.success(t('lead.releaseSuccess'));
-      onSaved?.();
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || t('common.saveFailed'));
-    }
+    releaseToPool({
+      name: editing.leadName || editing.companyName || '',
+      action: () => leadApi.release(editing.id),
+      onSuccess: () => onSaved?.(),
+    });
   };
 
-  // 转交线索（联动客户/产品负责人）
-  const handleTransferLead = async () => {
-    if (!editing || !transferUserId) return;
+  // 转交线索（联动客户/产品负责人）：提交逻辑由公共转交组件驱动
+  const handleTransferLead = async (newOwnerId: string) => {
+    if (!editing) return;
+    await leadApi.transfer(editing.id, newOwnerId);
+    setTransferOpen(false);
+    onSaved?.();
+  };
+
+  // 认领线索（公海 → 私海）
+  const handleClaimLead = async () => {
+    if (!editing) return;
     try {
-      await leadApi.transfer(editing.id, transferUserId);
-      message.success(t('lead.transferSuccess'));
-      setTransferOpen(false);
-      setTransferUserId(undefined);
+      await leadApi.claim(editing.id);
+      message.success(t('lead.claimSuccess'));
       onSaved?.();
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
@@ -491,6 +495,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const isCreate = !editing?.id;
   // 已确认（QUALIFIED）与无效（INVALID）一样为只读：禁用所有编辑/操作
   const readonly = editing?.status === 'INVALID' || editing?.status === 'QUALIFIED';
+  // 公海线索（无负责人）：不支持确认 / 无效，仅可认领
+  const isPoolLead = !!editing?.id && !editing.assignedTo;
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
@@ -562,24 +568,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     onClick={() => setTransferOpen(true)}
                     title={t('lead.transfer')}
                   />
-                  {/* 释放：仅已分配负责人时显示；只读态禁用 */}
+                  {/* 释放：仅已分配负责人时显示；只读态禁用（点击后弹窗二次确认） */}
                   {editing?.assignedTo && (
-                    <Popconfirm
-                      title={t('lead.confirmRelease')}
-                      okText={t('common.ok')}
-                      cancelText={t('common.cancel')}
+                    <Button
+                      shape="circle"
+                      size="middle"
+                      icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
+                      style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
                       disabled={readonly}
-                      onConfirm={handleReleaseLead}
-                    >
-                      <Button
-                        shape="circle"
-                        size="middle"
-                        icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
-                        style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                        disabled={readonly}
-                        title={t('lead.release')}
-                      />
-                    </Popconfirm>
+                      title={t('lead.release')}
+                      onClick={handleReleaseLead}
+                    />
                   )}
                 </div>
               )}
@@ -624,7 +623,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
               <Space>
-                {editing?.id && !readonly && (
+                {editing?.id && !readonly && !isPoolLead && (
                   <Button danger onClick={handleInvalidLead}>
                     {t('lead.invalid')}
                   </Button>
@@ -637,7 +636,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Space>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-                {editing?.id && !readonly && editing.status !== 'QUALIFIED' && (
+                {/* 公海线索：仅可认领，确认（转商机）不可用 */}
+                {isPoolLead && (
+                  <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
+                    {t('lead.claim')}
+                  </Button>
+                )}
+                {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
                   <Button type="primary" onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
@@ -876,29 +881,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         }}
       />
 
-      {/* 转交线索：选择新负责人（联动客户/产品负责人） */}
-      <Modal
-        title={t('lead.transfer')}
+      {/* 转交线索：选择新负责人（与客户共用同一组件 / 逻辑） */}
+      <TransferOwnerModal
         open={transferOpen}
-        onOk={handleTransferLead}
-        onCancel={() => {
-          setTransferOpen(false);
-          setTransferUserId(undefined);
-        }}
-        okText={t('common.ok')}
-        cancelText={t('common.cancel')}
-        okButtonProps={{ disabled: !transferUserId }}
-      >
-        <Select
-          style={{ width: '100%' }}
-          showSearch
-          value={transferUserId}
-          onChange={setTransferUserId}
-          placeholder={t('lead.selectTransferTarget')}
-          optionFilterProp="label"
-          options={userOptions.map((u) => ({ label: u.realName || u.username, value: u.id }))}
-        />
-      </Modal>
+        targetName={editing?.leadName || editing?.companyName}
+        currentOwnerId={editing?.assignedTo}
+        title={t('lead.transfer')}
+        placeholder={t('lead.selectTransferTarget')}
+        successMessage={t('lead.transferSuccess')}
+        onTransfer={handleTransferLead}
+        onClose={() => setTransferOpen(false)}
+      />
     </>
   );
 });

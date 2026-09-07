@@ -670,7 +670,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                         <SwapOutlined style={{ color: ct.primary }} />
                       </button>
                     )}
-                    {onRelease && (
+                    {/* 公海客户（无归属人）不显示释放按钮，避免点了必然失败 */}
+                    {onRelease && customer?.ownerId && (
                       <button type="button" onClick={() => onRelease(customer)} title="释放"
                         style={circleBtnStyle(ct.primaryLight)}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}

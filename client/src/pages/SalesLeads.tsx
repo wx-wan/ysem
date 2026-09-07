@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Card, Pagination, Button, App, theme } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -23,7 +23,7 @@ import ConvertCreateSummaryModal from '../components/lead/ConvertCreateSummaryMo
 export default function SalesLeads() {
   const { token } = theme.useToken();
   const { t } = useTranslation();
-  const { modal } = App.useApp();
+  const { modal, message } = App.useApp();
 
   // 用户 / 权限
   const currentUser = useAuthStore((s) => s.user);
@@ -146,6 +146,20 @@ export default function SalesLeads() {
     });
   };
 
+  // 认领公海线索：归到自己名下后才可确认 / 无效
+  const handleClaim = useCallback(
+    async (r: Lead) => {
+      try {
+        await leadApi.claim(r.id);
+        message.success(t('lead.claimSuccess'));
+        list.refresh();
+      } catch (err: any) {
+        message.error(err?.response?.data?.message || t('lead.claimFailed'));
+      }
+    },
+    [list, message, t],
+  );
+
   // 「新建客户」弹窗（强制建档）保存成功
   const handleCustomerFormSuccess = (customer?: { id: string }) => {
     setCustomerFormOpen(false);
@@ -219,6 +233,7 @@ export default function SalesLeads() {
           onRemove={list.remove}
           onChangeStatus={handleChangeStatus}
           onConvert={handleConvert}
+          onClaim={handleClaim}
         />
       </Card>
 

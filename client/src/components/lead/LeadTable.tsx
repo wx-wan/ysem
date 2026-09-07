@@ -5,6 +5,7 @@ import {
   CheckCircleOutlined,
   DeleteOutlined,
   StopOutlined,
+  UserAddOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +23,8 @@ interface Props {
   onRemove: (id: string) => void;
   onChangeStatus: (id: string, status: LeadStatus) => void;
   onConvert: (record: Lead) => void;
+  /** 认领公海线索（无负责人线索） */
+  onClaim: (record: Lead) => void;
 }
 
 /** 线索列表表格（含行选择 / 操作列） */
@@ -35,6 +38,7 @@ export default function LeadTable({
   onRemove,
   onChangeStatus,
   onConvert,
+  onClaim,
 }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -60,8 +64,9 @@ export default function LeadTable({
           if (!number && !name) return '-';
           return (
             <a style={{ color: token.colorPrimary }} onClick={() => r && onEdit(r)} title={t('common.detail')}>
-              <div style={{ fontWeight: 600 }}>{number || '-'}</div>
-              {name ? <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{name}</div> : null}
+              {/* 主行为线索名称，次行为线索号 */}
+              <div style={{ fontWeight: 600 }}>{name || '-'}</div>
+              {number ? <div style={{ fontSize: 12, color: token.colorTextSecondary }}>{number}</div> : null}
             </a>
           );
         },
@@ -127,6 +132,23 @@ export default function LeadTable({
         fixed: 'right',
         width: 200,
         render: (_: unknown, r: Lead) => {
+          // 公海线索（无负责人）：不支持确认 / 无效等操作，仅可认领
+          if (!r.assignedTo) {
+            return (
+              <Space size={2}>
+                <Tooltip title={t('lead.claimTip')}>
+                  <Button
+                    type="link"
+                    size="small"
+                    icon={<UserAddOutlined />}
+                    onClick={() => onClaim(r)}
+                  >
+                    {t('lead.claim')}
+                  </Button>
+                </Tooltip>
+              </Space>
+            );
+          }
           const isInvalid = r.status === 'INVALID';
           const isQualified = r.status === 'QUALIFIED';
           const readonly = isInvalid || isQualified;
@@ -172,7 +194,7 @@ export default function LeadTable({
         },
       },
     ],
-    [t, isAdmin, userNameMap, onEdit, onRemove, onChangeStatus],
+    [t, isAdmin, userNameMap, onEdit, onRemove, onChangeStatus, onClaim],
   );
 
   return (

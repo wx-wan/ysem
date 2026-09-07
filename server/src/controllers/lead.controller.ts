@@ -309,6 +309,63 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+// ========== 认领线索（公海 → 私海） ==========
+export const claimLead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const username = req.username || '';
+    const userId = req.userId || '';
+    const { id } = req.params;
+
+    const lead = await prisma.lead.findUnique({ where: { id } });
+    if (!lead) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+    if (lead.assignedTo) {
+      fail(res, 400, '该线索已被认领');
+      return;
+    }
+
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: userId } })];
+    // 联动认领客户：仅当客户仍在公海（无归属人）时才归属认领人，避免抢夺他人客户
+    if (lead.customerId) {
+      const customer = await prisma.customer.findUnique({
+        where: { id: lead.customerId },
+        select: { ownerId: true },
+      });
+      if (customer && !customer.ownerId) {
+        updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: userId } }));
+      }
+    }
+    // 联动认领产品：仅当产品无归属人时设为认领人
+    if (lead.productId) {
+      const product = await prisma.singleProduct.findUnique({
+        where: { id: lead.productId },
+        select: { ownerId: true },
+      });
+      if (product && !product.ownerId) {
+        updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { ownerId: userId } }));
+      }
+    }
+    await prisma.$transaction(updates);
+    await activityLogger.log({
+      userId,
+      username,
+      realName: req.realName,
+      action: 'CLAIM',
+      module: 'lead',
+      targetId: id,
+      target: lead.leadName || lead.companyName || id,
+      detail: `${username} 认领了该线索`,
+      customerId: lead.customerId || undefined,
+      productId: lead.productId || undefined,
+    });
+    success(res, null, '认领成功');
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};
+
 // ========== 转交线索（联动客户 / 产品负责人） ==========
 export const transferLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -347,11 +404,22 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
     }
     if (lead.productId) {
       // 转移产品：私密(PRIVATE)则把目标用户加入可见人，公开(PUBLIC)保持
+      // visibleUsers 是关联表（ProductVisibleUser）而非字符串数组，需用关系型写入；
+      // 联合唯一 (productId, userId) 保证重复转交不会插入重复可见人
       if (lead.product?.visibility === 'PRIVATE') {
-        const product = lead.product;
-        const visible = (product.visibleUsers || []).filter((u: string) => u !== newOwnerId);
-        visible.push(newOwnerId);
-        updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { visibleUsers: visible } }));
+        updates.push(
+          prisma.singleProduct.update({
+            where: { id: lead.productId },
+            data: {
+              visibleUsers: {
+                connectOrCreate: {
+                  where: { productId_userId: { productId: lead.productId, userId: newOwnerId } },
+                  create: { userId: newOwnerId },
+                },
+              },
+            },
+          }),
+        );
       } else {
         // 公开产品默认所有人可见，无需变更
       }

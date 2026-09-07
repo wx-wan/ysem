@@ -17,16 +17,18 @@ import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
 import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
 import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
-import TransferModal from '../components/customer/modals/TransferModal';
+import TransferOwnerModal from '../components/common/TransferOwnerModal';
 import ImportModal from '../components/customer/modals/ImportModal';
 import OrderFormModal from '../components/customer/modals/OrderFormModal';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import type { SalesStage } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
+import { useReleaseToPool } from '../hooks/useReleaseToPool';
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
   const { message, modal } = App.useApp();
+  const releaseToPool = useReleaseToPool();
 
   // ========== 状态 ==========
   const [loading, setLoading] = useState(false);
@@ -247,16 +249,26 @@ export default function CustomersPage() {
     );
   }, [sortCustomers]);
 
+  // 转交：保持客户详情弹窗打开，仅在其上叠加转交弹窗（转交弹窗层级 overlay 2000 > 详情 1001）
   const handleTransferFromModal = useCallback((c: Customer) => {
-    setDetailModalOpen(false);
     openTransfer(c.id);
   }, [openTransfer]);
 
+  // 释放客户到公海：二次确认 → 调用释放接口 → 刷新列表
   const handleReleaseFromModal = useCallback((c: Customer) => {
-    setDetailModalOpen(false);
-    // TODO: 释放到公海
-    message.info(`释放客户 ${c.companyName}（待接入）`);
-  }, [message]);
+    // 文案 / 确认弹窗样式与线索释放完全一致，均由 useReleaseToPool 统一提供
+    releaseToPool({
+      name: c.companyName || c.contactName || '',
+      // 公海客户（无归属人）无需释放，后端也会返回 400
+      alreadyInPool: !c.ownerId,
+      action: () => customerApi.release(c.id),
+      onSuccess: () => {
+        setDetailModalOpen(false);
+        invalidateAll();
+        fetchData();
+      },
+    });
+  }, [releaseToPool, invalidateAll, fetchData]);
 
   const handleDeleteFromModal = useCallback(async (c: Customer) => {
     setDetailModalOpen(false);
@@ -540,16 +552,21 @@ export default function CustomersPage() {
         onSuccess={() => { invalidateAll(); fetchData(); }}
       />
 
-      {/* ===== 转交弹窗 ===== */}
-      <TransferModal
+      {/* ===== 转交弹窗（与线索共用同一组件 / 逻辑） ===== */}
+      <TransferOwnerModal
         open={transferModalOpen}
-        customer={transferCustomer}
+        targetName={transferCustomer?.companyName}
+        currentOwnerId={transferCustomer?.ownerId}
         userList={transferUserList}
+        onTransfer={async (userId) => {
+          await customerApi.transfer(transferCustomer!.id, userId);
+        }}
         onClose={() => { setTransferModalOpen(false); setTransferCustomer(null); }}
         onSuccess={() => {
           setTransferModalOpen(false);
           setTransferCustomer(null);
-          if (detailModalOpen) setDetailModalOpen(false);
+          // 详情弹窗保持打开：递增版本号触发详情重新拉取，即时展示新负责人
+          setDetailVersion((v) => v + 1);
           invalidateAll();
           fetchData();
         }}

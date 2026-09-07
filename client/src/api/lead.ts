@@ -115,4 +115,6 @@ export const leadApi = {
     axios.post<{ code: number; data: null }>(`/leads/${id}/transfer`, { newOwnerId }).then((r) => r.data),
   release: (id: string) =>
     axios.post<{ code: number; data: null }>(`/leads/${id}/release`).then((r) => r.data),
+  claim: (id: string) =>
+    axios.post<{ code: number; data: null }>(`/leads/${id}/claim`).then((r) => r.data),
 };
