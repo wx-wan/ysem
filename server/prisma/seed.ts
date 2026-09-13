@@ -1,394 +1,586 @@
-import { PrismaClient } from '@prisma/client';
+/**
+ * ============================================================================
+ * YSEM V1.0 · System Seed
+ * ============================================================================
+ * 目标：只初始化「系统运行必需」的基线数据，不产生任何业务数据。
+ *
+ * 覆盖范围（System Master Data）：
+ *   1. Department      组织架构基线（总部 + 5 个业务部门）
+ *   2. Role            角色基线（admin / business / purchaser / user）
+ *   3. Permission      权限基线（与 V1.0 前端菜单 + 后端 requirePerm 全量对齐）
+ *   4. RolePermission  角色-权限授予（admin 全量；其余按最小可用集合）
+ *   5. User            仅创建 1 个管理员（密码由环境变量注入）
+ *   6. NumberSequence  编号序列基线（15 个 code，currentValue = 0）
+ *   7. Channel         获客渠道基线（3 平台 + 6 店铺）
+ *   8. CustomerType / ProductCraft / ProductAudience / ProductCategory 主数据
+ *
+ * 明确不初始化（禁止）：
+ *   ApprovalConfig · DailyExchangeRate · 以及全部业务数据
+ *   (Lead / Customer / Opportunity / Quotation / SampleOrder / SalesOrder /
+ *    ProductionOrder / PurchaseOrder / Shipment / Payment / Profit /
+ *    Product / Supplier / Certificate / ComboProduct)
+ *
+ * 设计约束：
+ *   · 全流程包裹在单个 Prisma 交互式事务中：全成功 COMMIT，任一失败 ROLLBACK。
+ *   · 幂等：反复执行不产生重复数据；仅更新显式白名单字段；
+ *           不重置管理员密码、不重置编号序列计数、不执行任何 deleteMany。
+ *   · 安全：不内置任何默认密码；ADMIN_PASSWORD 缺失时直接失败。
+ * ============================================================================
+ */
+import { MasterStatus, Prisma, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config({ path: '../.env' });
+// ---------------------------------------------------------------------------
+// 环境变量加载
+// 修复：原 `dotenv.config({ path: '../.env' })` 依赖进程 cwd，
+//       当 cwd = server/ 时解析为 <repo>/.env（不存在），
+//       导致 `npm run db:seed` 与 `npx prisma db seed` 行为不一致。
+// 现按「脚本目录 → cwd」顺序加载，两种入口结果一致。
+// ---------------------------------------------------------------------------
+const ENV_CANDIDATES = [
+  path.resolve(__dirname, '../.env'), // server/prisma/../.env  → server/.env
+  path.resolve(process.cwd(), '.env'), // cwd 为 server/ 时
+  path.resolve(process.cwd(), 'server/.env'), // cwd 为仓库根时
+];
+for (const envPath of ENV_CANDIDATES) {
+  // dotenv 默认不覆盖已存在的变量，因此先命中者生效
+  dotenv.config({ path: envPath });
+}
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('🌱 开始初始化数据库...');
+// ===========================================================================
+// 一、声明式基线定义
+// ===========================================================================
 
-  // 1. 创建默认角色
-  const adminRole = await prisma.role.upsert({
-    where: { code: 'admin' },
-    // 超级管理员数据范围恒为全部
-    update: { dataScope: 'ALL' },
-    create: {
-      name: '超级管理员',
-      code: 'admin',
-      description: '系统超级管理员，拥有全部权限',
-      sort: 0,
-      dataScope: 'ALL',
-    },
+type PermType = 'MENU' | 'BUTTON';
+
+interface PermissionSeed {
+  code: string;
+  name: string;
+  type: PermType;
+  path?: string;
+  icon?: string;
+  sort: number;
+  /** 父级权限 code；分组节点为 undefined */
+  parent?: string;
+}
+
+/**
+ * 权限基线（56 项）。
+ * 命名规范：`模块:动作`（分组节点与 V1.0 前端已硬编码的页面 code 除外）。
+ * 说明：下列 code 必须与 client/src/App.tsx、client/src/layouts/MainLayout.tsx、
+ *       client/src/pages/*、server/src/routes/* 中硬编码的 code 完全一致，
+ *       否则对应菜单/按钮/接口对非 admin 角色永久不可达。
+ */
+const PERMISSIONS: PermissionSeed[] = [
+  // ---------- 工作台 ----------
+  { code: 'dashboard', name: '工作台', type: 'MENU', path: '/dashboard', icon: 'DashboardOutlined', sort: 0 },
+
+  // ---------- 客户中心 ----------
+  { code: 'customer-center', name: '客户中心', type: 'MENU', path: '/data/customers', icon: 'TeamOutlined', sort: 1 },
+  { code: 'customers', name: '客户管理', type: 'MENU', path: '/data/customers', icon: 'TeamOutlined', sort: 1, parent: 'customer-center' },
+
+  // ---------- 产品中心 ----------
+  { code: 'product-center', name: '产品中心', type: 'MENU', path: '/data/products', icon: 'AppstoreOutlined', sort: 2 },
+  { code: 'products', name: '产品管理', type: 'MENU', path: '/data/products', icon: 'AppstoreOutlined', sort: 1, parent: 'product-center' },
+  { code: 'materials', name: '物料管理', type: 'MENU', path: '/data/materials', icon: 'ContainerOutlined', sort: 2, parent: 'product-center' },
+  { code: 'bom', name: 'BOM 管理', type: 'MENU', path: '/data/bom', icon: 'ProfileOutlined', sort: 3, parent: 'product-center' },
+  { code: 'craft', name: '工艺管理', type: 'MENU', path: '/data/craft', icon: 'ExperimentOutlined', sort: 4, parent: 'product-center' },
+  { code: 'suppliers', name: '供应商管理', type: 'MENU', path: '/data/suppliers', icon: 'TeamOutlined', sort: 5, parent: 'product-center' },
+  { code: 'product:taxonomy:view', name: '产品档案', type: 'MENU', path: '/setting/archive', icon: 'AppstoreOutlined', sort: 6, parent: 'product-center' },
+  { code: 'product:taxonomy:create', name: '产品档案新增', type: 'BUTTON', sort: 1, parent: 'product:taxonomy:view' },
+  { code: 'product:taxonomy:update', name: '产品档案编辑', type: 'BUTTON', sort: 2, parent: 'product:taxonomy:view' },
+  { code: 'product:taxonomy:delete', name: '产品档案删除', type: 'BUTTON', sort: 3, parent: 'product:taxonomy:view' },
+  { code: 'certificate:create', name: '证书新增', type: 'BUTTON', sort: 7, parent: 'product-center' },
+  { code: 'certificate:update', name: '证书编辑', type: 'BUTTON', sort: 8, parent: 'product-center' },
+  { code: 'certificate:delete', name: '证书删除', type: 'BUTTON', sort: 9, parent: 'product-center' },
+
+  // ---------- 销售中心 ----------
+  { code: 'sales-center', name: '销售中心', type: 'MENU', path: '/sales', icon: 'ShoppingCartOutlined', sort: 3 },
+  { code: 'sales', name: '销售总览', type: 'MENU', path: '/sales', icon: 'ShoppingCartOutlined', sort: 1, parent: 'sales-center' },
+  { code: 'sales:leads', name: '线索', type: 'MENU', path: '/sales/leads', icon: 'ProjectOutlined', sort: 2, parent: 'sales-center' },
+  { code: 'sales:opportunities', name: '商机', type: 'MENU', path: '/sales/opportunities', icon: 'ThunderboltOutlined', sort: 3, parent: 'sales-center' },
+  { code: 'sales:quotes', name: '报价', type: 'MENU', path: '/sales/quotes', icon: 'SolutionOutlined', sort: 4, parent: 'sales-center' },
+  { code: 'sales:design', name: '设计', type: 'MENU', path: '/sales/design', icon: 'BgColorsOutlined', sort: 5, parent: 'sales-center' },
+  { code: 'sales:samples', name: '打样', type: 'MENU', path: '/sales/samples', icon: 'ExperimentOutlined', sort: 6, parent: 'sales-center' },
+  { code: 'sales:orders', name: '销售订单', type: 'MENU', path: '/sales/orders', icon: 'ShoppingCartOutlined', sort: 7, parent: 'sales-center' },
+
+  // ---------- 生产中心 ----------
+  { code: 'production-center', name: '生产中心', type: 'MENU', path: '/supply/production', icon: 'ToolOutlined', sort: 4 },
+  { code: 'purchase', name: '采购管理', type: 'MENU', path: '/supply/purchase', icon: 'ShopOutlined', sort: 1, parent: 'production-center' },
+  { code: 'production', name: '生产管理', type: 'MENU', path: '/supply/production', icon: 'UnorderedListOutlined', sort: 2, parent: 'production-center' },
+  { code: 'inventory', name: '库存管理', type: 'MENU', path: '/supply/inventory', icon: 'ContainerOutlined', sort: 3, parent: 'production-center' },
+  { code: 'shipment', name: '出运管理', type: 'MENU', path: '/logistics/shipment', icon: 'SendOutlined', sort: 4, parent: 'production-center' },
+
+  // ---------- 财务中心 ----------
+  { code: 'finance-center', name: '财务中心', type: 'MENU', path: '/finance/settlement', icon: 'DollarOutlined', sort: 5 },
+  { code: 'sales:settlement', name: '结算管理', type: 'MENU', path: '/finance/settlement', icon: 'FileDoneOutlined', sort: 1, parent: 'finance-center' },
+
+  // ---------- 系统管理 ----------
+  { code: 'system', name: '系统管理', type: 'MENU', path: '/setting', icon: 'SettingOutlined', sort: 6 },
+  { code: 'system:user', name: '用户管理', type: 'MENU', path: '/setting/user', icon: 'UserOutlined', sort: 1, parent: 'system' },
+  { code: 'system:user:create', name: '用户新增', type: 'BUTTON', sort: 1, parent: 'system:user' },
+  { code: 'system:user:edit', name: '用户编辑', type: 'BUTTON', sort: 2, parent: 'system:user' },
+  { code: 'system:user:delete', name: '用户删除', type: 'BUTTON', sort: 3, parent: 'system:user' },
+  { code: 'system:user:resetpwd', name: '重置密码', type: 'BUTTON', sort: 4, parent: 'system:user' },
+  { code: 'system:role', name: '角色管理', type: 'MENU', path: '/setting/user', icon: 'TeamOutlined', sort: 2, parent: 'system' },
+  { code: 'system:role:create', name: '角色新增', type: 'BUTTON', sort: 1, parent: 'system:role' },
+  { code: 'system:role:edit', name: '角色编辑', type: 'BUTTON', sort: 2, parent: 'system:role' },
+  { code: 'system:role:delete', name: '角色删除', type: 'BUTTON', sort: 3, parent: 'system:role' },
+  { code: 'system:dept', name: '部门管理', type: 'MENU', path: '/setting/user', icon: 'ApartmentOutlined', sort: 3, parent: 'system' },
+  { code: 'system:dept:create', name: '部门新增', type: 'BUTTON', sort: 1, parent: 'system:dept' },
+  { code: 'system:dept:edit', name: '部门编辑', type: 'BUTTON', sort: 2, parent: 'system:dept' },
+  { code: 'system:dept:delete', name: '部门删除', type: 'BUTTON', sort: 3, parent: 'system:dept' },
+  { code: 'system:perm', name: '权限管理', type: 'MENU', path: '/setting/perm', icon: 'SafetyOutlined', sort: 4, parent: 'system' },
+  { code: 'system:perm:create', name: '权限新增', type: 'BUTTON', sort: 1, parent: 'system:perm' },
+  { code: 'system:perm:edit', name: '权限编辑', type: 'BUTTON', sort: 2, parent: 'system:perm' },
+  { code: 'system:perm:delete', name: '权限删除', type: 'BUTTON', sort: 3, parent: 'system:perm' },
+  { code: 'system:channel', name: '渠道管理', type: 'MENU', path: '/setting/channel', icon: 'ApiOutlined', sort: 5, parent: 'system' },
+  { code: 'system:channel:edit', name: '渠道编辑', type: 'BUTTON', sort: 1, parent: 'system:channel' },
+  { code: 'system:customer-type', name: '客户类型', type: 'MENU', path: '/setting/customer-type', icon: 'TagsOutlined', sort: 6, parent: 'system' },
+  { code: 'system:customer-type:edit', name: '客户类型编辑', type: 'BUTTON', sort: 1, parent: 'system:customer-type' },
+  { code: 'system:approval', name: '审批管理', type: 'MENU', path: '/setting/approval', icon: 'NodeIndexOutlined', sort: 7, parent: 'system' },
+  { code: 'system:approval:edit', name: '审批编辑', type: 'BUTTON', sort: 1, parent: 'system:approval' },
+  { code: 'system:logs', name: '操作日志', type: 'MENU', path: '/setting/logs', icon: 'BarChartOutlined', sort: 8, parent: 'system' },
+];
+
+interface RoleSeed {
+  code: string;
+  name: string;
+  description: string;
+  sort: number;
+  dataScope: 'ALL' | 'DEPT' | 'SELF';
+}
+
+const ROLES: RoleSeed[] = [
+  { code: 'admin', name: '超级管理员', description: '系统超级管理员，拥有全部权限', sort: 0, dataScope: 'ALL' },
+  { code: 'business', name: '业务人员', description: '业务人员：线索、商机、报价、设计、打样、销售订单', sort: 1, dataScope: 'SELF' },
+  { code: 'purchaser', name: '采购人员', description: '采购人员：采购、生产、库存、出运；供货模式仅可选轻定制/成品现货', sort: 2, dataScope: 'SELF' },
+  { code: 'user', name: '普通用户', description: '普通用户：仅可查看工作台与客户基础信息', sort: 3, dataScope: 'SELF' },
+];
+
+/**
+ * 角色 → 权限授予规则。
+ * 'admin' 使用通配 `*` 表示全量；其余角色只需声明「叶子 code」，
+ * 其祖先节点由 grantLeafCodes() 自动补齐，保证权限树不出现悬空子节点。
+ */
+const ROLE_PERMISSION_CODES: Record<string, string[]> = {
+  admin: ['*'],
+  business: [
+    'dashboard',
+    'customers',
+    'products',
+    'craft',
+    'product:taxonomy:view',
+    'sales',
+    'sales:leads',
+    'sales:opportunities',
+    'sales:quotes',
+    'sales:design',
+    'sales:samples',
+    'sales:orders',
+    'purchase',
+    'production',
+    'inventory',
+    'shipment',
+    'sales:settlement',
+  ],
+  purchaser: [
+    'dashboard',
+    'products',
+    'materials',
+    'bom',
+    'craft',
+    'suppliers',
+    'purchase',
+    'production',
+    'inventory',
+    'shipment',
+    'sales:orders',
+  ],
+  user: ['dashboard', 'customers'],
+};
+
+interface DepartmentSeed {
+  code: string;
+  name: string;
+  sort: number;
+}
+
+const DEPARTMENT_ROOT: DepartmentSeed = { code: 'ROOT', name: '总部', sort: 0 };
+const DEPARTMENTS: DepartmentSeed[] = [
+  { code: 'SALES', name: '销售部', sort: 1 },
+  { code: 'ENGINEERING', name: '工程部', sort: 2 },
+  { code: 'PROD', name: '生产部', sort: 3 },
+  { code: 'PURCH', name: '采购部', sort: 4 },
+  { code: 'FIN', name: '财务部', sort: 5 },
+];
+
+interface NumberSequenceSeed {
+  code: string;
+  name: string;
+  prefix: string;
+  datePattern?: string;
+  padding?: number;
+}
+
+/** 编号序列基线（15 个）。首次 currentValue = 0，后续运行不重置计数。 */
+const NUMBER_SEQUENCES: NumberSequenceSeed[] = [
+  { code: 'LEAD', name: '线索编号', prefix: 'XS', datePattern: 'yyyyMM' },
+  { code: 'OPP', name: '商机编号', prefix: 'OPP' },
+  { code: 'QUO', name: '报价单编号', prefix: 'QUO' },
+  { code: 'SMP', name: '打样单编号', prefix: 'SMP' },
+  { code: 'SO', name: '销售订单编号', prefix: 'SO' },
+  { code: 'PO', name: '采购订单编号', prefix: 'PO' },
+  { code: 'PR', name: '生产工单编号', prefix: 'PR' },
+  { code: 'SHP', name: '出货单编号', prefix: 'SHP' },
+  { code: 'INS', name: '质检单编号', prefix: 'INS' },
+  { code: 'PAY', name: '收付款编号', prefix: 'PAY' },
+  { code: 'PRF', name: '利润单编号', prefix: 'PRF' },
+  { code: 'CUS', name: '客户编号', prefix: 'CUS' },
+  { code: 'PRD', name: '产品编号', prefix: 'PRD' },
+  { code: 'SUP', name: '供应商编号', prefix: 'SUP' },
+  { code: 'CMB', name: '组合产品编号', prefix: 'CMB' },
+];
+
+interface ChannelSeed {
+  name: string;
+  category: 'ONLINE' | 'OFFLINE';
+  shops: string[];
+}
+
+/** 渠道基线：3 个平台 + 6 个店铺（平台 parentId = null） */
+const CHANNELS: ChannelSeed[] = [
+  { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
+  { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
+  { name: '展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
+];
+
+const CUSTOMER_TYPES = [
+  { name: '意向客户', description: '有明确采购意向，跟进中', sort: 0 },
+  { name: '成交客户', description: '已完成首单或多次成交', sort: 1 },
+  { name: '战略客户', description: '大客户/长期合作重点', sort: 2 },
+  { name: '流失客户', description: '长期无跟进或无意向', sort: 3 },
+];
+
+const PRODUCT_CRAFTS = [
+  { name: '搪胶', code: 'TJ', sort: 1 },
+  { name: '注塑', code: 'ZS', sort: 2 },
+  { name: '硅胶', code: 'GJ', sort: 3 },
+];
+
+const PRODUCT_AUDIENCES = [
+  {
+    name: '儿童',
+    code: 'ET',
+    sort: 0,
+    categories: ['沐浴玩具', '挤压玩具', '存钱罐', '摆件', '益智玩具', '安抚玩具', '节日玩具', '沙滩玩具'],
+  },
+  {
+    name: '宠物',
+    code: 'CW',
+    sort: 1,
+    categories: ['宠物益智啃咬玩具', '抛掷球类玩具', '宠物发声玩具', '宠物碗及喂食器', '宠物便携包及出行用品', '宠物清洁美容产品'],
+  },
+  { name: '配件', code: 'PJ', sort: 2, categories: ['脸皮', '新品类'] },
+  { name: '文具', code: 'WJ', sort: 3, categories: ['印章', '笔', '笔筒'] },
+  { name: '家居', code: 'JJ', sort: 4, categories: ['杯套', '门档', '沥水篮'] },
+];
+
+// ===========================================================================
+// 二、Seed 步骤
+// ===========================================================================
+
+/** 计算权限深度，保证父级先于子级写入（parentId 才能正确解析） */
+function permissionDepth(code: string, byCode: Map<string, PermissionSeed>): number {
+  const perm = byCode.get(code);
+  if (!perm?.parent) return 0;
+  return 1 + permissionDepth(perm.parent, byCode);
+}
+
+async function seedDepartments(tx: Prisma.TransactionClient): Promise<void> {
+  const root = await tx.department.upsert({
+    where: { code: DEPARTMENT_ROOT.code },
+    update: { name: DEPARTMENT_ROOT.name, sort: DEPARTMENT_ROOT.sort, parentId: null },
+    create: { code: DEPARTMENT_ROOT.code, name: DEPARTMENT_ROOT.name, sort: DEPARTMENT_ROOT.sort },
   });
 
-  const userRole = await prisma.role.upsert({
-    where: { code: 'user' },
-    update: {},
-    create: {
-      name: '普通用户',
-      code: 'user',
-      description: '普通用户',
-      sort: 1,
-      dataScope: 'SELF',
-    },
-  });
+  for (const dept of DEPARTMENTS) {
+    await tx.department.upsert({
+      where: { code: dept.code },
+      update: { name: dept.name, sort: dept.sort, parentId: root.id },
+      create: { code: dept.code, name: dept.name, sort: dept.sort, parentId: root.id },
+    });
+  }
+}
 
-  const businessRole = await prisma.role.upsert({
-    where: { code: 'business' },
-    update: {},
-    create: {
-      name: '业务人员',
-      code: 'business',
-      description: '业务人员，可查看仪表盘、销售、客户、订单',
-      sort: 2,
-      dataScope: 'SELF',
-    },
-  });
+async function seedRoles(tx: Prisma.TransactionClient): Promise<Map<string, string>> {
+  const roleIdByCode = new Map<string, string>();
+  for (const role of ROLES) {
+    const saved = await tx.role.upsert({
+      where: { code: role.code },
+      update: { name: role.name, description: role.description, sort: role.sort, dataScope: role.dataScope },
+      create: { code: role.code, name: role.name, description: role.description, sort: role.sort, dataScope: role.dataScope },
+    });
+    roleIdByCode.set(role.code, saved.id);
+  }
+  return roleIdByCode;
+}
 
-  const purchaserRole = await prisma.role.upsert({
-    where: { code: 'purchaser' },
-    update: {},
-    create: {
-      name: '采购人员',
-      code: 'purchaser',
-      description: '采购人员，可查看仪表盘、销售、客户、订单，供货模式仅可选轻定制/成品现货',
-      sort: 3,
-      dataScope: 'SELF',
-    },
-  });
+async function seedPermissions(tx: Prisma.TransactionClient): Promise<Map<string, string>> {
+  const byCode = new Map(PERMISSIONS.map((p) => [p.code, p]));
+  const ordered = [...PERMISSIONS].sort(
+    (a, b) => permissionDepth(a.code, byCode) - permissionDepth(b.code, byCode),
+  );
 
-  // 数据范围简化为 ALL / DEPT / SELF 三档：将历史旧档位（本人+公海、本部门及下级）归一为 SELF
-  await prisma.role.updateMany({
-    where: { dataScope: { in: ['SELF_PUBLIC_SEA', 'DEPT_AND_CHILD'] } },
-    data: { dataScope: 'SELF' },
-  });
-
-  // 2. 创建默认权限（菜单 & 按钮）
-  const menuPermissions = [
-    { name: '仪表盘', code: 'dashboard', type: 'MENU' as const, path: '/dashboard', icon: 'DashboardOutlined', sort: 0 },
-    { name: '销售管理', code: 'sales', type: 'MENU' as const, path: '/sales', icon: 'ShoppingOutlined', sort: 1 },
-    { name: '产品', code: 'sales:products', type: 'MENU' as const, path: '/sales/products', icon: 'AppstoreOutlined', sort: 10, parent: 'sales' },
-    { name: '线索', code: 'sales:leads', type: 'MENU' as const, path: '/sales/leads', icon: 'ProjectOutlined', sort: 11, parent: 'sales' },
-    { name: '商机', code: 'sales:opportunities', type: 'MENU' as const, path: '/sales/opportunities', icon: 'ThunderboltOutlined', sort: 12, parent: 'sales' },
-    { name: '订单', code: 'sales:orders', type: 'MENU' as const, path: '/sales/orders', icon: 'ShoppingCartOutlined', sort: 13, parent: 'sales' },
-    { name: '报价', code: 'sales:quotes', type: 'MENU' as const, path: '/quotes', icon: 'SolutionOutlined', sort: 14, parent: 'sales' },
-    { name: '打样', code: 'sales:samples', type: 'MENU' as const, path: '/samples', icon: 'ProfileOutlined', sort: 15, parent: 'sales' },
-    { name: '结算', code: 'sales:settlement', type: 'MENU' as const, path: '/settlement', icon: 'FileDoneOutlined', sort: 16, parent: 'sales' },
-    { name: '订单中心', code: 'orders', type: 'MENU' as const, path: '/orders', icon: 'ShoppingCartOutlined', sort: 2 },
-    { name: '采购管理', code: 'purchase', type: 'MENU' as const, path: '/purchase', icon: 'ShopOutlined', sort: 3 },
-    { name: '生产管理', code: 'production', type: 'MENU' as const, path: '/production', icon: 'UnorderedListOutlined', sort: 4 },
-    { name: '发货管理', code: 'shipment', type: 'MENU' as const, path: '/shipment', icon: 'SendOutlined', sort: 5 },
-    { name: '客户管理', code: 'customers', type: 'MENU' as const, path: '/customers', icon: 'TeamOutlined', sort: 5 },
-    { name: '数据报表', code: 'reports', type: 'MENU' as const, path: '/reports', icon: 'BarChartOutlined', sort: 6 },
-    { name: '设置', code: 'system', type: 'MENU' as const, path: '/system', icon: 'SettingOutlined', sort: 6 },
-    { name: '用户管理', code: 'system:user', type: 'MENU' as const, path: '/system/user', icon: 'UserOutlined', sort: 10, parent: 'system' },
-    { name: '角色管理', code: 'system:role', type: 'MENU' as const, path: '/system/role', icon: 'TeamOutlined', sort: 11, parent: 'system' },
-    { name: '部门管理', code: 'system:dept', type: 'MENU' as const, path: '/system/dept', icon: 'ApartmentOutlined', sort: 12, parent: 'system' },
-    { name: '权限管理', code: 'system:perm', type: 'MENU' as const, path: '/system/perm', icon: 'SafetyOutlined', sort: 13, parent: 'system' },
-    { name: '产品分类管理', code: 'product:taxonomy:view', type: 'MENU' as const, path: '/system/product-taxonomy', icon: 'AppstoreOutlined', sort: 14, parent: 'system' },
-    { name: '渠道管理', code: 'system:channel', type: 'MENU' as const, path: '/system/channel', icon: 'ApartmentOutlined', sort: 15, parent: 'system' },
-    { name: '客户类型', code: 'system:customer-type', type: 'MENU' as const, path: '/system/customer-type', icon: 'TagsOutlined', sort: 16, parent: 'system' },
-    { name: '审批管理', code: 'system:approval', type: 'MENU' as const, path: '/system/approval', icon: 'AuditOutlined', sort: 17, parent: 'system' },
-    { name: '操作日志', code: 'system:logs', type: 'MENU' as const, path: '/system/logs', icon: 'FileSearchOutlined', sort: 18, parent: 'system' },
-  ];
-
-  // 先建父级菜单
-  for (const perm of menuPermissions) {
-    await prisma.permission.upsert({
+  const permIdByCode = new Map<string, string>();
+  for (const perm of ordered) {
+    const parentId = perm.parent ? permIdByCode.get(perm.parent) ?? null : null;
+    const saved = await tx.permission.upsert({
       where: { code: perm.code },
-      // 同步菜单路径/图标/排序（支持菜单结构调整）
-      update: { path: perm.path, icon: perm.icon, sort: perm.sort },
-      create: {
+      update: {
         name: perm.name,
-        code: perm.code,
         type: perm.type,
-        path: perm.path,
-        icon: perm.icon,
+        path: perm.path ?? null,
+        icon: perm.icon ?? null,
         sort: perm.sort,
-        parentId: null,
+        parentId,
+      },
+      create: {
+        code: perm.code,
+        name: perm.name,
+        type: perm.type,
+        path: perm.path ?? null,
+        icon: perm.icon ?? null,
+        sort: perm.sort,
+        parentId,
       },
     });
+    permIdByCode.set(perm.code, saved.id);
   }
+  return permIdByCode;
+}
 
-  // 更新子菜单的 parentId
-  for (const perm of menuPermissions) {
-    if (perm.parent) {
-      const parent = await prisma.permission.findUnique({ where: { code: perm.parent } });
-      if (parent) {
-        await prisma.permission.update({
-          where: { code: perm.code },
-          data: { parentId: parent.id },
-        });
-      }
+/** 展开叶子 code：补齐全部祖先节点（上级分组/菜单） */
+function expandWithAncestors(leafCodes: string[]): Set<string> {
+  const byCode = new Map(PERMISSIONS.map((p) => [p.code, p]));
+  const result = new Set<string>();
+  for (const code of leafCodes) {
+    let current: string | undefined = code;
+    while (current) {
+      result.add(current);
+      current = byCode.get(current)?.parent;
     }
   }
+  return result;
+}
 
-  // 按钮级权限
-  const buttonPermissions = [
-    { name: '用户新增', code: 'system:user:create', type: 'BUTTON' as const, sort: 0 },
-    { name: '用户编辑', code: 'system:user:edit', type: 'BUTTON' as const, sort: 1 },
-    { name: '用户删除', code: 'system:user:delete', type: 'BUTTON' as const, sort: 2 },
-    { name: '重置密码', code: 'system:user:resetpwd', type: 'BUTTON' as const, sort: 3 },
-    { name: '角色新增', code: 'system:role:create', type: 'BUTTON' as const, sort: 0 },
-    { name: '角色编辑', code: 'system:role:edit', type: 'BUTTON' as const, sort: 1 },
-    { name: '角色删除', code: 'system:role:delete', type: 'BUTTON' as const, sort: 2 },
-    { name: '部门新增', code: 'system:dept:create', type: 'BUTTON' as const, sort: 0 },
-    { name: '部门编辑', code: 'system:dept:edit', type: 'BUTTON' as const, sort: 1 },
-    { name: '部门删除', code: 'system:dept:delete', type: 'BUTTON' as const, sort: 2 },
-    { name: '权限新增', code: 'system:perm:create', type: 'BUTTON' as const, sort: 0 },
-    { name: '权限编辑', code: 'system:perm:edit', type: 'BUTTON' as const, sort: 1 },
-    { name: '权限删除', code: 'system:perm:delete', type: 'BUTTON' as const, sort: 2 },
-    { name: '产品分类新增', code: 'product:taxonomy:create', type: 'BUTTON' as const, sort: 0 },
-    { name: '产品分类编辑', code: 'product:taxonomy:update', type: 'BUTTON' as const, sort: 1 },
-    { name: '产品分类删除', code: 'product:taxonomy:delete', type: 'BUTTON' as const, sort: 2 },
-    { name: '渠道新增', code: 'system:channel:edit', type: 'BUTTON' as const, sort: 0 },
-    { name: '客户类型编辑', code: 'system:customer-type:edit', type: 'BUTTON' as const, sort: 1 },
-    { name: '审批编辑', code: 'system:approval:edit', type: 'BUTTON' as const, sort: 2 },
-  ];
+async function seedRolePermissions(
+  tx: Prisma.TransactionClient,
+  roleIdByCode: Map<string, string>,
+  permIdByCode: Map<string, string>,
+): Promise<number> {
+  let granted = 0;
+  for (const [roleCode, codes] of Object.entries(ROLE_PERMISSION_CODES)) {
+    const roleId = roleIdByCode.get(roleCode);
+    if (!roleId) continue;
 
-  for (const perm of buttonPermissions) {
-    await prisma.permission.upsert({
-      where: { code: perm.code },
-      update: {},
-      create: perm,
-    });
-  }
-
-  // 3. 为 admin 角色分配所有权限
-  const allPermissions = await prisma.permission.findMany();
-  for (const perm of allPermissions) {
-    await prisma.rolePermission.upsert({
-      where: { roleId_permissionId: { roleId: adminRole.id, permissionId: perm.id } },
-      update: {},
-      create: { roleId: adminRole.id, permissionId: perm.id },
-    });
-  }
-
-  // 为业务人员分配业务菜单权限（仪表盘/销售/客户/订单/报表）
-  const businessMenuCodes = ['dashboard', 'sales', 'sales:products', 'sales:leads', 'sales:opportunities', 'sales:orders', 'sales:quotes', 'sales:samples', 'sales:settlement', 'customers', 'orders', 'purchase', 'production', 'shipment', 'reports'];
-  for (const code of businessMenuCodes) {
-    const perm = await prisma.permission.findUnique({ where: { code } });
-    if (perm) {
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: businessRole.id, permissionId: perm.id } },
+    const targetCodes = codes.includes('*') ? PERMISSIONS.map((p) => p.code) : [...expandWithAncestors(codes)];
+    for (const code of targetCodes) {
+      const permissionId = permIdByCode.get(code);
+      if (!permissionId) continue;
+      await tx.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId, permissionId } },
         update: {},
-        create: { roleId: businessRole.id, permissionId: perm.id },
+        create: { roleId, permissionId },
       });
+      granted += 1;
     }
   }
+  return granted;
+}
 
-  // 为采购人员分配业务菜单权限（与业务人员相同，但不含「客户管理」）
-  const purchaserMenuCodes = businessMenuCodes.filter((c) => c !== 'customers');
-  for (const code of purchaserMenuCodes) {
-    const perm = await prisma.permission.findUnique({ where: { code } });
-    if (perm) {
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: purchaserRole.id, permissionId: perm.id } },
-        update: {},
-        create: { roleId: purchaserRole.id, permissionId: perm.id },
-      });
-    }
-  }
-
-  // 为普通用户分配基础菜单权限（仪表盘/客户/报表）
-  const userMenuCodes = ['dashboard', 'customers', 'reports'];
-  for (const code of userMenuCodes) {
-    const perm = await prisma.permission.findUnique({ where: { code } });
-    if (perm) {
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: userRole.id, permissionId: perm.id } },
-        update: {},
-        create: { roleId: userRole.id, permissionId: perm.id },
-      });
-    }
-  }
-
-  // 3.5 初始化客户类型（全局配置，用于线索/客户）
-  console.log('🏷️  初始化客户类型...');
-  const customerTypeSeed: { name: string; description?: string; sort: number }[] = [
-    { name: '意向客户', description: '有明确采购意向，跟进中', sort: 0 },
-    { name: '成交客户', description: '已完成首单或多次成交', sort: 1 },
-    { name: '战略客户', description: '大客户/长期合作重点', sort: 2 },
-    { name: '流失客户', description: '长期无跟进或无意向', sort: 3 },
-  ];
-  for (const ct of customerTypeSeed) {
-    await prisma.customerType.upsert({
-      where: { name: ct.name },
-      update: { description: ct.description, sort: ct.sort, isActive: true },
-      create: { name: ct.name, description: ct.description, sort: ct.sort, isActive: true },
-    });
-  }
-  console.log('✅ 客户类型初始化完成！');
-
-  // 4. 创建默认部门
-  const rootDept = await prisma.department.upsert({
-    where: { code: 'ROOT' },
-    update: {},
-    create: { name: '总公司', code: 'ROOT', sort: 0 },
-  });
-
-  await prisma.department.upsert({
-    where: { code: 'TECH' },
-    update: {},
-    create: { name: '技术部', code: 'TECH', parentId: rootDept.id, sort: 1 },
-  });
-
-  await prisma.department.upsert({
-    where: { code: 'HR' },
-    update: {},
-    create: { name: '人事部', code: 'HR', parentId: rootDept.id, sort: 2 },
-  });
-
-  // 创建默认管理员
+async function seedAdminUser(tx: Prisma.TransactionClient, roleId: string, departmentId: string): Promise<string> {
   const username = process.env.ADMIN_USERNAME || 'admin';
-  const password = process.env.ADMIN_PASSWORD || 'admin123';
+  const realName = process.env.ADMIN_NAME || '系统管理员';
   const email = process.env.ADMIN_EMAIL || 'admin@ysem.com';
+  // ADMIN_PASSWORD 已由 main() 前置校验，此处断言非空
+  const password = process.env.ADMIN_PASSWORD as string;
   const hashedPassword = await bcrypt.hash(password, 12);
 
-  await prisma.user.upsert({
+  await tx.user.upsert({
     where: { username },
-    update: {},
+    // 白名单：不更新 password —— 保证重复执行不重置管理员密码
+    update: { email, realName, roleId, departmentId },
     create: {
       username,
       password: hashedPassword,
-      realName: '系统管理员',
+      realName,
       email,
-      roleId: adminRole.id,
-      departmentId: rootDept.id,
+      roleId,
+      departmentId,
       status: 'ACTIVE',
     },
   });
+  return username;
+}
 
-  // 创建测试业务员
-  const bizPwd = await bcrypt.hash('business123', 12);
-  await prisma.user.upsert({
-    where: { username: 'business' },
-    update: {},
-    create: {
-      username: 'business',
-      password: bizPwd,
-      realName: '张三',
-      email: 'business@ysem.com',
-      roleId: businessRole.id,
-      departmentId: rootDept.id,
-      status: 'ACTIVE',
-    },
-  });
-
-  // 创建测试采购员
-  const purPwd = await bcrypt.hash('purchaser123', 12);
-  await prisma.user.upsert({
-    where: { username: 'purchaser' },
-    update: {},
-    create: {
-      username: 'purchaser',
-      password: purPwd,
-      realName: '李四',
-      email: 'purchaser@ysem.com',
-      roleId: purchaserRole.id,
-      departmentId: rootDept.id,
-      status: 'ACTIVE',
-    },
-  });
-
-  console.log('✅ 数据库初始化完成！');
-  console.log(`📧 管理员: ${username} / ${password}`);
-  console.log(`📧 业务员: business / business123`);
-  console.log(`📧 采购员: purchaser / purchaser123`);
-
-  // 5. 初始化产品分类数据
-  console.log('🏭 初始化产品分类...');
-
-  // 工艺（基础项，产品侧多选组合，如 搪胶+注塑）；code 用于自动生成 SKU
-  const crafts = [
-    { name: '搪胶', code: 'TJ', sort: 1 },
-    { name: '注塑', code: 'ZS', sort: 2 },
-    { name: '硅胶', code: 'GJ', sort: 3 },
-  ];
-  for (const c of crafts) {
-    await prisma.productCraft.upsert({ where: { name: c.name }, update: { code: c.code }, create: c });
-  }
-
-  // 二级受众 + 三级品类
-  const audienceData = [
-    {
-      name: '儿童', code: 'ET', sort: 0,
-      categories: ['沐浴玩具', '挤压玩具', '存钱罐', '摆件', '益智玩具', '安抚玩具', '节日玩具', '沙滩玩具'],
-    },
-    {
-      name: '宠物', code: 'CW', sort: 1,
-      categories: ['宠物益智啃咬玩具', '抛掷球类玩具', '宠物发声玩具', '宠物碗及喂食器', '宠物便携包及出行用品', '宠物清洁美容产品'],
-    },
-    {
-      name: '配件', code: 'PJ', sort: 2,
-      categories: ['脸皮', '新品类'],
-    },
-    {
-      name: '文具', code: 'WJ', sort: 3,
-      categories: ['印章', '笔', '笔筒'],
-    },
-    {
-      name: '家居', code: 'JJ', sort: 4,
-      categories: ['杯套', '门档', '沥水篮'],
-    },
-  ];
-
-  for (const aud of audienceData) {
-    const audience = await prisma.productAudience.upsert({
-      where: { name: aud.name },
-      update: { code: aud.code },
-      create: { name: aud.name, code: aud.code, sort: aud.sort },
+async function seedNumberSequences(tx: Prisma.TransactionClient): Promise<void> {
+  for (const seq of NUMBER_SEQUENCES) {
+    await tx.numberSequence.upsert({
+      where: { code: seq.code },
+      // 白名单：不更新 currentPeriod / currentValue / version —— 保证不重置业务计数
+      update: {
+        name: seq.name,
+        prefix: seq.prefix,
+        datePattern: seq.datePattern ?? 'yyyyMMdd',
+        padding: seq.padding ?? 4,
+      },
+      create: {
+        code: seq.code,
+        name: seq.name,
+        prefix: seq.prefix,
+        datePattern: seq.datePattern ?? 'yyyyMMdd',
+        padding: seq.padding ?? 4,
+        currentPeriod: '',
+        currentValue: 0,
+      },
     });
-    for (let i = 0; i < aud.categories.length; i++) {
-      await prisma.productCategory.upsert({
-        where: { audienceId_name: { audienceId: audience.id, name: aud.categories[i] } },
-        update: {},
-        create: { name: aud.categories[i], audienceId: audience.id, sort: i },
+  }
+}
+
+async function seedChannels(tx: Prisma.TransactionClient): Promise<void> {
+  for (const platform of CHANNELS) {
+    // 平台 parentId = null，复合唯一键 [parentId, name] 对 NULL 不生效，故用 findFirst
+    const existing = await tx.channel.findFirst({ where: { name: platform.name, parentId: null } });
+    const saved = existing
+      ? await tx.channel.update({
+          where: { id: existing.id },
+          data: { category: platform.category, status: MasterStatus.ACTIVE },
+        })
+      : await tx.channel.create({
+          data: { name: platform.name, category: platform.category, status: MasterStatus.ACTIVE, sort: 0 },
+        });
+
+    for (let i = 0; i < platform.shops.length; i += 1) {
+      const shopName = platform.shops[i];
+      await tx.channel.upsert({
+        where: { parentId_name: { parentId: saved.id, name: shopName } },
+        update: { category: platform.category, status: MasterStatus.ACTIVE, sort: i },
+        create: {
+          name: shopName,
+          category: platform.category,
+          status: MasterStatus.ACTIVE,
+          sort: i,
+          parentId: saved.id,
+        },
       });
     }
   }
+}
 
-  console.log('✅ 产品分类初始化完成！');
+async function seedCustomerTypes(tx: Prisma.TransactionClient): Promise<void> {
+  for (const ct of CUSTOMER_TYPES) {
+    await tx.customerType.upsert({
+      where: { name: ct.name },
+      update: { description: ct.description, sort: ct.sort },
+      create: { name: ct.name, description: ct.description, sort: ct.sort, isActive: true },
+    });
+  }
+}
 
-  // 6. 初始化获客渠道（线上渠道 / 线下渠道 + 平台）
-  console.log('📡 初始化获客渠道...');
+async function seedProductMasterData(tx: Prisma.TransactionClient): Promise<void> {
+  for (const craft of PRODUCT_CRAFTS) {
+    await tx.productCraft.upsert({
+      where: { name: craft.name },
+      update: { code: craft.code, sort: craft.sort },
+      create: { name: craft.name, code: craft.code, sort: craft.sort, status: MasterStatus.ACTIVE },
+    });
+  }
 
-  // 清理历史种子数据中已废弃的名称，避免重命名后留下脏数据
-  const obsoleteChannelNames = ['线下渠道', '寿春平台', '微它平台', '景元平台'];
-  await prisma.channel.deleteMany({ where: { name: { in: obsoleteChannelNames } } });
+  for (const aud of PRODUCT_AUDIENCES) {
+    const audience = await tx.productAudience.upsert({
+      where: { name: aud.name },
+      update: { code: aud.code, sort: aud.sort },
+      create: { name: aud.name, code: aud.code, sort: aud.sort, status: MasterStatus.ACTIVE },
+    });
 
-  const channelSeed: { name: string; category: 'ONLINE' | 'OFFLINE'; shops: string[] }[] = [
-    { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
-    { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
-    { name: '展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
-  ];
-  for (const p of channelSeed) {
-    let platform = await prisma.channel.findFirst({ where: { name: p.name, parentId: null } });
-    if (!platform) {
-      platform = await prisma.channel.create({ data: { name: p.name, category: p.category, status: 'ENABLED', sort: 0 } });
-    } else {
-      await prisma.channel.update({ where: { id: platform.id }, data: { category: p.category } });
-    }
-    // 清理该平台下不在新种子列表中的历史店铺
-    await prisma.channel.deleteMany({ where: { parentId: platform.id, name: { notIn: p.shops } } });
-    for (let i = 0; i < p.shops.length; i++) {
-      const shopName = p.shops[i];
-      const shop = await prisma.channel.findFirst({ where: { name: shopName, parentId: platform.id } });
-      if (!shop) {
-        await prisma.channel.create({ data: { name: shopName, category: p.category, parentId: platform.id, status: 'ENABLED', sort: i } });
-      } else {
-        await prisma.channel.update({ where: { id: shop.id }, data: { category: p.category, sort: i } });
-      }
+    for (let i = 0; i < aud.categories.length; i += 1) {
+      await tx.productCategory.upsert({
+        where: { audienceId_name: { audienceId: audience.id, name: aud.categories[i] } },
+        update: { sort: i },
+        create: { name: aud.categories[i], audienceId: audience.id, sort: i, status: MasterStatus.ACTIVE },
+      });
     }
   }
-  console.log('✅ 获客渠道初始化完成！');
+}
+
+// ===========================================================================
+// 三、入口
+// ===========================================================================
+
+async function main(): Promise<void> {
+  // 安全前置：管理员密码必须由环境变量注入，禁止内置默认密码
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error('ADMIN_PASSWORD is required');
+  }
+
+  console.log('🌱 [YSEM V1.0] 开始初始化系统基线数据...');
+
+  const result = await prisma.$transaction(
+    async (tx) => {
+      await seedDepartments(tx);
+      const roleIdByCode = await seedRoles(tx);
+      const permIdByCode = await seedPermissions(tx);
+      const granted = await seedRolePermissions(tx, roleIdByCode, permIdByCode);
+
+      const rootDept = await tx.department.findUniqueOrThrow({ where: { code: DEPARTMENT_ROOT.code } });
+      const adminUsername = await seedAdminUser(tx, roleIdByCode.get('admin')!, rootDept.id);
+
+      await seedNumberSequences(tx);
+      await seedChannels(tx);
+      await seedCustomerTypes(tx);
+      await seedProductMasterData(tx);
+
+      return {
+        adminUsername,
+        departments: 1 + DEPARTMENTS.length,
+        roles: ROLES.length,
+        permissions: PERMISSIONS.length,
+        rolePermissions: granted,
+        numberSequences: NUMBER_SEQUENCES.length,
+        channels: CHANNELS.reduce((sum, c) => sum + 1 + c.shops.length, 0),
+        customerTypes: CUSTOMER_TYPES.length,
+        crafts: PRODUCT_CRAFTS.length,
+        audiences: PRODUCT_AUDIENCES.length,
+        categories: PRODUCT_AUDIENCES.reduce((sum, a) => sum + a.categories.length, 0),
+      };
+    },
+    { timeout: 60_000, maxWait: 10_000 },
+  );
+
+  console.log('✅ 系统基线数据初始化完成（事务已提交）');
+  console.log(`   Department      : ${result.departments}`);
+  console.log(`   Role            : ${result.roles}`);
+  console.log(`   Permission      : ${result.permissions}`);
+  console.log(`   RolePermission  : ${result.rolePermissions}`);
+  console.log(`   NumberSequence  : ${result.numberSequences}`);
+  console.log(`   Channel         : ${result.channels}`);
+  console.log(`   CustomerType    : ${result.customerTypes}`);
+  console.log(`   ProductCraft    : ${result.crafts}`);
+  console.log(`   ProductAudience : ${result.audiences}`);
+  console.log(`   ProductCategory : ${result.categories}`);
+  console.log(`   管理员账号      : ${result.adminUsername}（密码由 ADMIN_PASSWORD 环境变量注入，未打印）`);
 }
 
 main()
   .catch((e) => {
-    console.error('❌ 初始化失败:', e);
+    console.error('❌ 系统基线数据初始化失败，事务已回滚：');
+    console.error(e);
     process.exit(1);
   })
   .finally(async () => {
