@@ -3,8 +3,9 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
-import { ownerScope, applyScope, roleScope } from "../utils/scope";
+import { applyScope, roleScope } from "../utils/scope";
 import { paginateList } from "../utils/query";
+import { legacyOrderBusinessType } from "../lib/business-type";
 
 // 单据类型
 export type OrderType = "QUOTE" | "SAMPLE" | "ORDER" | "PRODUCTION" | "SHIPPED";
@@ -205,9 +206,10 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       username,
       action: finalType === "QUOTE" ? "QUOTE_CREATED" : finalType === "SAMPLE" ? "SAMPLE_CREATED" : "ORDER_CREATED",
       module: "order",
-      targetId: order.id,
-      target: finalOrderNo,
-      detail: `新增${typeLabel}${finalOrderNo ? `：${finalOrderNo}` : ''}`,
+      businessType: legacyOrderBusinessType(finalType),
+      businessId: order.id,
+      businessNo: finalOrderNo,
+      summary: `新增${typeLabel}${finalOrderNo ? `：${finalOrderNo}` : ''}`,
       customerId,
     });
 
@@ -274,9 +276,10 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         username,
         action: "ORDER_UPDATED",
         module: "order",
-        targetId: id,
-        target: existing.orderNo || id,
-        detail: `修改了单据「${existing.orderNo}」的${changes.join("、")}`,
+        businessType: legacyOrderBusinessType(existing.type),
+        businessId: id,
+        businessNo: existing.orderNo || id,
+        summary: `修改了单据「${existing.orderNo}」的${changes.join("、")}`,
         customerId: existing.customerId,
       });
     }
@@ -304,9 +307,10 @@ export const submit = async (req: AuthRequest, res: Response, next: NextFunction
       username: req.username!,
       action: "ORDER_SUBMITTED",
       module: "order",
-      targetId: id,
-      target: existing.orderNo || id,
-      detail: `提交了单据「${existing.orderNo}」审批`,
+      businessType: legacyOrderBusinessType(existing.type),
+      businessId: id,
+      businessNo: existing.orderNo || id,
+      summary: `提交了单据「${existing.orderNo}」审批`,
       customerId: existing.customerId,
     });
     success(res, order, "已提交审批");
@@ -335,9 +339,10 @@ export const approve = async (req: AuthRequest, res: Response, next: NextFunctio
       username: req.username!,
       action: "ORDER_APPROVED",
       module: "order",
-      targetId: id,
-      target: existing.orderNo || id,
-      detail: `审批通过了单据「${existing.orderNo}」`,
+      businessType: legacyOrderBusinessType(existing.type),
+      businessId: id,
+      businessNo: existing.orderNo || id,
+      summary: `审批通过了单据「${existing.orderNo}」`,
       customerId: existing.customerId,
     });
     success(res, order, "审批通过");
@@ -366,9 +371,10 @@ export const reject = async (req: AuthRequest, res: Response, next: NextFunction
       username: req.username!,
       action: "ORDER_REJECTED",
       module: "order",
-      targetId: id,
-      target: existing.orderNo || id,
-      detail: `驳回了单据「${existing.orderNo}」`,
+      businessType: legacyOrderBusinessType(existing.type),
+      businessId: id,
+      businessNo: existing.orderNo || id,
+      summary: `驳回了单据「${existing.orderNo}」`,
       customerId: existing.customerId,
     });
     success(res, order, "已驳回");
@@ -392,9 +398,10 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
       username,
       action: "ORDER_DELETED",
       module: "order",
-      targetId: id,
-      target: existing.orderNo || id,
-      detail: `删除了单据「${existing.orderNo}」`,
+      businessType: legacyOrderBusinessType(existing.type),
+      businessId: id,
+      businessNo: existing.orderNo || id,
+      summary: `删除了单据「${existing.orderNo}」`,
       customerId: existing.customerId,
     });
 

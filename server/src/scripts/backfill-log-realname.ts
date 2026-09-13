@@ -55,23 +55,10 @@ async function main() {
     }
   }
 
-  // 3. 产品操作记录：operator 为用户名、createdBy 为 userId
-  const prodActs = await prisma.productActivity.findMany({
-    where: { realName: null },
-    select: { id: true, operator: true, createdBy: true },
-  });
-  let prodUpdated = 0;
-  for (const a of prodActs) {
-    const rn = pickRealName(a.createdBy, a.operator);
-    if (rn) {
-      await prisma.productActivity.update({ where: { id: a.id }, data: { realName: rn } });
-      prodUpdated++;
-    }
-  }
-
+  // 说明：旧 ProductActivity 已在 V1.0 删除，产品/组合操作统一落 OperationLog，
+  // 因此本脚本不再处理产品操作记录（上方 OperationLog 段落已覆盖该场景）。
   console.log(`操作日志：回填 ${opUpdated} / ${opLogs.length}`);
   console.log(`客户活动：回填 ${custUpdated} / ${custActs.length}`);
-  console.log(`产品操作：回填 ${prodUpdated} / ${prodActs.length}`);
 }
 
 main()

@@ -4,6 +4,7 @@ import { activityLogger } from '../lib/activity-logger';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../lib/prisma';
 import { roleScope } from '../utils/scope';
+import { BUSINESS_TYPE } from '../lib/business-type';
 
 // 采购单状态机：DRAFT(草稿) → ORDERED(已下单) → PARTIAL(部分到货) → ARRIVED(已到货)；DRAFT/ORDERED/PARTIAL 可取消
 const STATUS_FLOW: Record<string, string[]> = {
@@ -157,9 +158,10 @@ export const createPurchase = async (req: AuthRequest, res: Response): Promise<v
       realName: req.realName || '',
       action: '创建采购单',
       module: '采购管理',
-      targetId: item.id,
-      target: item.purchaseNo || '',
-      detail: `创建采购单 ${item.purchaseNo}（${items.length} 条明细）`,
+      businessType: BUSINESS_TYPE.PURCHASE_ORDER,
+      businessId: item.id,
+      businessNo: item.purchaseNo || '',
+      summary: `创建采购单 ${item.purchaseNo}（${items.length} 条明细）`,
       ip: req.ip,
     });
     success(res, { item });
@@ -205,9 +207,10 @@ export const updatePurchase = async (req: AuthRequest, res: Response): Promise<v
       realName: req.realName || '',
       action: '更新采购单',
       module: '采购管理',
-      targetId: item.id,
-      target: item.purchaseNo || '',
-      detail: `更新采购单 ${item.purchaseNo}`,
+      businessType: BUSINESS_TYPE.PURCHASE_ORDER,
+      businessId: item.id,
+      businessNo: item.purchaseNo || '',
+      summary: `更新采购单 ${item.purchaseNo}`,
       ip: req.ip,
     });
     success(res, { item });
@@ -250,9 +253,10 @@ export const changePurchaseStatus = async (req: AuthRequest, res: Response): Pro
       realName: req.realName || '',
       action: '采购单状态变更',
       module: '采购管理',
-      targetId: item.id,
-      target: item.purchaseNo || '',
-      detail: `采购单 ${item.purchaseNo} 状态变更为「${STATUS_TEXT[newStatus] || newStatus}」`,
+      businessType: BUSINESS_TYPE.PURCHASE_ORDER,
+      businessId: item.id,
+      businessNo: item.purchaseNo || '',
+      summary: `采购单 ${item.purchaseNo} 状态变更为「${STATUS_TEXT[newStatus] || newStatus}」`,
       ip: req.ip,
     });
     success(res, { item });
@@ -283,9 +287,10 @@ export const deletePurchase = async (req: AuthRequest, res: Response): Promise<v
       realName: req.realName || '',
       action: '删除采购单',
       module: '采购管理',
-      targetId: exist.id,
-      target: exist.purchaseNo || '',
-      detail: `删除采购单 ${exist.purchaseNo}`,
+      businessType: BUSINESS_TYPE.PURCHASE_ORDER,
+      businessId: exist.id,
+      businessNo: exist.purchaseNo || '',
+      summary: `删除采购单 ${exist.purchaseNo}`,
       ip: req.ip,
     });
     success(res, { deleted: true });

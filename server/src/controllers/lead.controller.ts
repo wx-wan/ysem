@@ -3,9 +3,10 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { ownerScope, applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope } from '../utils/scope';
 import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
+import { BUSINESS_TYPE } from '../lib/business-type';
 
 const LEAD_STATUS_LABEL: Record<string, string> = {
   NEW: '新建',
@@ -297,11 +298,11 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       realName: req.realName,
       action: 'RELEASE',
       module: 'lead',
-      targetId: id,
-      target: lead.leadName || lead.companyName || id,
-      detail: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${lead.productId ? '，关联产品置为公开' : ''}`,
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: id,
+      businessNo: lead.leadNo,
+      summary: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${lead.productId ? '，关联产品置为公开' : ''}`,
       customerId: lead.customerId || undefined,
-      productId: lead.productId || undefined,
     });
     success(res, null, '释放成功');
   } catch {
@@ -354,11 +355,11 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
       realName: req.realName,
       action: 'CLAIM',
       module: 'lead',
-      targetId: id,
-      target: lead.leadName || lead.companyName || id,
-      detail: `${username} 认领了该线索`,
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: id,
+      businessNo: lead.leadNo,
+      summary: `${username} 认领了该线索`,
       customerId: lead.customerId || undefined,
-      productId: lead.productId || undefined,
     });
     success(res, null, '认领成功');
   } catch {
@@ -432,11 +433,11 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       realName: req.realName,
       action: 'TRANSFERRED',
       module: 'lead',
-      targetId: id,
-      target: lead.leadName || lead.companyName || id,
-      detail: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${lead.productId ? '，关联产品(私密)加入可见人' : ''}`,
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: id,
+      businessNo: lead.leadNo,
+      summary: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${lead.productId ? '，关联产品(私密)加入可见人' : ''}`,
       customerId: lead.customerId || undefined,
-      productId: lead.productId || undefined,
     });
     success(res, null, '转交成功');
   } catch (err) {
@@ -466,11 +467,11 @@ export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise
       realName: req.realName,
       action: 'STATUS',
       module: 'lead',
-      targetId: existing.id,
-      target: existing.leadName || existing.companyName || existing.id,
-      detail: `将线索状态${existing.status ? `由「${LEAD_STATUS_LABEL[existing.status] || existing.status}」` : ''}变更为「${label}」`,
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: existing.id,
+      businessNo: existing.leadNo,
+      summary: `将线索状态${existing.status ? `由「${LEAD_STATUS_LABEL[existing.status] || existing.status}」` : ''}变更为「${label}」`,
       customerId: existing.customerId || undefined,
-      productId: existing.productId || undefined,
     });
 
     success(res, null, '状态已更新');

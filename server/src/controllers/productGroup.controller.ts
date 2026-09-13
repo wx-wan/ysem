@@ -4,6 +4,7 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
+import { BUSINESS_TYPE } from '../lib/business-type';
 import { buildSkuCode } from './product.controller';
 
 const groupSchema = z.object({
@@ -189,10 +190,10 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
       realName: req.realName,
       action: 'CREATE',
       module: 'combo',
-      comboId: group.id,
-      targetId: group.id,
-      target: group.name,
-      detail: `创建了组合「${group.name}」${itemData.length ? `（含 ${itemData.length} 个单品）` : ''}`,
+      businessType: BUSINESS_TYPE.COMBO,
+      businessId: group.id,
+      businessNo: group.comboNo,
+      summary: `创建了组合「${group.name}」${itemData.length ? `（含 ${itemData.length} 个单品）` : ''}`,
     });
     created(res, group);
   } catch (err) {
@@ -223,10 +224,10 @@ export const updateProductGroup = async (req: AuthRequest, res: Response): Promi
       realName: req.realName,
       action: 'UPDATE',
       module: 'combo',
-      comboId: group.id,
-      targetId: group.id,
-      target: group.name,
-      detail: `更新了组合「${group.name}」`,
+      businessType: BUSINESS_TYPE.COMBO,
+      businessId: group.id,
+      businessNo: group.comboNo,
+      summary: `更新了组合「${group.name}」`,
     });
     success(res, group);
   } catch (err) {
@@ -251,10 +252,11 @@ export const deleteProductGroup = async (req: AuthRequest, res: Response): Promi
       username: req.username || '',
       realName: req.realName,
       action: 'DELETE',
-      module: 'product-group',
-      targetId: existing.id,
-      target: existing.name,
-      detail: `删除了产品组「${existing.name}」`,
+      module: 'combo',
+      businessType: BUSINESS_TYPE.COMBO,
+      businessId: existing.id,
+      businessNo: existing.comboNo,
+      summary: `删除了产品组「${existing.name}」`,
     });
     success(res, { success: true });
   } catch {
@@ -306,10 +308,10 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
       realName: req.realName,
       action: 'UPDATE',
       module: 'combo',
-      comboId: group.id,
-      targetId: group.id,
-      target: group.name,
-      detail: `更新了组合「${group.name}」的单品明细`,
+      businessType: BUSINESS_TYPE.COMBO,
+      businessId: group.id,
+      businessNo: group.comboNo,
+      summary: `更新了组合「${group.name}」的单品明细`,
     });
     success(res, created);
   } catch (err) {

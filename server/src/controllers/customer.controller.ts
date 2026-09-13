@@ -3,7 +3,8 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
-import { ownerScope, publicSeaScope, roleScope } from "../utils/scope";
+import { includePublicSea, publicSeaScope, roleScope } from "../utils/scope";
+import { BUSINESS_TYPE } from "../lib/business-type";
 import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
 import * as XLSX from "xlsx";
 
@@ -159,7 +160,7 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
     // 数据范围：按当前用户角色过滤（管理员看全部，普通用户按 ALL/DEPT/SELF 三档）
     // 公海视图仅返回无负责人的客户；其余视图 = 范围数据 + 公海（公海数据对集团开放）
     const isPublic = type === "public";
-    const scope = isPublic ? publicSeaScope(req) : await roleScope(req);
+    const scope = isPublic ? publicSeaScope() : includePublicSea(await roleScope(req));
     const andConditions: any[] = scope && Object.keys(scope).length > 0 ? [scope] : [];
 
     // 关键词搜索
@@ -664,9 +665,10 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       username,
       action: "CREATED",
       module: "customer",
-      targetId: customer.id,
-      target: companyName,
-      detail: `创建客户：${companyName}`,
+      businessType: BUSINESS_TYPE.CUSTOMER,
+      businessId: customer.id,
+      businessNo: customer.customerNo,
+      summary: `创建客户：${companyName}`,
       customerId: customer.id,
     });
 
@@ -739,9 +741,10 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         username,
         action: "UPDATED",
         module: "customer",
-        targetId: id,
-        target: existing.companyName,
-        detail: changes.join("；"),
+        businessType: BUSINESS_TYPE.CUSTOMER,
+        businessId: id,
+        businessNo: customer.customerNo,
+        summary: changes.join("；"),
         customerId: id,
       });
     }
@@ -797,9 +800,10 @@ export const claim = async (req: AuthRequest, res: Response, next: NextFunction)
       username,
       action: "CLAIM",
       module: "customer",
-      targetId: id,
-      target: customer.companyName,
-      detail: `${username} 认领了该客户`,
+      businessType: BUSINESS_TYPE.CUSTOMER,
+      businessId: id,
+      businessNo: customer.customerNo,
+      summary: `${username} 认领了该客户`,
       customerId: id,
     });
 
@@ -840,9 +844,10 @@ export const release = async (req: AuthRequest, res: Response, next: NextFunctio
       username,
       action: "RELEASE",
       module: "customer",
-      targetId: id,
-      target: customer.companyName,
-      detail: `${username} 释放该客户到公海`,
+      businessType: BUSINESS_TYPE.CUSTOMER,
+      businessId: id,
+      businessNo: customer.customerNo,
+      summary: `${username} 释放该客户到公海`,
       customerId: id,
     });
 
@@ -891,9 +896,10 @@ export const transfer = async (req: AuthRequest, res: Response, next: NextFuncti
       username,
       action: "TRANSFERRED",
       module: "customer",
-      targetId: id,
-      target: customer.companyName,
-      detail: `${username} 将客户从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」`,
+      businessType: BUSINESS_TYPE.CUSTOMER,
+      businessId: id,
+      businessNo: customer.customerNo,
+      summary: `${username} 将客户从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」`,
       customerId: id,
     });
 
@@ -1017,9 +1023,10 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
         username,
         action: "UPDATED",
         module: "customer",
-        targetId: id,
-        target: existing.companyName,
-        detail: "更新客户标签",
+        businessType: BUSINESS_TYPE.CUSTOMER,
+        businessId: id,
+        businessNo: customer.customerNo,
+        summary: "更新客户标签",
         customerId: id,
       });
     }

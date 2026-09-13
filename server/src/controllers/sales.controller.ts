@@ -6,7 +6,8 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
-import { ownerScope, applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope } from '../utils/scope';
+import { BUSINESS_TYPE } from '../lib/business-type';
 import { paginateList } from '../utils/query';
 import { deriveStages, PIPELINE_STAGES, type PipelineStage } from '../utils/pipelineStage';
 
@@ -344,9 +345,10 @@ export const createPipeline = async (req: AuthRequest, res: Response): Promise<v
         username: req.username!,
         action: 'PIPELINE_CREATED',
         module: 'sales',
-        targetId: pipeline.id,
-        target: data.title,
-        detail: `创建了商机「${data.title}」`,
+        businessType: BUSINESS_TYPE.OPPORTUNITY,
+        businessId: pipeline.id,
+        businessNo: pipeline.pipelineNumber,
+        summary: `创建了商机「${data.title}」`,
         customerId: data.customerId,
       });
     }
@@ -432,9 +434,10 @@ export const updatePipeline = async (req: AuthRequest, res: Response): Promise<v
         username: req.username!,
         action: 'PIPELINE_UPDATED',
         module: 'sales',
-        targetId: pipeline.id,
-        target: data.title || existing.title,
-        detail: changes.length > 0
+        businessType: BUSINESS_TYPE.OPPORTUNITY,
+        businessId: pipeline.id,
+        businessNo: pipeline.pipelineNumber,
+        summary: changes.length > 0
           ? `修改了商机「${data.title || existing.title}」的${changes.join('、')}`
           : `修改了商机「${data.title || existing.title}」`,
         customerId: existing.customerId,
@@ -468,9 +471,10 @@ export const deletePipeline = async (req: AuthRequest, res: Response): Promise<v
         username: req.username!,
         action: 'PIPELINE_DELETED',
         module: 'sales',
-        targetId: existing.id,
-        target: existing.title,
-        detail: `删除了商机「${existing.title}」`,
+        businessType: BUSINESS_TYPE.OPPORTUNITY,
+        businessId: existing.id,
+        businessNo: existing.pipelineNumber,
+        summary: `删除了商机「${existing.title}」`,
         customerId: existing.customerId,
       });
     }

@@ -6,6 +6,7 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
+import { BUSINESS_TYPE } from '../lib/business-type';
 import { computeDiff, DiffItem, FieldFormatter } from '../lib/operation-diff';
 
 const productSchema = z.object({
@@ -330,10 +331,10 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
       realName: req.realName,
       action: 'CREATE',
       module: 'product',
-      targetId: product.id,
-      target: product.name,
-      detail: `创建了产品「${product.name}」`,
-      productId: product.id,
+      businessType: BUSINESS_TYPE.PRODUCT,
+      businessId: product.id,
+      businessNo: product.productNo,
+      summary: `创建了产品「${product.name}」`,
     });
     created(res, product);
   } catch (err) {
@@ -395,11 +396,11 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       realName: req.realName,
       action: 'UPDATE',
       module: 'product',
-      targetId: product.id,
-      target: product.name,
-      detail: `修改了产品「${product.name}」${diff.length ? `（${diff.length} 处变更）` : ''}`,
+      businessType: BUSINESS_TYPE.PRODUCT,
+      businessId: product.id,
+      businessNo: product.productNo,
+      summary: `修改了产品「${product.name}」${diff.length ? `（${diff.length} 处变更）` : ''}`,
       diff,
-      productId: product.id,
     });
     success(res, product, '更新成功');
   } catch (err) {
@@ -424,10 +425,10 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
       username: req.username || '',
       action: 'DELETE',
       module: 'product',
-      targetId: product.id,
-      target: product.name,
-      detail: JSON.stringify({ name: product.name, sku: product.sku }),
-      productId: product.id,
+      businessType: BUSINESS_TYPE.PRODUCT,
+      businessId: product.id,
+      businessNo: product.productNo,
+      summary: `删除了产品「${product.name}」（编号 ${product.productNo}，SKU ${product.sku || '—'}）`,
     });
     success(res, null, '删除成功');
   } catch { fail(res, 500, '服务器错误'); }
@@ -656,10 +657,10 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
           realName: req.realName,
           action: 'CREATE',
           module: 'product',
-          targetId: product.id,
-          target: product.name,
-          detail: `通过 Excel 导入创建了产品「${product.name}」`,
-          productId: product.id,
+          businessType: BUSINESS_TYPE.PRODUCT,
+          businessId: product.id,
+          businessNo: product.productNo,
+          summary: `通过 Excel 导入创建了产品「${product.name}」`,
         });
         created.push(product);
       } catch (err) {
