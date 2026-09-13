@@ -52,6 +52,7 @@ tmp/
 temp/
 
 # Tool / skill intermediate files
+.codebuddy/
 .codex/
 .impeccable/
 client/.impeccable/
