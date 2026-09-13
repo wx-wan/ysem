@@ -1,0 +1,90 @@
+// ============================================================
+// 07-sample.prisma — 打样领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 通用单据表 Order 已五路拆分（Batch 3）==========
+// 拆分产出：QUOTE → Quotation（销售层）· SAMPLE → SampleOrder · ORDER → SalesOrder
+//          · PRODUCTION → ProductionOrder · SHIPPED → Shipment；旧 Order 表在迁移中消除。
+// 旧字段去向见 03 §4.2 / 04 §3.1；物理表改名 / 删除由后续人工 migration 处理（05 §13）。
+
+// ========== 打样单（04 §2 · Order(type=SAMPLE) 拆分产出）==========
+/// 打样单：由商机发起（也可独立发起，见 00 §Q6）。无 deletedAt —— 业务单据只允许 CANCELLED（Q9 / ADR-08）。
+model SampleOrder {
+  id       String @id @default(cuid())
+  sampleNo String @unique // SM-yyyyMMdd-0001
+
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  customerId    String
+  customer      Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // ---------- 来源打样 → 订单（Q10 / 第三批终修）----------
+  // 真实外键**唯一**在 SalesOrder 一侧（SalesOrder.sampleOrderId，**非 unique**），本侧仅反向 relation。
+  // 基数：SampleOrder 1:N SalesOrder —— 一次打样可支撑客户后续多次下单。
+  salesOrders SalesOrder[] @relation("OrderSourceSample")
+
+  // 与 Quotation 的关系：**不声明 quotationId**（第三批 §9 定案）。
+  // SampleOrder 经 opportunityId 间接追溯来源报价（免费打样 / 老客重打 / 内部开发样均可能没有正式报价单）。
+
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productName String // 产品快照（ADR-04）
+  spec        String?
+  craft       String?
+  size        String?
+  packaging   String?
+
+  sampleType  String? // 手工样 / 开模样 / 量产样
+  quantity    Int     @default(1) // 意向打样数量（整数口径，04 §12#7）
+  requirement String?
+  /// 目标价：客户口头/文本目标（可能为区间），属需求描述而非结算金额，故保留 String。
+  targetPrice String?
+
+  status       SampleStatus  @default(DRAFT)
+  currentRound Int           @default(1) // 当前轮次
+  rounds       SampleRound[]
+
+  feeAmount      Decimal? @db.Decimal(18, 4)
+  feeCurrency    Currency @default(USD)
+  feeRecoverable Boolean  @default(false)
+
+  customerSnapshot Json?
+  ownerId          String?
+  notes            String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([opportunityId])
+  @@index([customerId])
+  @@index([status])
+  @@index([productId])
+}
+
+/// 打样轮次：一轮打样 = 设计 → 开模 → 寄样 → 反馈（ADR-12）。
+model SampleRound {
+  id            String      @id @default(cuid())
+  sampleOrderId String
+  sampleOrder   SampleOrder @relation(fields: [sampleOrderId], references: [id], onDelete: Cascade)
+  roundNo       Int         @default(1)
+
+  designAt   DateTime?
+  moldAt     DateTime?
+  sentAt     DateTime?
+  feedbackAt DateTime?
+  trackingNo String?
+  feeAmount  Decimal?  @db.Decimal(18, 4)
+
+  result       SampleRoundResult @default(PENDING)
+  feedback     String?
+  improvements String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sampleOrderId, roundNo])
+  @@index([sampleOrderId])
+}

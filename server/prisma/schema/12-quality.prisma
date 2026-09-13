@@ -1,0 +1,44 @@
+// ============================================================
+// 12-quality.prisma — 质检
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 质检（04 §5 · 主链缺口，无来源新增）==========
+/// 宿主规则（Q14 / 第三批定案）：业务宿主只有 ProductionOrder 或 Shipment，**exact-one 二选一**。
+/// DB CHECK 约束（手写 SQL，Prisma 无法表达）：
+///   (productionOrderId IS NOT NULL AND shipmentId IS NULL)
+///   OR (productionOrderId IS NULL AND shipmentId IS NOT NULL)
+/// onDelete: Restrict —— 宿主是 QC 的历史证据；SetNull 会置空宿主从而破坏 exact-one CHECK。
+model QualityInspection {
+  id           String @id @default(cuid())
+  inspectionNo String @unique // QC-yyyyMMdd-0001
+
+  type InspectionType
+
+  productionOrderId String?
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: Restrict)
+  shipmentId        String?
+  shipment          Shipment?        @relation(fields: [shipmentId], references: [id], onDelete: Restrict)
+  // 注意：不得声明 salesOrderId —— 订单级质检通过 ProductionOrder.salesOrderId / Shipment.salesOrderId 间接追溯
+
+  result         InspectionResult @default(PENDING)
+  inspectionDate DateTime?
+  inspectorId    String?
+  inspectorName  String? // 快照
+
+  sampleQty  Int?
+  defectQty  Int?
+  defectRate Decimal? @db.Decimal(9, 4) // 不良率 %（百分数语义）
+
+  defectSummary String?
+  disposition   String?
+  notes         String?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([productionOrderId])
+  @@index([shipmentId])
+  @@index([result])
+}

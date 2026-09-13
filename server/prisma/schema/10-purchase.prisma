@@ -1,0 +1,91 @@
+// ============================================================
+// 10-purchase.prisma — 采购领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 采购单（04 §7 · 旧 PurchaseOrder 扩展：挂订单 + 编号化 + 明细表）==========
+/// 采购单：对供应商的采购 / 外发需求，**不是** SalesOrder / ProductionOrder / Shipment。
+/// 必须能归集到订单（salesOrderId / productionOrderId），否则利润不可信（ADR-14 / P1-4）。
+model PurchaseOrder {
+  id         String @id @default(cuid())
+  purchaseNo String @unique // PR-yyyyMMdd-0001
+
+  // ---------- 关联（ADR-14：必须能归集到订单，否则利润不可信）----------
+  salesOrderId      String?
+  salesOrder        SalesOrder?      @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  /// 生产工单（可选）：一个生产任务可对应多张采购单 / 多供应商 / 多批次，故 **1:N**，禁止建成 1:1。
+  productionOrderId String?
+  productionOrder   ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+
+  supplierId String?
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  purchaseDate      DateTime?
+  status            PurchaseStatus @default(DRAFT)
+  /// 预计到货 / 实际到货
+  expectedArrivalAt DateTime?
+  arrivedAt         DateTime?
+
+  // ---------- 金额（三件套，全部 Decimal）----------
+  currency       Currency @default(CNY) // 采购默认人民币
+  exchangeRate   Decimal? @db.Decimal(18, 8)
+  totalAmount    Decimal? @db.Decimal(18, 4)
+  totalAmountCny Decimal? @db.Decimal(18, 4)
+
+  /// 采购类型（成本归集维度，决定计入 Profit 的哪个成本科目，04 §9.1）
+  purchaseType PurchaseType @default(MATERIAL)
+
+  ownerId String? // 采购员
+  remark  String?
+
+  items    PurchaseOrderItem[]
+  payments Payment[] // Payment.purchaseOrderId 的反向（exact-one 宿主，04 §8）
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([salesOrderId])
+  @@index([productionOrderId])
+  @@index([status])
+  @@index([supplierId])
+  @@index([ownerId])
+}
+
+/// 采购明细（旧 PurchaseOrder.items JSON 拆分派生）。
+/// 成本归集链：SalesOrderItem → ProductionOrderItem → PurchaseOrderItem → PurchaseOrder → Supplier。
+model PurchaseOrderItem {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  lineNo          Int
+
+  productId             String?
+  product               Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// 成本归集链：本采购行对应哪条生产明细（SalesOrderItem → ProductionOrderItem → 本表）。
+  /// 一个生产明细可产生多条采购明细（多供应商 / 多批次），故本 FK **非 unique**。
+  productionOrderItemId String?
+  productionOrderItem   ProductionOrderItem? @relation(fields: [productionOrderItemId], references: [id], onDelete: SetNull)
+
+  /// 无产品主数据时（原辅料）直接记录名称
+  itemName String
+  spec     String?
+
+  quantity  Decimal  @db.Decimal(18, 4)
+  unit      String   @default("PCS")
+  unitPrice Decimal  @db.Decimal(18, 6)
+  amount    Decimal  @db.Decimal(18, 4)
+  currency  Currency @default(CNY)
+
+  arrivedQty Decimal            @default(0) @db.Decimal(18, 4)
+  status     PurchaseItemStatus @default(PENDING)
+
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([purchaseOrderId, lineNo])
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@index([productionOrderItemId])
+}

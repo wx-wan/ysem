@@ -1,0 +1,164 @@
+// ============================================================
+// 01-system.prisma — 系统基础层：用户 / 角色 / 权限 / 部门 / 日志 / 通知
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 用户表 ==========
+model User {
+  id           String      @id @default(uuid())
+  username     String      @unique
+  password     String
+  realName     String
+  email        String?     @unique
+  phone        String?
+  avatar       String?
+  status       String      @default("ACTIVE") // ACTIVE / DISABLED / LOCKED
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  roleId       String?
+  role         Role?       @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  lastLoginAt DateTime?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // 软删除白名单（Q9）：仅 User / Supplier / Product / Customer
+
+  loginLogs     LoginLog[]
+  notifications Notification[]
+  refreshTokens String[]       @default([])
+
+  // ---- 业务归属（全部 onDelete: SetNull —— 人员离职不销毁业务数据）----
+  // 主数据层归属已按 01 §2.1 归一：ownedCustomers / ownedProducts / ownedCombos / visibleProducts。
+  // 旧版 creator 型自关联（createdProducts / createdCombos）按 01 §2.1 删除：createdBy 仅存 userId，不再建 relation。
+  ownedCustomers  Customer[]           @relation("CustomerOwner")
+  ownedProducts   Product[]            @relation("ProductOwner")
+  ownedCombos     ComboProduct[]       @relation("ComboOwner")
+  visibleProducts ProductVisibleUser[]
+
+  // ---- 销售 / 履约归属（Batch 3 归一；01 §2.1）----
+  // 关系名两端一致，全部 onDelete: SetNull —— 人员离职不销毁业务数据。
+  ownedLeads         Lead[]            @relation("LeadOwner")
+  ownedOpportunities Opportunity[]     @relation("OpportunityOwner")
+  ownedSalesOrders   SalesOrder[]      @relation("SalesOrderOwner")
+  ownedProductions   ProductionOrder[] @relation("ProductionOwner")
+
+  @@index([status])
+  @@index([departmentId])
+}
+
+// ========== 通知表 ==========
+// 通用通知中心：权限变更、审批、系统公告等均复用。在线用户经 SSE 实时推送，
+// 离线用户落库，下次连接时由 /api/auth/events 拉取未读。多实例部署时只需把
+// 推送环节改为 Redis pub/sub，写库与读取接口保持不变。
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String // 接收人
+  recipient User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // PERM_CHANGED / APPROVAL / ANNOUNCE ...
+  title     String
+  body      String?
+  payload   Json? // 业务附加数据，如 { roleId } 供前端决定动作
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, read])
+}
+
+// ========== 角色表 ==========
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  code        String           @unique
+  description String?
+  status      Int              @default(1)
+  sort        Int              @default(0)
+  // 数据范围：ALL 全部 | DEPT 本部门 | SELF 仅本人（默认）；公海/公开数据对集团开放，不占用档位
+  dataScope   String           @default("SELF")
+  users       User[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+// ========== 权限表 ==========
+model Permission {
+  id        String           @id @default(uuid())
+  name      String           @unique
+  code      String           @unique
+  type      String           @default("BUTTON")
+  parentId  String?
+  parent    Permission?      @relation("PermissionTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Permission[]     @relation("PermissionTree")
+  roles     RolePermission[]
+  sort      Int              @default(0)
+  path      String?
+  icon      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+// ========== 角色-权限关联表 ==========
+model RolePermission {
+  id           String     @id @default(uuid())
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ========== 部门表 ==========
+model Department {
+  id        String       @id @default(uuid())
+  name      String
+  code      String       @unique
+  parentId  String?
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Department[] @relation("DeptTree")
+  leaderId  String? // 旧版为 String leader 存姓名，改为 userId（RENAME COLUMN，见 05 §13.6）
+  phone     String?
+  email     String?
+  sort      Int          @default(0)
+  status    Int          @default(1)
+  users     User[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+// ========== 登录日志表 ==========
+model LoginLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ip        String?
+  userAgent String?
+  loginAt   DateTime @default(now())
+  success   Boolean  @default(true)
+  message   String?
+
+  @@index([userId, loginAt])
+}
+
+// ========== 操作日志表 ==========
+model OperationLog {
+  id           String   @id @default(uuid())
+  userId       String? // 无外键：日志须在用户被删除后存活（审计要求）
+  username     String
+  realName     String? // 操作人姓名（昵称）
+  action       String // CREATE / UPDATE / DELETE / APPROVE / EXPORT ...
+  module       String // sales / fulfillment / masterdata / system
+  /// 业务对象类型与主键，替代旧版裸字符串 target/targetId
+  businessType String?
+  businessId   String?
+  businessNo   String? // 冗余单据号，便于人眼检索
+  summary      String? // 人类可读摘要（如「创建了产品」）
+  diff         String? // 结构化变更 JSON：[{field,label,beforeText,afterText}]
+  ip           String?
+  createdAt    DateTime @default(now())
+
+  @@index([businessType, businessId])
+  @@index([module, createdAt])
+  @@index([userId, createdAt])
+}

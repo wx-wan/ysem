@@ -1,0 +1,81 @@
+// ============================================================
+// 11-shipment.prisma — 出货领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 出货单（04 §6 · Order(type=SHIPPED) 拆分产出）==========
+model Shipment {
+  id         String @id @default(cuid())
+  shipmentNo String @unique // SH-yyyyMMdd-0001
+
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  customerId   String
+  customer     Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  status ShipmentStatus @default(DRAFT)
+
+  // ---------- 时间节点 ----------
+  shipmentDate DateTime?
+  etd          DateTime?
+  eta          DateTime?
+  atd          DateTime?
+  ata          DateTime?
+
+  // ---------- 物流信息 ----------
+  incoterm        String?
+  portOfLoading   String?
+  portOfDischarge String?
+  carrier         String?
+  vessel          String?
+  billOfLadingNo  String?
+  trackingNo      String?
+  shippingMethod  String?
+
+  // ---------- 装载（物理量，允许 Float）----------
+  packageCount Int?
+  grossWeight  Float?
+  netWeight    Float?
+  volume       Float?
+
+  // ---------- 运费（ADR-20：Profit.freightCostCny 的唯一数据源）----------
+  freightAmount    Decimal?  @db.Decimal(18, 4)
+  freightCurrency  Currency?
+  freightAmountCny Decimal?  @db.Decimal(18, 4)
+
+  customsDeclarationNo String?
+  notes                String?
+
+  items       ShipmentItem[]
+  /// 反向关系：挂在 Shipment 上的 QC 只持有 shipmentId（与 productionOrderId 二选一，见 §5.1）
+  inspections QualityInspection[]
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([salesOrderId])
+  @@index([status])
+  @@index([shipmentDate])
+}
+
+model ShipmentItem {
+  id               String         @id @default(cuid())
+  shipmentId       String
+  shipment         Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  salesOrderItemId String
+  salesOrderItem   SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Restrict)
+
+  productName  String
+  spec         String?
+  quantity     Decimal @db.Decimal(18, 4)
+  packageCount Int?
+  grossWeight  Float? // 物理量
+  volume       Float? // 物理量
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shipmentId])
+  @@index([salesOrderItemId])
+}

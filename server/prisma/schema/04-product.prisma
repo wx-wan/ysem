@@ -1,0 +1,338 @@
+// ============================================================
+// 04-product.prisma — 产品主数据层：产品 / 工艺 / 定制 / 价格 / 认证 / 组合
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 客户定制产品版本（03 §7 · 产品三层之第 2 层） ==========
+/// 客户定制版本：同一标准品对不同客户的不同定制规格。
+model CustomerProduct {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  version         String   @default("V1") // 定制版本号
+  /// 定制差异（只存与标准品的差异，避免整行复制）
+  customName      String?
+  customColors    String[] @default([])
+  customPackaging String?
+  customMaterial  String?
+  customSizeL     Float?
+  customSizeW     Float?
+  customSizeH     Float?
+  customWeight    Float?
+  customFeatures  Json? // 同 Product.features 结构
+  /// 客户自己的产品编号
+  customerSku     String?
+  logoRequired    Boolean  @default(false)
+  remark          String?
+
+  /// 该定制版本的约定价格（定制价随版本走，不由 ProductPrice 承载）
+  agreedPrice    Decimal?  @db.Decimal(18, 6)
+  agreedCurrency Currency? @default(USD)
+
+  /// 首次来源：由哪张打样单/报价单确认
+  sourceType String? // SAMPLE_ORDER / QUOTATION / MANUAL
+  sourceId   String?
+
+  status    MasterStatus @default(ACTIVE)
+  createdBy String?
+  createdAt DateTime     @default(now())
+  updatedBy String?
+  updatedAt DateTime     @updatedAt
+
+  salesOrderItems SalesOrderItem[] // SalesOrderItem.customerProductId 的反向（Batch 3）
+
+  // 注意：不得声明 prices ProductPrice[]（ProductPrice 不再属于任何 CustomerProduct，见 03 §7 / Q11）
+  @@unique([customerId, productId, version])
+  @@index([productId])
+  @@index([customerId])
+}
+
+// ========== 客户级标准产品价格（03 §7 · 产品三层之第 3 层） ==========
+/// 客户级标准产品价格：**某客户**购买**某标准产品**时的专属价格。
+/// Q11 定案：customerId 必填；**彻底不含 customerProductId**（与 CustomerProduct 无外键关联）。
+/// 标准价唯一性由 Product.defaultPrice 保证；定制版本价格由 CustomerProduct.agreedPrice 承载。
+model ProductPrice {
+  id         String   @id @default(cuid())
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customerId String // 必填：本表只存「客户级标准产品价格」（NULL 会使唯一约束失效）
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  currency   Currency  @default(USD)
+  price      Decimal   @db.Decimal(18, 6)
+  unit       String    @default("PCS")
+  minQty     Int       @default(1)
+  taxRate    Decimal?  @db.Decimal(9, 4) // 百分数：13 = 13%
+  /// 价格来源：报价确认后自动生成
+  sourceType String? // QUOTATION
+  sourceId   String?
+  validFrom  DateTime?
+  validTo    DateTime?
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, customerId, minQty, currency])
+  @@index([customerId, productId])
+  @@index([validTo])
+}
+
+// ========== 工艺 ==========
+model ProductCraft {
+  id        String             @id @default(cuid())
+  name      String             @unique // 搪胶 / 注塑 / 硅胶（基础工艺，可多选组合）
+  code      String?            @unique // 编码（如 TJ / ZS / GJ），用于自动生成 SKU
+  sort      Int                @default(0)
+  status    MasterStatus       @default(ACTIVE) // 旧 status Int(1/0) → 枚举（两阶段迁移，见 05 §10.3）
+  products  ProductCraftLink[] // 显式关联表，见下方 ProductCraftLink
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+// ========== Product ↔ ProductCraft 关联表（02 §3.1 方案 A） ==========
+/// 物理表为旧库已存在的 `_ProductCraftToSingleProduct`：列 A = ProductCraft.id，列 B = Product(原 SingleProduct).id，
+/// 与 Prisma 改名后默认推导的表名 / A、B 语义**相反**，因此必须 @@map + @map 精确对齐，
+/// 否则 Prisma 会重建 join table（清空全部产品-工艺关系）。
+/// 索引改名由后续人工 migration 处理（05 §13.3），本批不生成迁移。
+model ProductCraftLink {
+  productCraftId String @map("A")
+  productId      String @map("B")
+
+  productCraft ProductCraft @relation(fields: [productCraftId], references: [id], onDelete: Cascade)
+  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@id([productCraftId, productId])
+  @@index([productId])
+  @@map("_ProductCraftToSingleProduct")
+}
+
+// ========== 二级受众 ==========
+model ProductAudience {
+  id         String            @id @default(cuid())
+  name       String            @unique // 儿童 / 宠物 / 配件 / 文具 / 家居
+  code       String?           @unique // 编码（如 ET / CW / PJ / WJ / JJ），用于自动生成 SKU
+  sort       Int               @default(0)
+  status     MasterStatus      @default(ACTIVE)
+  categories ProductCategory[] // 关联三级品类
+  products   Product[]
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+}
+
+// ========== 三级产品品类 ==========
+model ProductCategory {
+  id         String          @id @default(cuid())
+  name       String // 沐浴玩具 / 挤压玩具 / 存钱罐 ...
+  audienceId String
+  audience   ProductAudience @relation(fields: [audienceId], references: [id], onDelete: Cascade)
+  sort       Int             @default(0)
+  status     MasterStatus    @default(ACTIVE)
+  products   Product[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([audienceId, name])
+}
+
+// ========== 产品（02 §2 · 核心重构，旧 SingleProduct 改名） ==========
+/// 产品主数据 = 「标准品」（不带客户专属信息）。
+/// 客户定制版本见 CustomerProduct（03 §7），客户级标准产品价格见 ProductPrice（03 §7）。
+/// 物理表名 **`Product`**：**不使用** `@@map("SingleProduct")` 保留旧名。
+/// 本项目采用「全新 baseline」：无历史数据，baseline migration 直接 `CREATE TABLE "Product"`；
+/// 旧库原地升级才涉及 `RENAME TO`（05 §13.2 做法 A），本项目不执行。
+model Product {
+  id        String  @id @default(cuid())
+  productNo String  @unique // PRD-yyyyMMdd-0001（新增，无旧字段来源，由 NumberSequence 生成）
+  name      String
+  sku       String? @unique // 内部 SKU，与 productNo 解耦
+  model     String? // 型号（OEM 必备）
+
+  // ---------- 三级分类 ----------
+  crafts     ProductCraftLink[] // 显式关联表，见 ProductCraftLink（02 §3.1）
+  audienceId String?
+  audience   ProductAudience?   @relation(fields: [audienceId], references: [id], onDelete: SetNull)
+  categoryId String?
+  category   ProductCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  // ---------- 属性（供应商标记「标准品」的固有属性）----------
+  material    String? // 材质：PVC / ABS / 硅胶 / 搪胶 ...（新增，无旧字段来源）
+  sizeL       Float? // 长 cm（物理量，允许 Float）
+  sizeW       Float? // 宽 cm
+  sizeH       Float? // 高 cm
+  weight      Float? // 克重 g
+  colors      String[] @default([]) // 颜色（潘通色号），旧逗号串 → PG 原生数组
+  packaging   String? // 包装：卡/盒/袋/桶（保留旧 SingleProduct.packaging）
+  /// 功能特性集合（替代旧版 logo/sound/glow/colorChange/sprayWater 5 个 Boolean）。
+  /// 结构约定：{ "logo": bool, "sound": bool, "glow": bool, "colorChange": bool, "sprayWater": bool }
+  /// PostgreSQL 不支持 Prisma composite type，故用 Json? + 应用层 Zod 校验。
+  features    Json?
+  description String?
+
+  // ---------- 供货与定制 ----------
+  supplyModes     SupplyMode[] @default([]) // 旧逗号串 → 枚举数组
+  moq             Int? // 最小起订量（新增，无旧字段来源）
+  leadTime        Int? // 标准交期（天）（新增，无旧字段来源）
+  hsCode          String? // 海关编码（出口必备）（新增，无旧字段来源）
+  /// 标准价（唯一标准价来源；客户级标准产品价格见 ProductPrice）
+  defaultPrice    Decimal?     @db.Decimal(18, 6)
+  defaultCurrency Currency     @default(USD) // 旧 currency String（默认 CNY）→ 枚举（默认 USD）
+  defaultTaxRate  Decimal?     @default(13) @db.Decimal(9, 4) // 百分数：13 = 13%
+
+  // ---------- 库存（V1 保留冗余字段：不引入独立库存域）----------
+  stock         Int? @default(0)
+  lowStockAlert Int? @default(0)
+
+  // ---------- 可见性与归属 ----------
+  visibility   ProductVisibility    @default(PUBLIC)
+  visibleUsers ProductVisibleUser[]
+  ownerId      String?
+  owner        User?                @relation("ProductOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // ---------- 关联 ----------
+  coverImage       String? // 主图冗余（列表页免 join；旧 images JSON → Attachment(ownerType=PRODUCT) + coverImage）
+  certifications   ProductCertification[] // 替代旧 certificationIds 逗号串
+  tasks            ProductTask[] // 替代旧 sampleNo + progress(JSON)
+  combos           ComboItem[] // 作为标准品被哪些组合引用（旧 groupItems）
+  customerProducts CustomerProduct[]
+  prices           ProductPrice[]
+
+  // ---- 销售 / 履约反向关系（Batch 3 落地，02 §2.1）----
+  leadItems          LeadItem[]
+  opportunityItems   OpportunityItem[]
+  quotationItems     QuotationItem[]
+  sampleOrders       SampleOrder[]
+  salesOrderItems    SalesOrderItem[]
+  purchaseOrderItems PurchaseOrderItem[] // PurchaseOrderItem.productId 的反向（Batch 4）
+
+  // ---- 保留字段（02 §2.2：source / remark 保留）----
+  source String  @default("MANUAL")
+  remark String?
+
+  status    MasterStatus @default(ACTIVE) // 重新引入的列（旧库曾在历史迁移中删除）
+  createdBy String?
+  createdAt DateTime     @default(now())
+  updatedBy String?
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime? // 软删除白名单（Q9）
+
+  @@index([categoryId])
+  @@index([audienceId])
+  @@index([ownerId])
+  @@index([status])
+  @@index([name])
+}
+
+// 产品可见人关联：visibility=PRIVATE 时，仅 listed 用户可见该产品
+model ProductVisibleUser {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([productId, userId])
+  @@index([userId])
+}
+
+// ========== 证书管理 ==========
+/// 认证字典（02 §4，沿用旧 Certificate）。
+model Certificate {
+  id         String                 @id @default(cuid())
+  name       String // 证书名称，如 CE 认证 / EN71 / ASTM F963
+  code       String?                @unique // 证书编号 / 标准代号，如 CE / FCC / EN71
+  issuer     String? // 发证机构
+  category   String? // 分类，如 安全 / 电磁兼容 / 环保
+  validUntil DateTime? // 字典级默认有效期
+  status     MasterStatus           @default(ACTIVE) // 旧 status Int(1/0) → 枚举
+  logo       String? // 证书 Logo 图片 URL
+  remark     String?
+  products   ProductCertification[]
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+}
+
+// ========== 产品-认证关联（02 §4） ==========
+/// 替代旧 Product.certificationIds 逗号串：可表达「本产品的证书编号 / 有效期」，支持过期预警。
+model ProductCertification {
+  id            String      @id @default(cuid())
+  productId     String
+  product       Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  certificateId String
+  certificate   Certificate @relation(fields: [certificateId], references: [id], onDelete: Restrict)
+  /// 本产品持有的证书编号与有效期（可与字典默认值不同）
+  certNo        String?
+  issuedAt      DateTime?
+  validUntil    DateTime?
+  /// 证书文件 → Attachment(ownerType=CERTIFICATE)
+  remark        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([productId, certificateId])
+  @@index([certificateId])
+  @@index([validUntil])
+}
+
+// ========== 产品任务 / 进度（02 §5） ==========
+/// 替代旧 Product.progress(JSON) 与 Product.sampleNo。
+model ProductTask {
+  id        String            @id @default(cuid())
+  productId String
+  product   Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type      ProductTaskType
+  title     String
+  status    ProductTaskStatus @default(PENDING)
+  /// 关联的业务单据（打样单 / 报价单），把任务串回主链（软关联，不建外键）
+  refType   String? // SAMPLE_ORDER / QUOTATION
+  refId     String?
+  refNo     String?
+  ownerId   String?
+  dueDate   DateTime?
+  sort      Int               @default(0)
+  remark    String?
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([productId, status])
+  @@index([refType, refId])
+}
+
+// ============ 组合（02 §6，由多个标准品构成，用于批量报价 / 打样 / 集合管理）============
+model ComboProduct {
+  id          String       @id @default(cuid())
+  comboNo     String       @unique // CMB-yyyyMMdd-0001（新增，旧版无编号）
+  name        String // 组合名称
+  sku         String?      @unique
+  description String? // 备注
+  ownerId     String? // 旧版为必填 String（无外键），改为可空 + 真外键
+  owner       User?        @relation("ComboOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  status      MasterStatus @default(ACTIVE) // 停用即「删除」语义（Q9：此处不设 deletedAt）
+  remark      String?
+  items       ComboItem[] // 组合明细
+  createdBy   String? // 创建人 id（与 owner 分离）
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([ownerId])
+}
+
+// 组合明细：一个组合包含多个标准品，每行含数量/单价
+model ComboItem {
+  id        String       @id @default(cuid())
+  comboId   String       @map("groupId") // 旧列名 groupId，用 @map 保留物理列名（05 §13.4）
+  combo     ComboProduct @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  productId String? // 关联已有标准品；行内快速新建时为空，新建后回填
+  product   Product?     @relation(fields: [productId], references: [id], onDelete: Restrict) // 删产品不连带删组合行
+  quantity  Int          @default(1)
+  price     Decimal?     @db.Decimal(18, 6) // 组合内单价（可空，空则取 Product.defaultPrice）
+  sort      Int          @default(0)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([comboId, productId])
+  @@index([productId])
+}

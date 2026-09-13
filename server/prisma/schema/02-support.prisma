@@ -1,0 +1,96 @@
+// ============================================================
+// 02-support.prisma — 公共支撑层：附件 / 审批 / 编号 / 汇率
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 审批配置表 ==========
+// 用于「设置 → 审批管理」中配置各单据类型的审批人
+model ApprovalConfig {
+  id            String          @id @default(uuid())
+  bizType       ApprovalBizType @unique // 旧字段名 type → bizType（RENAME COLUMN，见 05 §10.1）
+  approverIds   String // 审批人用户 ID 数组 JSON（兼容旧格式）
+  approverNames String? // 审批人姓名冗余 JSON
+  /// 多级审批预留，JSON: [{level, approverIds:[], mode:"ANY"|"ALL"}]
+  flow          Json?
+  enabled       Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+// ========== 审批流水表 ==========
+// 一次提交产生一条，记录每一步处置。
+// 采用 bizType + businessId 多态旁挂：宿主模型（Quotation / SalesOrder / ...）上
+// 不得声明 approvalRecords 反向 relation（否则形成无约束多态 FK）。
+model ApprovalRecord {
+  id          String          @id @default(uuid())
+  bizType     ApprovalBizType
+  businessId  String
+  businessNo  String?
+  level       Int             @default(1)
+  status      ApprovalStatus  @default(PENDING)
+  submittedBy String?
+  submittedAt DateTime        @default(now())
+  approverId  String?
+  approvedAt  DateTime?
+  comment     String?
+
+  @@index([bizType, businessId])
+  @@index([approverId, status])
+}
+
+// ========== 统一编号生成器 ==========
+// 业务表只存结果编号，禁止在 controller 内拼接。
+// 例：{ prefix: "SO", datePattern: "yyyyMMdd", padding: 4 } → SO-20260913-0001
+model NumberSequence {
+  id            String   @id @default(uuid())
+  code          String   @unique // LEAD / OPP / QUO / SMP / SO / PO / PR / SHP / INS / PAY / PRF / CUS / PRD / SUP / CMB
+  name          String
+  prefix        String
+  datePattern   String   @default("yyyyMMdd") // yyyyMMdd / yyyyMM / ""
+  padding       Int      @default(4)
+  /// 当前周期标识，如 "20260913"；周期变化时归零
+  currentPeriod String   @default("")
+  currentValue  Int      @default(0)
+  /// 乐观锁辅助字段（行锁为主，version 用于审计与排障）
+  version       Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
+
+// ========== 统一附件表 ==========
+// 多态旁挂（ownerType + ownerId）；不声明任何反向 relation，删除 = 物理删除 + 定时孤儿清理。
+model Attachment {
+  id         String              @id @default(cuid())
+  ownerType  AttachmentOwnerType
+  ownerId    String
+  /// 分类：IMAGE / DRAWING(设计稿) / VOUCHER(付款凭证) / CONTRACT / INSPECTION_REPORT / OTHER
+  category   String              @default("OTHER")
+  fileName   String
+  filePath   String
+  fileSize   Int?
+  mimeType   String?
+  sort       Int                 @default(0)
+  uploadedBy String?
+  createdAt  DateTime            @default(now())
+
+  @@index([ownerType, ownerId])
+  @@index([category])
+}
+
+// ========== 产品操作记录（ProductActivity）已删除（02 §10） ==========
+// 多态可空双外键（productId / comboId）属反模式；拆分后由 OperationLog + ProductTask 覆盖，
+// 组合操作写入 OperationLog。本批不生成 DROP 迁移（后续人工 migration 处理）。
+
+// ========== 销售活动日志 SalesActivity 已删除（Batch 3）==========
+// 替代者：OpportunityActivity（05 §13.6 SalesActivity → OpportunityActivity 表改名）。
+
+// ========== 每日汇率表 ==========
+model DailyExchangeRate {
+  id           String   @id @default(uuid())
+  /// 汇率生效日期：仅日期、不含时间（Prisma DateTime @db.Date ↔ PG DATE）
+  date         DateTime @db.Date
+  currencyCode Currency // USD / EUR / GBP / JPY / ...（引用公共层 Currency 枚举）
+  /// 语义：1 单位目标币种 = rateToCny CNY（USD → 7.2 表示 1 USD = 7.2 CNY）
+  rateToCny    Decimal  @db.Decimal(18, 8)
+  createdAt    DateTime @default(now())
+
+  @@unique([date, currencyCode], name: "daily_rate_unique")
+}

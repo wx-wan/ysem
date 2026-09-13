@@ -1,0 +1,101 @@
+// ============================================================
+// 13-finance.prisma — 财务：收付款 / 利润
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 收付款（04 §8 · 替代旧 PaymentRecord）==========
+/// 宿主规则（Q14 / 第三批定案）：业务宿主只有 SalesOrder 或 PurchaseOrder，**exact-one 二选一**。
+/// DB CHECK 约束（手写 SQL，Prisma 无法表达）：
+///   (salesOrderId IS NOT NULL AND purchaseOrderId IS NULL)
+///   OR (salesOrderId IS NULL AND purchaseOrderId IS NOT NULL)
+/// 方向与宿主的对应（direction=IN → salesOrderId；OUT → purchaseOrderId）为应用层校验。
+/// onDelete: Restrict —— exact-one CHECK 与 SetNull 不兼容（04 §8.2 / §12#15）。
+model Payment {
+  id        String @id @default(cuid())
+  paymentNo String @unique // PY-yyyyMMdd-0001
+
+  direction PaymentDirection
+  type      PaymentType      @default(OTHER)
+
+  // ---------- 宿主（exact-one 二选一）----------
+  salesOrderId    String?
+  salesOrder      SalesOrder?    @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+
+  // ---------- 辅助业务主体（**不承担主宿主关系**，一致性走应用层校验）----------
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  // ---------- 金额（三件套，全部 Decimal）----------
+  currency     Currency @default(USD)
+  exchangeRate Decimal? @db.Decimal(18, 8)
+  amount       Decimal  @db.Decimal(18, 4)
+  amountCny    Decimal? @db.Decimal(18, 4)
+  /// 收/付款比例（相对订单总额，百分数语义）
+  ratio        Decimal? @db.Decimal(9, 4)
+
+  payDate       DateTime?
+  method        String? // T/T / L/C / 支付宝 / 现金
+  bankAccount   String?
+  voucherRemark String? // 凭证 → Attachment(ownerType=PAYMENT, ownerId=本表 id)
+
+  status      PaymentStatus @default(PENDING)
+  confirmedAt DateTime?
+  confirmedBy String?
+
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([salesOrderId])
+  @@index([purchaseOrderId])
+  @@index([customerId])
+  @@index([direction, status])
+  @@index([payDate])
+}
+
+// ========== 利润单（04 §9 · 替代旧 ProfitRecord，Batch 4 落地）==========
+// Order 五路拆分后旧 ProfitRecord(orderId→Order) 失去宿主；新 Profit 依赖
+// PurchaseOrder / PurchaseOrderItem 成本归集链 + Shipment 运费（ADR-20）。
+model Profit {
+  id       String @id @default(cuid())
+  profitNo String @unique // PF-yyyyMMdd-0001
+
+  salesOrderId String     @unique
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+  // 注意：不持有 customerId —— 可由 salesOrder.customerId 派生，避免冗余不一致。
+
+  // ---------- 收入（原币 + 本位币）----------
+  revenue      Decimal  @db.Decimal(18, 4)
+  revenueCny   Decimal  @db.Decimal(18, 4)
+  currency     Currency @default(USD)
+  exchangeRate Decimal? @db.Decimal(18, 8)
+
+  // ---------- 成本（本位币，来源可追溯）----------
+  materialCostCny  Decimal @default(0) @db.Decimal(18, 4) // 原辅料 ← PurchaseOrder(purchaseType=MATERIAL)
+  outsourceCostCny Decimal @default(0) @db.Decimal(18, 4) // 外发加工 ← PurchaseOrder(purchaseType=OUTSOURCE)
+  packagingCostCny Decimal @default(0) @db.Decimal(18, 4) // 包材 ← PurchaseOrder(purchaseType=PACKAGING)
+  laborCostCny     Decimal @default(0) @db.Decimal(18, 4) // 内部人工（手工录入）
+  freightCostCny   Decimal @default(0) @db.Decimal(18, 4) // 运费 ← Σ Shipment.freightAmountCny（ADR-20）
+  otherCostCny     Decimal @default(0) @db.Decimal(18, 4) // 其他（手工录入）
+  totalCostCny     Decimal @default(0) @db.Decimal(18, 4) // 汇总
+
+  // ---------- 结果 ----------
+  profitCny Decimal @default(0) @db.Decimal(18, 4) // = revenueCny - totalCostCny
+  margin    Decimal @default(0) @db.Decimal(9, 4) // 利润率 %（百分数语义）
+
+  status       ProfitStatus @default(DRAFT)
+  /// 成本来源快照（记录各成本项的计算依据，便于复盘）
+  costSnapshot Json?
+  calculatedAt DateTime?
+
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}

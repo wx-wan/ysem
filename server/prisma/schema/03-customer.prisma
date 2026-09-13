@@ -1,0 +1,241 @@
+// ============================================================
+// 03-customer.prisma — 客户与供应商领域：线索 / 客户 / 渠道 / 供应商
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 客户表（03 §2 · 客户主数据） ==========
+// 剥离旧版销售属性：estimatedAmount 移出至 Opportunity（Batch 3）；images → coverImage + Attachment；
+// customerLevel / intentLevel / source 枚举化；tags 数组化；firstOrderDate 类型化。
+model Customer {
+  id         String @id @default(cuid())
+  customerNo String @unique // 旧列 customerCode → customerNo（RENAME COLUMN，见 05 §13.6）；CUS-yyyyMMdd-0001
+
+  // ---- 基本信息 ----
+  companyName String
+  englishName String?
+  contactName String?
+  position    String?
+  email       String?
+  phone       String?
+  wechat      String?
+  country     String?
+  region      String?
+
+  // ---- 分类与标记 ----
+  customerLevel CustomerLevel @default(NORMAL)
+  customerType  String? // 存 CustomerType.name（有意不建外键，见 02 §9）
+  source        LeadSource?
+  tags          String[]      @default([]) // 旧版为逗号分隔字符串 → PG 原生数组
+  isKeyAccount  Boolean       @default(false)
+  intentLevel   IntentLevel?
+  notes         String?
+
+  // ---- 归属（null = 公海）----
+  ownerId String?
+  owner   User?   @relation("CustomerOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // ---- 派生统计（由履约层回写，只读）----
+  firstOrderAt        DateTime? // 旧列 firstOrderDate(String) → DateTime
+  lastOrderAt         DateTime?
+  totalOrderAmountCny Decimal?  @default(0) @db.Decimal(18, 4)
+
+  // ---- 主图（其余图片走 Attachment(ownerType=CUSTOMER)）----
+  coverImage String?
+
+  // ---- 关联 ----
+  customerProducts CustomerProduct[]
+  prices           ProductPrice[]
+  activities       CustomerActivity[]
+
+  // ---- 销售 / 履约反向关系（Batch 3）----
+  // 注意：不声明 profits Profit[]（Profit 不持有 customerId，客户维度利润经 salesOrder.customerId 派生，避免冗余不一致）。
+  leads         Lead[]
+  opportunities Opportunity[]
+  quotations    Quotation[]
+  salesOrders   SalesOrder[]
+  sampleOrders  SampleOrder[] // SampleOrder.customerId 的反向（04 §2）
+  shipments     Shipment[] // Shipment.customerId 的反向（04 §6）
+  payments      Payment[] // Payment.customerId 的反向（辅助主体，非宿主，04 §8）
+
+  status    MasterStatus @default(ACTIVE)
+  createdBy String?
+  createdAt DateTime     @default(now())
+  updatedBy String?
+  updatedAt DateTime     @updatedAt
+  deletedAt DateTime? // 软删除白名单（Q9）
+
+  @@index([ownerId])
+  @@index([companyName])
+  @@index([country])
+  @@index([status])
+  @@index([customerLevel])
+}
+
+// ========== 客户活动日志 ==========
+model CustomerActivity {
+  id         String   @id @default(uuid())
+  customerId String
+  action     String // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
+  detail     String?
+  summary    String?
+  diff       String?
+  realName   String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+// ========== 供应商（02 §7 · 主数据扩展） ==========
+model Supplier {
+  id         String   @id @default(cuid())
+  supplierNo String   @unique // SUP-yyyyMMdd-0001（新增，无旧字段来源）
+  name       String // 供应商名称
+  shortName  String? // 简称，用于生产单短标签
+  contact    String? // 联系人
+  phone      String? // 联系电话
+  email      String?
+  country    String?
+  address    String? // 地址
+  /// 新增：供应商能力标签（工艺 / 品类），用于采购选源
+  crafts     String[] @default([]) // 存 ProductCraft.name
+  categories String[] @default([]) // 存 ProductCategory.name
+
+  paymentTerms String? // 账期
+  rating       Int? // 1-5 星
+  status       MasterStatus @default(ACTIVE)
+  ownerId      String?
+  remark       String?
+  createdBy    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  deletedAt    DateTime? // 软删除白名单（Q9）
+
+  purchaseOrders       PurchaseOrder[]
+  productionOrderItems ProductionOrderItem[] // ProductionOrderItem.supplierId 的反向（Batch 3）
+
+  @@index([status])
+  @@index([name])
+}
+
+// ========== 线索产品明细（03 §3.1 · 旧 LeadProduct 改名 LeadItem）==========
+// 05 §13.6：LeadProduct → LeadItem（RENAME TABLE）；列语义修正（旧 leadId 值实际指向 SalesPipeline → 重映射到真正 Lead，05 §3.5）。
+model LeadItem {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// 未建档产品时直接记录名称（待确认建档）
+  productName String?
+  quantity    Int      @default(1) // 意向数量，保留 Int（04 §12#7）
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([leadId])
+  @@index([productId])
+}
+
+// ============ 打样申请 / 报价单（Batch 3 已从旧通用 Order 拆出：SampleOrder / Quotation）============
+
+// ============ 获客渠道 / 平台（自关联树） ============
+// category 区分线上渠道(ONLINE)与线下渠道(OFFLINE)
+// 树形：父节点为渠道（如 国际站 / 1688 / 线下渠道），子节点为平台（如 寿春平台 / 微它平台 / 景元平台）
+model Channel {
+  id        String       @id @default(cuid())
+  name      String // 渠道名或平台名
+  category  String       @default("ONLINE") // ONLINE | OFFLINE
+  parentId  String? // 渠道下的平台才有父级
+  parent    Channel?     @relation("ChannelTree", fields: [parentId], references: [id], onDelete: SetNull) // 删父渠道不连带删子平台
+  children  Channel[]    @relation("ChannelTree")
+  contact   String? // 平台联系人 / 负责人
+  status    MasterStatus @default(ACTIVE) // 旧 status String("ENABLED") → 枚举
+  sort      Int          @default(0)
+  remark    String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  leads     Lead[] @relation("LeadChannel")
+  leadShops Lead[] @relation("LeadShop")
+
+  @@unique([parentId, name]) // 同名平台不得重复创建
+  @@index([category])
+}
+
+// ============ 客户类型（全局配置，用于线索/客户） ============
+model CustomerType {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String? // 类型说明
+  isActive    Boolean  @default(true)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sort])
+  @@index([isActive])
+}
+
+// ============ 线索（03 §3.1 · 重构）============
+model Lead {
+  id       String @id @default(cuid())
+  leadNo   String @unique // XS-yyyyMM-0001（旧 leadNumber → RENAME COLUMN + 补号去重，05 §5）
+  leadName String // 线索名称（国家+产品+数量）
+
+  // ---------- 来源 ----------
+  source    LeadSource @default(MANUAL)
+  channelId String? // 来源渠道
+  channel   Channel?   @relation("LeadChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  shopId    String? // 来源平台
+  shop      Channel?   @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
+
+  // ---------- 客户信息（建档前直填）----------
+  customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  companyName   String?
+  contactName   String?
+  contactMethod String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp
+  email         String?
+  phone         String?
+  country       String?
+  customerType  String?
+
+  // ---------- 需求（结构化，替代旧版 10 个平铺扩展字段中的同类项）----------
+  productInterest String?
+  quantity        Int     @default(1) // 采购数量
+  targetPrice     String?
+  certRequire     String?
+  packageReq      String?
+  deliveryReq     String?
+  targetMarket    String?
+  specialReq      String?
+  remark          String?
+
+  // ---------- 状态机 ----------
+  status LeadStatus @default(NEW)
+
+  // ---------- 转化（转商机后回填）----------
+  convertedAt   DateTime?
+  /// 反向关系：真实外键在 Opportunity 一侧（Opportunity.leadId，**非 unique**）。
+  /// 基数 **Lead 1:N Opportunity**；此处**不得**再声明 opportunityId 冗余列（双向真实 FK 会产生循环外键与双写不一致）。
+  opportunities Opportunity[] @relation("OpportunityLead")
+
+  // ---------- 归属（null = 公海）----------
+  ownerId String?
+  owner   User?   @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  items      LeadItem[]
+  activities OpportunityActivity[] // 线索期的跟进记录（复用销售活动表）
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerId])
+  @@index([customerId])
+  @@index([channelId])
+  @@index([source])
+  @@index([createdAt])
+}

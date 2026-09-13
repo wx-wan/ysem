@@ -1,0 +1,305 @@
+// ============================================================
+// 00-enums.prisma — 公共枚举（01 §1）
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ============================================================
+// 公共枚举（01 · 公共支撑层）
+// 说明：本区块为 V1.0 Schema 第一批（公共基础层）实施内容。
+// ============================================================
+
+/// 币种（本位币固定 CNY）。Q12 定案：13 个值，全系统唯一来源，02/03/04 引用本定义。
+enum Currency {
+  CNY // 中国人民币（本位币）
+  USD // 美元
+  EUR // 欧元
+  GBP // 英镑
+  JPY // 日元
+  HKD // 港币
+  AUD // 澳元
+  CAD // 加元
+  KRW // 韩元
+  RUB // 俄罗斯卢布
+  SEK // 瑞典克朗
+  NOK // 挪威克朗
+  DKK // 丹麦克朗
+}
+
+/// 附件宿主类型：收敛多态取值范围（禁止裸字符串）。
+/// 含「单据级」与「明细级」两类宿主；明细级用于给单据行挂图片/图纸。
+enum AttachmentOwnerType {
+  LEAD
+  LEAD_ITEM
+  CUSTOMER
+  OPPORTUNITY
+  OPPORTUNITY_ITEM
+  QUOTATION
+  QUOTATION_ITEM
+  SAMPLE_ORDER
+  SALES_ORDER
+  SALES_ORDER_ITEM
+  PRODUCTION_ORDER
+  QUALITY_INSPECTION
+  SHIPMENT
+  PURCHASE_ORDER
+  PAYMENT
+  PRODUCT
+  COMBO_PRODUCT
+  SUPPLIER
+  CERTIFICATE
+}
+
+/// 审批业务类型（替代旧 ApprovalConfig.type 的裸字符串）。
+enum ApprovalBizType {
+  QUOTATION
+  SAMPLE_ORDER
+  SALES_ORDER
+  PRODUCTION_ORDER
+  SHIPMENT
+  PURCHASE_ORDER
+  PAYMENT
+  PROFIT
+}
+
+/// 审批单据状态。
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+// ============================================================
+// 主数据 / 客户枚举（02 · 主数据层 + 03 · 客户主数据）
+// 说明：本区块为 V1.0 Schema 第二批（主数据层）实施内容。
+// ============================================================
+
+/// 主数据状态（替代各表散落的 Int status = 1/0）。
+/// 迁移为 String/Int → enum 两阶段，见 05 §10.3。
+enum MasterStatus {
+  ACTIVE // 启用
+  INACTIVE // 停用
+}
+
+/// 供货定制模式（替代 SingleProduct.supplyModes 逗号串）。
+enum SupplyMode {
+  DEEP_CUSTOM // 深度定制（开模）
+  LIGHT_CUSTOM // 轻度定制（改色/贴标）
+  STOCK // 现货
+}
+
+/// 产品可见性（替代 SingleProduct.visibility 裸字符串）。
+enum ProductVisibility {
+  PUBLIC // 全员可见
+  PRIVATE // 仅 ProductVisibleUser 中列出的用户可见
+}
+
+/// 产品任务类型（替代 SingleProduct.progress JSON）。
+enum ProductTaskType {
+  SAMPLE // 打样
+  QUOTATION // 报价准备
+  DESIGN // 设计
+  MOLD // 开模
+  CERTIFICATION // 认证
+  OTHER
+}
+
+/// 产品任务状态。
+enum ProductTaskStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  BLOCKED
+  CANCELLED
+}
+
+/// 线索来源（03 §1）。旧 Customer.source 的 XIAOMAN 无对应值，迁移归入 SYNC（见 05 §2.1）。
+enum LeadSource {
+  MANUAL // 手工录入
+  EXCEL // Excel 导入
+  RPA // RPA 抓取
+  SYNC // 第三方同步
+}
+
+/// 客户等级（03 §1）。替代旧 Customer.customerLevel 中文文案。
+enum CustomerLevel {
+  DIAMOND // 钻石客户
+  STRATEGIC // 战略客户
+  PREMIUM // 优质客户
+  NORMAL // 普通客户
+  POTENTIAL // 潜在客户
+}
+
+/// 客户意向等级（主观，人填）—— 与 probability（客观成交概率）是两个维度。
+enum IntentLevel {
+  LOW // 低意向
+  MEDIUM // 中意向
+  HIGH // 高意向
+  READY // 准成交
+}
+
+// ============================================================
+// 销售 / 履约枚举（03 · 销售层 + 04 · 履约层）
+// 说明：本区块为 V1.0 Schema 第三批（销售层 + 履约层核心）实施内容。
+// ============================================================
+
+/// 线索状态（03 §1，销售漏斗前 3 段 + 2 个终态）。
+enum LeadStatus {
+  NEW // 新建
+  CONTACTED // 已联系
+  QUALIFIED // 已确认有效
+  CONVERTED // 已转商机（终态）
+  INVALID // 无效线索（终态）
+}
+
+/// 商机终态（03 §1 / ADR-03 / Q8 定案：显式落库）。
+/// 漏斗阶段（OPPORTUNITY / QUOTING / NEGOTIATION）**派生自下游单据，不落库**，
+/// 因此本枚举只表达终态结论，不含阶段值。禁止出现落库的 `Opportunity.stage`。
+enum OpportunityOutcome {
+  OPEN // 进行中
+  WON // 赢单
+  LOST // 输单
+}
+
+/// 报价状态（03 §6）。
+enum QuotationStatus {
+  DRAFT
+  SUBMITTED // 已提交审批
+  SENT // 已发送客户
+  ACCEPTED // 客户接受
+  REJECTED // 客户拒绝
+  EXPIRED // 已过有效期
+}
+
+/// 打样单状态（04 §1）。
+enum SampleStatus {
+  DRAFT
+  DESIGNING // 设计中
+  MOLDING // 开模中
+  SAMPLE_SENT // 已寄样
+  FEEDBACK // 客户反馈中
+  APPROVED // 客户确认（终态）
+  REJECTED // 客户否决（终态）
+  CANCELLED
+}
+
+/// 打样轮次结果（04 §1 / ADR-12）。
+enum SampleRoundResult {
+  PENDING
+  PASSED
+  FAILED
+}
+
+/// 销售订单状态（04 §3 履约主状态机 —— 由业务事实驱动，不落销售阶段）。
+enum SalesOrderStatus {
+  DRAFT
+  CONFIRMED
+  DEPOSIT_PENDING
+  DEPOSIT_PAID
+  IN_PRODUCTION
+  QC
+  READY_TO_SHIP
+  SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+/// 生产工单状态（04 §4）。
+enum ProductionStatus {
+  DRAFT
+  SCHEDULED
+  IN_PRODUCTION
+  QC_PENDING
+  QC_PASSED
+  QC_FAILED
+  COMPLETED
+  CANCELLED
+}
+
+/// 生产工单明细行状态（04 §1 / Q1：状态枚举化）。
+enum ProductionItemStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+/// 质检类型（04 §5）。
+enum InspectionType {
+  INCOMING // 来料检
+  IN_PRODUCTION // 过程检
+  FINAL // 终检（生产完成）
+  PRE_SHIPMENT // 出货前检（订单级终检走本类型 + shipmentId）
+}
+
+/// 质检结果（04 §5）。
+enum InspectionResult {
+  PENDING
+  PASSED
+  FAILED
+  CONDITIONAL // 有条件通过（需返工/降级）
+}
+
+/// 出货单状态（04 §6）。
+enum ShipmentStatus {
+  DRAFT
+  BOOKED // 已订舱
+  SHIPPED // 已发运
+  ARRIVED // 已到港
+  COMPLETED
+  CANCELLED
+}
+
+/// 收付款方向（04 §8）。
+enum PaymentDirection {
+  IN // 收款（宿主 = SalesOrder）
+  OUT // 付款（宿主 = PurchaseOrder）
+}
+
+/// 收付款业务类型（04 §8）。
+enum PaymentType {
+  DEPOSIT // 定金
+  BALANCE // 尾款
+  FULL // 全款
+  OTHER
+}
+
+/// 收付款状态（04 §8：「已到账」与「已对账确认」是两步）。
+enum PaymentStatus {
+  PENDING
+  RECEIVED
+  CONFIRMED
+  FAILED
+}
+
+// ============================================================
+// 采购 / 财务枚举（04 · 履约层 §1 / §7 / §9）
+// 说明：本区块为 V1.0 Schema 第四批（采购 + 财务 + 履约补全）实施内容。
+// ============================================================
+
+/// 采购单状态（04 §7）：DRAFT → ORDERED → PARTIAL → ARRIVED，可 CANCELLED。
+enum PurchaseStatus {
+  DRAFT
+  ORDERED // 已下单
+  PARTIAL // 部分到货
+  ARRIVED // 已到货
+  CANCELLED
+}
+
+/// 采购明细行状态（04 §7 / Q1 状态枚举化）。
+enum PurchaseItemStatus {
+  PENDING
+  PARTIAL
+  ARRIVED
+}
+
+/// 采购类型（成本归集维度，04 §9.1）：决定计入 Profit 的哪个成本科目。
+enum PurchaseType {
+  MATERIAL // 原辅料
+  OUTSOURCE // 外发加工
+  PACKAGING // 包材
+}
+
+/// 利润单状态（04 §9）。
+enum ProfitStatus {
+  DRAFT
+  CONFIRMED
+}

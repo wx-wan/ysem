@@ -1,0 +1,15 @@
+// ============================================================
+// schema.prisma — Prisma Schema 入口 / 配置（generator + datasource）
+// Batch 5 物理拆分：唯一新增项为 previewFeatures = ["prismaSchemaFolder"]，
+// 这是 Prisma 5.22 启用多文件 Schema 的必需开关；provider / url 均保持不变。
+// ============================================================
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

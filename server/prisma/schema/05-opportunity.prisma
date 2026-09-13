@@ -1,0 +1,98 @@
+// ============================================================
+// 05-opportunity.prisma — 商机领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 商机（03 §4 · 旧 SalesPipeline 拆分产出）==========
+/// 商机：销售漏斗中段载体，仅承载「销售」语义，不复用订单/打样字段。
+/// `stage` 为派生字段（不落库，由 pipelineStage.ts 计算）；`outcome` 为落库终态（ADR-03 / Q8）。
+model Opportunity {
+  id            String @id @default(cuid())
+  opportunityNo String @unique // BO-yyyyMMdd-0001（旧 pipelineNumber → RENAME COLUMN）
+
+  title      String
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// 真实外键在本侧（全系统唯一一条 Lead ↔ Opportunity 外键，05 §3.3 FK 搬迁目标）。
+  /// 基数 **Lead 1:N Opportunity**（一个线索可产生多个商机），故**不得**加 @unique。
+  leadId     String?
+  lead       Lead?    @relation("OpportunityLead", fields: [leadId], references: [id], onDelete: SetNull)
+
+  // ---------- 终态（唯一落库的结论字段）----------
+  outcome    OpportunityOutcome @default(OPEN)
+  outcomeAt  DateTime?
+  wonAt      DateTime?
+  lostReason String?
+
+  // ---------- 商务信息 ----------
+  estimatedAmount    Decimal?     @db.Decimal(18, 4)
+  currency           Currency     @default(USD)
+  exchangeRate       Decimal?     @db.Decimal(18, 8) // 快照：1 原币 = x CNY
+  estimatedCloseDate DateTime?
+  /// 客户意向等级（主观；旧 probability 中文文案 → RENAME COLUMN + 值映射）
+  intentLevel        IntentLevel?
+  /// 成交概率 0~100（百分数语义：50.00 = 50%）
+  probability        Decimal?     @db.Decimal(5, 2)
+  notes              String?
+
+  // ---------- 归属 ----------
+  ownerId String?
+  owner   User?   @relation("OpportunityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // ---------- 下游 ----------
+  items        OpportunityItem[]
+  quotations   Quotation[]
+  sampleOrders SampleOrder[]
+  salesOrders  SalesOrder[]
+  activities   OpportunityActivity[]
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([outcome])
+  @@index([customerId])
+  @@index([ownerId])
+  @@index([createdAt])
+}
+
+/// 商机涉及的产品明细（旧版完全缺失）。
+model OpportunityItem {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  productId     String?
+  product       Product?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  productName   String // 快照
+  spec          String?
+  quantity      Int         @default(1) // 意向数量，保留 Int（04 §12#7）
+  targetPrice   Decimal?    @db.Decimal(18, 6)
+  currency      Currency    @default(USD)
+  remark        String?
+  sort          Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([opportunityId])
+  @@index([productId])
+}
+
+/// 销售活动记录（替代 SalesActivity；05 §13.6 表改名）。
+/// `fromStage` / `toStage` **保留**（不删除）：仅在 `action = STAGE_CHANGE` 时写入；
+/// 废弃的是旧系统「无条件填充这两个字段」的逻辑，字段本身保留用于阶段流转审计。
+model OpportunityActivity {
+  id            String       @id @default(cuid())
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  leadId        String? // 线索期跟进记录挂此处
+  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  action        String // CREATED / STAGE_CHANGE / NOTE_ADDED / QUOTATION_SENT / WON / LOST
+  fromStage     String? // 仅 STAGE_CHANGE 时有值
+  toStage       String?
+  comment       String?
+  createdBy     String
+  createdAt     DateTime     @default(now())
+
+  @@index([opportunityId])
+  @@index([leadId])
+}

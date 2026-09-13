@@ -1,0 +1,75 @@
+// ============================================================
+// 09-production.prisma — 生产领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 生产工单（04 §4 · Order(type=PRODUCTION) 拆分产出）==========
+model ProductionOrder {
+  id           String @id @default(cuid())
+  productionNo String @unique // PO-yyyyMMdd-0001
+
+  salesOrderId String
+  salesOrder   SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+
+  status         ProductionStatus @default(DRAFT)
+  plannedStartAt DateTime?
+  plannedEndAt   DateTime?
+  actualStartAt  DateTime?
+  actualEndAt    DateTime?
+
+  ownerId  String? // 生产负责人 / 车间
+  owner    User?   @relation("ProductionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  workshop String?
+
+  requirement String?
+  /// 生产进度百分比（0-100，由明细汇总回写）
+  progress    Int     @default(0)
+
+  items          ProductionOrderItem[]
+  inspections    QualityInspection[]
+  purchaseOrders PurchaseOrder[] // PurchaseOrder.productionOrderId 的反向（一个生产任务可对应多张采购单）
+
+  remark    String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@index([salesOrderId])
+  @@index([status])
+  @@index([ownerId])
+}
+
+model ProductionOrderItem {
+  id                String          @id @default(cuid())
+  productionOrderId String
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  /// 回指订单行，保证「生产 → 订单」可追溯
+  salesOrderItemId  String?
+  salesOrderItem    SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id], onDelete: SetNull)
+
+  productName  String
+  spec         String?
+  quantity     Decimal @db.Decimal(18, 4)
+  completedQty Decimal @default(0) @db.Decimal(18, 4)
+  defectQty    Decimal @default(0) @db.Decimal(18, 4)
+  unit         String  @default("PCS")
+
+  supplierId String? // 供应商（外发加工）
+  supplier   Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  plannedStartAt DateTime?
+  plannedEndAt   DateTime?
+  status         ProductionItemStatus @default(PENDING)
+
+  /// 成本归集链：本行被哪些采购明细引用（PurchaseOrderItem.productionOrderItemId 的反向，04 §7.1）
+  purchaseOrderItems PurchaseOrderItem[]
+
+  sort      Int      @default(0)
+  remark    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productionOrderId])
+  @@index([salesOrderItemId])
+  @@index([supplierId])
+}

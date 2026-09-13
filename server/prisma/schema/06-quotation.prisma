@@ -1,0 +1,95 @@
+// ============================================================
+// 06-quotation.prisma — 报价领域
+// Batch 5 物理拆分：内容逐字搬迁自原 server/prisma/schema.prisma，未做任何业务改动。
+// ============================================================
+// ========== 报价（03 §6 · 合并旧 Quotation 表 与 Order(type=QUOTE)，唯一实现）==========
+model Quotation {
+  id          String @id @default(cuid())
+  quotationNo String @unique // QU-yyyyMMdd-0001
+
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  customerId    String
+  customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  /// 同一商机可有多版报价
+  version       Int         @default(1)
+  parentId      String? // 上一版报价 id（版本链）
+  parent        Quotation?  @relation("QuotationVersion", fields: [parentId], references: [id], onDelete: SetNull)
+  revisions     Quotation[] @relation("QuotationVersion")
+
+  title String
+
+  // ---------- 金额（三件套，全部 Decimal）----------
+  currency       Currency @default(USD)
+  exchangeRate   Decimal? @db.Decimal(18, 8)
+  totalAmount    Decimal  @db.Decimal(18, 4)
+  totalAmountCny Decimal? @db.Decimal(18, 4)
+
+  // ---------- 条款 ----------
+  tradeTerms    String?
+  paymentTerms  String?
+  leadTime      Int?
+  validUntil    DateTime?
+  portOfLoading String?
+
+  // ---------- 状态机 ----------
+  status       QuotationStatus @default(DRAFT)
+  submittedAt  DateTime?
+  sentAt       DateTime?
+  acceptedAt   DateTime?
+  rejectedAt   DateTime?
+  rejectReason String?
+
+  // ---------- 客户快照（ADR-04）----------
+  customerSnapshot Json?
+
+  notes       String?
+  ownerId     String?
+  items       QuotationItem[]
+  /// 反向关系：真实外键在 SalesOrder.quotationId（**可空**）；Quotation 1:N SalesOrder（第三批定案）
+  salesOrders SalesOrder[]
+  // 注意：不声明 approvalRecords ApprovalRecord[]（审批为多态旁挂，见 01 §4）
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@unique([opportunityId, version])
+  @@index([customerId])
+  @@index([status])
+  @@index([ownerId])
+}
+
+/// 报价明细（替代 Order.items JSON）。
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// 快照字段（ADR-04）
+  productName String
+  productSku  String?
+  spec        String?
+  craft       String?
+  size        String?
+  packaging   String?
+
+  quantity  Decimal  @db.Decimal(18, 4)
+  unit      String   @default("PCS")
+  unitPrice Decimal  @db.Decimal(18, 6)
+  amount    Decimal  @db.Decimal(18, 4)
+  currency  Currency @default(USD)
+  costPrice Decimal? @db.Decimal(18, 6)
+  leadTime  Int?
+  remark    String?
+  sort      Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([quotationId])
+  @@index([productId])
+}
