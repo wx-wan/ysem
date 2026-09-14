@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { Currency, PaymentDirection, PaymentStatus, PaymentType, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -80,26 +81,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成收付款单号：PY-YYYYMMDD-####（与 V1.0 paymentNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextPaymentNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `PY-${dateStr}-`;
-  const existing = await prisma.payment.findMany({
-    where: { paymentNo: { startsWith: prefix } },
-    select: { paymentNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.paymentNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
@@ -362,9 +343,11 @@ export const createPayment = async (req: AuthRequest, res: Response): Promise<vo
     const exchangeRate = await resolveExchangeRate(currency, body.exchangeRate);
     const amountCny = toCny(amount, exchangeRate);
     const status = body.status ?? PaymentStatus.PENDING;
-    const paymentNo = await nextPaymentNo();
 
     const item = await prisma.$transaction(async (tx) => {
+      // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+      const paymentNo = await getNextNumber(tx, 'PAY');
+
       const createdPayment = await tx.payment.create({
         data: {
           paymentNo,

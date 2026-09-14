@@ -7,6 +7,7 @@ import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
+import { getNextNumber } from '../lib/numberSequence';
 import {
   BASE_CURRENCY,
   DECIMAL_PRECISION,
@@ -145,26 +146,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成销售订单号：SO-YYYYMMDD-####（与 V1.0 orderNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextSalesOrderNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `SO-${dateStr}-`;
-  const existing = await prisma.salesOrder.findMany({
-    where: { orderNo: { startsWith: prefix } },
-    select: { orderNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = Number(item.orderNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
@@ -450,42 +431,46 @@ export const createSalesOrder = async (req: AuthRequest, res: Response): Promise
 
     const exchangeRate = await resolveExchangeRate(currency, body.exchangeRate);
     const totalAmountCny = toCny(totalAmount, exchangeRate);
-    const orderNo = await nextSalesOrderNo();
     const status = body.status ?? SalesOrderStatus.DRAFT;
 
-    const item = await prisma.salesOrder.create({
-      data: {
-        orderNo,
-        currency,
-        exchangeRate,
-        totalAmount,
-        totalAmountCny,
-        depositRatio: round(body.depositRatio ?? null, DECIMAL_PRECISION.ratio),
-        depositAmount: round(body.depositAmount ?? null, DECIMAL_PRECISION.amount),
-        balanceAmount: round(body.balanceAmount ?? null, DECIMAL_PRECISION.amount),
-        orderDate: body.orderDate ? new Date(body.orderDate) : null,
-        deliveryDate: body.deliveryDate ? new Date(body.deliveryDate) : null,
-        actualDeliveryDate: body.actualDeliveryDate ? new Date(body.actualDeliveryDate) : null,
-        tradeTerms: body.tradeTerms ?? null,
-        paymentTerms: body.paymentTerms ?? null,
-        portOfLoading: body.portOfLoading ?? null,
-        portOfDischarge: body.portOfDischarge ?? null,
-        cancelReason: body.cancelReason ?? null,
-        remark: body.remark ?? null,
-        status,
-        ...(STATUS_TIME_FIELD[status]
-          ? { [STATUS_TIME_FIELD[status] as string]: new Date() }
-          : {}),
-        ownerId: body.ownerId ?? req.userId ?? null,
-        createdBy: req.userId ?? null,
-        // 未检查（unchecked）标量外键：与嵌套 items 的 Unchecked 类型保持一致
-        opportunityId: body.opportunityId,
-        customerId,
-        quotationId: body.quotationId ?? null,
-        sampleOrderId: body.sampleOrderId ?? null,
-        ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
-      },
-      include: SALES_ORDER_INCLUDE,
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const orderNo = await getNextNumber(tx, 'SO');
+
+      return tx.salesOrder.create({
+        data: {
+          orderNo,
+          currency,
+          exchangeRate,
+          totalAmount,
+          totalAmountCny,
+          depositRatio: round(body.depositRatio ?? null, DECIMAL_PRECISION.ratio),
+          depositAmount: round(body.depositAmount ?? null, DECIMAL_PRECISION.amount),
+          balanceAmount: round(body.balanceAmount ?? null, DECIMAL_PRECISION.amount),
+          orderDate: body.orderDate ? new Date(body.orderDate) : null,
+          deliveryDate: body.deliveryDate ? new Date(body.deliveryDate) : null,
+          actualDeliveryDate: body.actualDeliveryDate ? new Date(body.actualDeliveryDate) : null,
+          tradeTerms: body.tradeTerms ?? null,
+          paymentTerms: body.paymentTerms ?? null,
+          portOfLoading: body.portOfLoading ?? null,
+          portOfDischarge: body.portOfDischarge ?? null,
+          cancelReason: body.cancelReason ?? null,
+          remark: body.remark ?? null,
+          status,
+          ...(STATUS_TIME_FIELD[status]
+            ? { [STATUS_TIME_FIELD[status] as string]: new Date() }
+            : {}),
+          ownerId: body.ownerId ?? req.userId ?? null,
+          createdBy: req.userId ?? null,
+          // 未检查（unchecked）标量外键：与嵌套 items 的 Unchecked 类型保持一致
+          opportunityId: body.opportunityId,
+          customerId,
+          quotationId: body.quotationId ?? null,
+          sampleOrderId: body.sampleOrderId ?? null,
+          ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
+        },
+        include: SALES_ORDER_INCLUDE,
+      });
     });
 
     void activityLogger.log({

@@ -7,6 +7,7 @@ import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
+import { getNextNumber } from '../lib/numberSequence';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
 
 // ============================================================
@@ -90,26 +91,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成打样单号：SM-YYYYMMDD-####（与 V1.0 sampleNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextSampleNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `SM-${dateStr}-`;
-  const existing = await prisma.sampleOrder.findMany({
-    where: { sampleNo: { startsWith: prefix } },
-    select: { sampleNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = Number(item.sampleNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /** 轮次入参 → Prisma 写入数据（feeAmount 全程 Decimal） */
 function toRoundData(
@@ -305,35 +286,39 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
     const rounds = (body.rounds ?? []).map((r, index) =>
       toRoundData(r, index + 1, req.userId ?? null),
     );
-    const sampleNo = await nextSampleNo();
     const feeAmount = round(body.feeAmount ?? null, DECIMAL_PRECISION.amount);
 
-    const item = await prisma.sampleOrder.create({
-      data: {
-        sampleNo,
-        customerId,
-        opportunityId: body.opportunityId ?? null,
-        productId: snapshot.data.productId,
-        productName: snapshot.data.productName,
-        spec: snapshot.data.spec,
-        craft: snapshot.data.craft,
-        size: snapshot.data.size,
-        packaging: snapshot.data.packaging,
-        sampleType: body.sampleType ?? null,
-        quantity: body.quantity ?? 1,
-        requirement: body.requirement ?? null,
-        targetPrice: body.targetPrice ?? null,
-        status: body.status ?? SampleStatus.DRAFT,
-        currentRound: rounds.length > 0 ? rounds[rounds.length - 1].roundNo : 1,
-        feeAmount,
-        feeCurrency: body.feeCurrency ?? Currency.USD,
-        feeRecoverable: body.feeRecoverable ?? false,
-        ownerId: body.ownerId ?? req.userId ?? null,
-        notes: body.notes ?? null,
-        createdBy: req.userId ?? null,
-        ...(rounds.length > 0 ? { rounds: { create: rounds } } : {}),
-      },
-      include: SAMPLE_ORDER_INCLUDE,
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const sampleNo = await getNextNumber(tx, 'SMP');
+
+      return tx.sampleOrder.create({
+        data: {
+          sampleNo,
+          customerId,
+          opportunityId: body.opportunityId ?? null,
+          productId: snapshot.data.productId,
+          productName: snapshot.data.productName,
+          spec: snapshot.data.spec,
+          craft: snapshot.data.craft,
+          size: snapshot.data.size,
+          packaging: snapshot.data.packaging,
+          sampleType: body.sampleType ?? null,
+          quantity: body.quantity ?? 1,
+          requirement: body.requirement ?? null,
+          targetPrice: body.targetPrice ?? null,
+          status: body.status ?? SampleStatus.DRAFT,
+          currentRound: rounds.length > 0 ? rounds[rounds.length - 1].roundNo : 1,
+          feeAmount,
+          feeCurrency: body.feeCurrency ?? Currency.USD,
+          feeRecoverable: body.feeRecoverable ?? false,
+          ownerId: body.ownerId ?? req.userId ?? null,
+          notes: body.notes ?? null,
+          createdBy: req.userId ?? null,
+          ...(rounds.length > 0 ? { rounds: { create: rounds } } : {}),
+        },
+        include: SAMPLE_ORDER_INCLUDE,
+      });
     });
 
     void activityLogger.log({

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { Currency, Prisma, SalesOrderStatus, ShipmentStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -121,26 +122,6 @@ const listQuerySchema = z.object({
 
 /** 业务规则违例（事务内抛出以回滚），由 handler 统一转为 400 */
 class ShipmentRuleError extends Error {}
-
-/** 生成出运单号：SH-YYYYMMDD-####（与 V1.0 shipmentNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextShipmentNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `SH-${dateStr}-`;
-  const existing = await prisma.shipment.findMany({
-    where: { shipmentNo: { startsWith: prefix } },
-    select: { shipmentNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.shipmentNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 interface ResolvedLine {
   salesOrderItemId: string;
@@ -453,10 +434,12 @@ export const createShipment = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    const shipmentNo = await nextShipmentNo();
     const data = baseData(body);
 
     const item = await prisma.$transaction(async (tx) => {
+      // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+      const shipmentNo = await getNextNumber(tx, 'SHP');
+
       await assertShippable(tx, parsed.lines);
 
       const createdShipment = await tx.shipment.create({

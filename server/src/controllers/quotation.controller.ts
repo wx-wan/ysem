@@ -7,6 +7,7 @@ import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
+import { getNextNumber } from '../lib/numberSequence';
 import {
   BASE_CURRENCY,
   DECIMAL_PRECISION,
@@ -95,26 +96,6 @@ const createSchema = z.object({
 const updateSchema = createSchema.partial().extend({
   id: z.string().min(1),
 });
-
-/** 生成报价号：QU-YYYYMMDD-序号（与 V1.0 quotationNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextQuotationNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `QU-${dateStr}-`;
-  const existing = await prisma.quotation.findMany({
-    where: { quotationNo: { startsWith: prefix } },
-    select: { quotationNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = Number(item.quotationNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
@@ -312,35 +293,39 @@ export const createQuotation = async (req: AuthRequest, res: Response): Promise<
       _max: { version: true },
     });
     const version = (max._max.version ?? 0) + 1;
-    const quotationNo = await nextQuotationNo();
     const status = body.status ?? QuotationStatus.DRAFT;
 
-    const item = await prisma.quotation.create({
-      data: {
-        quotationNo,
-        title: body.title,
-        version,
-        currency,
-        exchangeRate,
-        totalAmount,
-        totalAmountCny,
-        tradeTerms: body.tradeTerms ?? null,
-        paymentTerms: body.paymentTerms ?? null,
-        leadTime: body.leadTime ?? null,
-        validUntil: body.validUntil ? new Date(body.validUntil) : null,
-        portOfLoading: body.portOfLoading ?? null,
-        status,
-        ...(STATUS_TIME_FIELD[status]
-          ? { [STATUS_TIME_FIELD[status] as string]: new Date() }
-          : {}),
-        notes: body.notes ?? null,
-        ownerId: body.ownerId ?? req.userId ?? null,
-        createdBy: req.userId ?? null,
-        opportunity: { connect: { id: body.opportunityId } },
-        customer: { connect: { id: customerId } },
-        ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
-      },
-      include: QUOTATION_INCLUDE,
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const quotationNo = await getNextNumber(tx, 'QUO');
+
+      return tx.quotation.create({
+        data: {
+          quotationNo,
+          title: body.title,
+          version,
+          currency,
+          exchangeRate,
+          totalAmount,
+          totalAmountCny,
+          tradeTerms: body.tradeTerms ?? null,
+          paymentTerms: body.paymentTerms ?? null,
+          leadTime: body.leadTime ?? null,
+          validUntil: body.validUntil ? new Date(body.validUntil) : null,
+          portOfLoading: body.portOfLoading ?? null,
+          status,
+          ...(STATUS_TIME_FIELD[status]
+            ? { [STATUS_TIME_FIELD[status] as string]: new Date() }
+            : {}),
+          notes: body.notes ?? null,
+          ownerId: body.ownerId ?? req.userId ?? null,
+          createdBy: req.userId ?? null,
+          opportunity: { connect: { id: body.opportunityId } },
+          customer: { connect: { id: customerId } },
+          ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
+        },
+        include: QUOTATION_INCLUDE,
+      });
     });
 
     void activityLogger.log({

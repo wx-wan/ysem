@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { Currency, Prisma, ProfitStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -90,26 +91,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成利润单号：PF-YYYYMMDD-####（与 V1.0 profitNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextProfitNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `PF-${dateStr}-`;
-  const existing = await prisma.profit.findMany({
-    where: { profitNo: { startsWith: prefix } },
-    select: { profitNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.profitNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
@@ -421,10 +402,12 @@ export const createProfit = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const profitNo = await nextProfitNo();
     const status = body.status ?? ProfitStatus.DRAFT;
 
     const item = await prisma.$transaction(async (tx) => {
+      // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+      const profitNo = await getNextNumber(tx, 'PRF');
+
       // 运费由服务端从 Shipment 聚合，客户端传入一律忽略
       const freight = await aggregateFreight(tx, salesOrder.id);
       const fields = buildProfitFields({
