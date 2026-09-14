@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import * as XLSX from 'xlsx';
 import { z } from 'zod';
-import { Prisma } from '@prisma/client';
+import { Prisma, $Enums } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
@@ -9,18 +9,51 @@ import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { computeDiff, DiffItem, FieldFormatter } from '../lib/operation-diff';
 
+// ========== V1.0 标量适配工具 ==========
+// 尺寸 / 克重：V1.0 Product 为 Float?，旧版以 String 存储，统一归一为 number | null
+const toFloat = (v: unknown): number | null => {
+  if (v === '' || v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+// 逗号分隔 id 串 → id 数组（旧 certificationIds / craftIds 兼容）
+const parseIdList = (v?: string | null): string[] =>
+  String(v ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+const SUPPLY_MODES = ['DEEP_CUSTOM', 'LIGHT_CUSTOM', 'STOCK'] as const;
+const CURRENCIES = [
+  'CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD',
+  'AUD', 'CAD', 'KRW', 'RUB', 'SEK', 'NOK', 'DKK',
+] as const;
+
+/** 旧 supplyModes 逗号串 → V1.0 SupplyMode[]；非法值一律忽略（回落默认模式） */
+const toSupplyModes = (v?: string | null): $Enums.SupplyMode[] | undefined => {
+  const modes = parseIdList(v).filter((m): m is $Enums.SupplyMode =>
+    (SUPPLY_MODES as readonly string[]).includes(m),
+  );
+  return modes.length ? modes : undefined;
+};
+
+/** 旧 currency 字符串 → V1.0 Currency 枚举；非法值回落 Prisma 默认（USD） */
+const toCurrency = (v?: string | null): $Enums.Currency | undefined =>
+  v && (CURRENCIES as readonly string[]).includes(v) ? (v as $Enums.Currency) : undefined;
+
 const productSchema = z.object({
   name: z.string().min(1, '产品名称不能为空'),
   sku: z.string().nullish(),
   craftIds: z.array(z.string().uuid()).nullish(),
   audienceId: z.string().uuid().nullish(),
   categoryId: z.string().uuid().nullish(),
-  // 产品属性（尺寸/克重后端以 String 存储，兼容前端传字符串或数字）
+  // 产品属性（V1.0 Product 尺寸/克重为 Float，兼容前端传字符串或数字）
   images: z.string().nullish(),
-  sizeL: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
-  sizeW: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
-  sizeH: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
-  weight: z.preprocess((v) => (v === '' || v === null || v === undefined ? null : String(v)), z.string().nullable().optional()),
+  sizeL: z.preprocess(toFloat, z.number().nullable().optional()),
+  sizeW: z.preprocess(toFloat, z.number().nullable().optional()),
+  sizeH: z.preprocess(toFloat, z.number().nullable().optional()),
+  weight: z.preprocess(toFloat, z.number().nullable().optional()),
   // 供货模式（单选，逗号分隔，最多一个值）
   supplyModes: z.string().nullish(),
   // 认证资质：关联证书 id 列表（逗号分隔）
@@ -62,7 +95,7 @@ export async function buildSkuCode(
     : craftCodes[0];
   const prefix = `${craftPart}-${audience.code}-`;
 
-  const existing = await prisma.singleProduct.findMany({
+  const existing = await prisma.product.findMany({
     where: { sku: { startsWith: prefix }, ...(excludeId ? { id: { not: excludeId } } : {}) },
     select: { sku: true },
   });
@@ -103,6 +136,14 @@ async function buildProductDiff(
     lowStockAlert: '低库存预警',
     source: '产品来源',
     visibility: '可见范围',
+  };
+
+  // 差异比对仍沿用旧入参名，读取原记录时需映射到 V1.0 列名
+  const SOURCE_FIELD: Record<string, string> = {
+    images: 'coverImage',
+    price: 'defaultPrice',
+    currency: 'defaultCurrency',
+    taxRate: 'defaultTaxRate',
   };
 
   // id → 名称 解析（关联字段）
@@ -147,7 +188,8 @@ async function buildProductDiff(
   const after: Record<string, any> = {};
   for (const f of fields) {
     if (f === 'craftIds') {
-      before[f] = existing?.crafts?.map((c: any) => c.id) ?? [];
+      // V1.0 crafts 为 ProductCraftLink 中间表，工艺实体在 productCraft 上
+      before[f] = existing?.crafts?.map((c: any) => c.productCraft?.id) ?? [];
     } else if (f === 'visibleUserIds') {
       // 可见成员存于关联表 visibleUsers，需从关联取 userId 数组，避免 undefined 与空数组误判为变更
       before[f] = existing?.visibleUsers?.map((v: any) => v.userId) ?? [];
@@ -169,12 +211,12 @@ async function buildProductDiff(
         }
         return null;
       };
-      before[f] = parseImg(existing?.images);
+      before[f] = parseImg(existing?.[SOURCE_FIELD[f]]);
       after[f] = parsed?.[f] === undefined ? before[f] : parseImg(parsed?.[f]);
       // 已在分支内设置 after，跳过末尾统一赋值
       continue;
     } else {
-      before[f] = existing?.[f];
+      before[f] = existing?.[SOURCE_FIELD[f] ?? f];
     }
     after[f] = parsed?.[f] === undefined ? before[f] : parsed[f];
   }
@@ -206,7 +248,7 @@ export const getProductOptions = async (req: AuthRequest, res: Response): Promis
         { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
       ];
     }
-    const list = await prisma.singleProduct.findMany({
+    const list = await prisma.product.findMany({
       where,
       select: { id: true, name: true, sku: true },
       orderBy: { name: 'asc' },
@@ -230,7 +272,8 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
       { name: { contains: keyword } },
       { sku: { contains: keyword } },
     ];
-    if (craftIds?.length) where.crafts = { some: { id: { in: craftIds } } };
+    // V1.0 crafts 为 ProductCraftLink 中间表，工艺筛选走 productCraftId
+    if (craftIds?.length) where.crafts = { some: { productCraftId: { in: craftIds } } };
     if (audienceId) where.audienceId = audienceId;
     if (categoryId) where.categoryId = categoryId;
     if (visibility) where.visibility = visibility;
@@ -247,10 +290,10 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     }
 
     const [list, total] = await Promise.all([
-      prisma.singleProduct.findMany({
+      prisma.product.findMany({
         where,
         include: {
-          crafts: { select: { id: true, name: true } },
+          crafts: { select: { productCraft: { select: { id: true, name: true } } } },
           audience: { select: { id: true, name: true } },
           category: { select: { id: true, name: true } },
           visibleUsers: { select: { userId: true } },
@@ -259,23 +302,25 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
         take: pageSize,
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.singleProduct.count({ where }),
+      prisma.product.count({ where }),
     ]);
 
-    success(res, { list, total, page, pageSize });
+    // crafts 摊平为工艺实体数组，保持旧响应形状
+    const rows = list.map(({ crafts, ...rest }) => ({ ...rest, crafts: crafts.map((l) => l.productCraft) }));
+    success(res, { list: rows, total, page, pageSize });
   } catch { fail(res, 500, '服务器错误'); }
 };
 
 export const getProductById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const product = await prisma.singleProduct.findUnique({
+    const product = await prisma.product.findUnique({
       where: { id: req.params.id },
       include: {
-        crafts: true,
+        // V1.0 crafts 为中间表，工艺实体在 productCraft 上；Product 无 activities 关系（V1.0 为 ProductTask）
+        crafts: { include: { productCraft: true } },
         audience: { include: { categories: true } },
         category: true,
         visibleUsers: { select: { userId: true } },
-        activities: { orderBy: { createdAt: 'desc' } },
       },
     });
     if (!product) { fail(res, 404, '产品不存在'); return; }
@@ -290,41 +335,103 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
         return;
       }
     }
-    success(res, product);
+    // crafts 摊平为工艺实体数组，保持旧响应形状
+    const { crafts, ...rest } = product;
+    success(res, { ...rest, crafts: crafts.map((l) => l.productCraft) });
   } catch { fail(res, 500, '服务器错误'); }
 };
 
 // 供货方式由角色决定（前端不手动选择）：admin/purchaser 默认可多选，单品创建取默认首项；其他角色默认深度定制
-const defaultSupplyModeByRole = (roleCode?: string): string => {
+const defaultSupplyModeByRole = (roleCode?: string): $Enums.SupplyMode => {
   if (roleCode === 'admin' || roleCode === 'purchaser') return 'DEEP_CUSTOM';
   return 'DEEP_CUSTOM';
 };
 
+/**
+ * 生成产品编号: PRD-YYYYMMDD-序号
+ * 与 V1.0 Product.productNo 对齐；NumberSequence 运行时接入不在本轮（同 sales.controller 商机号做法）。
+ */
+export async function nextProductNo(): Promise<string> {
+  const today = new Date();
+  const dateStr = today.getFullYear().toString()
+    + String(today.getMonth() + 1).padStart(2, '0')
+    + String(today.getDate()).padStart(2, '0');
+  const prefix = `PRD-${dateStr}-`;
+  const existing = await prisma.product.findMany({
+    where: { productNo: { startsWith: prefix } },
+    select: { productNo: true },
+  });
+  let maxSeq = 0;
+  for (const item of existing) {
+    const seq = Number(item.productNo.slice(prefix.length));
+    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
+}
+
+/**
+ * 旧 SingleProduct 写入体 → V1.0 Product 写入体。
+ * 客户专属价格/定制不在此承载（见 CustomerProduct / ProductPrice）。
+ * 返回值的 sku 可能为 null（工艺或受众缺编码），由调用方决定是否拒绝。
+ */
+async function buildProductCreateData(
+  parsed: z.infer<typeof productSchema>,
+  user: { userId?: string; roleCode?: string },
+): Promise<Prisma.ProductUncheckedCreateInput> {
+  const {
+    craftIds,
+    sku: _ignored,
+    visibleUserIds,
+    images,
+    price,
+    currency,
+    taxRate,
+    certificationIds,
+    supplyModes,
+    progress: _progress,
+    ...rest
+  } = parsed;
+  const certIds = parseIdList(certificationIds);
+
+  const data: Prisma.ProductUncheckedCreateInput = {
+    ...rest,
+    productNo: await nextProductNo(),
+    coverImage: images ?? null,
+    defaultPrice: price ?? null,
+    defaultCurrency: toCurrency(currency),
+    defaultTaxRate: taxRate ?? null,
+    supplyModes: toSupplyModes(supplyModes) ?? [defaultSupplyModeByRole(user.roleCode)],
+    createdBy: user.userId || null,
+    source: rest.source ?? 'MANUAL',
+    ...(craftIds?.length
+      ? { crafts: { create: craftIds.map((id) => ({ productCraft: { connect: { id } } })) } }
+      : {}),
+    ...(certIds.length
+      ? { certifications: { create: certIds.map((id) => ({ certificate: { connect: { id } } })) } }
+      : {}),
+    ...(visibleUserIds?.length
+      ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } }
+      : {}),
+  };
+  data.sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
+  return data;
+}
+
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = productSchema.parse(req.body);
-    const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
 
-    // 使用 SingleProductUncheckedCreateInput 支持多对多/一对多关联的嵌套写入（createdBy 为外键标量）
-    const data: Prisma.SingleProductUncheckedCreateInput = {
-      ...rest,
-      createdBy: req.userId || null,
-      source: rest.source ?? 'MANUAL',
-      supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
-      ...(craftIds?.length ? { crafts: { connect: craftIds.map((id) => ({ id })) } } : {}),
-      ...(visibleUserIds?.length ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } } : {}),
-    };
+    // 旧 SingleProduct 写入体 → V1.0 Product 写入体
+    const data = await buildProductCreateData(parsed, { userId: req.userId, roleCode: req.roleCode });
 
     // SKU 无需人工录入：按「工艺-受众-序号」自动生成
-    const hasFullContext = Boolean(craftIds?.length && parsed.audienceId);
-    const sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
-    if (hasFullContext && sku === null) {
+    const hasFullContext = Boolean(parsed.craftIds?.length && parsed.audienceId);
+    if (hasFullContext && data.sku === null) {
       fail(res, 400, '工艺或受众缺少编码，请先在分类管理中补充代码');
       return;
     }
-    data.sku = sku;
 
-    const product = await prisma.singleProduct.create({ data });
+    const product = await prisma.product.create({ data });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -347,10 +454,37 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const parsed = productSchema.partial().parse(req.body);
-    const { craftIds, sku: _ignored, visibleUserIds, ...rest } = parsed;
-    const data = { ...rest } as Prisma.SingleProductUpdateInput;
+    // 旧字段按 V1.0 Product 重新映射（images→coverImage, price→defaultPrice, currency→defaultCurrency, taxRate→defaultTaxRate, progress 无对应）
+    const {
+      craftIds,
+      sku: _ignored,
+      visibleUserIds,
+      images,
+      price,
+      currency,
+      taxRate,
+      certificationIds,
+      supplyModes,
+      progress: _progress,
+      ...rest
+    } = parsed;
+    const data: Record<string, unknown> = { ...rest };
+    if (images !== undefined) data.coverImage = images;
+    if (price !== undefined) data.defaultPrice = price;
+    if (currency !== undefined) data.defaultCurrency = toCurrency(currency);
+    if (taxRate !== undefined) data.defaultTaxRate = taxRate;
+    if (supplyModes !== undefined) data.supplyModes = toSupplyModes(supplyModes);
     if (Array.isArray(craftIds)) {
-      data.crafts = craftIds.length ? { set: craftIds.map((id) => ({ id })) } : { set: [] };
+      data.crafts = {
+        deleteMany: {},
+        create: craftIds.map((id) => ({ productCraft: { connect: { id } } })),
+      };
+    }
+    if (certificationIds !== undefined) {
+      data.certifications = {
+        deleteMany: {},
+        create: parseIdList(certificationIds).map((id) => ({ certificate: { connect: { id } } })),
+      };
     }
     if (Array.isArray(visibleUserIds)) {
       data.visibleUsers = {
@@ -359,21 +493,24 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       };
     }
     // 工艺或受众变化时，SKU 按新组合自动重新生成；未变化则保留原 SKU
-    const existing = await prisma.singleProduct.findUnique({
+    const existing = await prisma.product.findUnique({
       where: { id: req.params.id },
-      include: { crafts: { select: { id: true, name: true } }, visibleUsers: { select: { userId: true } } },
+      include: {
+        crafts: { select: { productCraft: { select: { id: true, name: true } } } },
+        visibleUsers: { select: { userId: true } },
+      },
     });
     if (!existing) { fail(res, 404, '产品不存在'); return; }
     // 可见即可编辑：能查看到该产品即允许修改（列表/详情已按可见性过滤），不再单独校验修改权限
     {
-      const oldCraftIds = existing.crafts.map((c) => c.id).sort().join(',');
+      const oldCraftIds = existing.crafts.map((c) => c.productCraft.id).sort().join(',');
       const newCraftIds = !Array.isArray(craftIds) ? null : [...craftIds].sort().join(',');
       const oldAudienceId = existing.audienceId ?? '';
       const newAudienceId = parsed.audienceId === undefined ? oldAudienceId : (parsed.audienceId ?? '');
       const craftsChanged = newCraftIds !== null && newCraftIds !== oldCraftIds;
       const audienceChanged = newAudienceId !== oldAudienceId;
       if (craftsChanged || audienceChanged) {
-        const finalCraftIds = Array.isArray(craftIds) ? craftIds : existing.crafts.map((c) => c.id);
+        const finalCraftIds = Array.isArray(craftIds) ? craftIds : existing.crafts.map((c) => c.productCraft.id);
         const finalAudienceId = parsed.audienceId === undefined ? existing.audienceId : parsed.audienceId;
         const sku = await buildSkuCode(finalCraftIds, finalAudienceId, existing.id);
         if (sku === null && (finalCraftIds.length && finalAudienceId)) {
@@ -383,9 +520,9 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
         data.sku = sku;
       }
     }
-    const product = await prisma.singleProduct.update({
+    const product = await prisma.product.update({
       where: { id: req.params.id },
-      data,
+      data: data as unknown as Prisma.ProductUpdateInput,
     });
 
     // ---- 自动计算前后差异 ----
@@ -417,9 +554,9 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
       fail(res, 403, '仅管理员可删除产品');
       return;
     }
-    const product = await prisma.singleProduct.findUnique({ where: { id: req.params.id } });
+    const product = await prisma.product.findUnique({ where: { id: req.params.id } });
     if (!product) { fail(res, 404, '产品不存在'); return; }
-    await prisma.singleProduct.delete({ where: { id: req.params.id } });
+    await prisma.product.delete({ where: { id: req.params.id } });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -462,7 +599,7 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
           ],
         });
       }
-      if (craftIds.length) and.push({ crafts: { some: { id: { in: craftIds } } } });
+      if (craftIds.length) and.push({ crafts: { some: { productCraftId: { in: craftIds } } } });
       if (audienceId) and.push({ audienceId });
       if (visibility) and.push({ visibility });
 
@@ -479,17 +616,23 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
       }
 
       const where: Record<string, unknown> = and.length ? { AND: and } : {};
-      const products = await prisma.singleProduct.findMany({
+      const products = await prisma.product.findMany({
         where,
         include: {
-          crafts: { select: { id: true, name: true } },
+          crafts: { select: { productCraft: { select: { id: true, name: true } } } },
           audience: { select: { id: true, name: true } },
           category: { select: { id: true, name: true } },
           visibleUsers: { select: { userId: true } },
         },
         orderBy: { createdAt: 'desc' },
       });
-      products.forEach((p) => entries.push({ type: 'PRODUCT', data: p as unknown as Record<string, unknown> }));
+      products.forEach((p) => {
+        const { crafts, ...rest } = p;
+        entries.push({
+          type: 'PRODUCT',
+          data: { ...rest, crafts: crafts.map((l) => l.productCraft) } as unknown as Record<string, unknown>,
+        });
+      });
     }
 
     // 组合部分
@@ -634,23 +777,13 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
         };
 
         const parsed = productSchema.parse(payload);
-        const { craftIds: cIds, sku: _ig, visibleUserIds: vIds, ...rest } = parsed;
-        const pdata: Prisma.SingleProductUncheckedCreateInput = {
-          ...rest,
-          createdBy: req.userId || null,
-          source: rest.source ?? 'MANUAL',
-          supplyModes: rest.supplyModes || defaultSupplyModeByRole(req.roleCode),
-          ...(cIds?.length ? { crafts: { connect: cIds.map((id) => ({ id })) } } : {}),
-          ...(vIds?.length ? { visibleUsers: { create: vIds.map((userId) => ({ userId })) } } : {}),
-        };
-        const hasFullContext = Boolean(cIds?.length && parsed.audienceId);
-        const sku = await buildSkuCode(cIds ?? [], parsed.audienceId ?? null);
-        if (hasFullContext && sku === null) {
+        const pdata = await buildProductCreateData(parsed, { userId: req.userId, roleCode: req.roleCode });
+        const hasFullContext = Boolean(parsed.craftIds?.length && parsed.audienceId);
+        if (hasFullContext && pdata.sku === null) {
           failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
           continue;
         }
-        pdata.sku = sku;
-        const product = await prisma.singleProduct.create({ data: pdata });
+        const product = await prisma.product.create({ data: pdata });
         void activityLogger.log({
           userId: req.userId || '',
           username: req.username || '',

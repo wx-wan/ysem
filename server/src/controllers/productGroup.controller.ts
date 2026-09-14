@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
-import { buildSkuCode } from './product.controller';
+import { buildSkuCode, nextProductNo } from './product.controller';
 
 const groupSchema = z.object({
   name: z.string().min(1, '产品组名称不能为空'),
@@ -37,6 +37,13 @@ const groupSchema = z.object({
     )
     .nullish(),
 });
+
+/** V1.0 Product 尺寸/克重为 Float?，旧前端传字符串，统一归一为 number | null */
+const toNumberOrNull = (v?: string | null): number | null => {
+  if (v === undefined || v === null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 // 列表（含成员产品简要信息）
 export const getProductGroups = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -140,25 +147,36 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
         }
         // SKU 与批量新建一致：按「工艺-受众-序号」自动生成（缺码则不生成，但不阻塞创建）
         const sku = await buildSkuCode(groupCraftIds, groupAudienceId);
-        const p = await prisma.singleProduct.create({
+        const certIds = String(it.certificationIds ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        // V1.0：行内快速新建写入 Product（images→coverImage, price→defaultPrice,
+        // 尺寸/克重 Float, crafts 走 ProductCraftLink 嵌套创建, 认证走 ProductCertification）
+        const p = await prisma.product.create({
           data: {
+            productNo: await nextProductNo(),
             name: it.name,
-            price: it.price ?? null,
-            images: it.images ?? null,
-            sizeL: it.sizeL ?? null,
-            sizeW: it.sizeW ?? null,
-            sizeH: it.sizeH ?? null,
-            weight: it.weight ?? null,
-            certificationIds: it.certificationIds ?? null,
+            defaultPrice: it.price ?? null,
+            coverImage: it.images ?? null,
+            sizeL: toNumberOrNull(it.sizeL),
+            sizeW: toNumberOrNull(it.sizeW),
+            sizeH: toNumberOrNull(it.sizeH),
+            weight: toNumberOrNull(it.weight),
             remark: it.remark ?? null,
-            supplyModes: 'DEEP_CUSTOM',
+            supplyModes: ['DEEP_CUSTOM'],
             source: 'MANUAL',
             visibility: groupVisibility,
             audienceId: groupAudienceId,
             categoryId: groupCategoryId,
             sku,
             createdBy: req.userId,
-            ...(groupCraftIds.length ? { crafts: { connect: groupCraftIds.map((id) => ({ id })) } } : {}),
+            ...(groupCraftIds.length
+              ? { crafts: { create: groupCraftIds.map((id) => ({ productCraft: { connect: { id } } })) } }
+              : {}),
+            ...(certIds.length
+              ? { certifications: { create: certIds.map((id) => ({ certificate: { connect: { id } } })) } }
+              : {}),
             ...(groupVisibleUserIds.length
               ? { visibleUsers: { create: groupVisibleUserIds.map((userId) => ({ userId })) } }
               : {}),
@@ -287,7 +305,8 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
       return;
     }
     // 重新写入组合明细
-    await prisma.comboItem.deleteMany({ where: { groupId: group.id } });
+    // V1.0 ComboItem 的 Prisma 字段名为 comboId（物理列名仍为 groupId）
+    await prisma.comboItem.deleteMany({ where: { comboId: group.id } });
     const created = await prisma.comboProduct.update({
       where: { id: group.id },
       data: {

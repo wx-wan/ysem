@@ -104,7 +104,8 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         pageSize,
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
-          product: { select: { id: true, name: true } },
+          // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
+          items: { include: { product: { select: { id: true, name: true } } } },
           owner: { select: { id: true, username: true, realName: true } },
         },
       },
@@ -121,7 +122,8 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
       where: { id: req.params.id },
       include: {
         customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
-        product: { select: { id: true, name: true } },
+        // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
+        items: { include: { product: { select: { id: true, name: true } } } },
         owner: { select: { id: true, username: true, realName: true } },
       },
     });
@@ -167,12 +169,25 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     }
     const leadNumber = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 
+    // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照
+    let leadItems: { productId: string; productName: string | null; quantity: number }[] | undefined;
+    if (data.productId) {
+      const product = await prisma.product.findUnique({
+        where: { id: data.productId },
+        select: { name: true },
+      });
+      leadItems = [{
+        productId: data.productId,
+        productName: product?.name ?? data.productName ?? null,
+        quantity: data.quantity || 1,
+      }];
+    }
+
     const item = await prisma.lead.create({
       data: {
         leadName,
         customerId: data.customerId ?? null,
         sourceChannel: data.sourceChannel ?? null,
-        productId: data.productId ?? null,
         quantity: data.quantity ?? 0,
         source: data.source ?? 'MANUAL',
         status: data.status ?? 'NEW',
@@ -183,7 +198,6 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         phone: data.phone ?? null,
         country: data.country ?? null,
         productInterest: data.productInterest ?? null,
-      productName: data.productName ?? null,
         remark: data.remark ?? null,
         targetMarket: data.targetMarket ?? null,
         productType: data.productType ?? null,
@@ -203,6 +217,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         ownerId: data.ownerId ?? null,
         createdBy: req.userId ?? null,
         leadNumber,
+        ...(leadItems ? { items: { create: leadItems } } : {}),
       },
     });
     created(res, item);
@@ -218,12 +233,12 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
 export const updateLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.partial().parse(req.body);
-    const update: Record<string, unknown> = { ...data };
+    // V1.0：productId / productName 不再属于 Lead 标量，改由 LeadItem 承载
+    const { productId, productName, ...leadData } = data;
+    const update: Record<string, unknown> = { ...leadData };
     if (data.customerId === null) update.customerId = null;
     if (data.companyName === null) update.companyName = null;
     if (data.sourceChannel === null) update.sourceChannel = null;
-    if (data.productId === null) update.productId = null;
-    if (data.productName === null) update.productName = null;
     if (data.ownerId === null) update.ownerId = null;
     if (data.images !== undefined) {
       update.images =
@@ -234,6 +249,25 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
           : JSON.stringify(data.images);
     }
     await prisma.lead.update({ where: { id: req.params.id }, data: update });
+
+    // V1.0：产品关联整表重建于 LeadItem（owner 为 leadId，不能误用 opportunityId）
+    if (productId !== undefined) {
+      await prisma.leadItem.deleteMany({ where: { leadId: req.params.id } });
+      if (productId) {
+        const product = await prisma.product.findUnique({
+          where: { id: productId },
+          select: { name: true },
+        });
+        await prisma.leadItem.create({
+          data: {
+            leadId: req.params.id,
+            productId,
+            productName: product?.name ?? productName ?? null,
+            quantity: data.quantity || 1,
+          },
+        });
+      }
+    }
     success(res, null, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -261,7 +295,11 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
     const roleCode = req.roleCode;
     const { id } = req.params;
 
-    const lead = await prisma.lead.findUnique({ where: { id } });
+    // V1.0：产品通过 LeadItem 关联（Lead 1:N LeadItem）
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      include: { items: { select: { productId: true } } },
+    });
     if (!lead) {
       fail(res, 404, '线索不存在');
       return;
@@ -282,10 +320,11 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       );
     }
     // 联动产品释放：默认公开（visibility -> PUBLIC），并清空负责人
-    if (lead.productId) {
+    const productIds = lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v));
+    if (productIds.length) {
       updates.push(
-        prisma.singleProduct.update({
-          where: { id: lead.productId },
+        prisma.product.updateMany({
+          where: { id: { in: productIds } },
           data: { visibility: 'PUBLIC', ownerId: null },
         }),
       );
@@ -300,7 +339,7 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       businessType: BUSINESS_TYPE.LEAD,
       businessId: id,
       businessNo: lead.leadNo,
-      summary: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${lead.productId ? '，关联产品置为公开' : ''}`,
+      summary: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${productIds.length ? `，关联 ${productIds.length} 个产品置为公开` : ''}`,
       customerId: lead.customerId || undefined,
     });
     success(res, null, '释放成功');
@@ -316,7 +355,11 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
     const userId = req.userId || '';
     const { id } = req.params;
 
-    const lead = await prisma.lead.findUnique({ where: { id } });
+    // V1.0：产品通过 LeadItem 关联（Lead 1:N LeadItem）
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      include: { items: { select: { productId: true } } },
+    });
     if (!lead) {
       fail(res, 404, '线索不存在');
       return;
@@ -338,13 +381,15 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
       }
     }
     // 联动认领产品：仅当产品无归属人时设为认领人
-    if (lead.productId) {
-      const product = await prisma.singleProduct.findUnique({
-        where: { id: lead.productId },
-        select: { ownerId: true },
+    const productIds = lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v));
+    if (productIds.length) {
+      const products = await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, ownerId: true },
       });
-      if (product && !product.ownerId) {
-        updates.push(prisma.singleProduct.update({ where: { id: lead.productId }, data: { ownerId: userId } }));
+      const freeIds = products.filter((p) => !p.ownerId).map((p) => p.id);
+      if (freeIds.length) {
+        updates.push(prisma.product.updateMany({ where: { id: { in: freeIds } }, data: { ownerId: userId } }));
       }
     }
     await prisma.$transaction(updates);
@@ -379,7 +424,8 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       where: { id },
       include: {
         owner: { select: { id: true, realName: true } },
-        product: { select: { id: true, visibility: true, visibleUsers: true } },
+        // V1.0：产品通过 LeadItem 关联（Lead 1:N LeadItem）
+        items: { include: { product: { select: { id: true, visibility: true } } } },
       },
     });
     if (!lead) {
@@ -402,27 +448,27 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       // 转移客户：负责人改为当前(目标)用户
       updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: newOwnerId } }));
     }
-    if (lead.productId) {
-      // 转移产品：私密(PRIVATE)则把目标用户加入可见人，公开(PUBLIC)保持
-      // visibleUsers 是关联表（ProductVisibleUser）而非字符串数组，需用关系型写入；
-      // 联合唯一 (productId, userId) 保证重复转交不会插入重复可见人
-      if (lead.product?.visibility === 'PRIVATE') {
-        updates.push(
-          prisma.singleProduct.update({
-            where: { id: lead.productId },
-            data: {
-              visibleUsers: {
-                connectOrCreate: {
-                  where: { productId_userId: { productId: lead.productId, userId: newOwnerId } },
-                  create: { userId: newOwnerId },
-                },
+    // 转移产品：私密(PRIVATE)则把目标用户加入可见人，公开(PUBLIC)保持
+    // visibleUsers 是关联表（ProductVisibleUser）而非字符串数组，需用关系型写入；
+    // 联合唯一 (productId, userId) 保证重复转交不会插入重复可见人
+    const privateProductIds = lead.items
+      .map((i) => i.product)
+      .filter((p) => p && p.visibility === 'PRIVATE')
+      .map((p) => p!.id);
+    for (const productId of privateProductIds) {
+      updates.push(
+        prisma.product.update({
+          where: { id: productId },
+          data: {
+            visibleUsers: {
+              connectOrCreate: {
+                where: { productId_userId: { productId, userId: newOwnerId } },
+                create: { userId: newOwnerId },
               },
             },
-          }),
-        );
-      } else {
-        // 公开产品默认所有人可见，无需变更
-      }
+          },
+        }),
+      );
     }
     await prisma.$transaction(updates);
 
@@ -435,7 +481,7 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       businessType: BUSINESS_TYPE.LEAD,
       businessId: id,
       businessNo: lead.leadNo,
-      summary: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${lead.productId ? '，关联产品(私密)加入可见人' : ''}`,
+      summary: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${privateProductIds.length ? `，关联 ${privateProductIds.length} 个私密产品加入可见人` : ''}`,
       customerId: lead.customerId || undefined,
     });
     success(res, null, '转交成功');
