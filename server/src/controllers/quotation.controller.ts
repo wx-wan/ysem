@@ -1,112 +1,490 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { Currency, Prisma, QuotationStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
+import { applyScope, roleScope } from '../utils/scope';
+import { activityLogger } from '../lib/activity-logger';
+import { BUSINESS_TYPE } from '../lib/business-type';
+import {
+  BASE_CURRENCY,
+  DECIMAL_PRECISION,
+  normalizeRate,
+  round,
+  toCny,
+  toDecimal,
+} from '../utils/currency';
 
-// ============ 校验 ============
+// ============================================================
+// 报价领域（V1.0）
+//
+// 履约链：Opportunity → Quotation → QuotationItem[] → SalesOrder
+//  - Quotation 是唯一的正式报价实体，**不得**回退到 Order(type=QUOTE) / SalesPipeline；
+//  - 明细一律落 QuotationItem（结构化），**不得**使用 JSON item / 旧 OrderItem；
+//  - 产品来源恒为 V1.0 Product，**不得**使用 SingleProduct / LeadProduct。
+//
+// 已 Deferred（不在本轮）：
+//  - quotationNo 走 NumberSequence runtime（当前沿用 sales.controller 的「按日最大序号 +1」做法）
+//  - customerSnapshot（ADR-04）形状未定，无消费方，暂不写入
+//  - parentId 版本链行为未定，暂不写入
+// ============================================================
+
+/** 列表 / 详情统一 include：客户、商机、明细（含产品） */
+const QUOTATION_INCLUDE: Prisma.QuotationInclude = {
+  customer: { select: { id: true, customerNo: true, companyName: true } },
+  opportunity: { select: { id: true, opportunityNo: true, title: true } },
+  items: {
+    include: { product: { select: { id: true, name: true, sku: true } } },
+    orderBy: { sort: 'asc' },
+  },
+};
+
+/** 报价状态 → 状态时间戳字段（V1.0 状态机） */
+const STATUS_TIME_FIELD: Partial<
+  Record<QuotationStatus, 'submittedAt' | 'sentAt' | 'acceptedAt' | 'rejectedAt'>
+> = {
+  SUBMITTED: 'submittedAt',
+  SENT: 'sentAt',
+  ACCEPTED: 'acceptedAt',
+  REJECTED: 'rejectedAt',
+};
+
+/** 金额入参：JSON number 或 string，一律经 Decimal 归一，禁止 JS number 参与运算 */
+const amountSchema = z.union([z.number(), z.string()]);
+type AmountInput = number | string;
+
+const itemSchema = z.object({
+  productId: z.string().optional().nullable(),
+  productName: z.string().optional(),
+  productSku: z.string().optional().nullable(),
+  spec: z.string().optional().nullable(),
+  craft: z.string().optional().nullable(),
+  size: z.string().optional().nullable(),
+  packaging: z.string().optional().nullable(),
+  quantity: amountSchema.optional(),
+  unit: z.string().optional(),
+  unitPrice: amountSchema.optional(),
+  amount: amountSchema.optional(),
+  costPrice: amountSchema.optional().nullable(),
+  leadTime: z.number().int().optional().nullable(),
+  remark: z.string().optional().nullable(),
+  sort: z.number().int().optional(),
+});
+
+export type QuotationItemInput = z.infer<typeof itemSchema>;
+
 const createSchema = z.object({
   opportunityId: z.string().min(1, '商机不能为空'),
   customerId: z.string().optional().nullable(),
-  productId: z.string().optional().nullable(),
   title: z.string().min(1, '报价标题不能为空'),
-  amount: z.number().positive('金额必须大于 0'),
-  currency: z.string().optional().default('USD'),
+  currency: z.nativeEnum(Currency).optional(),
+  exchangeRate: amountSchema.optional().nullable(),
+  totalAmount: amountSchema.optional(),
   validUntil: z.string().optional().nullable(),
-  status: z.enum(['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED']).optional().default('DRAFT'),
+  status: z.nativeEnum(QuotationStatus).optional(),
+  tradeTerms: z.string().optional().nullable(),
+  paymentTerms: z.string().optional().nullable(),
+  leadTime: z.number().int().optional().nullable(),
+  portOfLoading: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
+  ownerId: z.string().optional().nullable(),
+  items: z.array(itemSchema).optional(),
 });
 
 const updateSchema = createSchema.partial().extend({
   id: z.string().min(1),
 });
 
-// ============ 列表（按商机过滤） ============
-export const listQuotations = async (req: AuthRequest, res: Response) => {
+/** 生成报价号：QU-YYYYMMDD-序号（与 V1.0 quotationNo 对齐；NumberSequence runtime 接入不在本轮） */
+async function nextQuotationNo(): Promise<string> {
+  const today = new Date();
+  const dateStr =
+    today.getFullYear().toString() +
+    String(today.getMonth() + 1).padStart(2, '0') +
+    String(today.getDate()).padStart(2, '0');
+  const prefix = `QU-${dateStr}-`;
+  const existing = await prisma.quotation.findMany({
+    where: { quotationNo: { startsWith: prefix } },
+    select: { quotationNo: true },
+  });
+  let maxSeq = 0;
+  for (const item of existing) {
+    const seq = Number(item.quotationNo.slice(prefix.length));
+    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
+  }
+  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
+}
+
+/**
+ * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
+ *  - 本位币 CNY：恒为 1（定义性汇率，非伪造）
+ *  - 其余币种：入参优先，其次取 DailyExchangeRate 最近一期
+ *  - 都取不到：返回 null —— 不猜测、不按 1 兜底
+ */
+async function resolveExchangeRate(
+  currency: Currency,
+  input?: AmountInput | null,
+): Promise<Prisma.Decimal | null> {
+  if (currency === BASE_CURRENCY) return new Prisma.Decimal(1);
+  const normalized = normalizeRate(input ?? null, 'rateToCny');
+  if (normalized) return normalized;
+  const latest = await prisma.dailyExchangeRate.findFirst({
+    where: { currencyCode: currency },
+    orderBy: { date: 'desc' },
+    select: { rateToCny: true },
+  });
+  return toDecimal(latest?.rateToCny ?? null);
+}
+
+interface ParsedItemsOk {
+  ok: true;
+  data: Prisma.QuotationItemUncheckedCreateWithoutQuotationInput[];
+  total: Prisma.Decimal | null;
+}
+interface ParsedItemsFail {
+  ok: false;
+  message: string;
+}
+
+/**
+ * 明细解析 + 产品快照（ADR-04）。
+ *
+ * 快照权威：调用方显式传入的快照值 > Product 当前值。
+ * Product 后续改名不会回溯修改已落库的 QuotationItem。
+ * Product 无 `spec` / `craft` 列，故这几项只取入参，不做推断（Schema limitation）。
+ */
+async function parseItems(
+  raw: QuotationItemInput[] | undefined,
+  currency: Currency,
+): Promise<ParsedItemsOk | ParsedItemsFail> {
+  if (!raw || raw.length === 0) return { ok: true, data: [], total: null };
+
+  const productIds = Array.from(
+    new Set(raw.map((i) => i.productId).filter((v): v is string => Boolean(v))),
+  );
+  const products = productIds.length
+    ? await prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, name: true, sku: true, packaging: true },
+      })
+    : [];
+  const productById = new Map(products.map((p) => [p.id, p]));
+
+  const data: Prisma.QuotationItemUncheckedCreateWithoutQuotationInput[] = [];
+  let total = new Prisma.Decimal(0);
+
+  for (const [index, item] of raw.entries()) {
+    const product = item.productId ? productById.get(item.productId) : undefined;
+    const productName = item.productName ?? product?.name;
+    if (!productName) {
+      return { ok: false, message: `第 ${index + 1} 条明细缺少产品名称` };
+    }
+
+    const quantity = round(item.quantity ?? 1, DECIMAL_PRECISION.quantity);
+    const unitPrice = round(item.unitPrice ?? 0, DECIMAL_PRECISION.unitPrice);
+    if (!quantity || !unitPrice) {
+      return { ok: false, message: `第 ${index + 1} 条明细数量 / 单价不合法` };
+    }
+
+    // V1.0：amount = quantity × unitPrice（全程 Decimal，不引入 JS number）
+    const amount =
+      round(item.amount, DECIMAL_PRECISION.amount) ??
+      quantity
+        .times(unitPrice)
+        .toDecimalPlaces(DECIMAL_PRECISION.amount, Prisma.Decimal.ROUND_HALF_UP);
+
+    data.push({
+      productId: item.productId ?? null,
+      productName,
+      productSku: item.productSku ?? product?.sku ?? null,
+      spec: item.spec ?? null,
+      craft: item.craft ?? null,
+      size: item.size ?? null,
+      packaging: item.packaging ?? product?.packaging ?? null,
+      quantity,
+      unit: item.unit ?? 'PCS',
+      unitPrice,
+      amount,
+      currency,
+      costPrice: round(item.costPrice ?? null, DECIMAL_PRECISION.unitPrice),
+      leadTime: item.leadTime ?? null,
+      remark: item.remark ?? null,
+      sort: item.sort ?? index,
+    });
+
+    total = total.plus(amount);
+  }
+
+  return {
+    ok: true,
+    data,
+    total: total.toDecimalPlaces(DECIMAL_PRECISION.amount, Prisma.Decimal.ROUND_HALF_UP),
+  };
+}
+
+// ============ 列表 ============
+export const listQuotations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { opportunityId, customerId, status, page = 1, pageSize = 50 } = req.query as Record<string, any>;
-    const where: Record<string, unknown> = {};
+    let where: Record<string, unknown> = {};
     if (opportunityId) where.opportunityId = opportunityId;
     if (customerId) where.customerId = customerId;
     if (status) where.status = status;
 
-    const skip = (Number(page) - 1) * Number(pageSize);
-    const list = await prisma.quotation.findMany({
-      where,
-      orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
-      skip,
-      take: Number(pageSize),
-    });
-    const total = await prisma.quotation.count({ where });
-    return success(res, { list, total, page: Number(page), pageSize: Number(pageSize) });
-  } catch (e: any) {
-    return fail(res, 500, e?.message || '查询失败');
+    // 数据范围：ALL / DEPT / SELF（ownerId）；Quotation 不存在公海语义，不并入 publicSea
+    where = applyScope(where, await roleScope(req, { field: 'ownerId' }));
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const pageSizeNum = Math.min(100, Math.max(1, Number(pageSize) || 20));
+    const [list, total] = await Promise.all([
+      prisma.quotation.findMany({
+        where,
+        include: QUOTATION_INCLUDE,
+        orderBy: [{ version: 'desc' }, { createdAt: 'desc' }],
+        skip: (pageNum - 1) * pageSizeNum,
+        take: pageSizeNum,
+      }),
+      prisma.quotation.count({ where }),
+    ]);
+    success(res, { list, total, page: pageNum, pageSize: pageSizeNum });
+  } catch {
+    fail(res, 500, '服务器错误');
   }
 };
 
 // ============ 详情 ============
-export const getQuotation = async (req: AuthRequest, res: Response) => {
+export const getQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const item = await prisma.quotation.findUnique({
       where: { id: req.params.id },
+      include: QUOTATION_INCLUDE,
     });
-    if (!item) return fail(res, 404, '报价不存在');
-    return success(res, item);
-  } catch (e: any) {
-    return fail(res, 500, e?.message || '查询失败');
+    if (!item) {
+      fail(res, 404, '报价不存在');
+      return;
+    }
+    success(res, item);
+  } catch {
+    fail(res, 500, '服务器错误');
   }
 };
 
 // ============ 新建（同一商机自动递增版本号） ============
-export const createQuotation = async (req: AuthRequest, res: Response) => {
+export const createQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const body = createSchema.parse(req.body);
+
+    // V1.0：Quotation.customerId 必填，未传时取商机所属客户（Quotation 1:1 归属 Opportunity.customer）
+    const opportunity = await prisma.opportunity.findUnique({
+      where: { id: body.opportunityId },
+      select: { id: true, customerId: true, title: true },
+    });
+    if (!opportunity) {
+      fail(res, 400, '商机不存在');
+      return;
+    }
+    const customerId = body.customerId ?? opportunity.customerId;
+    if (!customerId) {
+      fail(res, 400, '客户不能为空');
+      return;
+    }
+
+    const currency = body.currency ?? Currency.USD;
+    const parsed = await parseItems(body.items, currency);
+    if (!parsed.ok) {
+      fail(res, 400, parsed.message);
+      return;
+    }
+
+    // 总金额：显式入参优先，其次取明细汇总（V1.0 Quotation.totalAmount NOT NULL）
+    const totalAmount = round(body.totalAmount, DECIMAL_PRECISION.amount) ?? parsed.total;
+    if (!totalAmount) {
+      fail(res, 400, '报价金额不能为空');
+      return;
+    }
+
+    const exchangeRate = await resolveExchangeRate(currency, body.exchangeRate);
+    const totalAmountCny = toCny(totalAmount, exchangeRate);
+
     const max = await prisma.quotation.aggregate({
       where: { opportunityId: body.opportunityId },
       _max: { version: true },
     });
     const version = (max._max.version ?? 0) + 1;
+    const quotationNo = await nextQuotationNo();
+    const status = body.status ?? QuotationStatus.DRAFT;
+
     const item = await prisma.quotation.create({
       data: {
-        opportunityId: body.opportunityId,
-        customerId: body.customerId ?? null,
-        productId: body.productId ?? null,
+        quotationNo,
         title: body.title,
         version,
-        amount: body.amount,
-        currency: body.currency ?? 'USD',
+        currency,
+        exchangeRate,
+        totalAmount,
+        totalAmountCny,
+        tradeTerms: body.tradeTerms ?? null,
+        paymentTerms: body.paymentTerms ?? null,
+        leadTime: body.leadTime ?? null,
         validUntil: body.validUntil ? new Date(body.validUntil) : null,
-        status: body.status ?? 'DRAFT',
+        portOfLoading: body.portOfLoading ?? null,
+        status,
+        ...(STATUS_TIME_FIELD[status]
+          ? { [STATUS_TIME_FIELD[status] as string]: new Date() }
+          : {}),
         notes: body.notes ?? null,
+        ownerId: body.ownerId ?? req.userId ?? null,
+        createdBy: req.userId ?? null,
+        opportunity: { connect: { id: body.opportunityId } },
+        customer: { connect: { id: customerId } },
+        ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
       },
+      include: QUOTATION_INCLUDE,
     });
-    return created(res, item);
-  } catch (e: any) {
-    if (e?.name === 'ZodError') return fail(res, 400, e.errors?.[0]?.message || '参数错误');
-    return fail(res, 500, e?.message || '创建失败');
+
+    void activityLogger.log({
+      userId: req.userId ?? '',
+      username: req.username ?? '',
+      realName: req.realName,
+      action: 'CREATE',
+      module: 'quotation',
+      businessType: BUSINESS_TYPE.QUOTATION,
+      businessId: item.id,
+      businessNo: item.quotationNo,
+      summary: `${req.username ?? ''} 创建了报价「${item.title}」（${item.quotationNo}）`,
+      ip: req.ip,
+      customerId,
+    });
+
+    created(res, item);
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    fail(res, 500, '服务器错误');
   }
 };
 
 // ============ 更新 ============
-export const updateQuotation = async (req: AuthRequest, res: Response) => {
+export const updateQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id, ...rest } = updateSchema.parse({ id: req.params.id, ...req.body });
-    const data: Record<string, unknown> = { ...rest };
-    if (rest.validUntil !== undefined) data.validUntil = rest.validUntil ? new Date(rest.validUntil) : null;
-    const item = await prisma.quotation.update({ where: { id }, data });
-    return success(res, item);
-  } catch (e: any) {
-    if (e?.name === 'ZodError') return fail(res, 400, e.errors?.[0]?.message || '参数错误');
-    return fail(res, 500, e?.message || '更新失败');
+
+    const existing = await prisma.quotation.findUnique({
+      where: { id },
+      select: { id: true, quotationNo: true, title: true, currency: true, totalAmount: true, customerId: true },
+    });
+    if (!existing) {
+      fail(res, 404, '报价不存在');
+      return;
+    }
+
+    const currency = rest.currency ?? existing.currency;
+    const data: Prisma.QuotationUpdateInput = {};
+    let totalAmount: Prisma.Decimal | null = null;
+
+    if (rest.items !== undefined) {
+      const parsed = await parseItems(rest.items, currency);
+      if (!parsed.ok) {
+        fail(res, 400, parsed.message);
+        return;
+      }
+      // 明细整表重建（deleteMany + create），保证与入参完全一致
+      data.items = { deleteMany: {}, create: parsed.data };
+      totalAmount = round(rest.totalAmount, DECIMAL_PRECISION.amount) ?? parsed.total ?? toDecimal(existing.totalAmount);
+    } else if (rest.totalAmount !== undefined) {
+      totalAmount = round(rest.totalAmount, DECIMAL_PRECISION.amount);
+    }
+
+    if (rest.opportunityId) data.opportunity = { connect: { id: rest.opportunityId } };
+    if (rest.customerId) data.customer = { connect: { id: rest.customerId } };
+    if (rest.title !== undefined) data.title = rest.title;
+    if (rest.currency !== undefined) data.currency = rest.currency;
+    if (rest.validUntil !== undefined) {
+      data.validUntil = rest.validUntil ? new Date(rest.validUntil) : null;
+    }
+    if (rest.status !== undefined) {
+      data.status = rest.status;
+      const timeField = STATUS_TIME_FIELD[rest.status];
+      if (timeField) data[timeField] = new Date();
+    }
+    if (rest.notes !== undefined) data.notes = rest.notes;
+    if (rest.tradeTerms !== undefined) data.tradeTerms = rest.tradeTerms;
+    if (rest.paymentTerms !== undefined) data.paymentTerms = rest.paymentTerms;
+    if (rest.leadTime !== undefined) data.leadTime = rest.leadTime;
+    if (rest.portOfLoading !== undefined) data.portOfLoading = rest.portOfLoading;
+    if (rest.ownerId !== undefined) data.ownerId = rest.ownerId;
+    data.updatedBy = req.userId ?? null;
+
+    // 币种 / 汇率 / 金额任一变化时，按 rateToCny 重算三件套（缺失汇率 → 置 null，不伪造）
+    if (totalAmount || rest.currency !== undefined || rest.exchangeRate !== undefined) {
+      if (totalAmount) data.totalAmount = totalAmount;
+      const exchangeRate = await resolveExchangeRate(currency, rest.exchangeRate);
+      data.exchangeRate = exchangeRate;
+      data.totalAmountCny = toCny(totalAmount ?? existing.totalAmount, exchangeRate);
+    }
+
+    const item = await prisma.quotation.update({
+      where: { id },
+      data,
+      include: QUOTATION_INCLUDE,
+    });
+
+    void activityLogger.log({
+      userId: req.userId ?? '',
+      username: req.username ?? '',
+      realName: req.realName,
+      action: 'UPDATE',
+      module: 'quotation',
+      businessType: BUSINESS_TYPE.QUOTATION,
+      businessId: item.id,
+      businessNo: item.quotationNo,
+      summary: `${req.username ?? ''} 更新了报价「${item.title}」（${item.quotationNo}）`,
+      ip: req.ip,
+      customerId: item.customerId,
+    });
+
+    success(res, item, '更新成功');
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    fail(res, 500, '服务器错误');
   }
 };
 
 // ============ 删除 ============
-export const removeQuotation = async (req: AuthRequest, res: Response) => {
+export const removeQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const existing = await prisma.quotation.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, quotationNo: true, title: true, customerId: true },
+    });
+    if (!existing) {
+      fail(res, 404, '报价不存在');
+      return;
+    }
     await prisma.quotation.delete({ where: { id: req.params.id } });
-    return success(res, null);
-  } catch (e: any) {
-    return fail(res, 500, e?.message || '删除失败');
+
+    void activityLogger.log({
+      userId: req.userId ?? '',
+      username: req.username ?? '',
+      realName: req.realName,
+      action: 'DELETE',
+      module: 'quotation',
+      businessType: BUSINESS_TYPE.QUOTATION,
+      businessId: existing.id,
+      businessNo: existing.quotationNo,
+      summary: `${req.username ?? ''} 删除了报价「${existing.title}」（${existing.quotationNo}）`,
+      ip: req.ip,
+      customerId: existing.customerId,
+    });
+
+    success(res, null, '删除成功');
+  } catch {
+    fail(res, 500, '服务器错误');
   }
 };
