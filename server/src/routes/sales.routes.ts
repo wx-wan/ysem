@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
 import {
-  getPipelines, getKanban, getPipeline, createPipeline,
-  updatePipeline, deletePipeline, batchDelete,
+  getOpportunities, getKanban, getOpportunity, createOpportunity,
+  updateOpportunity, deleteOpportunity, batchDelete,
   importExcel, getAssignUsers, getByCustomer, getByProduct,
 } from '../controllers/sales.controller';
 import { authenticate } from '../middleware/auth';
@@ -75,13 +75,13 @@ router.post('/import', upload.single('file'), importExcel);
  *       200:
  *         description: 销售记录列表
  */
-router.get('/', getPipelines);
+router.get('/', getOpportunities);
 
 router.get('/by-customer/:customerId', getByCustomer);
 
 router.get('/by-product/:productId', getByProduct);
 
-router.get('/:id', getPipeline);
+router.get('/:id', getOpportunity);
 
 /**
  * @swagger
@@ -108,9 +108,9 @@ router.get('/:id', getPipeline);
  *       200:
  *         description: 创建成功
  */
-router.post('/', createPipeline);
+router.post('/', createOpportunity);
 
-router.put('/:id', updatePipeline);
+router.put('/:id', updateOpportunity);
 
 /**
  * @swagger
@@ -139,6 +139,6 @@ router.put('/:id', updatePipeline);
  */
 router.delete('/batch', batchDelete);
 
-router.delete('/:id', deletePipeline);
+router.delete('/:id', deleteOpportunity);
 
 export default router;

@@ -42,7 +42,7 @@ const getOrderAggregates = async (customerIds: string[]): Promise<Record<string,
 type PipelineAgg = { pipelineAmount: number };
 const getPipelineAggregates = async (customerIds: string[]): Promise<Record<string, PipelineAgg>> => {
   if (customerIds.length === 0) return {};
-  const agg = await prisma.salesPipeline.groupBy({
+  const agg = await prisma.opportunity.groupBy({
     by: ["customerId"],
     _sum: { estimatedAmount: true },
     where: { customerId: { in: customerIds } },
@@ -51,7 +51,7 @@ const getPipelineAggregates = async (customerIds: string[]): Promise<Record<stri
   for (const row of agg) {
     if (!row.customerId) continue;
     map[row.customerId] = {
-      pipelineAmount: row._sum.estimatedAmount || 0,
+      pipelineAmount: Number(row._sum.estimatedAmount ?? 0),
     };
   }
   return map;
@@ -133,11 +133,11 @@ const getSubFilterCounts = async (baseWhere: any) => {
   const noOrderWhere = { ...baseWhere, orders: { none: {} } };
   const doneWhere = { ...baseWhere, orders: { some: {} } };
   const [A, B, C, D, none, newC, oldC] = await Promise.all([
-    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { some: { probability: "准成交" } } } }),
-    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] } }),
-    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] } }),
-    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] } }),
-    prisma.customer.count({ where: { ...noOrderWhere, pipelines: { none: {} } } }),
+    prisma.customer.count({ where: { ...noOrderWhere, opportunities: { some: { intentLevel: "READY" } } } }),
+    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] } }),
+    prisma.customer.count({ where: { ...noOrderWhere, opportunities: { none: {} } } }),
     prisma.customer.count({ where: { ...doneWhere, firstOrderDate: { startsWith: currentYear } } }),
     prisma.customer.count({ where: { ...doneWhere, AND: [{ firstOrderDate: { not: null } }, { firstOrderDate: { not: "" } }, { firstOrderDate: { not: { startsWith: currentYear } } }] } }),
   ]);
@@ -187,16 +187,16 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
       andConditions.push({ orders: { none: {} } });
     } else if (type === "noOrder-none") {
       // 待开发：未成交且无商机记录
-      andConditions.push({ orders: { none: {} }, pipelines: { none: {} } });
+      andConditions.push({ orders: { none: {} }, opportunities: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
+      andConditions.push({ orders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
     } else if (type === "noOrder-D") {
       // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
-      andConditions.push({ orders: { none: {} }, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      andConditions.push({ orders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
@@ -222,8 +222,8 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
         orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-          _count: { select: { orders: true, pipelines: true } },
-          pipelines: { select: { probability: true } },
+          _count: { select: { orders: true, opportunities: true } },
+          opportunities: { select: { intentLevel: true } },
         },
       }),
       prisma.customer.count({ where }),
@@ -233,7 +233,7 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
     const [estimatedAgg, totalAmountAgg, estimatedBreakdown, newAmountAgg, oldAmountAgg] = await Promise.all([
-      prisma.salesPipeline.aggregate({
+      prisma.opportunity.aggregate({
         where: { customer: where },
         _sum: { estimatedAmount: true },
       }),
@@ -241,8 +241,8 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
         where: { customer: where },
         _sum: { amountCNY: true },
       }),
-      prisma.salesPipeline.groupBy({
-        by: ['probability'],
+      prisma.opportunity.groupBy({
+        by: ['intentLevel'],
         where: { customer: where },
         _sum: { estimatedAmount: true },
         _count: true,
@@ -335,7 +335,7 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
           _count: { select: { orders: true } },
-          pipelines: { select: { probability: true } },
+          opportunities: { select: { intentLevel: true } },
         },
       }),
       prisma.customer.count({ where }),
@@ -416,16 +416,16 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
       andConditions.push({ orders: { none: {} } });
     } else if (type === "noOrder-none") {
       // 待开发：未成交且无商机记录
-      andConditions.push({ orders: { none: {} }, pipelines: { none: {} } });
+      andConditions.push({ orders: { none: {} }, opportunities: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, pipelines: { some: { probability: "准成交" } } });
+      andConditions.push({ orders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "高意向" } } }, { pipelines: { none: { probability: "准成交" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ pipelines: { some: { probability: "中意向" } } }, { pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }] });
+      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
     } else if (type === "noOrder-D") {
       // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
-      andConditions.push({ orders: { none: {} }, pipelines: { some: {} }, AND: [{ pipelines: { none: { probability: "准成交" } } }, { pipelines: { none: { probability: "高意向" } } }, { pipelines: { none: { probability: "中意向" } } }] });
+      andConditions.push({ orders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
     } else if (type === "done") {
       andConditions.push({ orders: { some: {} } });
     } else if (type === "done-new") {
@@ -454,8 +454,8 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
         orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-          _count: { select: { orders: true, pipelines: true } },
-          pipelines: { select: { probability: true } },
+          _count: { select: { orders: true, opportunities: true } },
+          opportunities: { select: { intentLevel: true } },
         },
       }),
       prisma.customer.count({ where }),
@@ -481,7 +481,7 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
     const [estimatedAgg, totalAmountAgg, estimatedBreakdown, newAmountAgg, oldAmountAgg] = await Promise.all([
-      prisma.salesPipeline.aggregate({
+      prisma.opportunity.aggregate({
         where: { customer: where as any },
         _sum: { estimatedAmount: true },
       }),
@@ -489,8 +489,8 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
         where: { customer: where as any },
         _sum: { amountCNY: true },
       }),
-      prisma.salesPipeline.groupBy({
-        by: ['probability'],
+      prisma.opportunity.groupBy({
+        by: ['intentLevel'],
         where: { customer: where as any },
         _sum: { estimatedAmount: true },
         _count: true,
@@ -607,9 +607,9 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
       include: {
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
         orders: { orderBy: { createdAt: "desc" } },
-        pipelines: {
+        opportunities: {
           orderBy: { createdAt: "desc" },
-          include: { assignee: { select: { id: true, username: true, realName: true } } },
+          include: { owner: { select: { id: true, username: true, realName: true } } },
         },
         activities: {
           orderBy: { createdAt: "asc" },
@@ -1046,7 +1046,7 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
     const isAdmin = roleCode === "admin" || roleCode === "ADMIN";
 
     // 销售管道权限：按角色数据范围过滤（含公海）
-    const pipelineWhere: any = isAdmin ? {} : await roleScope(req, { field: 'assignedTo' });
+    const opportunityWhere: any = isAdmin ? {} : await roleScope(req, { field: 'ownerId' });
 
     // 客户权限：按角色数据范围过滤（统计口径不含公海）
     const customerWhere: any = isAdmin ? {} : await roleScope(req);
@@ -1055,7 +1055,7 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
 
     // 并行查询
     const [
-      allPipelines,
+      allOpportunities,
       sampleOrderCount,
       shippedOrderCount,
       newCustomerCount,
@@ -1064,8 +1064,8 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
       oldCustomerOrders,
     ] = await Promise.all([
       // 商机阶段为派生值：先取全量管道，再按派生阶段计数
-      prisma.salesPipeline.findMany({
-        where: pipelineWhere,
+      prisma.opportunity.findMany({
+        where: opportunityWhere,
         select: { id: true, leadId: true },
       }),
       // 订单 7 阶段中"下打样单"阶段的订单数（取代原 SAMPLE 阶段）
@@ -1111,7 +1111,7 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
     const oldCustomerAmount = oldCustomerOrders.reduce((s, o) => s + (o.amountCNY || 0), 0);
 
     // 按派生阶段统计商机数量
-    const stageMap = await deriveStages(allPipelines);
+    const stageMap = await deriveStages(allOpportunities);
     const stageCount = (s: PipelineStage) =>
       [...stageMap.values()].filter((v) => v === s).length;
     const opportunityCount = stageCount('OPPORTUNITY');

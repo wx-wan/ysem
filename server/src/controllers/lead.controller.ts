@@ -45,8 +45,8 @@ const leadSchema = z.object({
   deliveryReq: z.string().trim().max(1000).nullable().optional(),
   specialReq: z.string().trim().max(1000).nullable().optional(),
   customerType: z.string().trim().max(100).nullable().optional(),
-  assignedTo: z.string().optional().nullable(),
-  pipelineId: z.string().optional().nullable(), // 关联商机 ID（确认转商机后回填）
+  ownerId: z.string().optional().nullable(),
+  // V1.0：Lead 不再持有 pipelineId，商机关联由 Opportunity.leadId 单向持有（见 sales.controller）
 });
 
 // 列表：分页 + 多维筛选
@@ -59,7 +59,7 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     const platform = req.query.platform as string; // 平台（子级，如 寿春店）
     const status = req.query.status as string;
     const source = req.query.source as string;
-    const assignedTo = req.query.assignedTo as string;
+    const ownerId = req.query.ownerId as string;
 
     let where: Record<string, unknown> = {};
     if (keyword) {
@@ -85,15 +85,15 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     if (status) where.status = status;
     if (source) where.source = source;
 
-    // 列表范围切换：mine=我的（assignedTo=当前用户）；pool=公海（assignedTo=null）
+    // 列表范围切换：mine=我的（ownerId=当前用户）；pool=公海（ownerId=null）
     const scope = req.query.scope as string;
     if (scope === 'mine' || scope === 'pool') {
-      where.assignedTo = scope === 'mine' ? (req.userId ?? '') : null;
-    } else if (assignedTo && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
-      // 管理员可用 assignedTo 自由筛选；其余用户按角色 dataScope 过滤（含公海）
-      where.assignedTo = assignedTo;
+      where.ownerId = scope === 'mine' ? (req.userId ?? '') : null;
+    } else if (ownerId && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
+      // 管理员可用 ownerId 自由筛选；其余用户按角色 dataScope 过滤（含公海）
+      where.ownerId = ownerId;
     } else {
-      where = applyScope(where, await roleScope(req, { field: 'assignedTo' }));
+      where = applyScope(where, await roleScope(req, { field: 'ownerId' }));
     }
 
     const { list, total, page: p, pageSize: ps } = await paginateList(
@@ -105,7 +105,7 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
           product: { select: { id: true, name: true } },
-          assignedUser: { select: { id: true, username: true, realName: true } },
+          owner: { select: { id: true, username: true, realName: true } },
         },
       },
     );
@@ -122,7 +122,7 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
       include: {
         customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
         product: { select: { id: true, name: true } },
-        assignedUser: { select: { id: true, username: true, realName: true } },
+        owner: { select: { id: true, username: true, realName: true } },
       },
     });
     if (!item) {
@@ -132,7 +132,7 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
 
     // 数据范围校验：管理员不受限；其余角色只能查看自己负责或公海的线索
     if (req.roleCode !== 'admin' && req.roleCode !== 'ADMIN') {
-      if (item.assignedTo && item.assignedTo !== req.userId) {
+      if (item.ownerId && item.ownerId !== req.userId) {
         fail(res, 403, '无权查看该线索');
         return;
       }
@@ -200,7 +200,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         deliveryReq: data.deliveryReq ?? null,
         specialReq: data.specialReq ?? null,
         customerType: data.customerType ?? null,
-        assignedTo: data.assignedTo ?? null,
+        ownerId: data.ownerId ?? null,
         createdBy: req.userId ?? null,
         leadNumber,
       },
@@ -224,8 +224,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     if (data.sourceChannel === null) update.sourceChannel = null;
     if (data.productId === null) update.productId = null;
     if (data.productName === null) update.productName = null;
-    if (data.assignedTo === null) update.assignedTo = null;
-    if (data.pipelineId === null) update.pipelineId = null;
+    if (data.ownerId === null) update.ownerId = null;
     if (data.images !== undefined) {
       update.images =
         data.images === null
@@ -267,15 +266,15 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       fail(res, 404, '线索不存在');
       return;
     }
-    if (!lead.assignedTo) {
+    if (!lead.ownerId) {
       fail(res, 400, '该线索已在公海');
       return;
     }
-    if (lead.assignedTo !== userId && roleCode !== 'admin') {
+    if (lead.ownerId !== userId && roleCode !== 'admin') {
       fail(res, 403, '无权释放该线索');
       return;
     }
-    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: null } })];
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: null } })];
     // 联动释放客户到公海（ownerId 置空）
     if (lead.customerId) {
       updates.push(
@@ -322,12 +321,12 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
       fail(res, 404, '线索不存在');
       return;
     }
-    if (lead.assignedTo) {
+    if (lead.ownerId) {
       fail(res, 400, '该线索已被认领');
       return;
     }
 
-    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: userId } })];
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: userId } })];
     // 联动认领客户：仅当客户仍在公海（无归属人）时才归属认领人，避免抢夺他人客户
     if (lead.customerId) {
       const customer = await prisma.customer.findUnique({
@@ -379,7 +378,7 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
     const lead = await prisma.lead.findUnique({
       where: { id },
       include: {
-        assignedUser: { select: { id: true, realName: true } },
+        owner: { select: { id: true, realName: true } },
         product: { select: { id: true, visibility: true, visibleUsers: true } },
       },
     });
@@ -387,7 +386,7 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       fail(res, 404, '线索不存在');
       return;
     }
-    if (lead.assignedTo !== userId && roleCode !== 'admin') {
+    if (lead.ownerId !== userId && roleCode !== 'admin') {
       fail(res, 403, '无权转交该线索');
       return;
     }
@@ -396,9 +395,9 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       fail(res, 400, '目标用户不存在或已停用');
       return;
     }
-    const oldOwnerName = lead.assignedUser?.realName || '未分配';
+    const oldOwnerName = lead.owner?.realName || '未分配';
 
-    const updates: any[] = [prisma.lead.update({ where: { id }, data: { assignedTo: newOwnerId } })];
+    const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: newOwnerId } })];
     if (lead.customerId) {
       // 转移客户：负责人改为当前(目标)用户
       updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: newOwnerId } }));
