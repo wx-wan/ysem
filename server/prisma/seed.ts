@@ -227,23 +227,36 @@ interface NumberSequenceSeed {
   padding?: number;
 }
 
-/** 编号序列基线（15 个）。首次 currentValue = 0，后续运行不重置计数。 */
+/**
+ * 编号序列基线（15 个）。
+ *
+ * ⚠️ 格式冻结（Round 3B-3-4-0A）：本表是 V1.0 全部业务编号的唯一权威格式基准，
+ * 供后续 NumberSequence Runtime 消费。`code` 为系统内部 sequence key，
+ * **不要求等于最终编号 prefix**（如 OPP → BO、QUO → QU、SMP → SM、SHP → SH、
+ * INS → QC、PAY → PY、PRF → PF）。
+ *
+ * 语义约定：PO = ProductionOrder、PR = PurchaseOrder、LEAD 使用 yyyyMM、其余 yyyyMMdd、
+ * padding 统一为 4。Runtime 尚未接入；业务 controller 当前仍沿用旧前缀，
+ * 其迁移属于后续 NumberSequence Runtime 轮次。
+ *
+ * 首次 currentValue = 0，后续运行不重置计数。
+ */
 const NUMBER_SEQUENCES: NumberSequenceSeed[] = [
-  { code: 'LEAD', name: '线索编号', prefix: 'XS', datePattern: 'yyyyMM' },
-  { code: 'OPP', name: '商机编号', prefix: 'OPP' },
-  { code: 'QUO', name: '报价单编号', prefix: 'QUO' },
-  { code: 'SMP', name: '打样单编号', prefix: 'SMP' },
-  { code: 'SO', name: '销售订单编号', prefix: 'SO' },
-  { code: 'PO', name: '采购订单编号', prefix: 'PO' },
-  { code: 'PR', name: '生产工单编号', prefix: 'PR' },
-  { code: 'SHP', name: '出货单编号', prefix: 'SHP' },
-  { code: 'INS', name: '质检单编号', prefix: 'INS' },
-  { code: 'PAY', name: '收付款编号', prefix: 'PAY' },
-  { code: 'PRF', name: '利润单编号', prefix: 'PRF' },
-  { code: 'CUS', name: '客户编号', prefix: 'CUS' },
-  { code: 'PRD', name: '产品编号', prefix: 'PRD' },
-  { code: 'SUP', name: '供应商编号', prefix: 'SUP' },
-  { code: 'CMB', name: '组合产品编号', prefix: 'CMB' },
+  { code: 'LEAD', name: '线索编号', prefix: 'XS', datePattern: 'yyyyMM', padding: 4 },
+  { code: 'OPP', name: '商机编号', prefix: 'BO', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'QUO', name: '报价单编号', prefix: 'QU', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'SMP', name: '打样单编号', prefix: 'SM', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'SO', name: '销售订单编号', prefix: 'SO', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'PO', name: '生产订单编号', prefix: 'PO', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'PR', name: '采购订单编号', prefix: 'PR', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'SHP', name: '出货单编号', prefix: 'SH', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'INS', name: '质检单编号', prefix: 'QC', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'PAY', name: '收付款编号', prefix: 'PY', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'PRF', name: '利润单编号', prefix: 'PF', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'CUS', name: '客户编号', prefix: 'CUS', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'PRD', name: '产品编号', prefix: 'PRD', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'SUP', name: '供应商编号', prefix: 'SUP', datePattern: 'yyyyMMdd', padding: 4 },
+  { code: 'CMB', name: '组合产品编号', prefix: 'CMB', datePattern: 'yyyyMMdd', padding: 4 },
 ];
 
 interface ChannelSeed {
