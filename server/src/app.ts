@@ -31,6 +31,7 @@ import productionOrderRoutes from './routes/productionOrder.routes';
 import shipmentRoutes from './routes/shipment.routes';
 import paymentRoutes from './routes/payment.routes';
 import profitRoutes from './routes/profit.routes';
+import qualityInspectionRoutes from './routes/qualityInspection.routes';
 import uploadRoutes from './routes/upload.routes';
 import operationLogRoutes from './routes/operationLog.routes';
 import { UPLOAD_DIR } from './controllers/upload.controller';
@@ -135,6 +136,7 @@ app.use('/api/production-orders', productionOrderRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/profits', profitRoutes);
+app.use('/api/quality-inspections', qualityInspectionRoutes);
 app.use('/api/operations', operationLogRoutes);
 app.use('/api/upload', uploadRoutes);
 
