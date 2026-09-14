@@ -28,6 +28,7 @@ import quotationRoutes from './routes/quotation.routes';
 import sampleOrderRoutes from './routes/sampleOrder.routes';
 import salesOrderRoutes from './routes/salesOrder.routes';
 import productionOrderRoutes from './routes/productionOrder.routes';
+import shipmentRoutes from './routes/shipment.routes';
 import uploadRoutes from './routes/upload.routes';
 import operationLogRoutes from './routes/operationLog.routes';
 import { UPLOAD_DIR } from './controllers/upload.controller';
@@ -129,6 +130,7 @@ app.use('/api/quotations', quotationRoutes);
 app.use('/api/sample-orders', sampleOrderRoutes);
 app.use('/api/sales-orders', salesOrderRoutes);
 app.use('/api/production-orders', productionOrderRoutes);
+app.use('/api/shipments', shipmentRoutes);
 app.use('/api/operations', operationLogRoutes);
 app.use('/api/upload', uploadRoutes);
 
