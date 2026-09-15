@@ -4,7 +4,7 @@ import type { ApiResponse } from './request';
 // ========== 类型定义 ==========
 export interface Customer {
   id: string;
-  customerCode?: string; // 客户编号 CUS-YYMMDD-序号
+  customerNo?: string; // 客户编号 CUS-yyyyMMdd-####（V1.0 canonical 字段名）
   companyName: string;
   contactName?: string;
   englishName?: string;   // 英文名

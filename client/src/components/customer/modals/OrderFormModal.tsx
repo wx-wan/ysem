@@ -130,7 +130,7 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, customer, onClose, o
             placeholder={customer?.id ? '选择该客户下的商机' : '请先选择客户'}
             optionFilterProp="label"
             options={opportunities.map((o) => ({
-              label: `${o.opportunityNo || o.pipelineNumber || ''} ${o.title || ''}`.trim(),
+              label: `${o.opportunityNo || ''} ${o.title || ''}`.trim(),
               value: o.id,
             }))}
           />

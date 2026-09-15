@@ -59,7 +59,7 @@ export default function LeadTable({
         dataIndex: 'leadName',
         width: 220,
         render: (_?: string, r?: Lead) => {
-          const number = r?.leadNumber;
+          const number = r?.leadNo;
           const name = r?.leadName;
           if (!number && !name) return '-';
           return (
@@ -116,9 +116,11 @@ export default function LeadTable({
       },
       {
         title: t('lead.assignee'),
-        dataIndex: 'assignedTo',
+        dataIndex: 'ownerId',
         width: 100,
-        render: (v?: string) => (v ? userNameMap[v] || '-' : '-'),
+        // 负责人显示：优先使用后端 owner relation，回退按 ownerId 查用户名
+        render: (v?: string, r?: Lead) =>
+          r?.owner?.realName || r?.owner?.username || (v ? userNameMap[v] || '-' : '-'),
       },
       {
         title: t('lead.createdAt'),
@@ -132,8 +134,8 @@ export default function LeadTable({
         fixed: 'right',
         width: 200,
         render: (_: unknown, r: Lead) => {
-          // 公海线索（无负责人）：不支持确认 / 无效等操作，仅可认领
-          if (!r.assignedTo) {
+          // 公海线索（无负责人）：不支持确认 / 无效等操作，仅可认领（canonical 归属字段为 ownerId）
+          if (!r.ownerId) {
             return (
               <Space size={2}>
                 <Tooltip title={t('lead.claimTip')}>

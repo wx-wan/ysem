@@ -160,13 +160,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     fetchUsers();
     // 新建线索默认负责人为当前登录用户：同时写入表单字段（用于提交）与 editing（用于右上角回显）
     if (currentUser) {
-      const defaultAssignee = {
+      const defaultOwner = {
         id: currentUser.id,
         realName: currentUser.realName,
         username: currentUser.username,
       };
-      setEditing({ assignedTo: currentUser.id, assignedUser: defaultAssignee } as unknown as Lead);
-      form.setFieldsValue({ assignedTo: currentUser.id });
+      setEditing({ ownerId: currentUser.id, owner: defaultOwner } as unknown as Lead);
+      form.setFieldsValue({ ownerId: currentUser.id });
     }
     setDrawerOpen(true);
   };
@@ -189,8 +189,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         productKey: item.product?.name || item.productName || undefined,
         contactMethod: item.contactMethod || undefined,
         quantity: item.quantity ?? undefined,
-        // 负责人（标题栏 Form.Item 字段，一并回填）
-        assignedTo: item.assignedTo ?? undefined,
+        // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
+        ownerId: item.ownerId ?? item.owner?.id ?? undefined,
         // 详情扩展字段
         targetMarket: item.targetMarket || undefined,
         productType: item.productType || undefined,
@@ -255,7 +255,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       productName,
       quantity: values.quantity ? Number(values.quantity) || 0 : 0,
       // 负责人在弹窗标题栏（Form.Item 注册字段），随 validateFields 一并取回
-      assignedTo: values.assignedTo || null,
+      ownerId: values.ownerId || null,
       // 详情扩展字段
       targetMarket: values.targetMarket || null,
       productType: values.productType || null,
@@ -364,7 +364,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         navigate('/sales/opportunities');
                       }}
                     >
-                      {res.pipeline?.pipelineNumber}
+                      {res.pipeline?.opportunityNo}
                     </Button>
                   </p>
                   {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}
@@ -495,8 +495,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const isCreate = !editing?.id;
   // 已确认（QUALIFIED）与无效（INVALID）一样为只读：禁用所有编辑/操作
   const readonly = editing?.status === 'INVALID' || editing?.status === 'QUALIFIED';
-  // 公海线索（无负责人）：不支持确认 / 无效，仅可认领
-  const isPoolLead = !!editing?.id && !editing.assignedTo;
+  // 公海线索（无负责人）：不支持确认 / 无效，仅可认领（canonical 归属字段为 ownerId）
+  const isPoolLead = !!editing?.id && !editing.ownerId;
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
@@ -510,9 +510,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           title={
             <Space size={8} align="center" style={{ width: '100%', justifyContent: 'center' }}>
               <span>{editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}</span>
-              {editing?.id && editing.leadNumber && (
+              {editing?.id && editing.leadNo && (
                 <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                  {editing.leadNumber}
+                  {editing.leadNo}
                 </Tag>
               )}
             </Space>
@@ -541,17 +541,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     flexShrink: 0,
                   }}
                 >
-                  {editing?.assignedUser?.realName?.[0] ||
-                    editing?.assignedUser?.username?.[0] ||
+                  {editing?.owner?.realName?.[0] ||
+                    editing?.owner?.username?.[0] ||
                     '?'}
                 </div>
                 <div style={{ lineHeight: 1.3 }}>
                   <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{t('sales.assignedTo')}</div>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>
-                    {editing?.assignedUser?.realName || t('sales.unassigned')}
+                    {editing?.owner?.realName || t('sales.unassigned')}
                   </div>
                   <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                    {editing?.assignedUser?.username || ''}
+                    {editing?.owner?.username || ''}
                   </div>
                 </div>
               </div>
@@ -569,7 +569,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     title={t('lead.transfer')}
                   />
                   {/* 释放：仅已分配负责人时显示；只读态禁用（点击后弹窗二次确认） */}
-                  {editing?.assignedTo && (
+                  {editing?.ownerId && (
                     <Button
                       shape="circle"
                       size="middle"
@@ -654,8 +654,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </div>
           }
         >
-          {/* 负责人以只读文本显示于右上角，此处保留隐藏字段以便提交时携带 assignedTo */}
-          <Form.Item name="assignedTo" hidden>
+          {/* 负责人以只读文本显示于右上角，此处保留隐藏字段以便提交时携带 ownerId */}
+          <Form.Item name="ownerId" hidden>
             <Input />
           </Form.Item>
           {/* 溯源：已关联商机 */}
@@ -667,7 +667,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               title={
                 <Space>
                   <span>
-                    {t('lead.linkedPipeline')}：<b>{linkedPipeline?.pipelineNumber || editing?.pipelineId}</b>
+                    {t('lead.linkedPipeline')}：<b>{linkedPipeline?.opportunityNo || editing?.pipelineId}</b>
                   </span>
                   <Button
                     type="link"
@@ -885,7 +885,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       <TransferOwnerModal
         open={transferOpen}
         targetName={editing?.leadName || editing?.companyName}
-        currentOwnerId={editing?.assignedTo}
+        currentOwnerId={editing?.ownerId ?? undefined}
         title={t('lead.transfer')}
         placeholder={t('lead.selectTransferTarget')}
         successMessage={t('lead.transferSuccess')}

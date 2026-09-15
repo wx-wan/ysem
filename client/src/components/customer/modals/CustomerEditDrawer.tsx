@@ -137,7 +137,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         >
           <div>
             <div style={{ fontSize: 15, fontWeight: 700, color: token.colorTextHeading }}>编辑客户资料</div>
-            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>{customer.customerCode || '-'}</div>
+            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 2 }}>{customer.customerNo || '-'}</div>
           </div>
           <button
             onClick={onClose}

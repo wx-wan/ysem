@@ -181,7 +181,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     source: lead.sourceChannel ?? undefined,
     customerId: customerId ?? undefined,
     products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
-    assignedTo: lead.assignedTo ?? undefined,
+    ownerId: lead.ownerId ?? undefined,
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
     // 商机做实：带入线索的预估数据，新商机不再是空壳
     estimatedAmount: lead.targetPrice ? Number(lead.targetPrice) : undefined,

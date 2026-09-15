@@ -129,7 +129,7 @@ export default function SalesLeads() {
                         navigate('/sales/opportunities');
                       }}
                     >
-                      {res.pipeline?.pipelineNumber}
+                      {res.pipeline?.opportunityNo}
                     </Button>
                   </p>
                   {res.customerCreated && <p>{t('lead.convertCreatedCustomer')}</p>}

@@ -49,7 +49,8 @@ export interface SalesFormValues {
   orderStatus?: string;
   orderType?: 'SAMPLE' | 'FORMAL';
   orderNotes?: string;
-  assignedTo?: string;
+  /** 负责人 ID（V1.0 canonical 字段名） */
+  ownerId?: string | null;
   leadId?: string;
   products?: { productId: string; quantity?: number }[];
 }
@@ -112,7 +113,7 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwn
       form.resetFields();
       form.setFieldsValue({
         source: 'LEAD_CONVERT',
-        assignedTo: customer?.ownerId || undefined,
+        ownerId: customer?.ownerId || undefined,
         customerId: customer?.id,
       });
       setLeadProducts([]);
@@ -124,7 +125,7 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwn
     if (open && isDetail && customer) {
       form.setFieldsValue({
         customerId: customer.id,
-        assignedTo: customer.ownerId || undefined,
+        ownerId: customer.ownerId || undefined,
         title: customer.opportunityTitle || '',
         companyName: customer.companyName || '',
         contactName: customer.contactName || '',
@@ -212,7 +213,7 @@ const SalesFormModal: React.FC<Props> = ({ open, editingItem, customer, fixedOwn
               </Form.Item>
             </Col>
             <Col span={12}>
-              <Form.Item name="assignedTo" label={t('sales.owner')}>
+              <Form.Item name="ownerId" label={t('sales.owner')}>
                 <Select
                   allowClear
                   placeholder={t('sales.selectOwner')}

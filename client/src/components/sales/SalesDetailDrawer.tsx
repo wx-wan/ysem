@@ -65,7 +65,7 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
           title={
             <Space>
               <span>
-                {t('sales.sourceLead')}：<b>{detailItem.lead?.leadNumber || detailItem.leadId}</b>
+                {t('sales.sourceLead')}：<b>{detailItem.lead?.leadNo || detailItem.leadId}</b>
                 {detailItem.lead?.leadName ? `（${detailItem.lead.leadName}）` : ''}
               </span>
               <Button type="link" size="small" onClick={() => navigate('/sales/leads')}>

@@ -7,7 +7,7 @@ export interface CustomerOption {
   label: string;
   value: string;
   contactName?: string;
-  customerCode?: string;
+  customerNo?: string;
 }
 
 /** 线索表单依赖的选项数据：渠道树 / 产品 / 工艺与受众分类 / 客户 */
@@ -54,7 +54,7 @@ export function useLeadOptions() {
           label: c.companyName,
           value: c.id,
           contactName: c.contactName || undefined,
-          customerCode: c.customerCode || undefined,
+          customerNo: c.customerNo || undefined,
         })),
       );
     } catch {

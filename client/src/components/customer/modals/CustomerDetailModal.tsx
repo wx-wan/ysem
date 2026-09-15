@@ -67,7 +67,6 @@ interface CustomerDetailModalProps {
 /** 真实商机记录（来自 getById 的 pipelines，非模拟数据） */
 export interface RealPipeline {
   id: string;
-  pipelineNumber?: string;
   title?: string;
   stage?: string;
   companyName?: string;
@@ -127,7 +126,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   }, [customer?.id, customer?.tags]);
 
   // 客户编码：CUS-{创建日期 YYMMDD}-{当天序号}
-  const customerCode = customer?.customerCode || '-';
+  const customerNo = customer?.customerNo || '-';
 
   // 逻辑标签：统一复用 PurchaseIntentTag 组件（含成交状态前缀 + 采购意向），卡片视图与详情视图共用同一套逻辑
   const logicTag = useMemo(() => (customer ? getCustomerLogicLabel(customer) : ''), [customer]);
@@ -804,7 +803,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   />
                 </ConfigProvider>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <span style={{ fontSize: 12, color: token.colorTextTertiary, whiteSpace: 'nowrap' }}>{customerCode}</span>
+                  <span style={{ fontSize: 12, color: token.colorTextTertiary, whiteSpace: 'nowrap' }}>{customerNo}</span>
                 </div>
               </div>
               )}

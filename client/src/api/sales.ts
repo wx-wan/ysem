@@ -2,9 +2,7 @@ import axios from './request';
 
 export interface SalesItem {
   id: string;
-  /** ⚠️ 历史字段名：V1.0 Opportunity 实际字段为 opportunityNo（见下方），本字段已不再由后端返回 */
-  pipelineNumber: string;
-  /** V1.0 商机编号（OPP → OPP-yyyyMMdd-0001）；由 /api/sales 列表带去 */
+  /** 商机编号（V1.0 canonical 字段名：OPP → OPP-yyyyMMdd-0001） */
   opportunityNo?: string;
   /** 阶段：后端按关联单据派生（只读，不支持手动修改） */
   stage: string;
@@ -32,7 +30,9 @@ export interface SalesItem {
   orderStatus?: string;
   orderType?: string;   // SAMPLE / FORMAL
   orderNotes?: string;
-  assignedTo?: string;
+  /** 负责人 ID（V1.0 canonical 请求字段） */
+  ownerId?: string | null;
+  /** 负责人（后端 assignee relation；显示优先使用） */
   assignee?: { id: string; realName: string; username: string } | null;
   activities?: SalesActivity[];
   leadProducts?: LeadProduct[];
@@ -44,7 +44,7 @@ export interface SalesItem {
   quantity?: number;
   leadId?: string | null; // 来源线索 ID（便于溯源）
   /** 来源线索（后端 include 带回，用于展示线索号而非内部 ID） */
-  lead?: { id: string; leadNumber?: string | null; leadName?: string | null } | null;
+  lead?: { id: string; leadNo?: string | null; leadName?: string | null } | null;
 }
 
 // 阶段配色统一由 components/sales/stages.ts 提供（STAGE_META / getStageMeta）

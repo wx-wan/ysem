@@ -353,7 +353,7 @@ const CustomerCard = memo(function CustomerCard({
             <TagSelector value={localTags} onChange={handleTagsChange} placeholder="添加标签" color={avatarBg} />
           </div>
           <div style={{ fontSize: 11, color: token.colorTextQuaternary, whiteSpace: 'nowrap', flex: '0 0 auto' }}>
-            {customer.customerCode || '-'}
+            {customer.customerNo || '-'}
           </div>
         </div>
       </Card>

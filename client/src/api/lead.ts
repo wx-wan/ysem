@@ -15,7 +15,7 @@ export interface LeadCustomer {
 
 export interface Lead {
   id: string;
-  leadNumber?: string | null;
+  leadNo?: string | null; // 线索编号 XS-yyyyMM-####（V1.0 canonical 字段名）
   leadName: string;
   customerId?: string | null;
   customer?: LeadCustomer | null;
@@ -45,8 +45,10 @@ export interface Lead {
   deliveryReq?: string | null;
   specialReq?: string | null;
   customerType?: string | null;
-  assignedTo?: string | null;
-  assignedUser?: { id: string; username: string; realName: string | null } | null;
+  /** 负责人 ID（V1.0 canonical 归属/请求字段） */
+  ownerId?: string | null;
+  /** 负责人（后端 owner relation；显示优先使用） */
+  owner?: { id: string; username: string; realName: string | null } | null;
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -81,7 +83,8 @@ export interface LeadPayload {
   deliveryReq?: string | null;
   specialReq?: string | null;
   customerType?: string | null;
-  assignedTo?: string | null;
+  /** 负责人 ID（V1.0 canonical 请求字段） */
+  ownerId?: string | null;
 }
 
 export interface LeadListParams {
@@ -92,7 +95,8 @@ export interface LeadListParams {
   platform?: string;
   status?: LeadStatus;
   source?: LeadSource;
-  assignedTo?: string;
+  /** 按负责人筛选（V1.0 canonical；服务端只读 ownerId） */
+  ownerId?: string;
   scope?: 'mine' | 'pool';
 }
 
