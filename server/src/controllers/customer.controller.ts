@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
+import { CustomerLevel, IntentLevel, LeadSource } from "@prisma/client";
 import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
@@ -616,21 +618,137 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
   }
 };
 
+// ========== V1.0 写入入参校验（zod）==========
+// 原则：Schema → Zod → Controller → Prisma 语义一致；非法 enum / 类型 / 日期 → 400，
+// 不得让非法值进入 Prisma 变成 500。未知字段（含 legacy estimatedAmount）被 zod 忽略。
+
+/** tags 归一：null / undefined → []；字符串按 `,` / `，` 拆分；数组逐项 trim 去空 */
+const tagsField = z
+  .union([z.array(z.string()), z.string(), z.null()])
+  .optional()
+  .transform((value): string[] => {
+    if (value === null || value === undefined) return [];
+    const list = Array.isArray(value) ? value : value.split(/[,，]/);
+    return list.map((item) => item.trim()).filter((item) => item.length > 0);
+  });
+
+/** 主图入参：新字段 coverImage 优先，兼容旧字段名 images（数组取首个非空字符串） */
+const coverImageField = z.union([z.string(), z.array(z.string()), z.null()]).optional();
+
+/** 日期解析：Date / 日期字符串 / Excel 序列号 → Date；null 与 '' → null；无法解析 → 'invalid' */
+function parseDateInput(value: unknown): Date | null | 'invalid' {
+  if (value === null || value === undefined || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? 'invalid' : value;
+  if (typeof value === 'number') {
+    // Excel 1900 日期系统序列号（如 46265 → 2026-09-14）
+    if (!Number.isFinite(value) || value <= 0 || value > 60000) return 'invalid';
+    return new Date(Date.UTC(1899, 11, 30) + value * 86400000);
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value.trim());
+    return Number.isNaN(parsed.getTime()) ? 'invalid' : parsed;
+  }
+  return 'invalid';
+}
+
+/** 日期字段：未传 → undefined（保持原值）；null / '' → null（清空）；解析失败 → 400 */
+const dateField = z
+  .union([z.string(), z.number(), z.date(), z.null()])
+  .optional()
+  .refine((value) => value === undefined || parseDateInput(value) !== 'invalid', {
+    message: '日期格式不正确',
+  })
+  .transform((value) => (value === undefined ? undefined : (parseDateInput(value) as Date | null)));
+
+/** 主图归一：coverImage 优先，images 仅作兼容输入；两者都不会同时写入 */
+function normalizeCoverImage(input: { coverImage?: unknown; images?: unknown }): string | null | undefined {
+  const pick = (value: unknown): string | null | undefined => {
+    if (value === undefined) return undefined;
+    if (value === null) return null;
+    if (Array.isArray(value)) {
+      const first = value.find((item) => typeof item === 'string' && item.trim().length > 0);
+      return typeof first === 'string' ? first.trim() : null;
+    }
+    if (typeof value === 'string') return value.trim() || null;
+    return undefined;
+  };
+  const fromCoverImage = pick(input.coverImage);
+  return fromCoverImage !== undefined ? fromCoverImage : pick(input.images);
+}
+
+/** tags 语义比较（顺序无关，均为 string[]） */
+function sameTags(a: string[], b: string[] | null | undefined): boolean {
+  const left = [...a].sort();
+  const right = [...(b ?? [])].sort();
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+const customerCreateSchema = z.object({
+  companyName: z.string().trim().min(1, '公司名称不能为空').max(200),
+  contactName: z.string().trim().max(100).nullish(),
+  email: z.string().trim().max(200).nullish(),
+  phone: z.string().trim().max(50).nullish(),
+  country: z.string().trim().max(100).nullish(),
+  customerType: z.string().trim().max(100).nullish(),
+  source: z.nativeEnum(LeadSource).nullish(),
+  notes: z.string().trim().max(2000).nullish(),
+  ownerId: z.string().nullish(),
+  isKeyAccount: z.boolean().optional(),
+  tags: tagsField,
+  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  coverImage: coverImageField,
+  images: coverImageField,
+});
+
+const customerUpdateSchema = z.object({
+  companyName: z.string().trim().min(1, '公司名称不能为空').max(200).optional(),
+  englishName: z.string().trim().max(200).nullish(),
+  contactName: z.string().trim().max(100).nullish(),
+  position: z.string().trim().max(100).nullish(),
+  email: z.string().trim().max(200).nullish(),
+  phone: z.string().trim().max(50).nullish(),
+  wechat: z.string().trim().max(100).nullish(),
+  country: z.string().trim().max(100).nullish(),
+  region: z.string().trim().max(100).nullish(),
+  customerLevel: z.nativeEnum(CustomerLevel).optional(),
+  customerType: z.string().trim().max(100).nullish(),
+  source: z.nativeEnum(LeadSource).nullish(),
+  notes: z.string().trim().max(2000).nullish(),
+  ownerId: z.string().nullish(),
+  isKeyAccount: z.boolean().optional(),
+  tags: tagsField,
+  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  // 首次下单日期：V1.0 字段 firstOrderAt 优先，兼容旧字段名 firstOrderDate
+  firstOrderAt: dateField,
+  firstOrderDate: dateField,
+  coverImage: coverImageField,
+  images: coverImageField,
+});
+
+/** Excel 导入逐行校验（非法 enum / 日期 → 该行失败并计入 failed，不产生 500） */
+const customerImportSchema = z.object({
+  companyName: z.string().trim().min(1, '公司名称不能为空'),
+  contactName: z.string().trim().max(100).nullish(),
+  email: z.string().trim().max(200).nullish(),
+  phone: z.string().trim().max(50).nullish(),
+  country: z.string().trim().max(100).nullish(),
+  source: z.nativeEnum(LeadSource).nullish(),
+  notes: z.string().trim().max(2000).nullish(),
+  isKeyAccount: z.boolean().optional(),
+  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  firstOrderAt: dateField,
+});
+
 // ========== 创建客户 ==========
 export const create = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     const userId = req.userId!;
     const username = req.username!;
-    const { companyName, contactName, email, phone, country, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, estimatedAmount, images } =
-      req.body;
-
-    if (!companyName) return error(res, "公司名称不能为空", 400);
+    // V1.0 入参校验：非法 enum / 类型 / tags → 400；未知字段（含 legacy estimatedAmount）被忽略
+    const body = customerCreateSchema.parse(req.body);
 
     // 如果 ownerId 传入 null 则放入公海；未传入则归当前用户
-    let finalOwnerId: string | null = userId;
-    if (ownerId !== undefined) {
-      finalOwnerId = ownerId; // null 就直接是 null（公海）
-    }
+    const finalOwnerId: string | null = body.ownerId !== undefined ? body.ownerId : userId;
 
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const customer = await prisma.$transaction(async (tx) => {
@@ -639,19 +757,20 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       return tx.customer.create({
         data: {
           customerNo,
-          companyName,
-          contactName,
-          email,
-          phone,
-          country,
-          customerType,
-          coverImage: images ?? null,
-          source: source || "MANUAL",
-          notes,
+          companyName: body.companyName,
+          contactName: body.contactName ?? null,
+          email: body.email ?? null,
+          phone: body.phone ?? null,
+          country: body.country ?? null,
+          customerType: body.customerType ?? null,
+          coverImage: normalizeCoverImage(body) ?? null,
+          source: body.source ?? "MANUAL",
+          notes: body.notes ?? null,
           ownerId: finalOwnerId,
-          isKeyAccount: isKeyAccount || false,
-          tags: Array.isArray(tags) ? tags.join(',') : (tags || ''),
-          intentLevel: isKeyAccount ? intentLevel || null : null,
+          isKeyAccount: body.isKeyAccount ?? false,
+          // V1.0：Customer.tags 为 PG 原生数组（String[]），不接受逗号字符串
+          tags: body.tags ?? [],
+          intentLevel: body.isKeyAccount ? body.intentLevel ?? null : null,
         },
       });
     });
@@ -664,12 +783,15 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       businessType: BUSINESS_TYPE.CUSTOMER,
       businessId: customer.id,
       businessNo: customer.customerNo,
-      summary: `创建客户：${companyName}`,
+      summary: `创建客户：${body.companyName}`,
       customerId: customer.id,
     });
 
     success(res, customer, "创建成功");
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return error(res, err.errors.map((e) => e.message).join("；"), 400);
+    }
     next(err);
   }
 };
@@ -681,8 +803,32 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     const username = req.username!;
     const userId = req.userId!;
     const roleCode = req.roleCode;
-    const { companyName, contactName, englishName, position, email, phone, wechat, country, region, customerLevel, customerType, source, notes, ownerId, isKeyAccount, tags, intentLevel, firstOrderDate, estimatedAmount, images } =
-      req.body;
+    // V1.0 入参校验：非法 enum / 类型 / 日期 → 400；未知字段（含 legacy estimatedAmount）被忽略
+    const body = customerUpdateSchema.parse(req.body);
+    const {
+      companyName,
+      contactName,
+      englishName,
+      position,
+      email,
+      phone,
+      wechat,
+      country,
+      region,
+      customerLevel,
+      customerType,
+      source,
+      notes,
+      ownerId,
+      isKeyAccount,
+      tags,
+      intentLevel,
+    } = body;
+
+    // 主图：coverImage 优先，images 仅作兼容输入
+    const coverImage = normalizeCoverImage(body);
+    // 首次下单日期：firstOrderAt（V1.0）优先，兼容旧字段名 firstOrderDate；内部只写 firstOrderAt
+    const firstOrderAt = body.firstOrderAt !== undefined ? body.firstOrderAt : body.firstOrderDate;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
@@ -700,34 +846,33 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     }
     if (intentLevel && intentLevel !== existing.intentLevel)
       changes.push(`意向等级: ${existing.intentLevel || "无"} → ${intentLevel}`);
-    if (tags !== undefined) {
-      const newTags = Array.isArray(tags) ? tags.join(',') : tags;
-      if (newTags !== (existing.tags || '')) changes.push(`标签已更新`);
-    }
+    if (tags !== undefined && !sameTags(tags, existing.tags)) changes.push(`标签已更新`);
 
     const customer = await prisma.customer.update({
       where: { id },
       data: {
-        companyName: companyName ?? existing.companyName,
-        contactName: contactName !== undefined ? contactName : existing.contactName,
-        englishName: englishName !== undefined ? englishName : existing.englishName,
-        position: position !== undefined ? position : existing.position,
-        email: email !== undefined ? email : existing.email,
-        phone: phone !== undefined ? phone : existing.phone,
-        wechat: wechat !== undefined ? wechat : existing.wechat,
-        country: country !== undefined ? country : existing.country,
-        region: region !== undefined ? region : existing.region,
-        images: images !== undefined ? images : existing.images,
-        customerLevel: customerLevel !== undefined ? customerLevel : existing.customerLevel,
-        customerType: customerType !== undefined ? customerType : existing.customerType,
-        source: source ?? existing.source,
-        notes: notes !== undefined ? notes : existing.notes,
-        ownerId: ownerId !== undefined ? ownerId : existing.ownerId,
-        isKeyAccount: isKeyAccount ?? existing.isKeyAccount,
-        tags: tags !== undefined ? (Array.isArray(tags) ? tags.join(',') : tags) : existing.tags,
-        intentLevel: isKeyAccount === false ? null : (intentLevel !== undefined ? intentLevel : existing.intentLevel),
-        firstOrderDate: firstOrderDate !== undefined ? firstOrderDate : existing.firstOrderDate,
-        estimatedAmount: estimatedAmount !== undefined ? estimatedAmount : existing.estimatedAmount,
+        // V1.0：仅写入 Customer 标量；未传字段（undefined）不出现在 data 中 → 保持原值
+        ...(companyName !== undefined ? { companyName } : {}),
+        ...(contactName !== undefined ? { contactName } : {}),
+        ...(englishName !== undefined ? { englishName } : {}),
+        ...(position !== undefined ? { position } : {}),
+        ...(email !== undefined ? { email } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(wechat !== undefined ? { wechat } : {}),
+        ...(country !== undefined ? { country } : {}),
+        ...(region !== undefined ? { region } : {}),
+        ...(coverImage !== undefined ? { coverImage } : {}),
+        ...(customerLevel !== undefined ? { customerLevel } : {}),
+        ...(customerType !== undefined ? { customerType } : {}),
+        ...(source !== undefined ? { source } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+        ...(ownerId !== undefined ? { ownerId } : {}),
+        ...(isKeyAccount !== undefined ? { isKeyAccount } : {}),
+        // V1.0：Customer.tags 为 PG 原生数组（String[]）
+        ...(tags !== undefined ? { tags } : {}),
+        intentLevel: isKeyAccount === false ? null : intentLevel !== undefined ? intentLevel : existing.intentLevel,
+        // V1.0：字段为 firstOrderAt（DateTime?）；不再写入 firstOrderDate
+        ...(firstOrderAt !== undefined ? { firstOrderAt } : {}),
       },
     });
 
@@ -747,6 +892,9 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
 
     success(res, customer, "更新成功");
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return error(res, err.errors.map((e) => e.message).join("；"), 400);
+    }
     next(err);
   }
 };
@@ -934,7 +1082,8 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       notes: "notes",
       重点客户: "isKeyAccount",
       意向等级: "intentLevel",
-      首次下单日期: "firstOrderDate",
+      // V1.0：Customer 字段为 firstOrderAt（DateTime?），不再写旧列 firstOrderDate
+      首次下单日期: "firstOrderAt",
     };
 
     const username = req.username!;
@@ -942,18 +1091,20 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
     let failed = 0;
 
     for (const row of rows) {
-      const data: any = { source: "EXCEL", ownerId: null };
+      const raw: Record<string, unknown> = { source: "EXCEL" };
       for (const [key, value] of Object.entries(row)) {
         const mapped = fieldMap[key] || fieldMap[key.toLowerCase()] || null;
         if (mapped) {
           if (mapped === "isKeyAccount") {
-            data[mapped] = ["是", "yes", "true", "1"].includes(String(value).toLowerCase());
+            raw[mapped] = ["是", "yes", "true", "1"].includes(String(value).toLowerCase());
           } else {
-            data[mapped] = value;
+            raw[mapped] = value;
           }
         }
       }
-      if (!data.companyName) {
+      // V1.0：逐行校验（缺必填 / 非法 enum / 非法日期 → 该行失败，不产生 500）
+      const parsedRow = customerImportSchema.safeParse(raw);
+      if (!parsedRow.success) {
         failed++;
         continue;
       }
@@ -962,7 +1113,22 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
         // 编号分配与业务写入同事务：逐行独立事务，保留导入的部分成功语义
         await prisma.$transaction(async (tx) => {
           const customerNo = await getNextNumber(tx, "CUS");
-          return tx.customer.create({ data: { ...data, customerNo } });
+          return tx.customer.create({
+            data: {
+              customerNo,
+              companyName: parsedRow.data.companyName,
+              contactName: parsedRow.data.contactName ?? null,
+              email: parsedRow.data.email ?? null,
+              phone: parsedRow.data.phone ?? null,
+              country: parsedRow.data.country ?? null,
+              source: parsedRow.data.source ?? "EXCEL",
+              notes: parsedRow.data.notes ?? null,
+              ownerId: null, // V1.0：导入客户默认进公海
+              isKeyAccount: parsedRow.data.isKeyAccount ?? false,
+              // V1.0：firstOrderAt（DateTime?）；Excel 序列号 / 日期字符串均可
+              firstOrderAt: parsedRow.data.firstOrderAt ?? null,
+            },
+          });
         });
         created++;
       } catch {
@@ -1000,7 +1166,8 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
     const username = req.username!;
     const userId = req.userId!;
     const roleCode = req.roleCode;
-    const { tags } = req.body;
+    // V1.0 入参校验：tags 归一为 string[]（字符串兼容，按 `,` / `，` 拆分）
+    const { tags } = z.object({ tags: tagsField }).parse(req.body);
 
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) return error(res, "客户不存在", 404);
@@ -1009,14 +1176,12 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
       return error(res, "无权编辑该客户", 403);
     }
 
-    const newTags = Array.isArray(tags) ? tags.join(',') : (tags || '');
-
     const customer = await prisma.customer.update({
       where: { id },
-      data: { tags: newTags },
+      data: { tags },
     });
 
-    if (newTags !== (existing.tags || '')) {
+    if (!sameTags(tags, existing.tags)) {
       await activityLogger.log({
         userId,
         username,
@@ -1032,6 +1197,9 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
 
     success(res, customer, "标签更新成功");
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return error(res, err.errors.map((e) => e.message).join("；"), 400);
+    }
     next(err);
   }
 };

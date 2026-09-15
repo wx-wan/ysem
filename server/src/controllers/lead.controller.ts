@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { LeadStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
@@ -15,7 +16,6 @@ const LEAD_STATUS_LABEL: Record<string, string> = {
   QUALIFIED: '已确认',
   INVALID: '无效',
   CONVERTED: '已转化',
-  VALID: '有效',
 };
 
 const leadSchema = z.object({
@@ -26,7 +26,8 @@ const leadSchema = z.object({
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
-  status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED', 'VALID']).optional(),
+  // V1.0：与 Prisma LeadStatus 严格一致（NEW / CONTACTED / QUALIFIED / CONVERTED / INVALID）
+  status: z.nativeEnum(LeadStatus).optional(),
   companyName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(100).nullable().optional(),
   contactMethod: z.string().trim().max(300).nullable().optional(),
@@ -49,6 +50,39 @@ const leadSchema = z.object({
   ownerId: z.string().optional().nullable(),
   // V1.0：Lead 不再持有 pipelineId，商机关联由 Opportunity.leadId 单向持有（见 sales.controller）
 });
+
+/**
+ * V1.0 Lead 可写标量白名单：与 Prisma Lead 模型逐字段一致。
+ *
+ * 以下 legacy 入参仍被 leadSchema 接受（保持 API 兼容，不返回 400），但**不落库**
+ * —— V1.0 Lead 无对应列：
+ *   - sourceChannel  → V1.0 改为 channelId / shopId 关联（接入待后续轮次）
+ *   - productType / productDesc → V1.0 无对应列；产品信息经 LeadItem.productName 承载
+ *   - images         → V1.0 图片走 Attachment(ownerType=LEAD)（接入待后续轮次）
+ */
+const LEAD_WRITABLE_FIELDS = [
+  'leadName',
+  'customerId',
+  'source',
+  'status',
+  'companyName',
+  'contactName',
+  'contactMethod',
+  'email',
+  'phone',
+  'country',
+  'customerType',
+  'productInterest',
+  'quantity',
+  'targetPrice',
+  'certRequire',
+  'packageReq',
+  'deliveryReq',
+  'targetMarket',
+  'specialReq',
+  'remark',
+  'ownerId',
+] as const;
 
 // 列表：分页 + 多维筛选
 export const getLeads = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -175,7 +209,6 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         data: {
           leadName,
           customerId: data.customerId ?? null,
-          sourceChannel: data.sourceChannel ?? null,
           quantity: data.quantity ?? 0,
           source: data.source ?? 'MANUAL',
           status: data.status ?? 'NEW',
@@ -188,14 +221,6 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           productInterest: data.productInterest ?? null,
           remark: data.remark ?? null,
           targetMarket: data.targetMarket ?? null,
-          productType: data.productType ?? null,
-          productDesc: data.productDesc ?? null,
-          images:
-            typeof data.images === 'string'
-              ? data.images
-              : Array.isArray(data.images)
-              ? JSON.stringify(data.images)
-              : null,
           targetPrice: data.targetPrice ?? null,
           certRequire: data.certRequire ?? null,
           packageReq: data.packageReq ?? null,
@@ -224,18 +249,11 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     const data = leadSchema.partial().parse(req.body);
     // V1.0：productId / productName 不再属于 Lead 标量，改由 LeadItem 承载
     const { productId, productName, ...leadData } = data;
-    const update: Record<string, unknown> = { ...leadData };
-    if (data.customerId === null) update.customerId = null;
-    if (data.companyName === null) update.companyName = null;
-    if (data.sourceChannel === null) update.sourceChannel = null;
-    if (data.ownerId === null) update.ownerId = null;
-    if (data.images !== undefined) {
-      update.images =
-        data.images === null
-          ? null
-          : typeof data.images === 'string'
-          ? data.images
-          : JSON.stringify(data.images);
+    // V1.0：只写入与 Prisma Lead 标量一致的字段（legacy sourceChannel / productType /
+    // productDesc / images 被接受但不落库，见 LEAD_WRITABLE_FIELDS；null 亦会透传以支持清空）
+    const update: Record<string, unknown> = {};
+    for (const field of LEAD_WRITABLE_FIELDS) {
+      if (leadData[field] !== undefined) update[field] = leadData[field];
     }
     await prisma.lead.update({ where: { id: req.params.id }, data: update });
 
@@ -486,7 +504,8 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
 // 状态流转（如 转为已联系 / 已转化 / 无效 / 有效）
 export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { status } = z.object({ status: z.enum(['NEW', 'CONTACTED', 'QUALIFIED', 'INVALID', 'CONVERTED', 'VALID']) }).parse(req.body);
+    // V1.0：与 Prisma LeadStatus 严格一致（不含 VALID）
+    const { status } = z.object({ status: z.nativeEnum(LeadStatus) }).parse(req.body);
     const existing = await prisma.lead.findUnique({ where: { id: req.params.id } });
     if (!existing) {
       fail(res, 404, '线索不存在');
