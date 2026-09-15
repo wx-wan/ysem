@@ -207,34 +207,5 @@ export const customerApi = {
     }>>('/customers/report'),
 };
 
-// ========== 订单 API（legacy，残留 dead-only 部分）==========
-// 【Round 3B-3-5-6b-1】3 个 LIVE 消费者（ProductDetailModal / customer·OrderFormModal /
-// CreateOrderFromProductModal）已全部迁移到 V1.0 `/api/quotations` · `/api/sample-orders`
-// · `/api/sales-orders` → **本 orderApi 的 live caller = 0**。
-//
-// 已删除（迁出后 caller=0）：`update` · `remove` · `listByCustomer`。
-//
-// 以下方法**保留**，但仅剩 `pages/Orders.tsx` 一个引用方；该页面在 `App.tsx` 中只有 import、
-// **没有任何 Route**（不可达），且删除它需要同步修改 `client/src/App.tsx`（本轮未授权文件），
-// 故按 Scope Gate 保留。清理归属后续 Slice（Unified Order Backend Retirement / 3B-3-5-6b-2）。
-// 注：legacy 后端 `/api/orders` 的所有 handler 因 `Order` 模型已从 schema 移除而在运行期必然 500，
-// 这些残留方法即使被调用也不会成功。
-export const orderApi = {
-  list: (params?: Record<string, any>) =>
-    request.get<ApiResponse<OrderListRes>>('/orders', { params }),
-
-  getById: (id: string) =>
-    request.get<ApiResponse<Order>>(`/orders/${id}`),
-
-  create: (data: Partial<Order>) =>
-    request.post<ApiResponse<Order>>('/orders', data),
-
-  submit: (id: string) =>
-    request.post<ApiResponse<Order>>(`/orders/${id}/submit`),
-
-  approve: (id: string) =>
-    request.post<ApiResponse<Order>>(`/orders/${id}/approve`),
-
-  reject: (id: string) =>
-    request.post<ApiResponse<Order>>(`/orders/${id}/reject`),
-};
+// 说明（Round 3B-3-5-6b-2）：legacy 统一订单 API 对象已随 Unified Order Backend 正式退休删除。
+// 保留 Order / OrderItem / OrderListRes 类型 —— Customer 域（ADR-6B-04，尚未迁移）仍依赖其类型定义。

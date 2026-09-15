@@ -19,7 +19,6 @@ import QuotePage from './pages/QuotePage';
 import DesignPage from './pages/DesignPage';
 import SamplePage from './pages/SamplePage';
 import SettlementPage from './pages/SettlementPage';
-import OrdersPage from './pages/Orders';
 import PurchasesPage from './pages/Purchases';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';

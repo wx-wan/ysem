@@ -52,24 +52,3 @@ export const BUSINESS_TYPE_LABELS: Record<BusinessType, string> = {
   CERTIFICATE: '资质',
   USER: '用户',
 };
-
-/**
- * 旧 `Order.type` → V1.0 业务对象类型的**日志标签**映射（仅用于 OperationLog.businessType）。
- *
- * ⚠️ 本映射不改变任何数据模型，也不代表 Order 五拆已经完成。
- * `order.controller.ts` 五拆（Quotation / SampleOrder / SalesOrder / ProductionOrder / Shipment）
- * 在 Round 3B-2 完成后，本映射与其调用点一并删除。
- */
-export const LEGACY_ORDER_TYPE_TO_BUSINESS_TYPE: Record<string, BusinessType> = {
-  QUOTE: BUSINESS_TYPE.QUOTATION,
-  SAMPLE: BUSINESS_TYPE.SAMPLE_ORDER,
-  ORDER: BUSINESS_TYPE.SALES_ORDER,
-  PRODUCTION: BUSINESS_TYPE.PRODUCTION_ORDER,
-  SHIPPED: BUSINESS_TYPE.SHIPMENT,
-};
-
-/** 旧 `Order.type` → 业务对象类型标签；未知取值返回 undefined（不做兜底猜测）。 */
-export const legacyOrderBusinessType = (
-  orderType?: string | null,
-): BusinessType | undefined =>
-  orderType ? LEGACY_ORDER_TYPE_TO_BUSINESS_TYPE[orderType] : undefined;
