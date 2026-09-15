@@ -3,20 +3,12 @@ import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { getNextNumber } from "../lib/numberSequence";
 import { includePublicSea, publicSeaScope, roleScope } from "../utils/scope";
 import { BUSINESS_TYPE } from "../lib/business-type";
 import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
 import * as XLSX from "xlsx";
 
-// 辅助：生成客户编号 CUS-{YYMMDD}-{当天序号}
-const generateCustomerCode = async (): Promise<string> => {
-  const d = new Date();
-  const datePart = `${String(d.getFullYear()).slice(2)}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
-  const count = await prisma.customer.count({
-    where: { customerCode: { startsWith: `CUS-${datePart}-` } },
-  });
-  return `CUS-${datePart}-${count + 1}`;
-};
 
 // 辅助：获取客户订单聚合数据
 type OrderAgg = { totalAmount: number; lastOrderDate: string | null };
@@ -364,7 +356,7 @@ export const listOptions = async (req: AuthRequest, res: Response, next: NextFun
         id: true,
         companyName: true,
         contactName: true,
-        customerCode: true,
+        customerNo: true,
         email: true,
         phone: true,
         country: true,
@@ -640,24 +632,28 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       finalOwnerId = ownerId; // null 就直接是 null（公海）
     }
 
-    const customer = await prisma.customer.create({
-      data: {
-        customerCode: await generateCustomerCode(),
-        companyName,
-        contactName,
-        email,
-        phone,
-        country,
-        customerType,
-        images: images ?? null,
-        source: source || "MANUAL",
-        notes,
-        ownerId: finalOwnerId,
-        isKeyAccount: isKeyAccount || false,
-        tags: Array.isArray(tags) ? tags.join(',') : (tags || ''),
-        intentLevel: isKeyAccount ? intentLevel || null : null,
-        estimatedAmount: estimatedAmount ?? null,
-      },
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const customer = await prisma.$transaction(async (tx) => {
+      const customerNo = await getNextNumber(tx, "CUS");
+
+      return tx.customer.create({
+        data: {
+          customerNo,
+          companyName,
+          contactName,
+          email,
+          phone,
+          country,
+          customerType,
+          coverImage: images ?? null,
+          source: source || "MANUAL",
+          notes,
+          ownerId: finalOwnerId,
+          isKeyAccount: isKeyAccount || false,
+          tags: Array.isArray(tags) ? tags.join(',') : (tags || ''),
+          intentLevel: isKeyAccount ? intentLevel || null : null,
+        },
+      });
     });
 
     await activityLogger.log({
@@ -963,8 +959,11 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       }
 
       try {
-        data.customerCode = await generateCustomerCode();
-        await prisma.customer.create({ data });
+        // 编号分配与业务写入同事务：逐行独立事务，保留导入的部分成功语义
+        await prisma.$transaction(async (tx) => {
+          const customerNo = await getNextNumber(tx, "CUS");
+          return tx.customer.create({ data: { ...data, customerNo } });
+        });
         created++;
       } catch {
         failed++;

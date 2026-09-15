@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import * as XLSX from 'xlsx';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
@@ -86,25 +87,6 @@ async function buildItems(
       productName: nameById.get(p.productId)!,
       quantity: p.quantity ?? 1,
     }));
-}
-
-/** 生成商机号: BO-YYYYMMDD-序号（与 V1.0 opportunityNo 对齐；NumberSequence 运行时接入不在本轮） */
-async function nextOpportunityNo(): Promise<string> {
-  const today = new Date();
-  const dateStr = today.getFullYear().toString()
-    + String(today.getMonth() + 1).padStart(2, '0')
-    + String(today.getDate()).padStart(2, '0');
-  const prefix = `BO-${dateStr}-`;
-  const existing = await prisma.opportunity.findMany({
-    where: { opportunityNo: { startsWith: prefix } },
-    select: { opportunityNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = Number(item.opportunityNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
 }
 
 // ============ 列表 ============
@@ -327,25 +309,29 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
     });
     if (!customer) { fail(res, 400, '客户不存在'); return; }
 
-    const opportunityNo = await nextOpportunityNo();
     const { intentLevel, probability } = splitProbability(data.probability);
     const items = await buildItems(data.products);
 
-    const opportunity = await prisma.opportunity.create({
-      data: {
-        opportunityNo,
-        title: data.title,
-        customerId: data.customerId,
-        leadId: data.leadId ?? null,
-        ownerId: data.ownerId ?? null,
-        estimatedAmount: data.estimatedAmount ?? undefined,
-        estimatedCloseDate: data.estimatedCloseDate ? new Date(data.estimatedCloseDate) : null,
-        intentLevel: data.intentLevel ?? intentLevel ?? undefined,
-        probability,
-        notes: data.notes ?? undefined,
-        items: items.length > 0 ? { create: items } : undefined,
-      },
-      include: OPPORTUNITY_INCLUDE,
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const opportunity = await prisma.$transaction(async (tx) => {
+      const opportunityNo = await getNextNumber(tx, 'OPP');
+
+      return tx.opportunity.create({
+        data: {
+          opportunityNo,
+          title: data.title,
+          customerId: data.customerId,
+          leadId: data.leadId ?? null,
+          ownerId: data.ownerId ?? null,
+          estimatedAmount: data.estimatedAmount ?? undefined,
+          estimatedCloseDate: data.estimatedCloseDate ? new Date(data.estimatedCloseDate) : null,
+          intentLevel: data.intentLevel ?? intentLevel ?? undefined,
+          probability,
+          notes: data.notes ?? undefined,
+          items: items.length > 0 ? { create: items } : undefined,
+        },
+        include: OPPORTUNITY_INCLUDE,
+      });
     });
 
     // 记录商机活动（阶段为派生值，不再记录初始阶段）
@@ -559,19 +545,24 @@ export const importExcel = async (req: AuthRequest, res: Response): Promise<void
 
       try {
         const { intentLevel, probability } = splitProbability(data.probability as string | undefined);
-        await prisma.opportunity.create({
-          data: {
-            opportunityNo: await nextOpportunityNo(),
-            title: data.title as string,
-            customerId: data.customerId as string,
-            estimatedAmount: data.estimatedAmount as number | undefined,
-            estimatedCloseDate: data.estimatedCloseDate
-              ? new Date(data.estimatedCloseDate as string)
-              : null,
-            intentLevel,
-            probability,
-            notes: data.notes as string | undefined,
-          },
+        // 编号分配与业务写入同事务：逐行独立事务，保留导入的部分成功语义
+        await prisma.$transaction(async (tx) => {
+          const opportunityNo = await getNextNumber(tx, 'OPP');
+
+          return tx.opportunity.create({
+            data: {
+              opportunityNo,
+              title: data.title as string,
+              customerId: data.customerId as string,
+              estimatedAmount: data.estimatedAmount as number | undefined,
+              estimatedCloseDate: data.estimatedCloseDate
+                ? new Date(data.estimatedCloseDate as string)
+                : null,
+              intentLevel,
+              probability,
+              notes: data.notes as string | undefined,
+            },
+          });
         });
         successCount++;
       } catch {

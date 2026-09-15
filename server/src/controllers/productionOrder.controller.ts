@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { Prisma, ProductionItemStatus, ProductionStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -105,26 +106,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成生产单号：PO-YYYYMMDD-####（与 V1.0 productionNo 对齐；NumberSequence runtime 接入不在本轮） */
-async function nextProductionNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `PO-${dateStr}-`;
-  const existing = await prisma.productionOrder.findMany({
-    where: { productionNo: { startsWith: prefix } },
-    select: { productionNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.productionNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 interface ParsedItemsOk {
   ok: true;
@@ -345,27 +326,31 @@ export const createProductionOrder = async (req: AuthRequest, res: Response): Pr
       }
     }
 
-    const productionNo = await nextProductionNo();
     const status = body.status ?? ProductionStatus.DRAFT;
 
-    const item = await prisma.productionOrder.create({
-      data: {
-        productionNo,
-        salesOrderId: salesOrder.id,
-        status,
-        plannedStartAt: body.plannedStartAt ? new Date(body.plannedStartAt) : null,
-        plannedEndAt: body.plannedEndAt ? new Date(body.plannedEndAt) : null,
-        actualStartAt: body.actualStartAt ? new Date(body.actualStartAt) : null,
-        actualEndAt: body.actualEndAt ? new Date(body.actualEndAt) : null,
-        ownerId: body.ownerId ?? req.userId ?? null,
-        workshop: body.workshop ?? null,
-        requirement: body.requirement ?? null,
-        progress: body.progress ?? parsed.progress ?? 0,
-        remark: body.remark ?? null,
-        createdBy: req.userId ?? null,
-        ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
-      },
-      include: PRODUCTION_ORDER_INCLUDE,
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const productionNo = await getNextNumber(tx, 'PO');
+
+      return tx.productionOrder.create({
+        data: {
+          productionNo,
+          salesOrderId: salesOrder.id,
+          status,
+          plannedStartAt: body.plannedStartAt ? new Date(body.plannedStartAt) : null,
+          plannedEndAt: body.plannedEndAt ? new Date(body.plannedEndAt) : null,
+          actualStartAt: body.actualStartAt ? new Date(body.actualStartAt) : null,
+          actualEndAt: body.actualEndAt ? new Date(body.actualEndAt) : null,
+          ownerId: body.ownerId ?? req.userId ?? null,
+          workshop: body.workshop ?? null,
+          requirement: body.requirement ?? null,
+          progress: body.progress ?? parsed.progress ?? 0,
+          remark: body.remark ?? null,
+          createdBy: req.userId ?? null,
+          ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
+        },
+        include: PRODUCTION_ORDER_INCLUDE,
+      });
     });
 
     void activityLogger.log({

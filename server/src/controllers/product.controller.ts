@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { Prisma, $Enums } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
@@ -348,36 +349,15 @@ const defaultSupplyModeByRole = (roleCode?: string): $Enums.SupplyMode => {
 };
 
 /**
- * 生成产品编号: PRD-YYYYMMDD-序号
- * 与 V1.0 Product.productNo 对齐；NumberSequence 运行时接入不在本轮（同 sales.controller 商机号做法）。
- */
-export async function nextProductNo(): Promise<string> {
-  const today = new Date();
-  const dateStr = today.getFullYear().toString()
-    + String(today.getMonth() + 1).padStart(2, '0')
-    + String(today.getDate()).padStart(2, '0');
-  const prefix = `PRD-${dateStr}-`;
-  const existing = await prisma.product.findMany({
-    where: { productNo: { startsWith: prefix } },
-    select: { productNo: true },
-  });
-  let maxSeq = 0;
-  for (const item of existing) {
-    const seq = Number(item.productNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-}
-
-/**
  * 旧 SingleProduct 写入体 → V1.0 Product 写入体。
  * 客户专属价格/定制不在此承载（见 CustomerProduct / ProductPrice）。
  * 返回值的 sku 可能为 null（工艺或受众缺编码），由调用方决定是否拒绝。
+ * productNo 不在此生成：由调用方在事务内通过 getNextNumber(tx, 'PRD') 分配后合并。
  */
 async function buildProductCreateData(
   parsed: z.infer<typeof productSchema>,
   user: { userId?: string; roleCode?: string },
-): Promise<Prisma.ProductUncheckedCreateInput> {
+): Promise<Omit<Prisma.ProductUncheckedCreateInput, 'productNo'>> {
   const {
     craftIds,
     sku: _ignored,
@@ -393,9 +373,8 @@ async function buildProductCreateData(
   } = parsed;
   const certIds = parseIdList(certificationIds);
 
-  const data: Prisma.ProductUncheckedCreateInput = {
+  const data: Omit<Prisma.ProductUncheckedCreateInput, 'productNo'> = {
     ...rest,
-    productNo: await nextProductNo(),
     coverImage: images ?? null,
     defaultPrice: price ?? null,
     defaultCurrency: toCurrency(currency),
@@ -421,7 +400,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const parsed = productSchema.parse(req.body);
 
-    // 旧 SingleProduct 写入体 → V1.0 Product 写入体
+    // 旧 SingleProduct 写入体 → V1.0 Product 写入体（productNo 在事务内分配）
     const data = await buildProductCreateData(parsed, { userId: req.userId, roleCode: req.roleCode });
 
     // SKU 无需人工录入：按「工艺-受众-序号」自动生成
@@ -431,7 +410,11 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
       return;
     }
 
-    const product = await prisma.product.create({ data });
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const product = await prisma.$transaction(async (tx) => {
+      const productNo = await getNextNumber(tx, 'PRD');
+      return tx.product.create({ data: { ...data, productNo } });
+    });
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -783,7 +766,11 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
           failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
           continue;
         }
-        const product = await prisma.product.create({ data: pdata });
+        // 编号分配与业务写入同事务：逐行独立事务，保留导入的部分成功语义
+        const product = await prisma.$transaction(async (tx) => {
+          const productNo = await getNextNumber(tx, 'PRD');
+          return tx.product.create({ data: { ...pdata, productNo } });
+        });
         void activityLogger.log({
           userId: req.userId || '',
           username: req.username || '',

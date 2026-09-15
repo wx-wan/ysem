@@ -8,6 +8,7 @@ import {
   PurchaseType,
 } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -105,26 +106,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成采购单号：PR-YYYYMMDD-####（对齐 V1.0 purchaseNo 注释 `PR-yyyyMMdd-0001`；NumberSequence runtime 不在本轮） */
-async function nextPurchaseNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `PR-${dateStr}-`;
-  const existing = await prisma.purchaseOrder.findMany({
-    where: { purchaseNo: { startsWith: prefix } },
-    select: { purchaseNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.purchaseNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 /**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
@@ -441,29 +422,32 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
     const exchangeRate = await resolveExchangeRate(currency, body.exchangeRate);
     const totalAmount = parsed.total;
     const totalAmountCny = toCny(totalAmount, exchangeRate);
-    const purchaseNo = await nextPurchaseNo();
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const purchaseNo = await getNextNumber(tx, 'PR');
 
-    const item = await prisma.purchaseOrder.create({
-      data: {
-        purchaseNo,
-        salesOrderId: body.salesOrderId ?? null,
-        productionOrderId: body.productionOrderId ?? null,
-        supplierId: body.supplierId ?? null,
-        purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
-        status: body.status ?? PurchaseStatus.DRAFT,
-        expectedArrivalAt: body.expectedArrivalAt ? new Date(body.expectedArrivalAt) : null,
-        arrivedAt: body.arrivedAt ? new Date(body.arrivedAt) : null,
-        currency,
-        exchangeRate,
-        totalAmount,
-        totalAmountCny,
-        purchaseType: body.purchaseType ?? PurchaseType.MATERIAL,
-        ownerId: body.ownerId ?? req.userId ?? null,
-        remark: body.remark ?? null,
-        createdBy: req.userId ?? null,
-        ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
-      },
-      include: PURCHASE_ORDER_INCLUDE,
+      return tx.purchaseOrder.create({
+        data: {
+          purchaseNo,
+          salesOrderId: body.salesOrderId ?? null,
+          productionOrderId: body.productionOrderId ?? null,
+          supplierId: body.supplierId ?? null,
+          purchaseDate: body.purchaseDate ? new Date(body.purchaseDate) : null,
+          status: body.status ?? PurchaseStatus.DRAFT,
+          expectedArrivalAt: body.expectedArrivalAt ? new Date(body.expectedArrivalAt) : null,
+          arrivedAt: body.arrivedAt ? new Date(body.arrivedAt) : null,
+          currency,
+          exchangeRate,
+          totalAmount,
+          totalAmountCny,
+          purchaseType: body.purchaseType ?? PurchaseType.MATERIAL,
+          ownerId: body.ownerId ?? req.userId ?? null,
+          remark: body.remark ?? null,
+          createdBy: req.userId ?? null,
+          ...(parsed.data.length > 0 ? { items: { create: parsed.data } } : {}),
+        },
+        include: PURCHASE_ORDER_INCLUDE,
+      });
     });
 
     // 采购单不属于 Customer 生命周期事件 → 不写 CustomerActivity（不传 customerId）

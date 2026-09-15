@@ -3,6 +3,7 @@ import { success, error } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { roleScope } from '../utils/scope';
 import { BUSINESS_TYPE } from '../lib/business-type';
 
@@ -327,15 +328,21 @@ export const createSupplier = async (req: AuthRequest, res: Response): Promise<v
       error(res, '供应商名称不能为空', 400);
       return;
     }
-    const item = await prisma.supplier.create({
-      data: {
-        name: String(name).trim(),
-        contact: contact || null,
-        phone: phone || null,
-        address: address || null,
-        remark: remark || null,
-        createdBy: req.userId || null,
-      },
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const supplierNo = await getNextNumber(tx, 'SUP');
+
+      return tx.supplier.create({
+        data: {
+          supplierNo,
+          name: String(name).trim(),
+          contact: contact || null,
+          phone: phone || null,
+          address: address || null,
+          remark: remark || null,
+          createdBy: req.userId || null,
+        },
+      });
     });
     success(res, { item });
   } catch (e) {

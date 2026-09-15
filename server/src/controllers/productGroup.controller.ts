@@ -1,11 +1,15 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
-import { buildSkuCode, nextProductNo } from './product.controller';
+import { buildSkuCode } from './product.controller';
+
+/** 业务规则违例（事务内抛出以回滚），由 handler 统一转为 400 */
+class ProductGroupRuleError extends Error {}
 
 const groupSchema = z.object({
   name: z.string().min(1, '产品组名称不能为空'),
@@ -137,70 +141,77 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
     const items = parsed.items ?? [];
     const itemData: { productId: string; quantity: number; price: number | null }[] = [];
 
-    for (const it of items) {
-      let pid = it.productId;
-      if (!pid) {
-        // 快速新建单品：分类沿用组合选定信息（工艺/受众/品类/可见性），仅补充尺寸/克重/认证/描述
-        if (!it.name) {
-          fail(res, 400, '组合明细中快速新建单品时名称不能为空');
-          return;
-        }
-        // SKU 与批量新建一致：按「工艺-受众-序号」自动生成（缺码则不生成，但不阻塞创建）
-        const sku = await buildSkuCode(groupCraftIds, groupAudienceId);
-        const certIds = String(it.certificationIds ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean);
-        // V1.0：行内快速新建写入 Product（images→coverImage, price→defaultPrice,
-        // 尺寸/克重 Float, crafts 走 ProductCraftLink 嵌套创建, 认证走 ProductCertification）
-        const p = await prisma.product.create({
-          data: {
-            productNo: await nextProductNo(),
-            name: it.name,
-            defaultPrice: it.price ?? null,
-            coverImage: it.images ?? null,
-            sizeL: toNumberOrNull(it.sizeL),
-            sizeW: toNumberOrNull(it.sizeW),
-            sizeH: toNumberOrNull(it.sizeH),
-            weight: toNumberOrNull(it.weight),
-            remark: it.remark ?? null,
-            supplyModes: ['DEEP_CUSTOM'],
-            source: 'MANUAL',
-            visibility: groupVisibility,
-            audienceId: groupAudienceId,
-            categoryId: groupCategoryId,
-            sku,
-            createdBy: req.userId,
-            ...(groupCraftIds.length
-              ? { crafts: { create: groupCraftIds.map((id) => ({ productCraft: { connect: { id } } })) } }
-              : {}),
-            ...(certIds.length
-              ? { certifications: { create: certIds.map((id) => ({ certificate: { connect: { id } } })) } }
-              : {}),
-            ...(groupVisibleUserIds.length
-              ? { visibleUsers: { create: groupVisibleUserIds.map((userId) => ({ userId })) } }
-              : {}),
-          },
-        });
-        pid = p.id;
-      }
-      itemData.push({
-        productId: pid,
-        quantity: it.quantity ?? 1,
-        price: it.price ?? null,
-      });
-    }
+    // 编号分配 + 内部 Product 创建 + ComboProduct / ComboItem 创建必须同事务：
+    // 任一步失败 → 全部回滚，既不残留孤儿 Product，也不消耗 CMB / PRD 编号
+    const group = await prisma.$transaction(async (tx) => {
+      const comboNo = await getNextNumber(tx, 'CMB');
 
-    const group = await prisma.comboProduct.create({
-      data: {
-        name: parsed.name,
-        description: parsed.description ?? null,
-        ownerId: req.userId || '',
-        items: itemData.length
-          ? { create: itemData.map((d, i) => ({ ...d, sort: i })) }
-          : undefined,
-      },
-      include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+      for (const it of items) {
+        let pid = it.productId;
+        if (!pid) {
+          // 快速新建单品：分类沿用组合选定信息（工艺/受众/品类/可见性），仅补充尺寸/克重/认证/描述
+          if (!it.name) {
+            throw new ProductGroupRuleError('组合明细中快速新建单品时名称不能为空');
+          }
+          // SKU 与批量新建一致：按「工艺-受众-序号」自动生成（缺码则不生成，但不阻塞创建）
+          const sku = await buildSkuCode(groupCraftIds, groupAudienceId);
+          const certIds = String(it.certificationIds ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const productNo = await getNextNumber(tx, 'PRD');
+          // V1.0：行内快速新建写入 Product（images→coverImage, price→defaultPrice,
+          // 尺寸/克重 Float, crafts 走 ProductCraftLink 嵌套创建, 认证走 ProductCertification）
+          const p = await tx.product.create({
+            data: {
+              productNo,
+              name: it.name,
+              defaultPrice: it.price ?? null,
+              coverImage: it.images ?? null,
+              sizeL: toNumberOrNull(it.sizeL),
+              sizeW: toNumberOrNull(it.sizeW),
+              sizeH: toNumberOrNull(it.sizeH),
+              weight: toNumberOrNull(it.weight),
+              remark: it.remark ?? null,
+              supplyModes: ['DEEP_CUSTOM'],
+              source: 'MANUAL',
+              visibility: groupVisibility,
+              audienceId: groupAudienceId,
+              categoryId: groupCategoryId,
+              sku,
+              createdBy: req.userId,
+              ...(groupCraftIds.length
+                ? { crafts: { create: groupCraftIds.map((id) => ({ productCraft: { connect: { id } } })) } }
+                : {}),
+              ...(certIds.length
+                ? { certifications: { create: certIds.map((id) => ({ certificate: { connect: { id } } })) } }
+                : {}),
+              ...(groupVisibleUserIds.length
+                ? { visibleUsers: { create: groupVisibleUserIds.map((userId) => ({ userId })) } }
+                : {}),
+            },
+          });
+          pid = p.id;
+        }
+        itemData.push({
+          productId: pid,
+          quantity: it.quantity ?? 1,
+          price: it.price ?? null,
+        });
+      }
+
+      return tx.comboProduct.create({
+        data: {
+          comboNo,
+          name: parsed.name,
+          description: parsed.description ?? null,
+          ownerId: req.userId || '',
+          items: itemData.length
+            ? { create: itemData.map((d, i) => ({ ...d, sort: i })) }
+            : undefined,
+        },
+        include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+      });
     });
     void activityLogger.log({
       userId: req.userId || '',
@@ -217,6 +228,10 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, err.errors.map((e) => e.message).join(', '));
+      return;
+    }
+    if (err instanceof ProductGroupRuleError) {
+      fail(res, 400, err.message);
       return;
     }
     fail(res, 500, '服务器错误');

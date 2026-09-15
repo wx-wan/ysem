@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { InspectionResult, InspectionType, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -82,26 +83,6 @@ const listQuerySchema = z.object({
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
 });
-
-/** 生成质检单号：QC-YYYYMMDD-####（与 V1.0 inspectionNo 注释 `QC-yyyyMMdd-0001` 对齐；NumberSequence runtime 不在本轮） */
-async function nextInspectionNo(): Promise<string> {
-  const today = new Date();
-  const dateStr =
-    today.getFullYear().toString() +
-    String(today.getMonth() + 1).padStart(2, '0') +
-    String(today.getDate()).padStart(2, '0');
-  const prefix = `QC-${dateStr}-`;
-  const existing = await prisma.qualityInspection.findMany({
-    where: { inspectionNo: { startsWith: prefix } },
-    select: { inspectionNo: true },
-  });
-  let maxSeq = 0;
-  for (const row of existing) {
-    const seq = Number(row.inspectionNo.slice(prefix.length));
-    if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-  }
-  return `${prefix}${String(maxSeq + 1).padStart(4, '0')}`;
-}
 
 interface ResolvedOwner {
   productionOrderId: string | null;
@@ -260,28 +241,31 @@ export const createQualityInspection = async (req: AuthRequest, res: Response): 
     }
     const { owner } = resolved;
 
-    const inspectionNo = await nextInspectionNo();
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const inspectionNo = await getNextNumber(tx, 'INS');
 
-    const item = await prisma.qualityInspection.create({
-      data: {
-        inspectionNo,
-        type: body.type,
-        productionOrderId: owner.productionOrderId,
-        shipmentId: owner.shipmentId,
-        result: body.result ?? InspectionResult.PENDING,
-        inspectionDate: body.inspectionDate ? new Date(body.inspectionDate) : null,
-        inspectorId: body.inspectorId ?? null,
-        inspectorName: body.inspectorName ?? null,
-        sampleQty: body.sampleQty ?? null,
-        defectQty: body.defectQty ?? null,
-        // defectRate：Decimal(9,4) 百分数语义；仅接受显式入参（不臆造自动计算规则）
-        defectRate: round(body.defectRate ?? null, DECIMAL_PRECISION.ratio),
-        defectSummary: body.defectSummary ?? null,
-        disposition: body.disposition ?? null,
-        notes: body.notes ?? null,
-        createdBy: req.userId ?? null,
-      },
-      include: QUALITY_INSPECTION_INCLUDE,
+      return tx.qualityInspection.create({
+        data: {
+          inspectionNo,
+          type: body.type,
+          productionOrderId: owner.productionOrderId,
+          shipmentId: owner.shipmentId,
+          result: body.result ?? InspectionResult.PENDING,
+          inspectionDate: body.inspectionDate ? new Date(body.inspectionDate) : null,
+          inspectorId: body.inspectorId ?? null,
+          inspectorName: body.inspectorName ?? null,
+          sampleQty: body.sampleQty ?? null,
+          defectQty: body.defectQty ?? null,
+          // defectRate：Decimal(9,4) 百分数语义；仅接受显式入参（不臆造自动计算规则）
+          defectRate: round(body.defectRate ?? null, DECIMAL_PRECISION.ratio),
+          defectSummary: body.defectSummary ?? null,
+          disposition: body.disposition ?? null,
+          notes: body.notes ?? null,
+          createdBy: req.userId ?? null,
+        },
+        include: QUALITY_INSPECTION_INCLUDE,
+      });
     });
 
     void activityLogger.log({

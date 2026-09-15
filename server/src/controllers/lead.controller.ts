@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
+import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { applyScope, roleScope } from '../utils/scope';
@@ -152,23 +153,6 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
 
-    // 生成线索号: XS-YYYYMM-序号（查询当月最大序号避免重复）
-    const today = new Date();
-    const monthStr = today.getFullYear().toString() + String(today.getMonth() + 1).padStart(2, '0');
-    const prefix = `XS-${monthStr}-`;
-    const existing = await prisma.lead.findMany({
-      where: { leadNumber: { startsWith: prefix } },
-      select: { leadNumber: true },
-    });
-    let maxSeq = 0;
-    for (const item of existing) {
-      if (item.leadNumber) {
-        const seq = Number(item.leadNumber.slice(prefix.length));
-        if (!Number.isNaN(seq) && seq > maxSeq) maxSeq = seq;
-      }
-    }
-    const leadNumber = `${prefix}${String(maxSeq + 1).padStart(3, '0')}`;
-
     // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照
     let leadItems: { productId: string; productName: string | null; quantity: number }[] | undefined;
     if (data.productId) {
@@ -183,42 +167,47 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
       }];
     }
 
-    const item = await prisma.lead.create({
-      data: {
-        leadName,
-        customerId: data.customerId ?? null,
-        sourceChannel: data.sourceChannel ?? null,
-        quantity: data.quantity ?? 0,
-        source: data.source ?? 'MANUAL',
-        status: data.status ?? 'NEW',
-        companyName: data.companyName ?? null,
-        contactName: data.contactName ?? null,
-        contactMethod: data.contactMethod ?? null,
-        email: data.email ?? null,
-        phone: data.phone ?? null,
-        country: data.country ?? null,
-        productInterest: data.productInterest ?? null,
-        remark: data.remark ?? null,
-        targetMarket: data.targetMarket ?? null,
-        productType: data.productType ?? null,
-        productDesc: data.productDesc ?? null,
-        images:
-          typeof data.images === 'string'
-            ? data.images
-            : Array.isArray(data.images)
-            ? JSON.stringify(data.images)
+    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+    const item = await prisma.$transaction(async (tx) => {
+      const leadNo = await getNextNumber(tx, 'LEAD');
+
+      return tx.lead.create({
+        data: {
+          leadName,
+          customerId: data.customerId ?? null,
+          sourceChannel: data.sourceChannel ?? null,
+          quantity: data.quantity ?? 0,
+          source: data.source ?? 'MANUAL',
+          status: data.status ?? 'NEW',
+          companyName: data.companyName ?? null,
+          contactName: data.contactName ?? null,
+          contactMethod: data.contactMethod ?? null,
+          email: data.email ?? null,
+          phone: data.phone ?? null,
+          country: data.country ?? null,
+          productInterest: data.productInterest ?? null,
+          remark: data.remark ?? null,
+          targetMarket: data.targetMarket ?? null,
+          productType: data.productType ?? null,
+          productDesc: data.productDesc ?? null,
+          images:
+            typeof data.images === 'string'
+              ? data.images
+              : Array.isArray(data.images)
+              ? JSON.stringify(data.images)
               : null,
-        targetPrice: data.targetPrice ?? null,
-        certRequire: data.certRequire ?? null,
-        packageReq: data.packageReq ?? null,
-        deliveryReq: data.deliveryReq ?? null,
-        specialReq: data.specialReq ?? null,
-        customerType: data.customerType ?? null,
-        ownerId: data.ownerId ?? null,
-        createdBy: req.userId ?? null,
-        leadNumber,
-        ...(leadItems ? { items: { create: leadItems } } : {}),
-      },
+          targetPrice: data.targetPrice ?? null,
+          certRequire: data.certRequire ?? null,
+          packageReq: data.packageReq ?? null,
+          deliveryReq: data.deliveryReq ?? null,
+          specialReq: data.specialReq ?? null,
+          customerType: data.customerType ?? null,
+          ownerId: data.ownerId ?? null,
+          createdBy: req.userId ?? null,
+          leadNo,
+          ...(leadItems ? { items: { create: leadItems } } : {}),
+        },
+      });
     });
     created(res, item);
   } catch (err) {
