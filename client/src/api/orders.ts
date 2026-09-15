@@ -93,52 +93,6 @@ export interface Order {
   updatedAt?: string;
 }
 
-export type PaymentStatus = 'RECEIVED' | 'PENDING' | 'REFUNDED';
-
-/** 付款单（收款记录） */
-export interface PaymentRecord {
-  id: string;
-  paymentNo: string;
-  orderId: string;
-  customerId?: string | null;
-  payDate?: string | null;
-  amount?: number | null;   // 收款金额
-  ratio?: number | null;    // 收款比例（%）
-  method?: string | null;   // 收款方式
-  status: PaymentStatus;
-  remark?: string | null;
-  createdBy?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  customer?: { id: string; companyName: string } | null;
-  order?: { id: string; orderNo: string; title?: string | null } | null;
-}
-
-export type PaymentForm = Partial<Pick<PaymentRecord,
-  'payDate' | 'amount' | 'ratio' | 'method' | 'status' | 'remark'>> & { orderId: string };
-
-/** 利润单（利润核算） */
-export interface ProfitRecord {
-  id: string;
-  profitNo: string;
-  orderId: string;
-  customerId?: string | null;
-  revenue?: number | null;  // 收入
-  cost?: number | null;     // 成本
-  profit?: number | null;   // 利润 = 收入 - 成本
-  margin?: number | null;   // 利润率（%）
-  currency?: string | null;
-  remark?: string | null;
-  createdBy?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  customer?: { id: string; companyName: string } | null;
-  order?: { id: string; orderNo: string; title?: string | null } | null;
-}
-
-export type ProfitForm = Partial<Pick<ProfitRecord,
-  'revenue' | 'cost' | 'currency' | 'remark'>> & { orderId: string };
-
 // ========== API ==========
 
 export const orderApi = {
@@ -147,24 +101,4 @@ export const orderApi = {
     request.get<ApiResponse<Order[]>>('/orders/customer/' + customerId, {
       params: type ? { type } : {},
     }),
-
-  // 付款单（收款记录）
-  listPayments: (params?: { orderId?: string; customerId?: string }) =>
-    request.get<ApiResponse<PaymentRecord[]>>('/orders/payments', { params }),
-  createPayment: (data: PaymentForm) =>
-    request.post<ApiResponse<PaymentRecord>>('/orders/payments', data),
-  updatePayment: (id: string, data: Partial<PaymentForm>) =>
-    request.put<ApiResponse<PaymentRecord>>('/orders/payments/' + id, data),
-  removePayment: (id: string) =>
-    request.delete<ApiResponse<null>>('/orders/payments/' + id),
-
-  // 利润单（利润核算）
-  listProfits: (params?: { orderId?: string; customerId?: string }) =>
-    request.get<ApiResponse<ProfitRecord[]>>('/orders/profits', { params }),
-  createProfit: (data: ProfitForm) =>
-    request.post<ApiResponse<ProfitRecord>>('/orders/profits', data),
-  updateProfit: (id: string, data: Partial<ProfitForm>) =>
-    request.put<ApiResponse<ProfitRecord>>('/orders/profits/' + id, data),
-  removeProfit: (id: string) =>
-    request.delete<ApiResponse<null>>('/orders/profits/' + id),
 };

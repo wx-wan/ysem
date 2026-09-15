@@ -120,42 +120,6 @@ export interface Order {
   updatedAt: string;
 }
 
-// 付款单（收款记录）
-export interface PaymentRecord {
-  id: string;
-  orderId: string;
-  customerId: string;
-  paymentNo?: string;
-  payDate?: string;
-  amount?: number;        // 本次收款金额
-  ratio?: number;         // 收款比例（%）
-  method?: string;        // 收款方式
-  status?: 'RECEIVED' | 'PENDING';
-  remark?: string;
-  customer?: { id: string; companyName: string };
-  order?: { id: string; orderNo?: string; title?: string };
-  createdAt: string;
-  updatedAt: string;
-}
-
-// 利润单（利润核算）
-export interface ProfitRecord {
-  id: string;
-  orderId: string;
-  customerId: string;
-  profitNo?: string;
-  revenue?: number;       // 收入
-  cost?: number;          // 成本
-  profit?: number;        // 利润
-  margin?: number;        // 利润率（%）
-  currency?: string;
-  remark?: string;
-  customer?: { id: string; companyName: string };
-  order?: { id: string; orderNo?: string; title?: string };
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface OrderItem {
   productId?: string;
   name?: string;
@@ -271,28 +235,4 @@ export const orderApi = {
 
   reject: (id: string) =>
     request.post<ApiResponse<Order>>(`/orders/${id}/reject`),
-};
-
-// ========== 付款单 API（收款记录） ==========
-export const paymentApi = {
-  list: (params?: Record<string, any>) =>
-    request.get<ApiResponse<PaymentRecord[]>>('/orders/payments', { params }),
-  create: (data: Partial<PaymentRecord>) =>
-    request.post<ApiResponse<PaymentRecord>>('/orders/payments', data),
-  update: (id: string, data: Partial<PaymentRecord>) =>
-    request.put<ApiResponse<PaymentRecord>>(`/orders/payments/${id}`, data),
-  remove: (id: string) =>
-    request.delete<ApiResponse<any>>(`/orders/payments/${id}`),
-};
-
-// ========== 利润单 API（利润核算） ==========
-export const profitApi = {
-  list: (params?: Record<string, any>) =>
-    request.get<ApiResponse<ProfitRecord[]>>('/orders/profits', { params }),
-  create: (data: Partial<ProfitRecord>) =>
-    request.post<ApiResponse<ProfitRecord>>('/orders/profits', data),
-  update: (id: string, data: Partial<ProfitRecord>) =>
-    request.put<ApiResponse<ProfitRecord>>(`/orders/profits/${id}`, data),
-  remove: (id: string) =>
-    request.delete<ApiResponse<any>>(`/orders/profits/${id}`),
 };
