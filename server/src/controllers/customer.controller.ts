@@ -12,21 +12,38 @@ import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
 import * as XLSX from "xlsx";
 
 
-// 辅助：获取客户订单聚合数据
+// ========== V1.0 首次下单时间（firstOrderAt）查询语义 ==========
+// 旧模型为字符串首单日期列，用 `startsWith(年)` / `not: ""` 表达年份与空值；
+// V1.0 为 firstOrderAt(DateTime?)，必须改用日期区间 + null 谓词（禁止字符串语义）。
+
+/** 当年首次下单：year-01-01 <= firstOrderAt < (year+1)-01-01（按服务端本地日历年度） */
+const firstOrderAtInYear = (year: number) => ({
+  gte: new Date(year, 0, 1),
+  lt: new Date(year + 1, 0, 1),
+});
+
+/** 老客户：有首次下单时间且早于本年度（等价旧「非空且不以今年开头」） */
+const firstOrderAtBeforeYear = (year: number) => ({
+  not: null,
+  lt: new Date(year, 0, 1),
+});
+
+// 辅助：获取客户销售订单聚合数据（V1.0：SalesOrder.totalAmountCny = 本币金额）
 type OrderAgg = { totalAmount: number; lastOrderDate: string | null };
 const getOrderAggregates = async (customerIds: string[]): Promise<Record<string, OrderAgg>> => {
   if (customerIds.length === 0) return {};
-  const agg = await prisma.order.groupBy({
+  const agg = await prisma.salesOrder.groupBy({
     by: ["customerId"],
-    _sum: { amountCNY: true },
+    _sum: { totalAmountCny: true },
     _max: { orderDate: true },
     where: { customerId: { in: customerIds } },
   });
   const map: Record<string, OrderAgg> = {};
   for (const row of agg) {
     map[row.customerId] = {
-      totalAmount: row._sum.amountCNY || 0,
-      lastOrderDate: row._max.orderDate || null,
+      // 对外维持 number 契约：totalAmountCny 为 Decimal → 显式转 number
+      totalAmount: Number(row._sum.totalAmountCny ?? 0),
+      lastOrderDate: row._max.orderDate ? row._max.orderDate.toISOString() : null,
     };
   }
   return map;
@@ -53,7 +70,7 @@ const getPipelineAggregates = async (customerIds: string[]): Promise<Record<stri
 
 // 统计维度
 const getCustomerStats = async (ownerId?: string) => {
-  const currentYear = new Date().getFullYear().toString();
+  const currentYear = new Date().getFullYear();
   let where: any;
   let totalWhere: any;
 
@@ -71,7 +88,7 @@ const getCustomerStats = async (ownerId?: string) => {
     prisma.customer.count({
       where: {
         ...where,
-        firstOrderDate: { startsWith: currentYear },
+        firstOrderAt: firstOrderAtInYear(currentYear),
         isKeyAccount: false,
       },
     }),
@@ -79,11 +96,7 @@ const getCustomerStats = async (ownerId?: string) => {
       where: {
         ...where,
         isKeyAccount: false,
-        AND: [
-          { firstOrderDate: { not: null } },
-          { firstOrderDate: { not: "" } },
-          { firstOrderDate: { not: { startsWith: currentYear } } },
-        ],
+        firstOrderAt: firstOrderAtBeforeYear(currentYear),
       },
     }),
     prisma.customer.count({
@@ -96,14 +109,11 @@ const getCustomerStats = async (ownerId?: string) => {
     }),
   ]);
 
-  // 无订单客户
+  // 无订单客户（V1.0：firstOrderAt 为 null）
   const noOrder = await prisma.customer.count({
     where: {
       ...where,
-      OR: [
-        { firstOrderDate: null },
-        { firstOrderDate: "" },
-      ],
+      firstOrderAt: null,
       isKeyAccount: false,
     },
   });
@@ -123,17 +133,17 @@ const getCustomerStats = async (ownerId?: string) => {
 
 // 辅助：计算未成交 / 已成交各子筛选的客户数量（基于给定 scope，如 ownerId）
 const getSubFilterCounts = async (baseWhere: any) => {
-  const currentYear = new Date().getFullYear().toString();
-  const noOrderWhere = { ...baseWhere, orders: { none: {} } };
-  const doneWhere = { ...baseWhere, orders: { some: {} } };
+  const currentYear = new Date().getFullYear();
+  const noOrderWhere = { ...baseWhere, salesOrders: { none: {} } };
+  const doneWhere = { ...baseWhere, salesOrders: { some: {} } };
   const [A, B, C, D, none, newC, oldC] = await Promise.all([
     prisma.customer.count({ where: { ...noOrderWhere, opportunities: { some: { intentLevel: "READY" } } } }),
     prisma.customer.count({ where: { ...noOrderWhere, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] } }),
     prisma.customer.count({ where: { ...noOrderWhere, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] } }),
     prisma.customer.count({ where: { ...noOrderWhere, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] } }),
     prisma.customer.count({ where: { ...noOrderWhere, opportunities: { none: {} } } }),
-    prisma.customer.count({ where: { ...doneWhere, firstOrderDate: { startsWith: currentYear } } }),
-    prisma.customer.count({ where: { ...doneWhere, AND: [{ firstOrderDate: { not: null } }, { firstOrderDate: { not: "" } }, { firstOrderDate: { not: { startsWith: currentYear } } }] } }),
+    prisma.customer.count({ where: { ...doneWhere, firstOrderAt: firstOrderAtInYear(currentYear) } }),
+    prisma.customer.count({ where: { ...doneWhere, firstOrderAt: firstOrderAtBeforeYear(currentYear) } }),
   ]);
   return {
     noOrderBreakdown: { '': A + B + C + D + none, A, B, C, D, none },
@@ -149,7 +159,7 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
 
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = new Date().getFullYear();
 
     // 数据范围：按当前用户角色过滤（管理员看全部，普通用户按 ALL/DEPT/SELF 三档）
     // 公海视图仅返回无负责人的客户；其余视图 = 范围数据 + 公海（公海数据对集团开放）
@@ -175,34 +185,31 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
     }
 
     // 类型筛选（probability 现在直接存储采购意向文案，按字符串精确匹配等级）
+    // V1.0：Customer.orders → Customer.salesOrders；旧字符串首单日期 → firstOrderAt(日期区间)
     if (type === "key") {
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
-      andConditions.push({ orders: { none: {} } });
+      andConditions.push({ salesOrders: { none: {} } });
     } else if (type === "noOrder-none") {
       // 待开发：未成交且无商机记录
-      andConditions.push({ orders: { none: {} }, opportunities: { none: {} } });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
     } else if (type === "noOrder-D") {
       // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
-      andConditions.push({ orders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
     } else if (type === "done") {
-      andConditions.push({ orders: { some: {} } });
+      andConditions.push({ salesOrders: { some: {} } });
     } else if (type === "done-new") {
-      andConditions.push({ orders: { some: {} }, firstOrderDate: { startsWith: currentYear } });
+      andConditions.push({ salesOrders: { some: {} }, firstOrderAt: firstOrderAtInYear(currentYear) });
     } else if (type === "done-old") {
       andConditions.push({
-        orders: { some: {} },
-        AND: [
-          { firstOrderDate: { not: null } },
-          { firstOrderDate: { not: "" } },
-          { firstOrderDate: { not: { startsWith: currentYear } } },
-        ],
+        salesOrders: { some: {} },
+        firstOrderAt: firstOrderAtBeforeYear(currentYear),
       });
     }
 
@@ -213,10 +220,10 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
         where,
         skip,
         take,
-        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ firstOrderAt: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-          _count: { select: { orders: true, opportunities: true } },
+          _count: { select: { salesOrders: true, opportunities: true } },
           opportunities: { select: { intentLevel: true } },
         },
       }),
@@ -226,14 +233,15 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
     ]);
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
+    // V1.0：订单金额取 SalesOrder.totalAmountCny（本币），不使用旧订单金额列
     const [estimatedAgg, totalAmountAgg, estimatedBreakdown, newAmountAgg, oldAmountAgg] = await Promise.all([
       prisma.opportunity.aggregate({
         where: { customer: where },
         _sum: { estimatedAmount: true },
       }),
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: { customer: where },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
       prisma.opportunity.groupBy({
         by: ['intentLevel'],
@@ -242,38 +250,36 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
         _count: true,
       }),
       // 新客户成交金额
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: {
           customer: {
             AND: [
               ...(where.AND || []),
-              { firstOrderDate: { startsWith: currentYear } },
+              { firstOrderAt: firstOrderAtInYear(currentYear) },
               { isKeyAccount: false },
             ],
           },
         },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
       // 老客户成交金额
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: {
           customer: {
             AND: [
               ...(where.AND || []),
               { isKeyAccount: false },
-              { firstOrderDate: { not: null } },
-              { firstOrderDate: { not: "" } },
-              { firstOrderDate: { not: { startsWith: currentYear } } },
+              { firstOrderAt: firstOrderAtBeforeYear(currentYear) },
             ],
           },
         },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
     ]);
 
     const contractBreakdown = [
-      { type: '新客户', amount: newAmountAgg._sum.amountCNY || 0 },
-      { type: '老客户', amount: oldAmountAgg._sum.amountCNY || 0 },
+      { type: '新客户', amount: Number(newAmountAgg._sum.totalAmountCny ?? 0) },
+      { type: '老客户', amount: Number(oldAmountAgg._sum.totalAmountCny ?? 0) },
     ];
 
     const [orderAgg, pipelineAgg] = await Promise.all([
@@ -287,7 +293,7 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
       pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
     }));
 
-    success(res, { list: enriched, total, page: Number(page), pageSize: take, stats, ...subFilterCounts, estimatedAmount: estimatedAgg._sum.estimatedAmount || 0, totalContractAmount: totalAmountAgg._sum.amountCNY || 0, estimatedBreakdown, contractBreakdown });
+    success(res, { list: enriched, total, page: Number(page), pageSize: take, stats, ...subFilterCounts, estimatedAmount: estimatedAgg._sum.estimatedAmount || 0, totalContractAmount: Number(totalAmountAgg._sum.totalAmountCny ?? 0), estimatedBreakdown, contractBreakdown });
   } catch (err) {
     next(err);
   }
@@ -325,10 +331,10 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
         where,
         skip,
         take,
-        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ firstOrderAt: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-          _count: { select: { orders: true } },
+          _count: { select: { salesOrders: true } },
           opportunities: { select: { intentLevel: true } },
         },
       }),
@@ -378,7 +384,7 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
     const { keyword, ownerId, type, country, page = "1", pageSize = "20" } = req.query;
     const skip = (Number(page) - 1) * Number(pageSize);
     const take = Number(pageSize);
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = new Date().getFullYear();
 
     const where: any = {};
     const andConditions: any[] = [];
@@ -404,34 +410,31 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
     }
 
     // 类型筛选（probability 现在直接存储采购意向文案，按字符串精确匹配等级）
+    // V1.0：Customer.orders → Customer.salesOrders；旧字符串首单日期 → firstOrderAt(日期区间)
     if (type === "key") {
       andConditions.push({ isKeyAccount: true });
     } else if (type === "noOrder") {
-      andConditions.push({ orders: { none: {} } });
+      andConditions.push({ salesOrders: { none: {} } });
     } else if (type === "noOrder-none") {
       // 待开发：未成交且无商机记录
-      andConditions.push({ orders: { none: {} }, opportunities: { none: {} } });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { none: {} } });
     } else if (type === "noOrder-A") {
-      andConditions.push({ orders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { some: { intentLevel: "READY" } } });
     } else if (type === "noOrder-B") {
-      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "READY" } } }] });
     } else if (type === "noOrder-C") {
-      andConditions.push({ orders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, AND: [{ opportunities: { some: { intentLevel: "MEDIUM" } } }, { opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }] });
     } else if (type === "noOrder-D") {
       // 低意向：未成交 + 有商机记录 + 非 A/B/C 意向（排除待开发客户）
-      andConditions.push({ orders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
+      andConditions.push({ salesOrders: { none: {} }, opportunities: { some: {} }, AND: [{ opportunities: { none: { intentLevel: "READY" } } }, { opportunities: { none: { intentLevel: "HIGH" } } }, { opportunities: { none: { intentLevel: "MEDIUM" } } }] });
     } else if (type === "done") {
-      andConditions.push({ orders: { some: {} } });
+      andConditions.push({ salesOrders: { some: {} } });
     } else if (type === "done-new") {
-      andConditions.push({ orders: { some: {} }, firstOrderDate: { startsWith: currentYear } });
+      andConditions.push({ salesOrders: { some: {} }, firstOrderAt: firstOrderAtInYear(currentYear) });
     } else if (type === "done-old") {
       andConditions.push({
-        orders: { some: {} },
-        AND: [
-          { firstOrderDate: { not: null } },
-          { firstOrderDate: { not: "" } },
-          { firstOrderDate: { not: { startsWith: currentYear } } },
-        ],
+        salesOrders: { some: {} },
+        firstOrderAt: firstOrderAtBeforeYear(currentYear),
       });
     }
 
@@ -445,15 +448,16 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
         where,
         skip,
         take,
-        orderBy: [{ firstOrderDate: "desc" }, { createdAt: "desc" }],
+        orderBy: [{ firstOrderAt: "desc" }, { createdAt: "desc" }],
         include: {
           owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-          _count: { select: { orders: true, opportunities: true } },
+          _count: { select: { salesOrders: true, opportunities: true } },
           opportunities: { select: { intentLevel: true } },
         },
       }),
       prisma.customer.count({ where }),
       // 获取所有业务员列表及其客户分布（排除管理员）
+      // V1.0：Customer.owner 的反向关系名为 User.ownedCustomers（旧 User.customers 已不存在）
       prisma.user.findMany({
         where: {
           status: "ACTIVE",
@@ -463,8 +467,8 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
           id: true,
           username: true,
           realName: true,
-          _count: { select: { customers: true } },
-          customers: {
+          _count: { select: { ownedCustomers: true } },
+          ownedCustomers: {
             where: { isKeyAccount: true },
             select: { id: true },
           },
@@ -474,14 +478,15 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
     ]);
 
     // 针对当前筛选条件的全量聚合（来自商机记录，非分页）
+    // V1.0：订单金额取 SalesOrder.totalAmountCny（本币），不使用旧订单金额列
     const [estimatedAgg, totalAmountAgg, estimatedBreakdown, newAmountAgg, oldAmountAgg] = await Promise.all([
       prisma.opportunity.aggregate({
         where: { customer: where as any },
         _sum: { estimatedAmount: true },
       }),
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: { customer: where as any },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
       prisma.opportunity.groupBy({
         by: ['intentLevel'],
@@ -490,38 +495,36 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
         _count: true,
       }),
       // 新客户成交金额
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: {
           customer: {
             AND: [
               ...(andConditions.length > 0 ? andConditions : []),
-              { firstOrderDate: { startsWith: currentYear } },
+              { firstOrderAt: firstOrderAtInYear(currentYear) },
               { isKeyAccount: false },
             ],
           },
         },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
       // 老客户成交金额
-      prisma.order.aggregate({
+      prisma.salesOrder.aggregate({
         where: {
           customer: {
             AND: [
               ...(andConditions.length > 0 ? andConditions : []),
               { isKeyAccount: false },
-              { firstOrderDate: { not: null } },
-              { firstOrderDate: { not: "" } },
-              { firstOrderDate: { not: { startsWith: currentYear } } },
+              { firstOrderAt: firstOrderAtBeforeYear(currentYear) },
             ],
           },
         },
-        _sum: { amountCNY: true },
+        _sum: { totalAmountCny: true },
       }),
     ]);
 
     const contractBreakdown = [
-      { type: '新客户', amount: newAmountAgg._sum.amountCNY || 0 },
-      { type: '老客户', amount: oldAmountAgg._sum.amountCNY || 0 },
+      { type: '新客户', amount: Number(newAmountAgg._sum.totalAmountCny ?? 0) },
+      { type: '老客户', amount: Number(oldAmountAgg._sum.totalAmountCny ?? 0) },
     ];
 
     const [orderAgg, pipelineAgg] = await Promise.all([
@@ -539,8 +542,8 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
       id: u.id,
       username: u.username,
       realName: u.realName,
-      customerCount: u._count.customers,
-      keyCount: u.customers.length,
+      customerCount: u._count.ownedCustomers,
+      keyCount: u.ownedCustomers.length,
     }));
 
     // 公海统计（仅 ownerId 为 null）
@@ -555,7 +558,7 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
       prisma.customer.count(),
       prisma.customer.count({
         where: {
-          firstOrderDate: { startsWith: currentYear },
+          firstOrderAt: firstOrderAtInYear(currentYear),
           isKeyAccount: false,
           ...withOwnerWhere,
         },
@@ -564,11 +567,7 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
         where: {
           isKeyAccount: false,
           ...withOwnerWhere,
-          AND: [
-            { firstOrderDate: { not: null } },
-            { firstOrderDate: { not: "" } },
-            { firstOrderDate: { not: { startsWith: currentYear } } },
-          ],
+          firstOrderAt: firstOrderAtBeforeYear(currentYear),
         },
       }),
       prisma.customer.count({ where: { isKeyAccount: true } }),
@@ -584,7 +583,7 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
       ...subFilterCounts,
       stats: { total: totalAll, newCount: newAll, oldCount: oldAll, keyCount: keyAll },
       estimatedAmount: estimatedAgg._sum.estimatedAmount || 0,
-      totalContractAmount: totalAmountAgg._sum.amountCNY || 0,
+      totalContractAmount: Number(totalAmountAgg._sum.totalAmountCny ?? 0),
       estimatedBreakdown,
       contractBreakdown,
     });
@@ -600,7 +599,23 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
       where: { id: req.params.id },
       include: {
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
-        orders: { orderBy: { createdAt: "desc" } },
+        // V1.0：Customer.orders → Customer.salesOrders；按 SalesOrder 实际 schema 选取字段
+        salesOrders: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            orderNo: true,
+            status: true,
+            currency: true,
+            totalAmount: true,
+            totalAmountCny: true,
+            orderDate: true,
+            deliveryDate: true,
+            sampleOrderId: true,
+            quotationId: true,
+            createdAt: true,
+          },
+        },
         opportunities: {
           orderBy: { createdAt: "desc" },
           include: { owner: { select: { id: true, username: true, realName: true } } },
@@ -718,7 +733,7 @@ const customerUpdateSchema = z.object({
   isKeyAccount: z.boolean().optional(),
   tags: tagsField,
   intentLevel: z.nativeEnum(IntentLevel).nullish(),
-  // 首次下单日期：V1.0 字段 firstOrderAt 优先，兼容旧字段名 firstOrderDate
+  // 首次下单日期：V1.0 字段 firstOrderAt 优先（下方末键为 1D 保留的旧入参兼容别名）
   firstOrderAt: dateField,
   firstOrderDate: dateField,
   coverImage: coverImageField,
@@ -827,7 +842,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
 
     // 主图：coverImage 优先，images 仅作兼容输入
     const coverImage = normalizeCoverImage(body);
-    // 首次下单日期：firstOrderAt（V1.0）优先，兼容旧字段名 firstOrderDate；内部只写 firstOrderAt
+    // 首次下单日期：firstOrderAt（V1.0）优先，兼容旧入参别名；内部只写 firstOrderAt
     const firstOrderAt = body.firstOrderAt !== undefined ? body.firstOrderAt : body.firstOrderDate;
 
     const existing = await prisma.customer.findUnique({ where: { id } });
@@ -871,7 +886,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         // V1.0：Customer.tags 为 PG 原生数组（String[]）
         ...(tags !== undefined ? { tags } : {}),
         intentLevel: isKeyAccount === false ? null : intentLevel !== undefined ? intentLevel : existing.intentLevel,
-        // V1.0：字段为 firstOrderAt（DateTime?）；不再写入 firstOrderDate
+        // V1.0：字段为 firstOrderAt（DateTime?）；不再写入旧字符串列
         ...(firstOrderAt !== undefined ? { firstOrderAt } : {}),
       },
     });
@@ -1082,7 +1097,7 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       notes: "notes",
       重点客户: "isKeyAccount",
       意向等级: "intentLevel",
-      // V1.0：Customer 字段为 firstOrderAt（DateTime?），不再写旧列 firstOrderDate
+      // V1.0：Customer 字段为 firstOrderAt（DateTime?），不再写旧字符串列
       首次下单日期: "firstOrderAt",
     };
 
@@ -1218,7 +1233,7 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
     // 客户权限：按角色数据范围过滤（统计口径不含公海）
     const customerWhere: any = isAdmin ? {} : await roleScope(req);
 
-    const currentYear = new Date().getFullYear().toString();
+    const currentYear = new Date().getFullYear();
 
     // 并行查询
     const [
@@ -1235,47 +1250,41 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
         where: opportunityWhere,
         select: { id: true, leadId: true },
       }),
-      // 订单 7 阶段中"下打样单"阶段的订单数（取代原 SAMPLE 阶段）
-      prisma.order.count({ where: { status: "SAMPLE_ORDER" } }),
-      prisma.order.count({ where: { status: "SHIPPED" } }),
+      // V1.0：「下打样单」阶段由 SampleOrder 承载（SalesOrder 无 SAMPLE_ORDER 状态）
+      prisma.sampleOrder.count(),
+      // V1.0：SalesOrderStatus.SHIPPED
+      prisma.salesOrder.count({ where: { status: "SHIPPED" } }),
       prisma.customer.count({
-        where: { ...customerWhere, firstOrderDate: { startsWith: currentYear } },
+        where: { ...customerWhere, firstOrderAt: firstOrderAtInYear(currentYear) },
       }),
       prisma.customer.count({
         where: {
           ...customerWhere,
-          AND: [
-            { firstOrderDate: { not: null } },
-            { firstOrderDate: { not: "" } },
-            { firstOrderDate: { not: { startsWith: currentYear } } },
-          ],
+          firstOrderAt: firstOrderAtBeforeYear(currentYear),
         },
       }),
-      prisma.order.findMany({
+      // V1.0：订单金额取 SalesOrder.totalAmountCny（本币），不使用旧订单金额列
+      prisma.salesOrder.findMany({
         where: {
-          customer: { ...customerWhere, firstOrderDate: { startsWith: currentYear } },
-          amountCNY: { not: null },
+          customer: { ...customerWhere, firstOrderAt: firstOrderAtInYear(currentYear) },
+          totalAmountCny: { not: null },
         },
-        select: { amountCNY: true },
+        select: { totalAmountCny: true },
       }),
-      prisma.order.findMany({
+      prisma.salesOrder.findMany({
         where: {
           customer: {
             ...customerWhere,
-            AND: [
-              { firstOrderDate: { not: null } },
-              { firstOrderDate: { not: "" } },
-              { firstOrderDate: { not: { startsWith: currentYear } } },
-            ],
+            firstOrderAt: firstOrderAtBeforeYear(currentYear),
           },
-          amountCNY: { not: null },
+          totalAmountCny: { not: null },
         },
-        select: { amountCNY: true },
+        select: { totalAmountCny: true },
       }),
     ]);
 
-    const newCustomerAmount = newCustomerOrders.reduce((s, o) => s + (o.amountCNY || 0), 0);
-    const oldCustomerAmount = oldCustomerOrders.reduce((s, o) => s + (o.amountCNY || 0), 0);
+    const newCustomerAmount = newCustomerOrders.reduce((s, o) => s + Number(o.totalAmountCny ?? 0), 0);
+    const oldCustomerAmount = oldCustomerOrders.reduce((s, o) => s + Number(o.totalAmountCny ?? 0), 0);
 
     // 按派生阶段统计商机数量
     const stageMap = await deriveStages(allOpportunities);
