@@ -142,6 +142,8 @@ const listQuerySchema = z.object({
   quotationId: z.string().optional(),
   sampleOrderId: z.string().optional(),
   status: z.nativeEnum(SalesOrderStatus).optional(),
+  // 按产品过滤（additive）：命中 SalesOrderItem.productId；不改变 scope / 分页 / 排序
+  productId: z.string().optional(),
   keyword: z.string().optional(),
   page: z.union([z.string(), z.number()]).optional(),
   pageSize: z.union([z.string(), z.number()]).optional(),
@@ -354,6 +356,7 @@ export const listSalesOrders = async (req: AuthRequest, res: Response): Promise<
     if (query.quotationId) where.quotationId = query.quotationId;
     if (query.sampleOrderId) where.sampleOrderId = query.sampleOrderId;
     if (query.status) where.status = query.status;
+    if (query.productId) where.items = { some: { productId: query.productId } };
     if (query.keyword) {
       where.OR = [
         { orderNo: { contains: query.keyword } },

@@ -199,6 +199,8 @@ export const salesOrderApi = {
     quotationId?: string;
     sampleOrderId?: string;
     status?: SalesOrderStatus;
+    /** 按产品过滤（命中 SalesOrderItem.productId）；后端 additive 支持 */
+    productId?: string;
     keyword?: string;
     page?: number;
     pageSize?: number;

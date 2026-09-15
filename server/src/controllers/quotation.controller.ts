@@ -207,11 +207,13 @@ async function parseItems(
 // ============ 列表 ============
 export const listQuotations = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { opportunityId, customerId, status, page = 1, pageSize = 50 } = req.query as Record<string, any>;
+    const { opportunityId, customerId, status, productId, page = 1, pageSize = 50 } = req.query as Record<string, any>;
     let where: Record<string, unknown> = {};
     if (opportunityId) where.opportunityId = opportunityId;
     if (customerId) where.customerId = customerId;
     if (status) where.status = status;
+    // 按产品过滤（additive）：命中报价明细 QuotationItem.productId；不改变 scope / 分页 / 排序
+    if (productId) where.items = { some: { productId: String(productId) } };
 
     // 数据范围：ALL / DEPT / SELF（ownerId）；Quotation 不存在公海语义，不并入 publicSea
     where = applyScope(where, await roleScope(req, { field: 'ownerId' }));

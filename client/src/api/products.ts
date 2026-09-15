@@ -1,5 +1,4 @@
 import request, { type ApiResponse } from './request';
-import type { Order } from './customers';
 
 // ============ 产品分类 Taxonomy ============
 
@@ -272,22 +271,7 @@ export const productGroupApi = {
     request.post(`/product-groups/${id}/products?mode=${mode}`, { items }),
 };
 
-// 打样 / 报价 已并入统一订单（Order），type 区分：SAMPLE / QUOTE
-export const sampleApi = {
-  apply: (data: { targetType: 'PRODUCT' | 'GROUP'; targetId: string; customerId?: string; remark?: string; items?: any[] }) =>
-    request.post<ApiResponse<Order>>('/orders', { ...data, type: 'SAMPLE' }),
-  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string; customerId?: string }) =>
-    request.get<ApiResponse<{ list: Order[]; total: number }>>('/orders', { params: { ...params, type: 'SAMPLE' } }),
-};
-
-export const quoteApi = {
-  create: (data: { title: string; targetType: 'PRODUCT' | 'GROUP'; targetId: string; customerId?: string; pipelineId?: string; remark?: string; items?: any[] }) =>
-    request.post<ApiResponse<Order>>('/orders', { ...data, type: 'QUOTE' }),
-  getList: (params?: { page?: number; pageSize?: number; status?: string; targetType?: string; customerId?: string }) =>
-    request.get<ApiResponse<{ list: Order[]; total: number }>>('/orders', { params: { ...params, type: 'QUOTE' } }),
-  getById: (id: string) => request.get<ApiResponse<Order>>(`/orders/${id}`),
-  update: (id: string, data: any) => request.put(`/orders/${id}`, data),
-  submit: (id: string) => request.post(`/orders/${id}/submit`),
-  approve: (id: string) => request.post(`/orders/${id}/approve`),
-  reject: (id: string) => request.post(`/orders/${id}/reject`),
-};
+// 【Round 3B-3-5-6b-1】legacy 打样 / 报价 wrapper（`sampleApi` / `quoteApi`，均走 `/api/orders`）
+// 已随唯一消费者 `CreateOrderFromProductModal` 迁移到 V1.0 而删除：
+//   打样 → `api/sampleOrders.ts`（/api/sample-orders）
+//   报价 → `api/quotations.ts`（/api/quotations）

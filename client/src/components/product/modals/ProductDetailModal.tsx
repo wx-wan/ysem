@@ -11,7 +11,9 @@ import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product, ProductActivity } from '../../../api/products';
 import { SalesItem } from '../../../api/sales';
 import { getStageMeta, getStageI18nKey } from '../../sales/stages';
-import { orderApi, Order } from '../../../api/customers';
+import { quotationApi, QUOTATION_STATUS_TEXT, QUOTATION_STATUS_COLOR } from '../../../api/quotations';
+import { sampleOrderApi, SAMPLE_STATUS_TEXT, SAMPLE_STATUS_COLOR } from '../../../api/sampleOrders';
+import { salesOrderApi, SALES_ORDER_STATUS_TEXT, SALES_ORDER_STATUS_COLOR } from '../../../api/salesOrders';
 import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
@@ -22,6 +24,44 @@ import dayjs from 'dayjs';
 import './ProductDetailModal.css';
 
 type TabKey = 'overview' | 'sales' | 'activity';
+
+// ========== 产品关联单据（纯 UI view model，不落库、不写回 schema）==========
+// ADR-6B-02：产品关联单据保持「报价 / 打样 / 销售订单」三类业务语义，
+// 三类各自使用自己的 V1.0 编号与状态，不再使用 legacy Order 的 type/status union。
+type RelatedBusinessType = 'QUOTATION' | 'SAMPLE_ORDER' | 'SALES_ORDER';
+
+interface RelatedBusinessDocument {
+  id: string;
+  businessType: RelatedBusinessType;
+  businessNo: string;
+  status: string;
+  statusText: string;
+  statusColor: string;
+  /** Decimal 经 JSON 到达前端为字符串 → 统一 Number() 归一；非法/空值 → null（展示 '-'） */
+  amount: number | null;
+  currency?: string | null;
+  customerName?: string;
+  createdAt?: string;
+}
+
+const RELATED_BUSINESS_LABEL: Record<RelatedBusinessType, string> = {
+  QUOTATION: '报价',
+  SAMPLE_ORDER: '打样',
+  SALES_ORDER: '销售订单',
+};
+
+const RELATED_BUSINESS_COLOR: Record<RelatedBusinessType, string> = {
+  QUOTATION: 'blue',
+  SAMPLE_ORDER: 'orange',
+  SALES_ORDER: 'green',
+};
+
+/** Decimal / null 安全归一：非法值返回 null */
+const toAmount = (v?: string | number | null): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 interface ProductDetailModalProps {
   product: Product | null;
@@ -47,24 +87,90 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const { token } = theme.useToken();
   const { user } = useAuthStore();
   const [tab, setTab] = useState<TabKey>('overview');
-  const [relatedOrders, setRelatedOrders] = useState<Order[]>([]);
+  const [relatedDocs, setRelatedDocs] = useState<RelatedBusinessDocument[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
 
   useEffect(() => {
     if (open) setTab('overview');
   }, [open, product?.id]);
 
-  // 加载该产品的相关单据（报价/打样/订单）
+  // 加载该产品的相关单据：V1.0 三类业务列表并行（各自 productId 服务端过滤）
   const loadRelatedOrders = useCallback(() => {
     if (!open || !product) {
-      setRelatedOrders([]);
+      setRelatedDocs([]);
       return;
     }
+    const params = { productId: product.id, pageSize: 50 };
     setRelatedLoading(true);
-    orderApi
-      .list({ targetId: product.id, pageSize: 50 })
-      .then((r) => setRelatedOrders(r.data?.data?.list || []))
-      .catch(() => setRelatedOrders([]))
+    // allSettled：任一业务接口失败不影响其余两类；失败项显式告警，不静默吞错
+    Promise.allSettled([
+      quotationApi.list(params),
+      sampleOrderApi.list(params),
+      salesOrderApi.list(params),
+    ])
+      .then(([quotation, sample, salesOrder]) => {
+        const docs: RelatedBusinessDocument[] = [];
+
+        if (quotation.status === 'fulfilled') {
+          for (const r of quotation.value.data?.data?.list ?? []) {
+            docs.push({
+              id: r.id,
+              businessType: 'QUOTATION',
+              businessNo: r.quotationNo,
+              status: r.status,
+              statusText: (QUOTATION_STATUS_TEXT as Record<string, string>)[r.status] ?? r.status,
+              statusColor: (QUOTATION_STATUS_COLOR as Record<string, string>)[r.status] ?? 'default',
+              amount: toAmount(r.totalAmount),
+              currency: r.currency,
+              customerName: r.customer?.companyName,
+              createdAt: r.createdAt,
+            });
+          }
+        } else {
+          console.warn('[ProductDetailModal] 加载关联报价单失败', quotation.reason);
+        }
+
+        if (sample.status === 'fulfilled') {
+          for (const r of sample.value.data?.data?.list ?? []) {
+            docs.push({
+              id: r.id,
+              businessType: 'SAMPLE_ORDER',
+              businessNo: r.sampleNo,
+              status: r.status,
+              statusText: (SAMPLE_STATUS_TEXT as Record<string, string>)[r.status] ?? r.status,
+              statusColor: (SAMPLE_STATUS_COLOR as Record<string, string>)[r.status] ?? 'default',
+              amount: toAmount(r.feeAmount),
+              currency: r.feeCurrency,
+              customerName: r.customer?.companyName,
+              createdAt: r.createdAt,
+            });
+          }
+        } else {
+          console.warn('[ProductDetailModal] 加载关联打样单失败', sample.reason);
+        }
+
+        if (salesOrder.status === 'fulfilled') {
+          for (const r of salesOrder.value.data?.data?.list ?? []) {
+            docs.push({
+              id: r.id,
+              businessType: 'SALES_ORDER',
+              businessNo: r.orderNo,
+              status: r.status,
+              statusText: (SALES_ORDER_STATUS_TEXT as Record<string, string>)[r.status] ?? r.status,
+              statusColor: (SALES_ORDER_STATUS_COLOR as Record<string, string>)[r.status] ?? 'default',
+              amount: toAmount(r.totalAmount),
+              currency: r.currency,
+              customerName: r.customer?.companyName,
+              createdAt: r.createdAt,
+            });
+          }
+        } else {
+          console.warn('[ProductDetailModal] 加载关联销售订单失败', salesOrder.reason);
+        }
+
+        docs.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+        setRelatedDocs(docs);
+      })
       .finally(() => setRelatedLoading(false));
   }, [open, product?.id]);
 
@@ -141,6 +247,35 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     outline: 'none',
   });
 
+  // 相关单据（报价 / 打样 / 销售订单）：三类业务各自展示自己的编号与状态
+  const renderRelated = () => {
+    if (relatedLoading) {
+      return <div className="pdm-empty-state">加载中…</div>;
+    }
+    if (!relatedDocs.length) {
+      return <div style={{ fontSize: 13, color: token.colorTextTertiary, padding: '8px 0 4px' }}>暂无关联单据</div>;
+    }
+    return (
+      <div>
+        {relatedDocs.map((doc) => (
+          <div className="pm-sales-item" key={`${doc.businessType}-${doc.id}`} style={{ background: token.colorFillQuaternary }}>
+            <div className="pm-sales-item-main">
+              <div className="pm-sales-item-title">
+                <Tag color={RELATED_BUSINESS_COLOR[doc.businessType]}>{RELATED_BUSINESS_LABEL[doc.businessType]}</Tag>
+                <span className="pm-sales-customer">{doc.businessNo || doc.id.slice(0, 8)}</span>
+                <Tag color={doc.statusColor}>{doc.statusText}</Tag>
+              </div>
+              <div className="pm-sales-item-sub">
+                <span>客户：{doc.customerName || '-'}</span>
+                <span>金额：{doc.amount === null ? '-' : `${doc.currency || 'CNY'} ${doc.amount.toFixed(2)}`}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderSales = () => {
     if (salesLoading) {
       return <div className="pdm-empty-state">加载中…</div>;
@@ -150,31 +285,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     }
     return (
       <div className="pm-sales-list">
-        {/* 相关单据：报价 / 打样 / 订单 */}
-        {!relatedLoading && relatedOrders.length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 8 }}>相关单据（报价 / 打样 / 订单）</div>
-            {relatedOrders.map((o) => (
-              <div className="pm-sales-item" key={o.id} style={{ background: token.colorFillQuaternary }}>
-                <div className="pm-sales-item-main">
-                  <div className="pm-sales-item-title">
-                    <span className="pm-sales-customer">{o.orderNo || o.id.slice(0, 8)}</span>
-                    <Tag color={o.type === 'QUOTE' ? 'blue' : o.type === 'SAMPLE' ? 'orange' : 'green'}>
-                      {o.type === 'QUOTE' ? '报价' : o.type === 'SAMPLE' ? '打样' : '订单'}
-                    </Tag>
-                    <Tag color={o.status === 'APPROVED' ? 'success' : o.status === 'SUBMITTED' ? 'processing' : o.status === 'REJECTED' ? 'error' : 'default'}>
-                      {o.status === 'DRAFT' ? '草稿' : o.status === 'SUBMITTED' ? '待审批' : o.status === 'APPROVED' ? '已通过' : '已驳回'}
-                    </Tag>
-                  </div>
-                  <div className="pm-sales-item-sub">
-                    <span>客户：{o.customer?.companyName || '-'}</span>
-                    {o.amountCNY != null && <span>金额：{o.currency || 'CNY'} {o.amountCNY.toFixed(2)}</span>}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
         {salesList.map((sale) => {
           // 阶段由真实关联单据推导（报价/打样/订单），以阶段标签作为类型展示，不再使用遗留的 orderType（打样/正式）
           const meta = getStageMeta(sale.stage);
@@ -188,7 +298,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   <Tag color={meta?.color || 'default'}>{t(`sales.stage.${getStageI18nKey(sale.stage)}`)}</Tag>
                 </div>
                 <div className="pm-sales-item-sub">
-                  <span>商机号：{sale.pipelineNumber}</span>
+                  <span>商机号：{sale.opportunityNo || '-'}</span>
                   {sale.quantity != null && <span>数量：{sale.quantity}</span>}
                   <span>负责人：{sale.assignee?.realName || sale.assignee?.username || '未分配'}</span>
                   {sale.updateTime && <span>更新：{dayjs(sale.updateTime).format('YYYY-MM-DD')}</span>}
@@ -481,7 +591,18 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* 内容区 */}
           <div style={{ flex: 1, minHeight: 0, padding: 16, overflow: 'auto' }}>
             {tab === 'overview' && <ProductOverview product={product} salesList={salesList} loading={salesLoading} />}
-            {tab === 'sales' && renderSales()}
+            {tab === 'sales' && (
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 8 }}>
+                  相关单据（报价 / 打样 / 销售订单）
+                </div>
+                {renderRelated()}
+                <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, margin: '16px 0 8px' }}>
+                  关联商机
+                </div>
+                {renderSales()}
+              </div>
+            )}
             {tab === 'activity' && renderActivity()}
           </div>
         </div>

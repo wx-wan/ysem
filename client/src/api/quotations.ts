@@ -136,6 +136,8 @@ export const quotationApi = {
     opportunityId?: string;
     customerId?: string;
     status?: QuotationStatus;
+    /** 按产品过滤（命中 QuotationItem.productId）；后端 additive 支持 */
+    productId?: string;
     page?: number;
     pageSize?: number;
   }) => request.get<ApiResponse<QuotationListRes>>('/quotations', { params }),
