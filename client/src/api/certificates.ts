@@ -1,4 +1,8 @@
 import request, { type ApiResponse } from './request';
+import type { MasterStatus } from './products';
+
+/** 复用 taxonomy 模块定义的唯一 MasterStatus（type-only import，运行时零依赖） */
+export type { MasterStatus };
 
 export interface Certificate {
   id: string;
@@ -7,7 +11,7 @@ export interface Certificate {
   issuer?: string | null;
   category?: string | null;
   validUntil?: string | null;
-  status: number;
+  status: MasterStatus;
   logo?: string | null;
   remark?: string | null;
   createdAt: string;

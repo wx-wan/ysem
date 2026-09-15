@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { MasterStatus, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
@@ -9,7 +10,7 @@ const channelSchema = z.object({
   category: z.enum(['ONLINE', 'OFFLINE']).optional(),
   parentId: z.string().optional().nullable(),
   contact: z.string().trim().max(100).optional(),
-  status: z.enum(['ENABLED', 'DISABLED']).optional(),
+  status: z.nativeEnum(MasterStatus).optional(),
   sort: z.number().int().optional(),
   remark: z.string().trim().max(500).optional(),
 });
@@ -72,7 +73,7 @@ export const createChannel = async (req: AuthRequest, res: Response): Promise<vo
         category,
         parentId: data.parentId ?? null,
         contact: data.contact ?? null,
-        status: data.status ?? 'ENABLED',
+        status: data.status ?? MasterStatus.ACTIVE,
         sort: data.sort ?? 0,
         remark: data.remark ?? null,
       },
@@ -90,7 +91,9 @@ export const createChannel = async (req: AuthRequest, res: Response): Promise<vo
 export const updateChannel = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = channelSchema.partial().parse(req.body);
-    const update: Record<string, unknown> = { ...data };
+    // 类型化 payload：Record<string, unknown> 会擦除 status 的 MasterStatus 校验，
+    // 使 'ENABLED' / 'DISABLED' 绕过 TypeScript 直达 Prisma
+    const update: Prisma.ChannelUncheckedUpdateInput = { ...data };
     if (data.parentId === null) update.parentId = null;
     await prisma.channel.update({ where: { id: req.params.id }, data: update });
     success(res, null, '更新成功');

@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { MasterStatus, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
@@ -10,7 +11,7 @@ const certificateSchema = z.object({
   issuer: z.string().trim().max(100).optional(),
   category: z.string().trim().max(50).optional(),
   validUntil: z.string().optional(), // ISO 字符串，可选
-  status: z.number().int().optional(),
+  status: z.nativeEnum(MasterStatus).optional(),
   remark: z.string().trim().max(500).optional(),
   logo: z.string().trim().max(500).optional(),
 });
@@ -48,7 +49,7 @@ export const createCertificate = async (req: AuthRequest, res: Response): Promis
         issuer: data.issuer ?? null,
         category: data.category ?? null,
         validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        status: data.status ?? 1,
+        status: data.status ?? MasterStatus.ACTIVE,
         remark: data.remark ?? null,
       },
     });
@@ -64,10 +65,12 @@ export const createCertificate = async (req: AuthRequest, res: Response): Promis
 
 export const updateCertificate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = certificateSchema.partial().parse(req.body);
-    const update: Record<string, unknown> = { ...data };
-    if (data.validUntil !== undefined) {
-      update.validUntil = data.validUntil ? new Date(data.validUntil) : null;
+    const { validUntil, ...rest } = certificateSchema.partial().parse(req.body);
+    // 类型化 payload：Record<string, unknown> 会擦除 status 的 MasterStatus 校验，
+    // 使 1 / 0 绕过 TypeScript 直达 Prisma
+    const update: Prisma.CertificateUncheckedUpdateInput = { ...rest };
+    if (validUntil !== undefined) {
+      update.validUntil = validUntil ? new Date(validUntil) : null;
     }
     await prisma.certificate.update({ where: { id: req.params.id }, data: update });
     success(res, null, '更新成功');

@@ -9,7 +9,7 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
-import { taxonomyApi, ProductCraft, ProductAudience, ProductCategory } from '../api/products';
+import { taxonomyApi, ProductCraft, ProductAudience, ProductCategory, type MasterStatus } from '../api/products';
 
 type TabKey = 'craft' | 'audience' | 'category';
 
@@ -54,7 +54,7 @@ export default function ProductTaxonomy() {
   const handleAdd = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ status: 1, sort: 0 });
+    form.setFieldsValue({ status: 'ACTIVE', sort: 0 });
     setModalOpen(true);
   };
 
@@ -103,9 +103,9 @@ export default function ProductTaxonomy() {
     { title: '排序', dataIndex: 'sort', key: 'sort', width: 80 },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
-      render: (s: number) => (
-        <span className={`pm-status ${s === 1 ? 'pm-status--active' : 'pm-status--inactive'}`}>
-          {s === 1 ? '启用' : '停用'}
+      render: (s: MasterStatus) => (
+        <span className={`pm-status ${s === 'ACTIVE' ? 'pm-status--active' : 'pm-status--inactive'}`}>
+          {s === 'ACTIVE' ? '启用' : '停用'}
         </span>
       ),
     },
@@ -202,9 +202,9 @@ export default function ProductTaxonomy() {
           <Form.Item name="sort" label="排序">
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue={1}>
+          <Form.Item name="status" label="状态" initialValue="ACTIVE">
             <Select
-              options={[{ label: '启用', value: 1 }, { label: '停用', value: 0 }]}
+              options={[{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'INACTIVE' }]}
             />
           </Form.Item>
         </Form>

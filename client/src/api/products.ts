@@ -2,12 +2,19 @@ import request, { type ApiResponse } from './request';
 
 // ============ 产品分类 Taxonomy ============
 
+/**
+ * 主数据启停状态（对齐 Prisma `MasterStatus`）。
+ * 全链路唯一取值域：ACTIVE（启用）| INACTIVE（停用）。
+ * 禁止再使用 legacy 形态（number 1/0、'ENABLED'/'DISABLED'）。
+ */
+export type MasterStatus = 'ACTIVE' | 'INACTIVE';
+
 export interface ProductCraft {
   id: string;
   name: string;
   code?: string | null;
   sort: number;
-  status: number;
+  status: MasterStatus;
 }
 
 export interface ProductCategory {
@@ -16,7 +23,7 @@ export interface ProductCategory {
   audienceId: string;
   audience?: { id: string; name: string };
   sort: number;
-  status: number;
+  status: MasterStatus;
 }
 
 export interface ProductAudience {
@@ -24,7 +31,7 @@ export interface ProductAudience {
   name: string;
   code?: string | null;
   sort: number;
-  status: number;
+  status: MasterStatus;
   categories?: ProductCategory[];
 }
 

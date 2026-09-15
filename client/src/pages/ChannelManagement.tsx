@@ -50,7 +50,7 @@ export default function ChannelManagement() {
     form.resetFields();
     form.setFieldsValue({
       category: parent ? parent.category : 'ONLINE',
-      status: 'ENABLED',
+      status: 'ACTIVE',
       sort: 0,
       parentId: parent ? parent.id : null,
     });
@@ -195,7 +195,7 @@ export default function ChannelManagement() {
                       <span style={{ color: platform.category === 'ONLINE' ? 'var(--c-primary)' : 'var(--c-warning)', fontSize: 16 }}>{meta.icon}</span>
                       <span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{platform.name}</span>
                       <Tag color={meta.tag}>{t(platform.category === 'ONLINE' ? 'channel.catOnline' : 'channel.catOffline')}</Tag>
-                      {platform.status === 'DISABLED' && <Tag>{t('channel.disabled')}</Tag>}
+                      {platform.status === 'INACTIVE' && <Tag>{t('channel.disabled')}</Tag>}
                     </Space>
                   }
                   extra={
@@ -229,7 +229,7 @@ export default function ChannelManagement() {
                           <Button
                             size="small"
                             icon={<ShopOutlined style={{ color: platform.category === 'ONLINE' ? 'var(--c-primary)' : 'var(--c-warning)', fontSize: 12 }} />}
-                            disabled={shop.status === 'DISABLED'}
+                            disabled={shop.status === 'INACTIVE'}
                           >
                             {shop.name}
                           </Button>
@@ -295,8 +295,8 @@ export default function ChannelManagement() {
           <Form.Item name="status" label={t('channel.status')} rules={[{ required: true }]}>
             <Select
               options={[
-                { value: 'ENABLED', label: t('channel.enabled') },
-                { value: 'DISABLED', label: t('channel.disabled') },
+                { value: 'ACTIVE', label: t('channel.enabled') },
+                { value: 'INACTIVE', label: t('channel.disabled') },
               ]}
             />
           </Form.Item>

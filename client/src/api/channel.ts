@@ -1,4 +1,8 @@
 import axios from './request';
+import type { MasterStatus } from './products';
+
+/** 复用 taxonomy 模块定义的唯一 MasterStatus（type-only import，运行时零依赖） */
+export type { MasterStatus };
 
 export interface Channel {
   id: string;
@@ -8,7 +12,7 @@ export interface Channel {
   parent?: Channel | null;
   children?: Channel[];
   contact?: string | null;
-  status: 'ENABLED' | 'DISABLED';
+  status: MasterStatus;
   sort: number;
   remark?: string | null;
   createdAt: string;
@@ -20,7 +24,7 @@ export interface ChannelPayload {
   category?: 'ONLINE' | 'OFFLINE';
   parentId?: string | null;
   contact?: string;
-  status?: 'ENABLED' | 'DISABLED';
+  status?: MasterStatus;
   sort?: number;
   remark?: string;
 }

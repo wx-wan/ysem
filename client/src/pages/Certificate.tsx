@@ -6,7 +6,7 @@ import {
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { usePermission } from '../hooks/usePermission';
-import { certificateApi, Certificate } from '../api/certificates';
+import { certificateApi, Certificate, type MasterStatus } from '../api/certificates';
 import ImageUploadCropper from '../components/common/ImageUploadCropper';
 
 const { TextArea } = Input;
@@ -39,7 +39,7 @@ export default function CertificatePage() {
   const handleAdd = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ status: 1 });
+    form.setFieldsValue({ status: 'ACTIVE' });
     setModalOpen(true);
   };
 
@@ -113,8 +113,8 @@ export default function CertificatePage() {
     },
     {
       title: '状态', dataIndex: 'status', key: 'status', width: 80,
-      render: (s: number) => (
-        <Tag color={s === 1 ? 'success' : 'default'} variant="filled">{s === 1 ? '启用' : '停用'}</Tag>
+      render: (s: MasterStatus) => (
+        <Tag color={s === 'ACTIVE' ? 'success' : 'default'} variant="filled">{s === 'ACTIVE' ? '启用' : '停用'}</Tag>
       ),
     },
     {
@@ -195,8 +195,8 @@ export default function CertificatePage() {
           <Form.Item name="validUntil" label="有效期至">
             <DatePicker style={{ width: '100%' }} placeholder="选择有效期，留空表示长期" />
           </Form.Item>
-          <Form.Item name="status" label="状态" initialValue={1}>
-            <Select options={[{ label: '启用', value: 1 }, { label: '停用', value: 0 }]} />
+          <Form.Item name="status" label="状态" initialValue="ACTIVE">
+            <Select options={[{ label: '启用', value: 'ACTIVE' }, { label: '停用', value: 'INACTIVE' }]} />
           </Form.Item>
           <Form.Item name="remark" label="备注">
             <TextArea rows={2} placeholder="备注信息" maxLength={500} />

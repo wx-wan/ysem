@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { z } from 'zod';
+import { MasterStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
@@ -10,7 +11,7 @@ const craftSchema = z.object({
   name: z.string().min(1, '名称不能为空'),
   code: z.string().trim().max(10, '编码最多 10 位').optional(),
   sort: z.number().int().optional(),
-  status: z.number().int().optional(),
+  status: z.nativeEnum(MasterStatus).optional(),
 });
 
 export const getCrafts = async (_req: AuthRequest, res: Response): Promise<void> => {
@@ -55,7 +56,7 @@ const audienceSchema = z.object({
   name: z.string().min(1, '名称不能为空'),
   code: z.string().trim().max(10, '编码最多 10 位').optional(),
   sort: z.number().int().optional(),
-  status: z.number().int().optional(),
+  status: z.nativeEnum(MasterStatus).optional(),
 });
 
 export const getAudiences = async (_req: AuthRequest, res: Response): Promise<void> => {
@@ -103,7 +104,7 @@ const categorySchema = z.object({
   name: z.string().min(1, '名称不能为空'),
   audienceId: z.string().min(1, '请选择所属受众'),
   sort: z.number().int().optional(),
-  status: z.number().int().optional(),
+  status: z.nativeEnum(MasterStatus).optional(),
 });
 
 export const getCategories = async (_req: AuthRequest, res: Response): Promise<void> => {
