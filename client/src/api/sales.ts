@@ -2,7 +2,10 @@ import axios from './request';
 
 export interface SalesItem {
   id: string;
+  /** ⚠️ 历史字段名：V1.0 Opportunity 实际字段为 opportunityNo（见下方），本字段已不再由后端返回 */
   pipelineNumber: string;
+  /** V1.0 商机编号（OPP → OPP-yyyyMMdd-0001）；由 /api/sales 列表带去 */
+  opportunityNo?: string;
   /** 阶段：后端按关联单据派生（只读，不支持手动修改） */
   stage: string;
   title: string;

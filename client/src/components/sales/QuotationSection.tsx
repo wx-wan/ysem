@@ -34,8 +34,8 @@ const QuotationSection: React.FC<Props> = ({ opportunityId, productId }) => {
   const fetchList = async () => {
     setLoading(true);
     try {
-      const res: any = await quotationApi.list({ opportunityId, pageSize: 100 });
-      setList(res?.data?.list ?? res?.list ?? []);
+      const res = await quotationApi.list({ opportunityId, pageSize: 100 });
+      setList(res.data?.data?.list ?? []);
     } finally {
       setLoading(false);
     }
@@ -68,7 +68,7 @@ const QuotationSection: React.FC<Props> = ({ opportunityId, productId }) => {
       opportunityId,
       productId: productId ?? null,
       title: values.title,
-      amount: values.amount,
+      totalAmount: values.totalAmount,
       currency: values.currency,
       validUntil: values.validUntil ? values.validUntil.format('YYYY-MM-DD') : null,
       status: values.status,
@@ -109,8 +109,8 @@ const QuotationSection: React.FC<Props> = ({ opportunityId, productId }) => {
     { title: '标题', dataIndex: 'title' },
     {
       title: '金额',
-      dataIndex: 'amount',
-      render: (v: number, r: Quotation) => `${r.currency} ${v?.toLocaleString()}`,
+      dataIndex: 'totalAmount',
+      render: (v: string, r: Quotation) => `${r.currency} ${Number(v || 0).toLocaleString()}`,
     },
     {
       title: '状态',
@@ -170,7 +170,7 @@ const QuotationSection: React.FC<Props> = ({ opportunityId, productId }) => {
             <Input placeholder="如：初版报价 /  revised quote" />
           </Form.Item>
           <Space size={12} style={{ display: 'flex' }}>
-            <Form.Item name="amount" label="金额" rules={[{ required: true, message: '请输入金额' }]} style={{ flex: 1 }}>
+            <Form.Item name="totalAmount" label="金额" rules={[{ required: true, message: '请输入金额' }]} style={{ flex: 1 }}>
               <InputNumber style={{ width: '100%' }} min={0} precision={2} />
             </Form.Item>
             <Form.Item name="currency" label="币种" style={{ width: 120 }}>
