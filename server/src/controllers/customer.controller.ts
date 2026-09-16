@@ -600,6 +600,12 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
       include: {
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
         // V1.0：Customer.orders → Customer.salesOrders；按 SalesOrder 实际 schema 选取字段
+        // 【Round 3C-2-1 · P0-1】additive 扩投影：补齐 Customer Domain 所需字段（items / remark /
+        // paidAmountCny / opportunityId）。属最小必要投影，不返回 SalesOrderItem 全字段。
+        // 旧 Order 的 type / stage / 打样-生产-出运时间轴字段在 V1.0 **无对应且不恢复**（见 3C-2-0 §18 P0-2）：
+        //   · 旧 type=SAMPLE   → V1.0 由 `sampleOrderId` 表达（独立打样域）
+        //   · 旧 type=SHIPPED  → V1.0 由 `status === 'SHIPPED'` 表达
+        //   · 旧 pipelineId    → V1.0 由 `opportunityId` 表达
         salesOrders: {
           orderBy: { createdAt: "desc" },
           select: {
@@ -609,10 +615,29 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
             currency: true,
             totalAmount: true,
             totalAmountCny: true,
+            paidAmountCny: true, // 已收累计（Payment direction=IN + status=CONFIRMED 汇总回写）
             orderDate: true,
             deliveryDate: true,
             sampleOrderId: true,
             quotationId: true,
+            opportunityId: true, // V1.0 canonical（旧 Order.pipelineId 的对应字段）
+            remark: true, // CustomerOverview 品类分布提取依赖
+            items: {
+              // 订单明细（最小必要投影）
+              orderBy: { sort: "asc" },
+              select: {
+                id: true,
+                lineNo: true,
+                productId: true,
+                productName: true,
+                spec: true,
+                quantity: true,
+                unit: true,
+                unitPrice: true,
+                amount: true,
+                currency: true,
+              },
+            },
             createdAt: true,
           },
         },
