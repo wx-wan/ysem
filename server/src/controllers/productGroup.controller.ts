@@ -6,7 +6,7 @@ import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
-import { buildSkuCode } from './product.controller';
+import { buildSkuCode, withSkuRetry, SkuConcurrencyError } from '../lib/skuCode';
 
 /** 业务规则违例（事务内抛出以回滚），由 handler 统一转为 400 */
 class ProductGroupRuleError extends Error {}
@@ -143,7 +143,8 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
 
     // 编号分配 + 内部 Product 创建 + ComboProduct / ComboItem 创建必须同事务：
     // 任一步失败 → 全部回滚，既不残留孤儿 Product，也不消耗 CMB / PRD 编号
-    const group = await prisma.$transaction(async (tx) => {
+    // 跨请求 SKU 唯一冲突 → 有限重试（重试包住整个事务：CMB / PRD 编号随回滚一并释放）
+    const group = await withSkuRetry(() => prisma.$transaction(async (tx) => {
       const comboNo = await getNextNumber(tx, 'CMB');
 
       for (const it of items) {
@@ -154,7 +155,9 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
             throw new ProductGroupRuleError('组合明细中快速新建单品时名称不能为空');
           }
           // SKU 与批量新建一致：按「工艺-受众-序号」自动生成（缺码则不生成，但不阻塞创建）
-          const sku = await buildSkuCode(groupCraftIds, groupAudienceId);
+          // ⚠️ 必须传 `tx`：事务内可见本事务**已创建但未提交**的 Product，
+          //    否则同一组合内相同 craft-audience 的多个明细会生成同一个 SKU（确定性 P2002）
+          const sku = await buildSkuCode(tx, groupCraftIds, groupAudienceId);
           const certIds = String(it.certificationIds ?? '')
             .split(',')
             .map((s) => s.trim())
@@ -212,7 +215,7 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
         },
         include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
       });
-    });
+    }));
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -232,6 +235,11 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
     }
     if (err instanceof ProductGroupRuleError) {
       fail(res, 400, err.message);
+      return;
+    }
+    if (err instanceof SkuConcurrencyError) {
+      console.error('[createProductGroup] sku conflict', err.cause);
+      fail(res, 409, err.message);
       return;
     }
     fail(res, 500, '服务器错误');

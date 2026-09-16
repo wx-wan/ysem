@@ -9,6 +9,12 @@ import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { computeDiff, DiffItem, FieldFormatter } from '../lib/operation-diff';
+import {
+  buildSkuCode,
+  withSkuRetry,
+  SkuContextError,
+  SkuConcurrencyError,
+} from '../lib/skuCode';
 
 // ========== V1.0 标量适配工具 ==========
 // 尺寸 / 克重：V1.0 Product 为 Float?，旧版以 String 存储，统一归一为 number | null
@@ -74,40 +80,11 @@ const productSchema = z.object({
   progress: z.string().nullish(),
 });
 
-// 按「工艺代码 - 受众代码 - 序号」自动生成 SKU：
-// 多工艺时主工艺在括号外，其余用 + 连接，如 TJ(ZS)-ET-001；序号按同组合递增 3 位补零。
-// 缺少工艺或受众（含缺 code）时返回 null，由调用方决定提示。
-export async function buildSkuCode(
-  craftIds: string[],
-  audienceId: string | null,
-  excludeId?: string,
-): Promise<string | null> {
-  if (!craftIds.length || !audienceId) return null;
-  const crafts = await prisma.productCraft.findMany({ where: { id: { in: craftIds } } });
-  const craftCodes = craftIds
-    .map((id) => crafts.find((c) => c.id === id)?.code)
-    .filter((c): c is string => Boolean(c));
-  if (craftCodes.length !== craftIds.length) return null; // 有工艺未配置 code
-  const audience = await prisma.productAudience.findUnique({ where: { id: audienceId } });
-  if (!audience?.code) return null;
-
-  const craftPart = craftCodes.length > 1
-    ? `${craftCodes[0]}(${craftCodes.slice(1).join('+')})`
-    : craftCodes[0];
-  const prefix = `${craftPart}-${audience.code}-`;
-
-  const existing = await prisma.product.findMany({
-    where: { sku: { startsWith: prefix }, ...(excludeId ? { id: { not: excludeId } } : {}) },
-    select: { sku: true },
-  });
-  let max = 0;
-  for (const p of existing) {
-    if (!p.sku) continue;
-    const n = Number(p.sku.slice(prefix.length));
-    if (Number.isInteger(n) && n > max) max = n;
-  }
-  return `${prefix}${String(max + 1).padStart(3, '0')}`;
-}
+// SKU 生成已迁至 `server/src/lib/skuCode.ts`（tx-aware + P2002 精确识别 + 有限重试）：
+//   · 写入路径（create / update / Excel 导入 / 组合内快速新建）**必须**传事务客户端 `tx`
+//     —— 否则同一事务内先前创建、尚未提交的 Product 对 SKU 扫描不可见 → 重复 SKU
+//   · 预览路径（GET /products/sku-preview，不落库）传根 `prisma`
+// 格式契约（冻结）：`${craftPart}-${audienceCode}-${序号(3 位补零)}`
 
 // ============ 产品操作差异计算 ============
 // 比对「数据库原记录」与「提交体」，输出结构化变更列表（供前端以 Tag 展示）。
@@ -231,7 +208,8 @@ export const previewProductSku = async (req: AuthRequest, res: Response): Promis
     const craftIds = (req.query.craftIds as string | undefined)?.split(',').filter(Boolean) ?? [];
     const audienceId = (req.query.audienceId as string | undefined) ?? null;
     const excludeId = (req.query.excludeId as string | undefined) ?? undefined;
-    const sku = await buildSkuCode(craftIds, audienceId, excludeId);
+    // 预览不落库 → 使用根客户端（无需事务、不参与重试）
+    const sku = await buildSkuCode(prisma, craftIds, audienceId, excludeId);
     success(res, { sku });
   } catch { fail(res, 500, '服务器错误'); }
 };
@@ -351,13 +329,14 @@ const defaultSupplyModeByRole = (roleCode?: string): $Enums.SupplyMode => {
 /**
  * 旧 SingleProduct 写入体 → V1.0 Product 写入体。
  * 客户专属价格/定制不在此承载（见 CustomerProduct / ProductPrice）。
- * 返回值的 sku 可能为 null（工艺或受众缺编码），由调用方决定是否拒绝。
  * productNo 不在此生成：由调用方在事务内通过 getNextNumber(tx, 'PRD') 分配后合并。
+ * sku 亦不在此生成：必须由调用方在**同一事务内**通过 buildSkuCode(tx, ...) 生成后合并
+ *（详见 lib/skuCode.ts 的并发说明）。
  */
 async function buildProductCreateData(
   parsed: z.infer<typeof productSchema>,
   user: { userId?: string; roleCode?: string },
-): Promise<Omit<Prisma.ProductUncheckedCreateInput, 'productNo'>> {
+): Promise<Omit<Prisma.ProductUncheckedCreateInput, 'productNo' | 'sku'>> {
   const {
     craftIds,
     sku: _ignored,
@@ -373,7 +352,7 @@ async function buildProductCreateData(
   } = parsed;
   const certIds = parseIdList(certificationIds);
 
-  const data: Omit<Prisma.ProductUncheckedCreateInput, 'productNo'> = {
+  const data: Omit<Prisma.ProductUncheckedCreateInput, 'productNo' | 'sku'> = {
     ...rest,
     coverImage: images ?? null,
     defaultPrice: price ?? null,
@@ -392,7 +371,6 @@ async function buildProductCreateData(
       ? { visibleUsers: { create: visibleUserIds.map((userId) => ({ userId })) } }
       : {}),
   };
-  data.sku = await buildSkuCode(craftIds ?? [], parsed.audienceId ?? null);
   return data;
 }
 
@@ -403,18 +381,23 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     // 旧 SingleProduct 写入体 → V1.0 Product 写入体（productNo 在事务内分配）
     const data = await buildProductCreateData(parsed, { userId: req.userId, roleCode: req.roleCode });
 
-    // SKU 无需人工录入：按「工艺-受众-序号」自动生成
+    // SKU 无需人工录入：按「工艺-受众-序号」自动生成（必须在事务内生成，见下）
     const hasFullContext = Boolean(parsed.craftIds?.length && parsed.audienceId);
-    if (hasFullContext && data.sku === null) {
-      fail(res, 400, '工艺或受众缺少编码，请先在分类管理中补充代码');
-      return;
-    }
 
-    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
-    const product = await prisma.$transaction(async (tx) => {
-      const productNo = await getNextNumber(tx, 'PRD');
-      return tx.product.create({ data: { ...data, productNo } });
-    });
+    // 编号分配、SKU 生成与业务写入同事务：
+    //   · 业务失败 → 计数一并回滚，不产生编号空洞
+    //   · SKU 用 tx 扫描 → 事务内可见本事务已创建的 Product（消除确定性重复 SKU）
+    //   · 跨请求 SKU 唯一冲突 → 有限重试（重试包住整个事务，SKU 重新计算）
+    const product = await withSkuRetry(() =>
+      prisma.$transaction(async (tx) => {
+        const productNo = await getNextNumber(tx, 'PRD');
+        const sku = await buildSkuCode(tx, parsed.craftIds ?? [], parsed.audienceId ?? null);
+        if (hasFullContext && sku === null) {
+          throw new SkuContextError('工艺或受众缺少编码，请先在分类管理中补充代码');
+        }
+        return tx.product.create({ data: { ...data, sku, productNo } });
+      }),
+    );
     void activityLogger.log({
       userId: req.userId || '',
       username: req.username || '',
@@ -429,6 +412,12 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
     created(res, product);
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
+    if (err instanceof SkuContextError) { fail(res, 400, err.message); return; }
+    if (err instanceof SkuConcurrencyError) {
+      console.error('[createProduct] sku conflict', err.cause);
+      fail(res, 409, err.message);
+      return;
+    }
     console.error('[createProduct]', err);
     fail(res, 500, err instanceof Error ? err.message : '服务器错误');
   }
@@ -485,6 +474,10 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     });
     if (!existing) { fail(res, 404, '产品不存在'); return; }
     // 可见即可编辑：能查看到该产品即允许修改（列表/详情已按可见性过滤），不再单独校验修改权限
+    // 工艺/受众变化判定为纯计算（事务外）；SKU 生成与 Product update 必须同事务（见下）
+    let skuNeedsRegen = false;
+    let finalCraftIds: string[] = [];
+    let finalAudienceId: string | null = null;
     {
       const oldCraftIds = existing.crafts.map((c) => c.productCraft.id).sort().join(',');
       const newCraftIds = !Array.isArray(craftIds) ? null : [...craftIds].sort().join(',');
@@ -493,20 +486,30 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       const craftsChanged = newCraftIds !== null && newCraftIds !== oldCraftIds;
       const audienceChanged = newAudienceId !== oldAudienceId;
       if (craftsChanged || audienceChanged) {
-        const finalCraftIds = Array.isArray(craftIds) ? craftIds : existing.crafts.map((c) => c.productCraft.id);
-        const finalAudienceId = parsed.audienceId === undefined ? existing.audienceId : parsed.audienceId;
-        const sku = await buildSkuCode(finalCraftIds, finalAudienceId, existing.id);
-        if (sku === null && (finalCraftIds.length && finalAudienceId)) {
-          fail(res, 400, '工艺或受众缺少编码，请先在分类管理中补充代码');
-          return;
-        }
-        data.sku = sku;
+        finalCraftIds = Array.isArray(craftIds) ? craftIds : existing.crafts.map((c) => c.productCraft.id);
+        finalAudienceId = parsed.audienceId === undefined ? existing.audienceId : parsed.audienceId;
+        skuNeedsRegen = true;
       }
     }
-    const product = await prisma.product.update({
-      where: { id: req.params.id },
-      data: data as unknown as Prisma.ProductUpdateInput,
-    });
+
+    // SKU 重新生成与 Product 更新同事务：
+    //   · SKU 用 tx 扫描；excludeId 保留（不得把自身 SKU 当作冲突候选）
+    //   · 跨请求 SKU 唯一冲突 → 有限重试（重试包住整个事务，SKU 重新计算）
+    const product = await withSkuRetry(() =>
+      prisma.$transaction(async (tx) => {
+        if (skuNeedsRegen) {
+          const sku = await buildSkuCode(tx, finalCraftIds, finalAudienceId, existing.id);
+          if (sku === null && finalCraftIds.length && finalAudienceId) {
+            throw new SkuContextError('工艺或受众缺少编码，请先在分类管理中补充代码');
+          }
+          data.sku = sku;
+        }
+        return tx.product.update({
+          where: { id: req.params.id },
+          data: data as unknown as Prisma.ProductUpdateInput,
+        });
+      }),
+    );
 
     // ---- 自动计算前后差异 ----
     const diff = await buildProductDiff(existing, parsed);
@@ -525,6 +528,12 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     success(res, product, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) { fail(res, 400, err.errors.map((e) => e.message).join(', ')); return; }
+    if (err instanceof SkuContextError) { fail(res, 400, err.message); return; }
+    if (err instanceof SkuConcurrencyError) {
+      console.error('[updateProduct] sku conflict', err.cause);
+      fail(res, 409, err.message);
+      return;
+    }
     console.error('[updateProduct] error:', err);
     fail(res, 500, err instanceof Error ? err.message : '服务器错误');
   }
@@ -762,15 +771,18 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
         const parsed = productSchema.parse(payload);
         const pdata = await buildProductCreateData(parsed, { userId: req.userId, roleCode: req.roleCode });
         const hasFullContext = Boolean(parsed.craftIds?.length && parsed.audienceId);
-        if (hasFullContext && pdata.sku === null) {
-          failed.push({ index: i, name: parsed.name, reason: '工艺或受众缺少编码，请先在分类管理中补充代码' });
-          continue;
-        }
-        // 编号分配与业务写入同事务：逐行独立事务，保留导入的部分成功语义
-        const product = await prisma.$transaction(async (tx) => {
-          const productNo = await getNextNumber(tx, 'PRD');
-          return tx.product.create({ data: { ...pdata, productNo } });
-        });
+        // 编号分配、SKU 生成与业务写入同事务：逐行独立事务，保留导入的部分成功语义
+        //（SKU 用 tx 扫描 → 事务内可见本行已创建的 Product；跨请求冲突 → 有限重试）
+        const product = await withSkuRetry(() =>
+          prisma.$transaction(async (tx) => {
+            const productNo = await getNextNumber(tx, 'PRD');
+            const sku = await buildSkuCode(tx, parsed.craftIds ?? [], parsed.audienceId ?? null);
+            if (hasFullContext && sku === null) {
+              throw new SkuContextError('工艺或受众缺少编码，请先在分类管理中补充代码');
+            }
+            return tx.product.create({ data: { ...pdata, sku, productNo } });
+          }),
+        );
         void activityLogger.log({
           userId: req.userId || '',
           username: req.username || '',
@@ -784,7 +796,13 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
         });
         created.push(product);
       } catch (err) {
-        const reason = err instanceof z.ZodError ? err.errors.map((e) => e.message).join(', ') : '服务器错误';
+        const reason = err instanceof z.ZodError
+          ? err.errors.map((e) => e.message).join(', ')
+          : err instanceof SkuContextError
+            ? err.message
+            : err instanceof SkuConcurrencyError
+              ? err.message
+              : '服务器错误';
         failed.push({ index: i, name: data.name, reason });
       }
     }
