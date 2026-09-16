@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty,
 } from 'antd';
-import { customerApi, Customer } from '../api/customers';
+import { customerApi, Customer, type OpportunitySummary } from '../api/customers';
 import { userApi, User, UserSelectItem } from '../api/users';
 import { salesApi, SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -89,7 +89,7 @@ export default function CustomersPage() {
   const isAdmin = user?.role?.code === 'admin';
 
   // 当前详情客户是否可操作（归属人本人 或 管理员）
-  // 注：此逻辑已移至 CustomerDetailDrawer 组件内部
+  // 注：该判定由 CustomerDetailModal 内部承担（原 CustomerDetailDrawer 已于 Round 3C-2-1 删除）
 
   const pageSize = 6;
   const API_PAGE_SIZE = 1000; // 服务端全量拉取，客户端排序分页
@@ -298,7 +298,7 @@ export default function CustomersPage() {
     setPipelineEditOpen(true);
   }, []);
 
-  // 编辑商机：数据来自父级（详情里的 pipelines 已是完整 SalesItem），无需再请求
+  // 编辑商机：数据来自父级（详情里的 opportunities 已含完整商机字段），无需再请求
   const handleEditPipeline = useCallback((pipeline: any) => {
     setEditingPipeline(pipeline as SalesItem);
     setPipelineEditOpen(true);
@@ -311,12 +311,12 @@ export default function CustomersPage() {
     if (cid && detailCustomer && editingPipeline) {
       setDetailCustomer((prev) => {
         if (!prev) return prev;
-        const pipelines = prev.pipelines ? [...prev.pipelines] : [];
-        const idx = pipelines.findIndex((p: any) => p.id === editingPipeline.id);
-        const updated = { ...editingPipeline, ...values, stage: values.stage || editingPipeline.stage };
-        if (idx >= 0) pipelines[idx] = updated;
-        else pipelines.push(updated);
-        return { ...prev, pipelines };
+        const opportunities: OpportunitySummary[] = prev.opportunities ? [...prev.opportunities] : [];
+        const idx = opportunities.findIndex((p) => p.id === editingPipeline.id);
+        const updated = { ...editingPipeline, ...values, stage: values.stage || editingPipeline.stage } as unknown as OpportunitySummary;
+        if (idx >= 0) opportunities[idx] = updated;
+        else opportunities.push(updated);
+        return { ...prev, opportunities };
       });
     }
     // 2) 最后更新到数据库
@@ -366,12 +366,12 @@ export default function CustomersPage() {
       if (detailCustomer) {
         setDetailCustomer((prev) => {
           if (!prev) return prev;
-          const pipelines = (prev.pipelines || []).map((p: any) =>
+          const opportunities = (prev.opportunities || []).map((p) =>
             p.id === convertPipeline.id
-              ? { ...p, orderStatus: '成交', orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined }
+              ? ({ ...p, orderStatus: '成交', orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined } as unknown as OpportunitySummary)
               : p
           );
-          const updated = { ...prev, pipelines };
+          const updated = { ...prev, opportunities };
           setDetailCache(updated);
           return updated;
         });
@@ -399,8 +399,8 @@ export default function CustomersPage() {
           if (detailCustomer) {
             setDetailCustomer((prev) => {
               if (!prev) return prev;
-              const pipelines = (prev.pipelines || []).filter((p: any) => p.id !== pipeline.id);
-              const updated = { ...prev, pipelines };
+              const opportunities = (prev.opportunities || []).filter((p) => p.id !== pipeline.id);
+              const updated = { ...prev, opportunities };
               setDetailCache(updated);
               return updated;
             });
@@ -432,7 +432,7 @@ export default function CustomersPage() {
   }, []);
 
   // ========== 打开详情 ==========
-  // 同步打开：仅设置本地数据与显示弹窗，完整详情（owner/pipelines）由 Modal 内部
+  // 同步打开：仅设置本地数据与显示弹窗，完整详情（owner/opportunities）由 Modal 内部
   // 通过 getById 异步补充。这样点击卡片时父组件零 async 阻塞，弹窗即时出现。
   const openDetail = useCallback((customer: Customer) => {
     setDetailCustomer(customer);

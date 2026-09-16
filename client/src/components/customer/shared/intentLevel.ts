@@ -1,6 +1,8 @@
 // 采购意向等级 —— 客户管理全局公用逻辑
-// 商机(SalesPipeline.probability) 直接存储采购意向文案：准成交 / 高意向 / 中意向 / 低意向。
-// 全局统一使用这四种表述，不再使用「成交概率」或数字。
+// V1.0 canonical：商机意向字段为 `Opportunity.intentLevel`（Prisma enum：LOW / MEDIUM / HIGH / READY）。
+// 兼容回退：`Opportunity.probability`（0~100 百分数）在 V1.0 仍存在，仅在 intentLevel 缺失时使用。
+// 全局统一使用四种表述：准成交 / 高意向 / 中意向 / 低意向。
+import type { IntentLevelCode } from '../../../api/customers';
 
 export type IntentGrade = 'A' | 'B' | 'C' | 'D';
 
@@ -43,12 +45,39 @@ export function gradeFromProbability(probability?: number | string | null): Inte
   return LABEL_TO_GRADE[probability.trim()] ?? (Number.isNaN(Number(probability)) ? 'D' : gradeFromNumber(Number(probability)));
 }
 
-/** 由一组商机的采购意向推算客户等级：取最高意向，无商机为 D */
-export function getIntentGrade(pipelines?: Array<{ probability?: number | string | null }>): IntentGrade {
+/** V1.0 商机意向枚举 → 内部等级（与 server 侧同一语义映射：低意向→LOW … 准成交→READY） */
+const INTENT_LEVEL_TO_GRADE: Record<IntentLevelCode, IntentGrade> = {
+  READY: 'A', // 准成交
+  HIGH: 'B',  // 高意向
+  MEDIUM: 'C', // 中意向
+  LOW: 'D',   // 低意向
+};
+
+/**
+ * V1.0 canonical：由 `Opportunity.intentLevel`（LOW / MEDIUM / HIGH / READY）推算等级。
+ * 缺失 / 空串 / 未知值 → undefined（由调用方决定是否回退 probability）。
+ * 兼容大小写（server enum 为大写，JSON 直出）。
+ */
+export function gradeFromIntentLevel(level?: string | null): IntentGrade | undefined {
+  if (level == null || level === '') return undefined;
+  return INTENT_LEVEL_TO_GRADE[level.trim().toUpperCase() as IntentLevelCode];
+}
+
+/**
+ * 由一组商机的采购意向推算客户等级：取最高意向，无商机为 D。
+ *
+ * 优先级（V1.0）：
+ *   1) `intentLevel`（enum）—— **authority**
+ *   2) `probability`（0~100 百分数）—— **compatibility fallback**（仅当 intentLevel 缺失）
+ * 不得反向使用。
+ */
+export function getIntentGrade(
+  opportunities?: Array<{ intentLevel?: string | null; probability?: number | string | null }>,
+): IntentGrade {
   const order: Record<IntentGrade, number> = { A: 0, B: 1, C: 2, D: 3 };
   let best: IntentGrade = 'D';
-  for (const p of pipelines || []) {
-    const g = gradeFromProbability(p.probability);
+  for (const p of opportunities || []) {
+    const g = gradeFromIntentLevel(p.intentLevel) ?? gradeFromProbability(p.probability);
     if (order[g] < order[best]) best = g;
   }
   return best;

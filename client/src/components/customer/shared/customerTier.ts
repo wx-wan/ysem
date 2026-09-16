@@ -1,5 +1,5 @@
 import type { Customer } from '../../../api/customers';
-import { getGrade } from './utils';
+import { getGrade, hasOpportunities } from './utils';
 import { getPurchaseStatus } from './purchaseStatus';
 
 /** 客户荣誉层级（与 global.css .customer-tier-* 对应） */
@@ -42,7 +42,8 @@ export function getCustomerTier(customer: Customer | null): CustomerTierResult {
     };
 
   const grade = getGrade(customer);
-  const hasPipelines = (customer.pipelines || []).length > 0 || (customer._count?.pipelines ?? 0) > 0;
+  // V1.0 canonical：是否有商机统一由 shared/utils 的 hasOpportunities 判定
+  const hasOpps = hasOpportunities(customer);
   const status = getPurchaseStatus(customer);
 
   // 已成交客户
@@ -68,7 +69,7 @@ export function getCustomerTier(customer: Customer | null): CustomerTierResult {
   }
 
   // 未成交：无商机记录 → 灰色 void
-  if (!hasPipelines) {
+  if (!hasOpps) {
     return {
       tier: 'void',
       headerGradient: 'linear-gradient(135deg, #8a8f9a 0%, #6b7280 100%)',

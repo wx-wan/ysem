@@ -5,8 +5,8 @@ import { getPurchaseStatus, PURCHASE_STATUS_LABEL } from './purchaseStatus';
 
 // ========== 客户等级（A/B/C/D 四级，仅由商机中最高采购意向决定，不受重点客户影响） ==========
 export function getGrade(customer: Customer): { grade: 'A' | 'B' | 'C' | 'D'; tagColor: string } {
-  // 采购意向等级由商机最高概率派生（逻辑统一收口在 intentLevel.ts）
-  const grade = getIntentGrade(customer.pipelines || []);
+  // 采购意向等级由商机派生（V1.0 canonical：Opportunity.intentLevel；逻辑统一收口在 intentLevel.ts）
+  const grade = getIntentGrade(customer.opportunities || []);
 
   // 等级只反映商机真实意向，重点客户不加权（避免“设为重点”篡改意向等级）
   const TAG_COLOR: Record<'A' | 'B' | 'C' | 'D', string> = { A: 'red', B: 'orange', C: 'gold', D: 'gray' };
@@ -54,12 +54,20 @@ export function getCustomerIntentLabel(customer: Customer): string {
   return INTENT_LABEL[grade] || '低意向';
 }
 
-// 兼容旧名：逻辑标签 = 成交状态前缀 + 后半段
+/**
+ * 客户是否存在商机（V1.0 canonical 单一收口）。
+ * 数据源：`customer.opportunities`（getById 返回完整数组）或 `customer._count.opportunities`（list 端点）。
+ * 兼容：listPublic 不返回 `_count.opportunities`、getById 不返回 `_count` ⇒ 两者均 optional，取「或」。
+ */
+export function hasOpportunities(customer: Customer): boolean {
+  return (customer.opportunities?.length ?? 0) > 0 || (customer._count?.opportunities ?? 0) > 0;
+}
+
+// 逻辑标签 = 成交状态前缀 + 后半段
 // 有商机：后半段为采购意向（准成交/高意向/中意向/低意向）
 // 无商机：后半段固定为「待开发」
 export function getCustomerLogicLabel(customer: Customer): string {
-  const hasPipelines = (customer.pipelines || []).length > 0;
-  const intent = hasPipelines ? (INTENT_LABEL[getGrade(customer).grade] || '低意向') : '待开发';
+  const intent = hasOpportunities(customer) ? (INTENT_LABEL[getGrade(customer).grade] || '低意向') : '待开发';
   const status = getPurchaseStatus(customer);
   return `${PURCHASE_STATUS_LABEL[status]}·${intent}`;
 }

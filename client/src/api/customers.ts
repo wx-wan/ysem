@@ -23,20 +23,113 @@ export interface Customer {
   isKeyAccount: boolean;
   intentLevel?: string;
   tags?: string;     // 逗号分隔的标签
-  firstOrderDate?: string;
+  /** V1.0 canonical：首次下单时间（Prisma DateTime → ISO 字符串）；由履约层回写，null = 无成交 */
+  firstOrderAt?: string | null;
   estimatedAmount?: number;
   status?: string; // lead / prospect / sample / order
   createdAt: string;
   updatedAt: string;
   owner?: { id: string; username: string; realName: string; role?: { code: string } };
-  _count?: { orders: number; pipelines: number };
-  orders?: Order[];
-  pipelines?: any[];
+  /**
+   * V1.0 canonical：Customer._count（各 endpoint 提供情况不同 → 全部 optional）
+   *   · listMy / listAll → { salesOrders, opportunities }
+   *   · listPublic      → 仅 { salesOrders }
+   *   · getById         → 不返回 _count
+   */
+  _count?: {
+    salesOrders?: number;
+    opportunities?: number;
+    /** @deprecated 3C-2-3 移除（旧键名，server 已不返回） */
+    orders?: number;
+    /** @deprecated 3C-2-3 移除（旧键名，server 已不返回） */
+    pipelines?: number;
+  };
+  /** V1.0 canonical：客户销售订单（仅 getById 返回，投影见 Round 3C-2-1） */
+  salesOrders?: SalesOrderSummary[];
+  /** V1.0 canonical：客户商机（getById 返回完整对象；list 端点仅 `{ intentLevel }` 投影） */
+  opportunities?: OpportunitySummary[];
   activities?: CustomerActivity[];
   totalAmount?: number;
   lastOrderDate?: string | null;
   pipelineAmount?: number;
+
+  // ========== legacy 过渡声明（3C-2-3 随 Customer UI 迁移一并移除）==========
+  // CustomerCard / CustomerOverview / CustomerDetailModal / CustomerFormModal /
+  // CustomerEditDrawer（Round 3C-2-2 禁止修改）仍直接读取以下字段；
+  // 在 UI 迁移前删除会导致 client TS 非 0，故暂予保留。
+  /** @deprecated 3C-2-3 移除 → 改用 `firstOrderAt` */
+  firstOrderDate?: string;
+  /** @deprecated 3C-2-3 移除 → 改用 `salesOrders` */
+  orders?: Order[];
+  /** @deprecated 3C-2-3 移除 → 改用 `opportunities` */
+  pipelines?: any[];
 }
+
+// ========== V1.0 关系 summary 类型（对应 server 实际投影）==========
+
+/** Customer getById 的 `salesOrders[].items[]` 投影（Round 3C-2-1 冻结的最小必要字段） */
+export interface SalesOrderItemSummary {
+  id: string;
+  lineNo: number;
+  productId?: string | null;
+  productName: string;
+  spec?: string | null;
+  /** Prisma Decimal → JSON string（沿用现有 API contract，不改为 number） */
+  quantity: string;
+  unit: string;
+  unitPrice: string;
+  amount: string;
+  currency: string;
+}
+
+/** Customer getById 的 `salesOrders[]` 投影（字段清单与 server select 严格一致） */
+export interface SalesOrderSummary {
+  id: string;
+  orderNo: string;
+  status: string;
+  currency: string;
+  /** 原币金额（Decimal → string） */
+  totalAmount: string;
+  /** 本位币金额（Decimal → string | null） */
+  totalAmountCny?: string | null;
+  /** 已收累计（本位币，Decimal → string；payment IN+CONFIRMED 汇总回写） */
+  paidAmountCny: string;
+  orderDate?: string | null;
+  deliveryDate?: string | null;
+  /** 来源打样单（V1.0：旧 `Order.type === 'SAMPLE'` 的 canonical 表达） */
+  sampleOrderId?: string | null;
+  quotationId?: string | null;
+  /** V1.0 canonical（旧 `Order.pipelineId` 的对应字段） */
+  opportunityId: string;
+  remark?: string | null;
+  items?: SalesOrderItemSummary[];
+  createdAt: string;
+}
+
+/**
+ * 客户商机投影。
+ * getById 返回完整 Opportunity 对象；list 端点仅返回 `{ intentLevel }` 投影
+ * ⇒ 除 `id` 外全部 optional，禁止假设所有 endpoint 都返回完整对象。
+ */
+export interface OpportunitySummary {
+  id: string;
+  /** 商机编号 BO-yyyyMMdd-####（list 端点不返回） */
+  opportunityNo?: string;
+  title?: string;
+  /** 采购意向等级（V1.0 canonical；list 与 getById 均返回） */
+  intentLevel?: IntentLevelCode | null;
+  /** 0~100 百分数（Decimal → string）；仅作 `intentLevel` 缺失时的兼容回退 */
+  probability?: string | null;
+  estimatedAmount?: string | number | null;
+  estimatedCloseDate?: string | null;
+  ownerId?: string | null;
+  owner?: { id: string; realName?: string; username?: string } | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** V1.0 商机采购意向等级（对齐 Prisma `IntentLevel` enum） */
+export type IntentLevelCode = 'LOW' | 'MEDIUM' | 'HIGH' | 'READY';
 
 export interface CustomerActivity {
   id: string;
@@ -87,6 +180,11 @@ export interface AllCustomersRes extends CustomerListRes {
   stats: CustomerStats;
 }
 
+/**
+ * @deprecated 【3C-2-3 移除】legacy 统一订单类型。
+ * 仍被 CustomerDetailModal（`Order` 类型 import + `renderOrderItem`）与
+ * Customer 域过渡成员 `Customer.orders` 引用；Customer UI 迁移完成后删除。
+ */
 export interface Order {
   id: string;
   type?: 'QUOTE' | 'SAMPLE' | 'ORDER' | 'PRODUCTION' | 'SHIPPED';
@@ -120,6 +218,7 @@ export interface Order {
   updatedAt: string;
 }
 
+/** @deprecated 【3C-2-3 移除】legacy 订单明细（旧 JSON items 语义） */
 export interface OrderItem {
   productId?: string;
   name?: string;
@@ -130,6 +229,7 @@ export interface OrderItem {
   pipelineId?: string;
 }
 
+/** @deprecated 【3C-2-3 移除】legacy 订单列表响应（当前零消费者） */
 export interface OrderListRes {
   list: Order[];
   total: number;
@@ -208,4 +308,14 @@ export const customerApi = {
 };
 
 // 说明（Round 3B-3-5-6b-2）：legacy 统一订单 API 对象已随 Unified Order Backend 正式退休删除。
-// 保留 Order / OrderItem / OrderListRes 类型 —— Customer 域（ADR-6B-04，尚未迁移）仍依赖其类型定义。
+//
+// 说明（Round 3C-2-2）：V1.0 canonical 关系与类型已就位 —— `Customer.firstOrderAt` /
+// `Customer.salesOrders: SalesOrderSummary[]` / `Customer.opportunities: OpportunitySummary[]` /
+// `Customer._count.{salesOrders,opportunities}`；共享逻辑（purchaseStatus / intentLevel /
+// utils / customerTier）已全部切换到 V1.0 canonical 数据源。
+//
+// 仍未移除（3C-2-3 随 Customer UI 语义迁移一并删除）：
+//   · 类型：Order / OrderItem / OrderListRes
+//   · 成员：Customer.orders / Customer.pipelines / Customer.firstOrderDate / _count.{orders,pipelines}
+// 原因：CustomerCard / CustomerOverview / CustomerDetailModal / CustomerFormModal /
+//       CustomerEditDrawer（3C-2-2 禁止修改）仍直接读取上述成员；提前删除会使 client TS 非 0。

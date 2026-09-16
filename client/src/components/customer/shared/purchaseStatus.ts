@@ -1,8 +1,8 @@
-import type { Customer, Order } from '../../../api/customers';
+import type { Customer } from '../../../api/customers';
 
 // ========== 客户成交状态（全站唯一收口） ==========
 // 两个通用方法，供标签、排序、层级配色等所有场景复用：
-//   1) getFirstOrderDate  —— 从订单列表取「创建时间最早」的订单日期（数据驱动，不依赖后端冗余字段）
+//   1) getFirstOrderDate  —— 取客户首单日期（V1.0 canonical：Customer.firstOrderAt）
 //   2) getPurchaseStatus  —— 基于首单日期判断成交状态：未成交客户 / 本年度新客 / 往年老客
 
 /** 成交状态枚举 */
@@ -16,24 +16,19 @@ export const PURCHASE_STATUS_LABEL: Record<PurchaseStatus, string> = {
 };
 
 /**
- * 方法1：取得客户首单日期。
- * 规则：优先取 orders 中 createdAt 最早的订单日期（YYYY-MM-DD）。
- * 列表场景下 orders 明细未随列表接口返回（仅有聚合字段 totalAmount/lastOrderDate），
- * 此时回退到后端冗余字段 firstOrderDate，避免已成交客户在卡片视图被误判为「未成交客户」。
+ * 方法1：取得客户首单日期（V1.0 canonical）。
+ *
+ * 数据源：`Customer.firstOrderAt`（Prisma `DateTime?`，JSON 为 ISO 字符串），由履约层回写：
+ *   · 该字段为 null ⇔ 无成交（server `getCustomerStats` 亦以 `firstOrderAt: null` 表达「无订单客户」）
+ *   · 该字段为 scalar，**所有** Customer endpoint 均返回（无需 relation / 无需明细）
+ *
+ * 不再读取：`customer.orders`（列表端点不返回明细，getById 亦非权威聚合来源）
+ *           与旧 `customer.firstOrderDate`（String，服务端已 RENAME 为 firstOrderAt）。
+ *
+ * 规则保持不变（不新增业务状态）：无值 → 无首单；返回 YYYY-MM-DD 前缀。
  */
 export function getFirstOrderDate(customer: Customer): string | undefined {
-  const orders: Order[] | undefined = customer.orders;
-  if (orders && orders.length > 0) {
-    // 优先使用 orderDate（实际成交日期），回退到 createdAt（技术创建时间）
-    let earliest = orders[0].orderDate || orders[0].createdAt;
-    for (const o of orders) {
-      const d = o.orderDate || o.createdAt;
-      if (d && (!earliest || d < earliest)) earliest = d;
-    }
-    return earliest ? earliest.slice(0, 10) : undefined;
-  }
-  // 无 orders 明细（列表视图）→ 回退冗余字段 firstOrderDate
-  const fy = customer.firstOrderDate;
+  const fy = customer.firstOrderAt;
   return fy ? fy.slice(0, 10) : undefined;
 }
 
