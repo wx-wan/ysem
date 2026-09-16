@@ -38,8 +38,9 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
-      if (values.firstOrderDate && dayjs.isDayjs(values.firstOrderDate)) {
-        values.firstOrderDate = values.firstOrderDate.format('YYYY-MM-DD');
+      // V1.0 canonical：firstOrderAt（server 字段名）；DatePicker 值为 dayjs → 提交 ISO 日期串
+      if (values.firstOrderAt && dayjs.isDayjs(values.firstOrderAt)) {
+        values.firstOrderAt = values.firstOrderAt.format('YYYY-MM-DD');
       }
       setSaving(true);
       if (editingCustomer) {
@@ -65,7 +66,11 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
   React.useEffect(() => {
     if (open) {
       if (editingCustomer) {
-        form.setFieldsValue(editingCustomer);
+        form.setFieldsValue({
+          ...editingCustomer,
+          // V1.0 canonical：firstOrderAt 为 ISO 字符串，DatePicker 需 dayjs 对象
+          firstOrderAt: editingCustomer.firstOrderAt ? dayjs(editingCustomer.firstOrderAt) : undefined,
+        });
       } else {
         form.resetFields();
         form.setFieldsValue({
@@ -139,9 +144,14 @@ const CustomerFormModal: React.FC<Props> = React.memo(({ open, editingCustomer, 
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item name="firstOrderDate" label="首次合作日期">
-          <DatePicker style={{ width: '100%' }} placeholder="首次合作日期" />
-        </Form.Item>
+        {/* 首次合作日期：仅编辑模式可见。
+            POST /api/customers 的 schema 不接收 firstOrderAt（创建时静默丢弃），
+            且新建客户通常尚无首单（firstOrderAt 由履约层回写）→ create 模式隐藏。 */}
+        {editingCustomer && (
+          <Form.Item name="firstOrderAt" label="首次合作日期">
+            <DatePicker style={{ width: '100%' }} placeholder="首次合作日期" />
+          </Form.Item>
+        )}
         <Form.Item name="isKeyAccount" hidden>
           <Input />
         </Form.Item>

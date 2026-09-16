@@ -1,4 +1,5 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
+import dayjs from 'dayjs';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
 import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, IdcardOutlined, WechatOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../../KeyAccountStar';
@@ -69,10 +70,12 @@ const CustomerCard = memo(function CustomerCard({
   const intentLabel = useMemo(() => getCustomerLogicLabel(customer), [customer]);
 
   // 兼容：详情接口可能不返回 pipelineAmount/totalAmount，从关联数组汇总 fallback
+  // V1.0 canonical：opportunities[].estimatedAmount / salesOrders[].totalAmountCny
+  // （Decimal → JSON string，必须 Number() 归一后再参与数学运算）
   const displayPipelineAmount = customer.pipelineAmount
-    ?? (customer.pipelines || []).reduce((sum, p) => sum + (p.amount || p.estimatedAmount || 0), 0);
+    ?? (customer.opportunities || []).reduce((sum, p) => sum + Number(p.estimatedAmount ?? 0), 0);
   const displayTotalAmount = customer.totalAmount
-    ?? (customer.orders || []).reduce((sum, o) => sum + (o.amountCNY || 0), 0);
+    ?? (customer.salesOrders || []).reduce((sum, o) => sum + Number(o.totalAmountCny ?? 0), 0);
 
   // 本地标签状态（可编辑，直接调接口更新）
   const [localTags, setLocalTags] = useState(customer.tags || '');
@@ -209,12 +212,14 @@ const CustomerCard = memo(function CustomerCard({
               </span>
             )}
           </div>
-          {/* 首次合作日期 */}
-          {customer.firstOrderDate && (
+          {/* 首次合作日期（V1.0 canonical：firstOrderAt，ISO 串须格式化后展示） */}
+          {customer.firstOrderAt && (
             <div style={{ marginTop: 4, position: 'relative', zIndex: 1 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
                 <MoneyCollectOutlined style={{ fontSize: 11, flexShrink: 0 }} />
-                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.firstOrderDate}</span>
+                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>
+                  {dayjs(customer.firstOrderAt).format('YYYY-MM-DD')}
+                </span>
               </span>
             </div>
           )}
@@ -327,7 +332,7 @@ const CustomerCard = memo(function CustomerCard({
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
                   <Price value={displayPipelineAmount || 0} />
                 </div>
-                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.pipelines ?? (customer.pipelines || []).length} 商机</div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.opportunities ?? (customer.opportunities || []).length} 商机</div>
               </div>
             </Col>
 
@@ -338,7 +343,7 @@ const CustomerCard = memo(function CustomerCard({
                 <div style={{ fontSize: 16, fontWeight: 700, color: token.colorTextHeading, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '32px' }}>
                   <Price value={displayTotalAmount || 0} />
                 </div>
-                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.orders ?? (customer.orders || []).length} 单</div>
+                <div style={{ fontSize: 11, color: token.colorTextSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: '16px' }}>{customer._count?.salesOrders ?? (customer.salesOrders || []).length} 单</div>
               </div>
             </Col>
           </Row>

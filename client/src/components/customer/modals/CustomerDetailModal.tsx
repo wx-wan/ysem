@@ -22,10 +22,12 @@ import {
   FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer, Order, CustomerActivity, customerApi } from '../../../api/customers';
+import { Customer, CustomerActivity, customerApi, type SalesOrderSummary, type OpportunitySummary } from '../../../api/customers';
+import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/salesOrders';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
+import { intentLevelToPipelineLevel } from '../shared/intentLevel';
 import PurchaseIntentTag from '../shared/PurchaseIntentTag';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
 import CountrySelect from '../../CountrySelect';
@@ -64,31 +66,29 @@ interface CustomerDetailModalProps {
   detailVersion?: number;
 }
 
-/** 真实商机记录（来自 getById 的 pipelines，非模拟数据） */
-export interface RealPipeline {
-  id: string;
-  title?: string;
+/**
+ * 商机行视图模型：V1.0 canonical `OpportunitySummary` + 仅由 UI 派生的字段。
+ * 仅保留真正需要的派生/乐观态字段；禁止恢复 `leadProducts` / `pipelineNumber` / `pipelineId` /
+ * `assignee`（server canonical 关系名为 `owner`）。
+ */
+export type OpportunityRow = OpportunitySummary & {
+  /** server 派生阶段（utils/pipelineStage.PIPELINE_STAGES） */
   stage?: string;
+  /** 公司名（server 列表端点附带；getById 的 Opportunity 不含该字段） */
   companyName?: string;
-  estimatedAmount?: number | null;
-  probability?: number | null;
+  /** ↓ 以下为 UI-only 乐观态（Customers.tsx「转为订单」本地写入，非 server 字段） */
   orderStatus?: string | null;
-  estimatedCloseDate?: string | null;
-  assignee?: { id: string; realName?: string } | null;
-  createdAt?: string;
-  updatedAt?: string;
-  leadProducts?: Array<{
-    id: string;
-    productId: string;
-    quantity: number;
-    product?: { id: string; name: string; sku?: string | null; type?: string; selfKind?: string | null };
-  }>;
-}
+  orderAmount?: number | null;
+  orderDate?: string | null;
+};
 
-/** 销售记录统一条目：订单 + 商机管道，按创建时间混合排序 */
+/** @deprecated 历史导出名 → 请使用 `OpportunityRow`（Customers.tsx 仍引用，属 3C-2-3 范围外） */
+export type RealPipeline = OpportunityRow;
+
+/** 销售记录统一条目：销售订单 + 商机，按创建时间混合排序 */
 type UnifiedRecord =
-  | { kind: 'order'; data: Order }
-  | { kind: 'pipeline'; data: RealPipeline };
+  | { kind: 'salesOrder'; data: SalesOrderSummary }
+  | { kind: 'opportunity'; data: OpportunityRow };
 
 // ============================================================
 // 主组件
@@ -216,17 +216,18 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     );
   };
 
-  const realPipelines = (customer?.pipelines || []) as RealPipeline[];
+  // V1.0 canonical：Customer.pipelines → Customer.opportunities
+  const opportunityRows = (customer?.opportunities || []) as OpportunityRow[];
 
   // 分页切片
   const paginatedData = useMemo(() => {
     let data: any[] = [];
     switch (activeTab) {
-      case 'pipeline': data = realPipelines; break;
+      case 'pipeline': data = opportunityRows; break;
       case 'orders': {
-        const orders: UnifiedRecord[] = (customer?.orders || []).map(o => ({ kind: 'order', data: o }));
-        const orderPipelines: UnifiedRecord[] = realPipelines.map(p => ({ kind: 'pipeline', data: p }));
-        data = [...orders, ...orderPipelines].sort(
+        const salesOrders: UnifiedRecord[] = (customer?.salesOrders || []).map(o => ({ kind: 'salesOrder', data: o }));
+        const opportunityRecords: UnifiedRecord[] = opportunityRows.map(p => ({ kind: 'opportunity', data: p }));
+        data = [...salesOrders, ...opportunityRecords].sort(
           (a, b) => new Date(b.data.createdAt || '').getTime() - new Date(a.data.createdAt || '').getTime()
         );
       } break;
@@ -238,11 +239,11 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     }
     const start = (currentPage - 1) * pageSize;
     return data.slice(start, start + pageSize);
-  }, [activeTab, currentPage, realPipelines, customer?.orders, customer?.activities]);
+  }, [activeTab, currentPage, opportunityRows, customer?.salesOrders, customer?.activities]);
 
   const totalCount =
-    activeTab === 'pipeline' ? realPipelines.length :
-    activeTab === 'orders' ? ((customer?.orders?.length ?? 0) + realPipelines.length) :
+    activeTab === 'pipeline' ? opportunityRows.length :
+    activeTab === 'orders' ? ((customer?.salesOrders?.length ?? 0) + opportunityRows.length) :
     activeTab === 'activities' ? (customer?.activities?.length ?? 0) : 0;
 
   // ---- 圆形操作按钮样式工厂 ----
@@ -256,15 +257,16 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // ---- tab 配置 ----
   const tabOptions = [
-    { key: 'pipeline' as const, label: '概览', count: realPipelines.length },
-    { key: 'orders' as const, label: '销售记录', count: customer?.orders?.length ?? 0 },
+    { key: 'pipeline' as const, label: '概览', count: opportunityRows.length },
+    { key: 'orders' as const, label: '销售记录', count: customer?.salesOrders?.length ?? 0 },
     { key: 'activities' as const, label: '跟进动态', count: customer?.activities?.length ?? 0 },
   ];
 
   // ---- 类型标签文字 ----
   // ---- 商机记录项渲染（真实数据） ----
-  const renderPipelineItem = (item: RealPipeline) => {
-    const ownerName = item.assignee?.realName || customer?.owner?.realName || '未分配';
+  const renderPipelineItem = (item: OpportunityRow) => {
+    // V1.0 canonical：商机负责人关系名为 owner（旧 assignee 已废弃）
+    const ownerName = item.owner?.realName || customer?.owner?.realName || '未分配';
     const stage = item.orderStatus || '商机';
     const stageColor = item.orderStatus ? '#16a34a' : ct.primary;
     const isHovered = hoveredPipelineId === item.id;
@@ -288,11 +290,10 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
           <Tag color={stageColor} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
             {stage}
           </Tag>
-          {item.probability != null && (
-            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
-              {item.probability || '低意向'}
-            </div>
-          )}
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
+            {/* V1.0 canonical：intentLevel 为 authority（不再直显 probability 文案） */}
+            {intentLevelToPipelineLevel(item.intentLevel, item.probability)}
+          </div>
         </div>
 
         {/* 中间：标题 + 创建时间 + 预计成交 */}
@@ -309,23 +310,14 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               预计成交 {item.estimatedCloseDate}
             </Text>
           )}
-          {item.stage === 'LEAD' && item.leadProducts?.length ? (
-            <div style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {item.leadProducts.map((lp) => (
-                <Tag key={lp.id} style={{ margin: 0, fontSize: 11, borderRadius: 8, lineHeight: '18px' }}>
-                  {lp.product?.name || '产品'}
-                  {lp.quantity ? ` ×${lp.quantity}` : ''}
-                </Tag>
-              ))}
-            </div>
-          ) : null}
-        </div>
+          </div>
 
-        {/* 右侧：预估金额 */}
-        <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>预估金额</div>
-          <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={item.estimatedAmount} /></Text>
-        </div>
+          {/* 右侧：预估金额 */}
+          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
+            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>预估金额</div>
+            {/* V1.0 canonical：Opportunity.estimatedAmount 为 Decimal（JSON string）→ Number 归一 */}
+            <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={Number(item.estimatedAmount ?? 0)} /></Text>
+          </div>
 
         {/* 负责人 */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
@@ -406,8 +398,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     e.currentTarget.style.transform = 'translateY(0)';
   };
 
-  // ---- 订单记录项渲染（真实数据） ----
-  const renderOrderItem = (item: Order) => (
+  // ---- 销售订单项渲染（V1.0 canonical：SalesOrderSummary） ----
+  const renderOrderItem = (item: SalesOrderSummary) => (
     <div
       key={item.id}
       style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16 }}
@@ -416,23 +408,24 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     >
       <div style={{ flexShrink: 0, minWidth: 110 }}>
         <Tag color="#16a34a" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-          {item.status || '订单'}
+          {SALES_ORDER_STATUS_TEXT[item.status as SalesOrderStatus] || item.status || '订单'}
         </Tag>
         {item.orderNo && (
           <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>{item.orderNo}</div>
         )}
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Text strong style={{ fontSize: 13, color: token.colorTextHeading }}>订单记录</Text>
+        <Text strong style={{ fontSize: 13, color: token.colorTextHeading }}>销售订单</Text>
         {item.orderDate && (
           <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
-            下单日期 {item.orderDate}
+            下单日期 {dayjs(item.orderDate).format('YYYY-MM-DD')}
           </Text>
         )}
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
         <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>订单金额</div>
-        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={item.amountCNY} /></Text>
+        {/* V1.0 canonical：旧 Order.amountCNY → SalesOrder.totalAmountCny（Decimal string → Number 归一） */}
+        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={Number(item.totalAmountCny ?? 0)} /></Text>
       </div>
     </div>
   );
@@ -578,7 +571,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   <InfoRow icon={<MailOutlined style={{ fontSize: 14 }} />} value={customer.email} />
                   <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
                   <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
-                  <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderDate || undefined} />
+                  <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderAt ? dayjs(customer.firstOrderAt).format('YYYY-MM-DD') : undefined} />
                   <InfoRow icon={<FileTextOutlined style={{ fontSize: 14 }} />} value={customer.notes} />
                 </div>
               </div>
@@ -745,7 +738,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     )}
                     {activeTab === 'orders' && paginatedData.map((it: UnifiedRecord, index: number) => (
                       <React.Fragment key={`orders-${it.data.id}-${index}`}>
-                        {it.kind === 'order' ? renderOrderItem(it.data) : renderPipelineItem(it.data)}
+                        {it.kind === 'salesOrder' ? renderOrderItem(it.data) : renderPipelineItem(it.data)}
                       </React.Fragment>
                     ))}
                     {activeTab === 'activities' && paginatedData.map((it, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}

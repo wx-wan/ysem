@@ -39,10 +39,6 @@ export interface Customer {
   _count?: {
     salesOrders?: number;
     opportunities?: number;
-    /** @deprecated 3C-2-3 移除（旧键名，server 已不返回） */
-    orders?: number;
-    /** @deprecated 3C-2-3 移除（旧键名，server 已不返回） */
-    pipelines?: number;
   };
   /** V1.0 canonical：客户销售订单（仅 getById 返回，投影见 Round 3C-2-1） */
   salesOrders?: SalesOrderSummary[];
@@ -52,17 +48,6 @@ export interface Customer {
   totalAmount?: number;
   lastOrderDate?: string | null;
   pipelineAmount?: number;
-
-  // ========== legacy 过渡声明（3C-2-3 随 Customer UI 迁移一并移除）==========
-  // CustomerCard / CustomerOverview / CustomerDetailModal / CustomerFormModal /
-  // CustomerEditDrawer（Round 3C-2-2 禁止修改）仍直接读取以下字段；
-  // 在 UI 迁移前删除会导致 client TS 非 0，故暂予保留。
-  /** @deprecated 3C-2-3 移除 → 改用 `firstOrderAt` */
-  firstOrderDate?: string;
-  /** @deprecated 3C-2-3 移除 → 改用 `salesOrders` */
-  orders?: Order[];
-  /** @deprecated 3C-2-3 移除 → 改用 `opportunities` */
-  pipelines?: any[];
 }
 
 // ========== V1.0 关系 summary 类型（对应 server 实际投影）==========
@@ -180,64 +165,6 @@ export interface AllCustomersRes extends CustomerListRes {
   stats: CustomerStats;
 }
 
-/**
- * @deprecated 【3C-2-3 移除】legacy 统一订单类型。
- * 仍被 CustomerDetailModal（`Order` 类型 import + `renderOrderItem`）与
- * Customer 域过渡成员 `Customer.orders` 引用；Customer UI 迁移完成后删除。
- */
-export interface Order {
-  id: string;
-  type?: 'QUOTE' | 'SAMPLE' | 'ORDER' | 'PRODUCTION' | 'SHIPPED';
-  title?: string;
-  customerId: string;
-  orderNo?: string;
-  orderDate?: string;
-  amountCNY?: number;
-  currency?: string;
-  depositAmount?: number;
-  depositPaid?: boolean;
-  deliveryDate?: string;
-  paymentTerms?: string;
-  // 审批态（报价/打样/订单通用）
-  status?: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED' | null;
-  // 打样阶段（仅 SAMPLE）：设计 → 开模 → 寄样
-  stage?: 'DESIGN' | 'MOLD' | 'SAMPLE_SENT' | null;
-  items?: string | OrderItem[];
-  targetType?: 'PRODUCT' | 'GROUP' | null;
-  targetId?: string;
-  pipelineId?: string;
-  sampleOrderDate?: string;
-  designDate?: string;
-  moldDate?: string;
-  sampleSentDate?: string;
-  productionStartDate?: string;
-  shippedDate?: string;
-  remark?: string;
-  customer?: { id: string; companyName: string; contactName?: string; ownerId?: string; email?: string; phone?: string; country?: string };
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** @deprecated 【3C-2-3 移除】legacy 订单明细（旧 JSON items 语义） */
-export interface OrderItem {
-  productId?: string;
-  name?: string;
-  spec?: string;
-  quantity?: number;
-  unitPrice?: number;
-  amount?: number;
-  pipelineId?: string;
-}
-
-/** @deprecated 【3C-2-3 移除】legacy 订单列表响应（当前零消费者） */
-export interface OrderListRes {
-  list: Order[];
-  total: number;
-  page: number;
-  pageSize: number;
-  totalAmount: number;
-  totalCount: number;
-}
 
 // ========== 客户 API ==========
 export const customerApi = {
@@ -309,13 +236,14 @@ export const customerApi = {
 
 // 说明（Round 3B-3-5-6b-2）：legacy 统一订单 API 对象已随 Unified Order Backend 正式退休删除。
 //
-// 说明（Round 3C-2-2）：V1.0 canonical 关系与类型已就位 —— `Customer.firstOrderAt` /
-// `Customer.salesOrders: SalesOrderSummary[]` / `Customer.opportunities: OpportunitySummary[]` /
-// `Customer._count.{salesOrders,opportunities}`；共享逻辑（purchaseStatus / intentLevel /
-// utils / customerTier）已全部切换到 V1.0 canonical 数据源。
+// 说明（Round 3C-2-2 / 3C-2-3）：Customer 域已完成 V1.0 canonical 收口 ——
+//   · 关系：`Customer.salesOrders: SalesOrderSummary[]` / `Customer.opportunities: OpportunitySummary[]`
+//   · 计数：`Customer._count.{salesOrders, opportunities}`（均 optional，随 endpoint 而异）
+//   · 首单：`Customer.firstOrderAt`（DateTime → ISO 字符串；scalar，全端点返回）
+//   · 共享逻辑：purchaseStatus / intentLevel / utils / customerTier 全部走 canonical 数据源
 //
-// 仍未移除（3C-2-3 随 Customer UI 语义迁移一并删除）：
-//   · 类型：Order / OrderItem / OrderListRes
-//   · 成员：Customer.orders / Customer.pipelines / Customer.firstOrderDate / _count.{orders,pipelines}
-// 原因：CustomerCard / CustomerOverview / CustomerDetailModal / CustomerFormModal /
-//       CustomerEditDrawer（3C-2-2 禁止修改）仍直接读取上述成员；提前删除会使 client TS 非 0。
+// legacy Customer 统一订单形状（`Order` / `OrderItem` / `OrderListRes` 类型，以及
+// `Customer.orders` / `Customer.pipelines` / `Customer.firstOrderDate` /
+// `_count.{orders,pipelines}` 成员）已于 Round 3C-2-3 **全部删除**（零残留）。
+// V1.0 对应关系：orders→salesOrders · pipelines→opportunities ·
+// firstOrderDate→firstOrderAt · amountCNY→totalAmountCny · pipelineId→opportunityId。

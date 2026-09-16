@@ -83,6 +83,34 @@ export function getIntentGrade(
   return best;
 }
 
+// ========== V1.0 商机展示等级（趋势图 / 商机卡标签 单一收口） ==========
+
+/** 商机展示等级（比 IntentGrade 多一个「意向」= 未知/缺失） */
+export type PipelineLevel = '准成交' | '高' | '中' | '低' | '意向';
+
+const GRADE_TO_PIPELINE_LEVEL: Record<IntentGrade, PipelineLevel> = {
+  A: '准成交',
+  B: '高',
+  C: '中',
+  D: '低',
+};
+
+/**
+ * V1.0 canonical：由 `Opportunity.intentLevel`（LOW / MEDIUM / HIGH / READY）映射展示等级。
+ *   1) `intentLevel`（enum）—— **authority**
+ *   2) `probability`（0~100 百分数）—— **compatibility fallback**（仅当 intentLevel 缺失）
+ * 两者皆缺失 / 未知 → '意向'。
+ *
+ * ⚠️ 禁止直接把 intentLevel 当作展示文案，也禁止用中文 `includes('准成交')` 判等级。
+ */
+export function intentLevelToPipelineLevel(
+  level?: string | null,
+  probability?: number | string | null,
+): PipelineLevel {
+  const grade = gradeFromIntentLevel(level) ?? gradeFromProbability(probability);
+  return GRADE_TO_PIPELINE_LEVEL[grade] ?? '意向';
+}
+
 /** 取得采购意向文案（如 "准成交"） */
 export function getIntentLabel(grade: IntentGrade): string {
   return INTENT_LABEL[grade];

@@ -23,10 +23,11 @@ function formatDuration(since: Date | string): string {
   return `${days} 天`;
 }
 
-import { Customer } from '../../../api/customers';
+import { Customer, type OpportunitySummary } from '../../../api/customers';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import { getCustomerTier } from '../shared/customerTier';
+import { intentLevelToPipelineLevel, type PipelineLevel } from '../shared/intentLevel';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 
 const { Text } = Typography;
@@ -43,7 +44,8 @@ interface OverviewData {
   lastYearAmount: number;
   avgAmount: number | null;
   lastOrderDate: string | null;
-  firstOrderDate: string | null;
+  /** V1.0 canonical：Customer.firstOrderAt（ISO 字符串）；无值 → null */
+  firstOrderAt: string | null;
   categoryBreakdown: { name: string; amount: number; percent: number }[];
   sampleOrderCount: number;         // 下打样单数
   sampleOrderAmount: number;        // 下打样单成交金额
@@ -51,11 +53,10 @@ interface OverviewData {
 }
 
 // ============================================================
-// 采购趋势数据（订单 + 商机管道）
+// 采购趋势数据（销售订单 + 商机管道）
 // ============================================================
 
-/** 商机意向等级 */
-type PipelineLevel = '准成交' | '高' | '中' | '低' | '意向';
+// PipelineLevel / intentLevelToPipelineLevel 统一收口在 shared/intentLevel.ts（不在此重复实现）
 
 /** 月度趋势数据点（含实际订单 + 商机管道预估） */
 interface MonthlyTrendItem {
@@ -67,33 +68,15 @@ interface MonthlyTrendItem {
   pipelineDetails: { level: PipelineLevel; amount: number; title?: string }[];
 }
 
-/** 商机管道记录的轻量类型 */
-interface PipelineRecord {
-  stage?: string;
-  probability?: string | null;
-  estimatedAmount?: number | null;
-  estimatedCloseDate?: string | null;
-  title?: string;
-}
-
-/** 将 probability 文本映射为展示等级 */
-function mapPipelineLevel(probability?: string | null): PipelineLevel {
-  if (!probability) return '意向';
-  if (probability.includes('准成交')) return '准成交';
-  if (probability.includes('高')) return '高';
-  if (probability.includes('中')) return '中';
-  if (probability.includes('低')) return '低';
-  return '意向';
-}
-
 function computeOverview(customer: Customer): OverviewData {
-  const orders = customer.orders || [];
+  // V1.0 canonical：Customer.orders → Customer.salesOrders
+  const orders = customer.salesOrders || [];
   const now = dayjs();
   const currentYear = now.year();
 
-  // 累计订单金额 & 笔数
+  // 累计订单金额 & 笔数（V1.0 canonical：totalAmountCny 本位币；Decimal → string 须 Number 归一）
   let totalAmount = 0;
-  orders.forEach((o) => { totalAmount += o.amountCNY || 0; });
+  orders.forEach((o) => { totalAmount += Number(o.totalAmountCny ?? 0); });
 
   // 本年消费
   let yearAmount = 0;
@@ -105,7 +88,7 @@ function computeOverview(customer: Customer): OverviewData {
   const categoryMap = new Map<string, number>();
 
   orders.forEach((o) => {
-    const amt = o.amountCNY || 0;
+    const amt = Number(o.totalAmountCny ?? 0);
     const date = o.orderDate || o.createdAt;
 
     if (date) {
@@ -138,9 +121,8 @@ function computeOverview(customer: Customer): OverviewData {
   // 最近购买日期
   const lastOrderDate = customer.lastOrderDate || (orders.length > 0 ? (orders[0].orderDate || orders[0].createdAt) : null);
 
-  // 首单日期
-  const firstOrderDate: string | null = customer.firstOrderDate ||
-    (orders.length > 0 ? orders[orders.length - 1]?.orderDate ?? null : null);
+  // 首单日期（V1.0 canonical：Customer.firstOrderAt 为 scalar 且全端点返回 ⇒ 不再从订单明细推导）
+  const firstOrderAt: string | null = customer.firstOrderAt ?? null;
 
   // 品类分布排序
   const catTotal = Array.from(categoryMap.values()).reduce((s, a) => s + a, 0);
@@ -148,16 +130,16 @@ function computeOverview(customer: Customer): OverviewData {
     .map(([name, amount]) => ({ name, amount, percent: catTotal > 0 ? Math.round(amount / catTotal * 100) : 0 }))
     .sort((a, b) => b.amount - a.amount);
 
-  // 打样单数（样品单独立类型）
-  const sampleOrderCount = orders.filter(o => o.type === 'SAMPLE').length;
+  // 打样单数（V1.0 canonical：旧 Order.type === 'SAMPLE' → sampleOrderId 非空；打样已拆为独立域）
+  const sampleOrderCount = orders.filter(o => o.sampleOrderId != null).length;
 
   // 打样单成交金额
   const sampleOrderAmount = orders
-    .filter(o => o.type === 'SAMPLE')
-    .reduce((sum, o) => sum + (o.amountCNY || 0), 0);
+    .filter(o => o.sampleOrderId != null)
+    .reduce((sum, o) => sum + Number(o.totalAmountCny ?? 0), 0);
 
-  // 样品到订单率：打样单 → 出货单
-  const shippedCount = orders.filter(o => o.type === 'SHIPPED').length;
+  // 样品到订单率：打样单 → 出货单（V1.0 canonical：旧 Order.type === 'SHIPPED' → status === 'SHIPPED'）
+  const shippedCount = orders.filter(o => o.status === 'SHIPPED').length;
   const sampleToOrderRate = sampleOrderCount > 0
     ? Math.round((shippedCount / sampleOrderCount) * 100)
     : null;
@@ -170,7 +152,7 @@ function computeOverview(customer: Customer): OverviewData {
     lastYearAmount,
     avgAmount,
     lastOrderDate,
-    firstOrderDate,
+    firstOrderAt,
     categoryBreakdown,
     sampleOrderCount,
     sampleOrderAmount,
@@ -188,28 +170,29 @@ function computeMonthlyTrendWithPipeline(customer: Customer, months: number): Mo
     grid.set(m.format('YYYY-MM'), { actualAmount: 0, actualCount: 0, pipelineAmount: 0, pipelineCount: 0, pipelineDetails: [] });
   }
 
-  // 实际订单
-  (customer.orders || []).forEach((o) => {
+  // 实际订单（V1.0 canonical：salesOrders + totalAmountCny 本位币）
+  (customer.salesOrders || []).forEach((o) => {
     const date = o.orderDate || o.createdAt;
     if (!date) return;
     const key = dayjs(date).format('YYYY-MM');
     const entry = grid.get(key);
-    if (entry) { entry.actualAmount += o.amountCNY || 0; entry.actualCount++; }
+    if (entry) { entry.actualAmount += Number(o.totalAmountCny ?? 0); entry.actualCount++; }
   });
 
   // 商机管道（按 estimatedCloseDate 确定月份落点）
-  const pipelines = (customer.pipelines || []) as PipelineRecord[];
-  pipelines.forEach((p) => {
+  const opportunities = (customer.opportunities || []) as OpportunitySummary[];
+  opportunities.forEach((p) => {
     const date = p.estimatedCloseDate;
     if (!date) return;
     const key = dayjs(date).format('YYYY-MM');
     const entry = grid.get(key);
-    const amt = p.estimatedAmount || 0;
+    const amt = Number(p.estimatedAmount ?? 0);
     if (entry && amt > 0) {
       entry.pipelineAmount += amt;
       entry.pipelineCount++;
       entry.pipelineDetails.push({
-        level: mapPipelineLevel(p.probability),
+        // V1.0 canonical：intentLevel 为 authority（不再用中文 probability 文案判等级）
+        level: intentLevelToPipelineLevel(p.intentLevel, p.probability),
         amount: amt,
         title: p.title,
       });
@@ -565,8 +548,8 @@ const CustomerOverview: React.FC<CustomerOverviewProps> = ({ customer }) => {
               : '\u2014'
           }
           subtitle={
-            data.firstOrderDate
-              ? `合作 ${formatDuration(data.firstOrderDate)}`
+            data.firstOrderAt
+              ? `合作 ${formatDuration(data.firstOrderAt)}`
               : undefined
           }
           icon={<CalendarOutlined />}

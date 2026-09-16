@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, DatePicker, App, theme, Form } from 'antd';
 import { CloseOutlined, SaveOutlined, MailOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
 import ProductImageList from '../../common/ProductImageList';
@@ -10,6 +10,30 @@ import { Z_INDEX, createPopupContainer } from '../../../zIndex';
 import { useDs } from '../shared/ds';
 
 const { TextArea } = Input;
+
+/**
+ * 客户编辑抽屉的提交 payload —— **白名单**，仅含本抽屉真实可编辑字段。
+ *
+ * ⚠️ 禁止回退为 `{ ...customer, ...values }`：
+ *   1) 会把 response-only / 关系字段一并提交（salesOrders · opportunities · _count ·
+ *      lastOrderDate · pipelineAmount · totalAmount · owner · activities · customerNo ·
+ *      createdAt · updatedAt …）→ 脏 payload；
+ *   2) spread 出的旧 `firstOrderAt` 会覆盖日期控件的新值（server 优先取 body.firstOrderAt），
+ *      导致「首次合作日期」的修改 / 清空**静默失效**。
+ */
+interface CustomerEditablePayload {
+  companyName: string;
+  contactName: string;
+  position: string;
+  country: string;
+  images: string;
+  email: string;
+  phone: string;
+  wechat: string;
+  /** 首次合作日期 'YYYY-MM-DD'；清空 → null（服务端 dateField 接受 null） */
+  firstOrderAt: string | null;
+  notes: string;
+}
 
 interface CustomerEditDrawerProps {
   open: boolean;
@@ -54,7 +78,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         region: customer.region,
         notes: customer.notes,
         tags: customer.tags || '',
-        firstOrderDate: customer.firstOrderDate ? dayjs(customer.firstOrderDate) : undefined,
+        // V1.0 canonical：firstOrderAt 为 ISO 字符串，DatePicker 需 dayjs 对象
+        firstOrderAt: customer.firstOrderAt ? dayjs(customer.firstOrderAt) : undefined,
       });
     }
   }, [open, customer, antForm]);
@@ -64,10 +89,23 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
     if (!customer) return;
     try {
       const values = await antForm.validateFields();
-      const payload: Record<string, any> = { ...customer, ...values };
-      if (payload.firstOrderDate && dayjs.isDayjs(payload.firstOrderDate)) {
-        payload.firstOrderDate = payload.firstOrderDate.format('YYYY-MM-DD');
-      }
+      // 白名单 payload：仅提交本抽屉真实可编辑字段（不再 spread 整个 customer）
+      const payload: CustomerEditablePayload = {
+        companyName: values.companyName ?? '',
+        contactName: values.contactName ?? '',
+        position: values.position ?? '',
+        country: values.country ?? '',
+        images: values.images ?? '',
+        email: values.email ?? '',
+        phone: values.phone ?? '',
+        wechat: values.wechat ?? '',
+        // 显式取值：DatePicker 清空 → null（服务端 dateField 接受 null），
+        // 不再被 spread 出的旧 firstOrderAt 覆盖
+        firstOrderAt: values.firstOrderAt
+          ? (values.firstOrderAt as Dayjs).format('YYYY-MM-DD')
+          : null,
+        notes: values.notes ?? '',
+      };
       setSaving(true);
       const { data } = await customerApi.update(customer.id, payload);
       // update 不返回 pipelines，重新拉取完整数据
@@ -202,7 +240,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
               </Form.Item>
             </FormRow>
 
-            <Form.Item name="firstOrderDate" label="首次合作日期">
+            <Form.Item name="firstOrderAt" label="首次合作日期">
               <DatePicker
                 size="large"
                 style={{ width: '100%', borderRadius: ds.radius, fontSize: 16 }}
