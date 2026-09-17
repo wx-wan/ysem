@@ -269,7 +269,11 @@ async function assertShippable(
     }),
     tx.shipmentItem.groupBy({
       by: ['salesOrderItemId'],
-      where: { salesOrderItemId: { in: ids } },
+      // V1.0（D-E4-C = SEMANTIC-A）：CANCELLED 出运单的明细**不计入**有效出货量
+      where: {
+        salesOrderItemId: { in: ids },
+        shipment: { status: { not: ShipmentStatus.CANCELLED } },
+      },
       _sum: { quantity: true },
     }),
   ]);
@@ -305,7 +309,11 @@ async function recalcShippedQty(
 
   const grouped = await tx.shipmentItem.groupBy({
     by: ['salesOrderItemId'],
-    where: { salesOrderItemId: { in: ids } },
+    // V1.0（D-E4-C = SEMANTIC-A）：CANCELLED 出运单的明细**不计入**有效出货量
+    where: {
+      salesOrderItemId: { in: ids },
+      shipment: { status: { not: ShipmentStatus.CANCELLED } },
+    },
     _sum: { quantity: true },
   });
   const sums = new Map(
@@ -363,7 +371,12 @@ export async function assertShipmentQuantityEligible(
     tx.shipmentItem.groupBy({
       by: ['salesOrderItemId'],
       // 排除本单：本函数在「已删旧明细 / 尚未重建新明细」的任意中间态下都得到同一结论
-      where: { salesOrderItemId: { in: ids }, shipmentId: { not: shipmentId } },
+      // V1.0（D-E4-C = SEMANTIC-A）：同时排除 CANCELLED 出运单的明细（与本单排除为 AND 语义）
+      where: {
+        salesOrderItemId: { in: ids },
+        shipmentId: { not: shipmentId },
+        shipment: { status: { not: ShipmentStatus.CANCELLED } },
+      },
       _sum: { quantity: true },
     }),
   ]);
@@ -608,12 +621,18 @@ export const createShipment = async (req: AuthRequest, res: Response): Promise<v
   try {
     const body = createSchema.parse(req.body);
 
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: body.salesOrderId },
+    // V1.0 可见性边界（F-01 / D-E2-H）：Shipment → SalesOrder → SalesOrder.ownerId。
+    // 查询对象是 **SalesOrder 自身**，`ownerId` 为其直接字段 ⇒ 使用**无 relation** 的 scope；
+    // （Shipment 形态的 `relation: 'salesOrder'` 会把条件写到本模型不存在的路径上。）
+    // ALL / admin 时 roleScope 返回 {} ⇒ applyScope 原样返回 { id } ⇒ 与既有 findUnique 行为等价（零回归）。
+    // 因 scope 会注入非唯一条件，必须由 findUnique 改为 findFirst。
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope({ id: body.salesOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, orderNo: true, status: true, customerId: true },
     });
     if (!salesOrder) {
-      fail(res, 400, '销售订单不存在');
+      // 不存在与不可见统一 404（不向 SELF / DEPT 用户泄露该销售订单是否存在）
+      fail(res, 404, '销售订单不存在');
       return;
     }
     if (!SHIPPABLE_STATUSES.includes(salesOrder.status)) {
@@ -921,7 +940,7 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
   }
 };
 
-// ============ 删除（事务：先取受影响订单行 → 删单（明细 Cascade）→ 重算 shippedQty） ============
+// ============ 删除（V1.0：**禁止物理删除**，统一 409；废弃请改用 DRAFT → CANCELLED） ============
 export const removeShipment = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const existing = await prisma.shipment.findFirst({
@@ -929,42 +948,19 @@ export const removeShipment = async (req: AuthRequest, res: Response): Promise<v
       select: { id: true, shipmentNo: true, customerId: true },
     });
     if (!existing) {
+      // 不可见 / 不存在 → 404（可见性判定保持在 scope 层，不泄露存在性）
       fail(res, 404, '出运单不存在');
       return;
     }
 
-    await prisma.$transaction(async (tx) => {
-      const oldItems = await tx.shipmentItem.findMany({
-        where: { shipmentId: existing.id },
-        select: { salesOrderItemId: true },
-      });
-      // 并发硬化：delete 路径不经过 assertShippable，必须显式锁定受影响订单行（id ASC），
-      // 以与并发 create/update 的上限校验与 recalc 串行化。
-      await lockSalesOrderItems(tx, oldItems.map((i) => i.salesOrderItemId));
-
-      // Shipment → ShipmentItem 为 Cascade（遵守 schema，不自行改变 relation）
-      await tx.shipment.delete({ where: { id: existing.id } });
-      await recalcShippedQty(
-        tx,
-        oldItems.map((i) => i.salesOrderItemId),
-      );
-    });
-
-    void activityLogger.log({
-      userId: req.userId ?? '',
-      username: req.username ?? '',
-      realName: req.realName,
-      action: 'DELETE',
-      module: 'fulfillment',
-      businessType: BUSINESS_TYPE.SHIPMENT,
-      businessId: existing.id,
-      businessNo: existing.shipmentNo,
-      summary: `${req.username ?? ''} 删除了出运单「${existing.shipmentNo}」`,
-      ip: req.ip,
-      customerId: existing.customerId,
-    });
-
-    success(res, null, '删除成功');
+    // V1.0（D-E4-D / D-E4-E = E1 / D-E4-F · Q9 / ADR-08）：
+    // Shipment 属业务单据，**全部状态（含 DRAFT）一律禁止物理删除**；不软删除；
+    // 生命周期以状态表达。废弃路径 = `DRAFT → CANCELLED`
+    //（D-E4-C = SEMANTIC-A 生效后，作废即在同一事务内归还可出货量）。
+    // 因此本函数**不执行** lockSalesOrderItems / shipment.delete / recalcShippedQty，
+    // 也**不记录** DELETE 活动日志。
+    fail(res, 409, '出运单不允许删除，请改用「作废」（状态置为 CANCELLED）');
+    return;
   } catch (e) {
     if (isForeignKeyError(e)) {
       fail(res, 409, '该出运单存在质检等下游单据，无法删除');

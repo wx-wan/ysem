@@ -102,10 +102,13 @@ type ResolveOwnerResult =
  * Shipment 宿主        → customer 取 Shipment.customerId
  * 两个宿主同时存在 / 同时缺失 → 400（即使两者属于同一 SalesOrder 也拒绝，符合 schema exactly-one 语义）
  */
-async function resolveOwner(input: {
-  productionOrderId?: string | null;
-  shipmentId?: string | null;
-}): Promise<ResolveOwnerResult> {
+async function resolveOwner(
+  req: AuthRequest,
+  input: {
+    productionOrderId?: string | null;
+    shipmentId?: string | null;
+  },
+): Promise<ResolveOwnerResult> {
   const productionOrderId = input.productionOrderId ?? null;
   const shipmentId = input.shipmentId ?? null;
 
@@ -121,8 +124,10 @@ async function resolveOwner(input: {
   }
 
   if (productionOrderId) {
-    const productionOrder = await prisma.productionOrder.findUnique({
-      where: { id: productionOrderId },
+    // F-02-B（D-E2-H）：ProductionOrder 宿主 → ProductionOrder.ownerId（**直接字段，无 relation**）
+    // host 的不可见与不存在统一 404，不泄露存在性（与 list / get 的 scopedWhere 口径一致）
+    const productionOrder = await prisma.productionOrder.findFirst({
+      where: applyScope({ id: productionOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, salesOrder: { select: { customerId: true } } },
     });
     if (!productionOrder) {
@@ -138,8 +143,13 @@ async function resolveOwner(input: {
     };
   }
 
-  const shipment = await prisma.shipment.findUnique({
-    where: { id: shipmentId as string },
+  // F-02-A（D-E2-H）：Shipment 宿主 → Shipment → SalesOrder.ownerId（Shipment 自身无 ownerId）
+  // 因此必须带 `relation: 'salesOrder'`。不可见与不存在统一 404。
+  const shipment = await prisma.shipment.findFirst({
+    where: applyScope(
+      { id: shipmentId as string },
+      await roleScope(req, { field: 'ownerId', relation: 'salesOrder' }),
+    ),
     select: { id: true, customerId: true },
   });
   if (!shipment) {
@@ -234,7 +244,7 @@ export const createQualityInspection = async (req: AuthRequest, res: Response): 
   try {
     const body = createSchema.parse(req.body);
 
-    const resolved = await resolveOwner(body);
+    const resolved = await resolveOwner(req, body);
     if (!resolved.ok) {
       fail(res, resolved.status, resolved.message);
       return;
@@ -314,6 +324,8 @@ export const updateQualityInspection = async (req: AuthRequest, res: Response): 
         type: true,
         productionOrderId: true,
         shipmentId: true,
+        // F-07：append-only 结论判定需要现有 result
+        result: true,
       },
     });
     if (!existing) {
@@ -321,9 +333,38 @@ export const updateQualityInspection = async (req: AuthRequest, res: Response): 
       return;
     }
 
+    // ---- Append-Only 结论 · 不可变字段（F-07 / D-E4-B · AMBIGUITY-1 = α change-based）----
+    // 仅当 PATCH 中的值与数据库现值**发生实际变化**时，才构成 immutable violation；
+    // 同值 PATCH 视为幂等 no-op（与 3C-3-E-1「同状态 = no-op」口径一致）。
+    // 判定必须先于 resolveOwner，避免为明显的非法变更做多余的宿主解析。
+    if (rest.type !== undefined && rest.type !== existing.type) {
+      fail(res, 409, '质检单类型创建后不可变更');
+      return;
+    }
+    if (
+      rest.productionOrderId !== undefined &&
+      rest.productionOrderId !== existing.productionOrderId
+    ) {
+      fail(res, 409, '质检单宿主创建后不可变更');
+      return;
+    }
+    if (rest.shipmentId !== undefined && rest.shipmentId !== existing.shipmentId) {
+      fail(res, 409, '质检单宿主创建后不可变更');
+      return;
+    }
+    // 结论：PENDING 允许一次收敛到终值；一旦离开 PENDING 即永久冻结（不得互转、不得回退）
+    if (
+      rest.result !== undefined &&
+      existing.result !== InspectionResult.PENDING &&
+      rest.result !== existing.result
+    ) {
+      fail(res, 409, `质检结论已冻结，不可从 ${existing.result} 变更为 ${rest.result}`);
+      return;
+    }
+
     // 合并后的最终宿主 → 重新执行 exactly-one + 存在性校验
     // 切换宿主时必须显式置空另一侧（不自动清空，避免静默改数据）
-    const resolved = await resolveOwner({
+    const resolved = await resolveOwner(req, {
       productionOrderId:
         rest.productionOrderId !== undefined ? rest.productionOrderId : existing.productionOrderId,
       shipmentId: rest.shipmentId !== undefined ? rest.shipmentId : existing.shipmentId,
@@ -406,28 +447,12 @@ export const removeQualityInspection = async (req: AuthRequest, res: Response): 
       return;
     }
 
-    const customerId =
-      existing.productionOrder?.salesOrder?.customerId ?? existing.shipment?.customerId ?? null;
-
-    // QualityInspection 无下游子表；宿主对它的 relation 为 Restrict（删宿主时被拒），
-    // 删除质检单本身不触发约束，P2003 仅作最后防线兜底。
-    await prisma.qualityInspection.delete({ where: { id: existing.id } });
-
-    void activityLogger.log({
-      userId: req.userId ?? '',
-      username: req.username ?? '',
-      realName: req.realName,
-      action: 'DELETE',
-      module: 'fulfillment',
-      businessType: BUSINESS_TYPE.QUALITY_INSPECTION,
-      businessId: existing.id,
-      businessNo: existing.inspectionNo,
-      summary: `${req.username ?? ''} 删除了质检单「${existing.inspectionNo}」`,
-      ip: req.ip,
-      ...(customerId ? { customerId } : {}),
-    });
-
-    success(res, null, '删除成功');
+    // V1.0（D-E4-D/E/F · Q9 / ADR-08）：QualityInspection 属业务单据，**不允许物理删除**。
+    // 质检记录是历史证据（04 §5.1）：错误结论以**新增更正记录**表达，原记录永久保留。
+    // 可见性判定保留在上方 scopedWhere → 不可见 / 不存在仍为 404；
+    // 可见即拒绝，且**不执行** delete、**不记录** DELETE 活动日志。
+    fail(res, 409, '质检记录不允许删除');
+    return;
   } catch (e) {
     if (isForeignKeyError(e)) {
       fail(res, 409, '该质检单存在下游引用，无法删除');
