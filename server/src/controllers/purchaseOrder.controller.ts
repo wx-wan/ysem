@@ -179,9 +179,17 @@ interface ParsedItemsFail {
  *
  * @param preserveByLine 更新时按 lineNo 保留既有行级状态（arrivedQty / status），避免无意重置
  */
+/**
+ * 明细解析与行级校验（含生产明细存在性）。
+ *
+ * `db` 必须是**事务客户端**：本函数会读取 ProductionOrderItem（成本归集链宿主，
+ * 受 `lockProductionOrderItems` 行锁保护），必须在加锁之后、于同一事务内执行，
+ * 否则并发删除生产明细时 FK 的 `onDelete: SetNull` 会在校验通过后静默解绑。
+ */
 async function parseItems(
   raw: PurchaseOrderItemInput[] | undefined,
   currency: Currency,
+  db: Prisma.TransactionClient,
   preserveByLine?: Map<number, { arrivedQty: Prisma.Decimal; status: PurchaseItemStatus }>,
 ): Promise<ParsedItemsOk | ParsedItemsFail> {
   if (!raw || raw.length === 0) {
@@ -204,7 +212,7 @@ async function parseItems(
     new Set(raw.map((i) => i.productId).filter((v): v is string => Boolean(v))),
   );
   if (productIds.length > 0) {
-    const found = await prisma.product.count({ where: { id: { in: productIds } } });
+    const found = await db.product.count({ where: { id: { in: productIds } } });
     if (found !== productIds.length) {
       return { ok: false, status: 404, message: '产品不存在' };
     }
@@ -214,7 +222,7 @@ async function parseItems(
     new Set(raw.map((i) => i.productionOrderItemId).filter((v): v is string => Boolean(v))),
   );
   const prodItems = prodItemIds.length
-    ? await prisma.productionOrderItem.findMany({
+    ? await db.productionOrderItem.findMany({
         where: { id: { in: prodItemIds } },
         select: { id: true, productionOrderId: true },
       })
@@ -322,16 +330,60 @@ function isUniqueError(e: unknown): boolean {
 /** 依赖明细的 productionOrderItem 映射（用于跨工单校验，同时复用存在性结果） */
 async function loadProductionItems(
   raw: PurchaseOrderItemInput[] | undefined,
+  db: Prisma.TransactionClient,
 ): Promise<Map<string, { id: string; productionOrderId: string }>> {
   const ids = Array.from(
     new Set((raw ?? []).map((i) => i.productionOrderItemId).filter((v): v is string => Boolean(v))),
   );
   if (ids.length === 0) return new Map();
-  const rows = await prisma.productionOrderItem.findMany({
+  const rows = await db.productionOrderItem.findMany({
     where: { id: { in: ids } },
     select: { id: true, productionOrderId: true },
   });
   return new Map(rows.map((r) => [r.id, r]));
+}
+
+/** 事务内业务规则违例（明细校验 / 跨工单错绑）→ 由 handler 按携带的 status 返回 */
+class PurchaseOrderRuleError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.status = status;
+  }
+}
+
+/**
+ * 锁定受影响的 ProductionOrderItem 行（并发硬化 · PurchaseOrder 侧镜像）。
+ *
+ * 目的：把「成本归集链引用校验（存在性 / 跨工单绑定）→ 明细重建 / 写入」纳入同一临界区。
+ * 否则并发删除生产明细时，FK `onDelete: SetNull` 会在校验通过后**静默解绑**引用。
+ *
+ * 为什么 FOR UPDATE 足够：PostgreSQL 插入带 FK 引用的行时对父行请求 FOR KEY SHARE，
+ *   与 FOR UPDATE 冲突 ⇒ 并发 INSERT 阻塞至本事务提交；提交后父行若已删除，
+ *   对方 FK 校验失败 → P2003 → 应用层显式 4xx。
+ *
+ * 约束（不得放宽）：
+ *   · 只锁 `ProductionOrderItem`（真正被共享的资源，而非 PurchaseOrder / PurchaseOrderItem）；
+ *   · 必须 `ORDER BY id ASC`（确定性顺序，消除 AB/BA 循环等待）；
+ *   · 必须在**调用方的事务**内执行；
+ *   · 入参先 Set 去重 + 过滤空值；空数组直接返回（不得生成 `IN ()`）。
+ */
+async function lockProductionOrderItems(
+  tx: Prisma.TransactionClient,
+  productionOrderItemIds: Array<string | null | undefined>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(productionOrderItemIds.filter((v): v is string => Boolean(v))),
+  ).sort();
+  if (ids.length === 0) return;
+
+  await tx.$queryRaw`
+    SELECT id
+    FROM "ProductionOrderItem"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id ASC
+    FOR UPDATE
+  `;
 }
 
 // ============ 列表 ============
@@ -406,24 +458,30 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
     }
 
     const currency = body.currency ?? Currency.CNY;
-    const parsed = await parseItems(body.items, currency);
-    if (!parsed.ok) {
-      fail(res, parsed.status, parsed.message);
-      return;
-    }
-
-    const prodItemById = await loadProductionItems(body.items);
-    const binding = assertProductionItemBinding(body.items, body.productionOrderId ?? null, prodItemById);
-    if (!binding.ok) {
-      fail(res, 400, binding.message);
-      return;
-    }
-
     const exchangeRate = await resolveExchangeRate(currency, body.exchangeRate);
-    const totalAmount = parsed.total;
-    const totalAmountCny = toCny(totalAmount, exchangeRate);
-    // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
+
+    // 编号分配、成本归集链引用校验与业务写入同事务：
+    //   必须**先锁定 ProductionOrderItem（id ASC）**再做存在性 / 跨工单绑定校验与明细写入，
+    //   否则并发删除生产明细时 FK 的 onDelete: SetNull 会在校验通过后静默解绑（镜像 TOCTOU）。
+    let createdItemCount = 0;
     const item = await prisma.$transaction(async (tx) => {
+      await lockProductionOrderItems(tx, (body.items ?? []).map((i) => i.productionOrderItemId));
+
+      const parsed = await parseItems(body.items, currency, tx);
+      if (!parsed.ok) {
+        throw new PurchaseOrderRuleError(parsed.message, parsed.status);
+      }
+
+      const prodItemById = await loadProductionItems(body.items, tx);
+      const binding = assertProductionItemBinding(body.items, body.productionOrderId ?? null, prodItemById);
+      if (!binding.ok) {
+        throw new PurchaseOrderRuleError(binding.message, 400);
+      }
+
+      const totalAmount = parsed.total;
+      const totalAmountCny = toCny(totalAmount, exchangeRate);
+      createdItemCount = parsed.data.length;
+
       const purchaseNo = await getNextNumber(tx, 'PR');
 
       return tx.purchaseOrder.create({
@@ -460,7 +518,7 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
       businessType: BUSINESS_TYPE.PURCHASE_ORDER,
       businessId: item.id,
       businessNo: item.purchaseNo,
-      summary: `${req.username ?? ''} 创建了采购单「${item.purchaseNo}」（${parsed.data.length} 条明细）`,
+      summary: `${req.username ?? ''} 创建了采购单「${item.purchaseNo}」（${createdItemCount} 条明细）`,
       ip: req.ip,
     });
 
@@ -468,6 +526,10 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    if (e instanceof PurchaseOrderRuleError) {
+      fail(res, e.status, e.message);
       return;
     }
     if (isUniqueError(e)) {
@@ -519,38 +581,55 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
     const nextProductionOrderId =
       rest.productionOrderId !== undefined ? rest.productionOrderId : existing.productionOrderId;
 
-    // 既有明细：lineNo → 行级状态（arrivedQty / status 保留），并做引用保护
-    const existingItems = await prisma.purchaseOrderItem.findMany({
-      where: { purchaseOrderId: existing.id },
-      select: { id: true, lineNo: true, arrivedQty: true, status: true },
-    });
-    const preserveByLine = new Map(
-      existingItems.map((i) => [i.lineNo, { arrivedQty: i.arrivedQty, status: i.status }]),
-    );
-    // 说明：PurchaseOrderItem **没有入向外键**（成本归集链的外键在其自身 productionOrderItemId 上，
-    // 指向 ProductionOrderItem），因此重建明细不会破坏任何反向引用；
-    // 唯一的行级数据丢失风险（arrivedQty / status）由 preserveByLine 按 lineNo 保留。
-
     let parsedItems: Prisma.PurchaseOrderItemUncheckedCreateWithoutPurchaseOrderInput[] | null =
       null;
     let parsedTotal: Prisma.Decimal | null = null;
-    if (rest.items !== undefined) {
-      const parsed = await parseItems(rest.items, currency, preserveByLine);
-      if (!parsed.ok) {
-        fail(res, parsed.status, parsed.message);
-        return;
-      }
-      const prodItemById = await loadProductionItems(rest.items);
-      const binding = assertProductionItemBinding(rest.items, nextProductionOrderId ?? null, prodItemById);
-      if (!binding.ok) {
-        fail(res, 400, binding.message);
-        return;
-      }
-      parsedItems = parsed.data;
-      parsedTotal = parsed.total;
-    }
 
+    // 明细重建 + 引用校验（存在性 / 跨工单绑定）必须整体原子，且**先锁定受影响 ProductionOrderItem**：
+    //   BEGIN → read old PurchaseOrderItem（取旧引用 id）
+    //         → lock ProductionOrderItem(旧 ∪ 新, id ASC)
+    //         → parseItems / loadProductionItems / assertProductionItemBinding
+    //         → deleteMany/create items → update PurchaseOrder → COMMIT
+    // 若先校验再锁（或校验留在事务外），并发删除生产明细时 FK 的 onDelete: SetNull 会静默解绑。
+    // 说明：PurchaseOrderItem **没有入向外键**（成本归集链的外键在其自身 productionOrderItemId 上，
+    // 指向 ProductionOrderItem），因此重建明细不会破坏任何反向引用；
+    // 唯一的行级数据丢失风险（arrivedQty / status）由 preserveByLine 按 lineNo 保留。
     const item = await prisma.$transaction(async (tx) => {
+      // 既有明细：lineNo → 行级状态（arrivedQty / status 保留），并取得旧引用 id 用于加锁
+      const existingItems = await tx.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: existing.id },
+        select: {
+          id: true,
+          lineNo: true,
+          arrivedQty: true,
+          status: true,
+          productionOrderItemId: true,
+        },
+      });
+      const preserveByLine = new Map(
+        existingItems.map((i) => [i.lineNo, { arrivedQty: i.arrivedQty, status: i.status }]),
+      );
+
+      // 先锁「旧引用 ∪ 新引用」的全部 ProductionOrderItem（单批 Set 去重 + id ASC）
+      await lockProductionOrderItems(tx, [
+        ...existingItems.map((i) => i.productionOrderItemId),
+        ...(rest.items ?? []).map((i) => i.productionOrderItemId),
+      ]);
+
+      if (rest.items !== undefined) {
+        const parsed = await parseItems(rest.items, currency, tx, preserveByLine);
+        if (!parsed.ok) {
+          throw new PurchaseOrderRuleError(parsed.message, parsed.status);
+        }
+        const prodItemById = await loadProductionItems(rest.items, tx);
+        const binding = assertProductionItemBinding(rest.items, nextProductionOrderId ?? null, prodItemById);
+        if (!binding.ok) {
+          throw new PurchaseOrderRuleError(binding.message, 400);
+        }
+        parsedItems = parsed.data;
+        parsedTotal = parsed.total;
+      }
+
       const data: Prisma.PurchaseOrderUncheckedUpdateInput = { updatedBy: req.userId ?? null };
 
       if (rest.salesOrderId !== undefined) data.salesOrderId = rest.salesOrderId;
@@ -613,6 +692,10 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    if (e instanceof PurchaseOrderRuleError) {
+      fail(res, e.status, e.message);
       return;
     }
     if (isForeignKeyError(e)) {

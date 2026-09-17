@@ -189,6 +189,11 @@ async function parseItems(
     if (completedQty.lt(0) || defectQty.lt(0)) {
       return { ok: false, status: 400, message: `第 ${index + 1} 行明细完成 / 不良数量不合法` };
     }
+    // 硬业务不变量：已完成数量不得超过生产计划数量
+    //（否则派生 progress 会越界，且「完成量 > 计划量」本身无语义）
+    if (completedQty.gt(quantity)) {
+      return { ok: false, status: 400, message: `第 ${index + 1} 行明细完成数量不能超过生产数量` };
+    }
 
     data.push({
       salesOrderItemId: item.salesOrderItemId ?? null,
@@ -211,13 +216,16 @@ async function parseItems(
   }
 
   // 进度 = Σ已完成数量 / Σ计划数量 × 100（schema 注明 progress「由明细汇总回写」；全程 Decimal 运算）
-  const progress = totalQty.lte(0)
+  const rawProgress = totalQty.lte(0)
     ? 0
     : doneQty
         .times(100)
         .div(totalQty)
         .toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP)
         .toNumber();
+  // 防御性边界：派生值一律收敛到 [0,100]
+  //（行级已强制 completedQty ≤ quantity；此处为双保险，避免历史数据 / 未来放开校验时越界）
+  const progress = Math.min(100, Math.max(0, rawProgress));
 
   return { ok: true, data, progress };
 }
@@ -236,6 +244,46 @@ function isForeignKeyError(e: unknown): boolean {
 
 function isUniqueError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
+}
+
+/** 事务内业务规则冲突（明细重建的引用保护）→ 由 handler 统一转为 409 */
+class ProductionRefConflictError extends Error {}
+
+/**
+ * 锁定受影响的 ProductionOrderItem 行（并发硬化）。
+ *
+ * 目的：把「引用计数检查（refCount）→ 明细重建」纳入同一临界区，消除 TOCTOU。
+ * 否则并发创建引用同一批生产明细的 PurchaseOrderItem 时，
+ * 检查通过后的 deleteMany 会由 FK `onDelete: SetNull` **静默解绑** ADR-14 成本归集链。
+ *
+ * 为什么 FOR UPDATE 足够：
+ *   PostgreSQL 在插入带 FK 引用的行时会对父行请求 FOR KEY SHARE，
+ *   而 FOR KEY SHARE 与 FOR UPDATE 冲突 ⇒ 并发 INSERT 阻塞至本事务提交；
+ *   本事务提交（父行已删除）后，对方 FK 校验失败 → P2003 → 应用层显式 4xx
+ *   ⇒ 由「静默解绑」变为「显式失败」。
+ *
+ * 约束（不得放宽）：
+ *   · 只锁 `ProductionOrderItem`（真正被共享的资源）；
+ *   · 必须 `ORDER BY id ASC` —— 多行锁的确定性顺序，消除 AB/BA 循环等待；
+ *   · 必须在**调用方的事务**内执行（锁随该事务提交/回滚释放）；
+ *   · 入参先 Set 去重 + 过滤空值；空数组直接返回（不得生成 `IN ()`）。
+ */
+async function lockProductionOrderItems(
+  tx: Prisma.TransactionClient,
+  productionOrderItemIds: Array<string | null | undefined>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(productionOrderItemIds.filter((v): v is string => Boolean(v))),
+  ).sort();
+  if (ids.length === 0) return;
+
+  await tx.$queryRaw`
+    SELECT id
+    FROM "ProductionOrderItem"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id ASC
+    FOR UPDATE
+  `;
 }
 
 // ============ 列表 ============
@@ -400,31 +448,19 @@ export const updateProductionOrder = async (req: AuthRequest, res: Response): Pr
     }
 
     const data: Prisma.ProductionOrderUpdateInput = {};
+    // 明细重建内容（在事务内注入 data）与由明细派生的进度
+    let parsedItemRows: Prisma.ProductionOrderItemUncheckedCreateWithoutProductionOrderInput[] | null =
+      null;
     let progress: number | null = null;
 
     if (rest.items !== undefined) {
-      // ProductionOrderItem 被 PurchaseOrderItem（成本归集链，onDelete: SetNull）引用时不重建，
-      // 避免静默解绑 ADR-14 成本归集链。
-      const existingItems = await prisma.productionOrderItem.findMany({
-        where: { productionOrderId: existing.id },
-        select: { id: true },
-      });
-      if (existingItems.length > 0) {
-        const refCount = await prisma.purchaseOrderItem.count({
-          where: { productionOrderItemId: { in: existingItems.map((i) => i.id) } },
-        });
-        if (refCount > 0) {
-          fail(res, 409, '生产明细已被采购单引用，无法重建明细');
-          return;
-        }
-      }
-
+      // 行级校验与快照解析为纯计算（不触碰受保护资源），可在事务外先行完成
       const parsed = await parseItems(rest.items, existing.salesOrderId);
       if (!parsed.ok) {
         fail(res, parsed.status, parsed.message);
         return;
       }
-      data.items = { deleteMany: {}, create: parsed.data };
+      parsedItemRows = parsed.data;
       progress = parsed.progress;
     }
 
@@ -452,10 +488,41 @@ export const updateProductionOrder = async (req: AuthRequest, res: Response): Pr
     else if (progress !== null) data.progress = progress;
     data.updatedBy = req.userId ?? null;
 
-    const item = await prisma.productionOrder.update({
-      where: { id },
-      data,
-      include: PRODUCTION_ORDER_INCLUDE,
+    // 明细重建的「引用保护 + 重建 + 落库」必须整体原子，且必须在读取 refCount **之前**锁定旧明细行：
+    //   BEGIN → lock ProductionOrderItem(id ASC) → read refCount → assert
+    //         → deleteMany/create items → update ProductionOrder → COMMIT
+    // 若先读 refCount 再锁，仍存在 TOCTOU：并发 FK 插入可在窗口内提交 → onDelete: SetNull 静默解绑成本归集链。
+    const item = await prisma.$transaction(async (tx) => {
+      if (parsedItemRows !== null) {
+        // 1) 取得本次将被删除的旧明细 id（加锁目标 + 引用计数范围）
+        const existingItems = await tx.productionOrderItem.findMany({
+          where: { productionOrderId: existing.id },
+          select: { id: true },
+        });
+        const existingItemIds = existingItems.map((i) => i.id);
+
+        // 2) **先锁行**（id ASC）：并发插入指向这些行的 PurchaseOrderItem 会被
+        //    PostgreSQL FK 的 FOR KEY SHARE 阻塞，直至本事务提交
+        await lockProductionOrderItems(tx, existingItemIds);
+
+        // 3) 锁**之后**才读引用计数（顺序不可颠倒，否则仍是 TOCTOU）
+        if (existingItemIds.length > 0) {
+          const refCount = await tx.purchaseOrderItem.count({
+            where: { productionOrderItemId: { in: existingItemIds } },
+          });
+          if (refCount > 0) {
+            throw new ProductionRefConflictError('生产明细已被采购单引用，无法重建明细');
+          }
+        }
+
+        data.items = { deleteMany: {}, create: parsedItemRows };
+      }
+
+      return tx.productionOrder.update({
+        where: { id },
+        data,
+        include: PRODUCTION_ORDER_INCLUDE,
+      });
     });
 
     const customerId = item.salesOrder?.customerId;
@@ -477,6 +544,10 @@ export const updateProductionOrder = async (req: AuthRequest, res: Response): Pr
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    if (e instanceof ProductionRefConflictError) {
+      fail(res, 409, e.message);
       return;
     }
     if (isForeignKeyError(e)) {
