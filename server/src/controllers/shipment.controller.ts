@@ -1,6 +1,13 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import { Currency, Prisma, SalesOrderStatus, ShipmentStatus } from '@prisma/client';
+import {
+  Currency,
+  InspectionResult,
+  InspectionType,
+  Prisma,
+  SalesOrderStatus,
+  ShipmentStatus,
+} from '@prisma/client';
 import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
@@ -122,6 +129,15 @@ const listQuerySchema = z.object({
 
 /** 业务规则违例（事务内抛出以回滚），由 handler 统一转为 400 */
 class ShipmentRuleError extends Error {}
+
+/**
+ * 出货资格门禁违例（Round 3C-3-E-2-I）—— 由 handler 统一转为 **409**。
+ *
+ * 与 `ShipmentRuleError`（→400）**刻意分开**：R-3(c) 冻结 —— 既有 SalesOrder
+ * SHIPPABLE 规则保持原 400 语义不变，仅本轮新增的
+ * Quantity Eligibility 与 PRE_SHIPMENT QC Eligibility 使用 409。
+ */
+class ShipmentEligibilityError extends Error {}
 
 interface ResolvedLine {
   salesOrderItemId: string;
@@ -301,6 +317,108 @@ async function recalcShippedQty(
       where: { id },
       data: { shippedQty: sums.get(id) ?? new Prisma.Decimal(0) },
     });
+  }
+}
+
+/**
+ * C-3 · 持久化出货数量门禁（Round 3C-3-E-2-I，仅 BOOKED → SHIPPED）
+ *
+ * 断言（逐订单行）：**本单最终量 + 其他出运单合计 ≤ SalesOrderItem.quantity**
+ *
+ * 为什么不能直接复用 `assertShippable`：
+ *   `assertShippable` 的语义是「本次请求量 ≤ 订单量 − 其他出运单已出货量」，
+ *   且其契约要求「在本单旧明细已删除之后调用」——只适用于**携带 items** 的路径。
+ *   本函数改为「排除本单后取其他单合计，再加本单最终量」，
+ *   对「items 缺席」的路径同样成立（C-3 要求无条件校验持久化状态）。
+ *
+ * 数量权威不变：`ShipmentItem.quantity` 仍是唯一权威，本函数**只读不写**，
+ * 不产生第二套数量字段，也不触碰 `shippedQty` 的 SUM 重算语义。
+ * 前置：调用方必须在同一事务内已持有这些 SalesOrderItem 的行锁（lockSalesOrderItems）。
+ * 违例 → ShipmentEligibilityError（HTTP 409）。
+ */
+export async function assertShipmentQuantityEligible(
+  tx: Prisma.TransactionClient,
+  shipmentId: string,
+  finalLines: Array<{ salesOrderItemId: string; quantity: Prisma.Decimal }>,
+): Promise<void> {
+  const ids = Array.from(
+    new Set(finalLines.map((l) => l.salesOrderItemId).filter((v): v is string => Boolean(v))),
+  ).sort();
+  if (ids.length === 0) return;
+
+  // 本单「最终」量（按订单行汇总；items 缺席时 finalLines = oldItems，即当前持久化明细）
+  const ownById = new Map<string, Prisma.Decimal>();
+  for (const line of finalLines) {
+    ownById.set(
+      line.salesOrderItemId,
+      (ownById.get(line.salesOrderItemId) ?? new Prisma.Decimal(0)).plus(line.quantity),
+    );
+  }
+
+  const [soItems, others] = await Promise.all([
+    tx.salesOrderItem.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, quantity: true },
+    }),
+    tx.shipmentItem.groupBy({
+      by: ['salesOrderItemId'],
+      // 排除本单：本函数在「已删旧明细 / 尚未重建新明细」的任意中间态下都得到同一结论
+      where: { salesOrderItemId: { in: ids }, shipmentId: { not: shipmentId } },
+      _sum: { quantity: true },
+    }),
+  ]);
+
+  const orderedById = new Map(soItems.map((i) => [i.id, i.quantity]));
+  const otherById = new Map(
+    others.map((g) => [g.salesOrderItemId, toDecimal(g._sum.quantity) ?? new Prisma.Decimal(0)]),
+  );
+
+  for (const id of ids) {
+    const ordered = orderedById.get(id);
+    if (!ordered) throw new ShipmentEligibilityError('订单明细不存在，无法确认出货数量');
+    const own = ownById.get(id) ?? new Prisma.Decimal(0);
+    const other = otherById.get(id) ?? new Prisma.Decimal(0);
+    const total = own.plus(other);
+    if (total.gt(ordered)) {
+      throw new ShipmentEligibilityError(
+        `出货数量超出订单数量，无法发运（订单数量 ${ordered.toFixed()}，本单 ${own.toFixed()}，其他出运单 ${other.toFixed()}）`,
+      );
+    }
+  }
+}
+
+/**
+ * C-2 · 出运前质检门禁（Round 3C-3-E-2-I，仅 BOOKED → SHIPPED）
+ *
+ * 「有效 QC」= 该 Shipment 下按 `createdAt DESC, id DESC` 排序的**最新一条**
+ * `type = PRE_SHIPMENT` 质检单，且其**当前** result === PASSED。
+ *
+ * 明确禁止 `where: { result: PASSED } → findFirst()`（exists PASSED）语义：
+ *   `QC#1 PASSED → QC#2 FAILED` 必须 REJECT；`CONDITIONAL ≠ PASSED`；无记录 → REJECT。
+ *
+ * 排序键选择依据：`createdAt` 非空且创建后不可变（主键）；`id` 为非空唯一值（确定性并列键）。
+ * `inspectionDate` 可空、`updatedAt` 可被改写 → **均不得**用作排序键。
+ *
+ * 只读：不写 QualityInspection，不联动 ProductionStatus（D-FPO3-G = G1 保持）。
+ * 违例 → ShipmentEligibilityError（HTTP 409）。
+ */
+export async function assertPreShipmentQcPassed(
+  tx: Prisma.TransactionClient,
+  shipmentId: string,
+): Promise<void> {
+  const latest = await tx.qualityInspection.findFirst({
+    where: { shipmentId, type: InspectionType.PRE_SHIPMENT },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    select: { inspectionNo: true, result: true },
+  });
+
+  if (!latest) {
+    throw new ShipmentEligibilityError('出运前质检未完成：请先为该出运单创建 PRE_SHIPMENT 质检单');
+  }
+  if (latest.result !== InspectionResult.PASSED) {
+    throw new ShipmentEligibilityError(
+      `出运前质检未通过，无法发运（最新质检单「${latest.inspectionNo}」结果为 ${latest.result}）`,
+    );
   }
 }
 
@@ -644,6 +762,32 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
       }
     }
 
+    // ---- 业务变更判定（Round 3C-3-E-2-I / D-E2-G / C-1）----
+    //   α  `items` 出现        → 履约数量 / 履约内容变更
+    //   β  BOOKED → SHIPPED    → 真正的发运转换
+    // 仅这两种情况执行 SalesOrder Eligibility。纯物流 / 时间 / 费用 / 装载描述 / 备注字段的
+    // 修正**不执行**本检查 —— 否则 SalesOrder 进入 COMPLETED / CANCELLED 后将形成
+    // 「无法修正物流信息」的系统死路（C-1 明确禁止无条件 assertSalesOrderShippable）。
+    const hasItemsMutation = rest.items !== undefined;
+    const isBookedToShipped =
+      existing.status === ShipmentStatus.BOOKED && rest.status === ShipmentStatus.SHIPPED;
+
+    if (hasItemsMutation || isBookedToShipped) {
+      const salesOrder = await prisma.salesOrder.findUnique({
+        where: { id: existing.salesOrderId },
+        select: { id: true, status: true },
+      });
+      if (!salesOrder) {
+        fail(res, 400, '销售订单不存在');
+        return;
+      }
+      // 沿用既有 SalesOrder SHIPPABLE 规则：**保持原有 400**（R-3(c) 冻结，不改既有语义）
+      if (!SHIPPABLE_STATUSES.includes(salesOrder.status)) {
+        fail(res, 400, `销售订单当前状态（${salesOrder.status}）不允许出货`);
+        return;
+      }
+    }
+
     let parsedLines: ResolvedLine[] | null = null;
     if (rest.items !== undefined) {
       const parsed = await parseLines(rest.items, existing.salesOrderId);
@@ -659,7 +803,8 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
     const item = await prisma.$transaction(async (tx) => {
       const oldItems = await tx.shipmentItem.findMany({
         where: { shipmentId: existing.id },
-        select: { salesOrderItemId: true },
+        // quantity：C-3 门禁需要「本单最终量」；items 缺席时 oldItems 即最终持久化明细
+        select: { salesOrderItemId: true, quantity: true },
       });
       const affected = new Set(oldItems.map((i) => i.salesOrderItemId));
 
@@ -674,6 +819,18 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
         // 先删旧明细，使 assertShippable 的聚合基数 = 其他出运单 → 避免重复累计
         await tx.shipmentItem.deleteMany({ where: { shipmentId: existing.id } });
         await assertShippable(tx, parsedLines);
+      }
+
+      // ---- Shipment Eligibility Gate（Round 3C-3-E-2-I，仅 BOOKED → SHIPPED）----
+      // 顺序冻结：C-3 数量 → C-2 出运前质检 → 状态写入。任一失败即 throw → 事务回滚，
+      // 不会出现「Shipment.status 已 SHIPPED 但 Gate 未过」。
+      // 落点：此处已取得 SalesOrderItem 行锁（上方 lockSalesOrderItems），
+      //       且 tx.shipment.update 的嵌套 items.create 尚未执行
+      //       ⇒「最终持久化状态」以 (parsedLines ?? oldItems) 表达。
+      // 与 items 是否携带**无关**（C-3 要求无条件校验持久化状态）。
+      if (isBookedToShipped) {
+        await assertShipmentQuantityEligible(tx, existing.id, parsedLines ?? oldItems);
+        await assertPreShipmentQcPassed(tx, existing.id);
       }
 
       const updatedShipment = await tx.shipment.update({
@@ -745,6 +902,11 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
+      return;
+    }
+    if (e instanceof ShipmentEligibilityError) {
+      // 新增 Eligibility Gate（C-3 数量 / C-2 出运前质检）→ 409（R-3(c)）
+      fail(res, 409, e.message);
       return;
     }
     if (e instanceof ShipmentRuleError) {
