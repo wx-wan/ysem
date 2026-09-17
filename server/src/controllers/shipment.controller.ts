@@ -335,6 +335,68 @@ function isUniqueError(e: unknown): boolean {
   return e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
+// ============================================================
+// ShipmentStatus 状态机（Round 3C-3-E-1）
+//
+// 冻结决策：
+//   · 正常主链   DRAFT → BOOKED → SHIPPED → ARRIVED → COMPLETED
+//   · 异常终止支线 DRAFT / BOOKED / SHIPPED → CANCELLED（含客户自提场景）
+//   · 严格终态   COMPLETED / CANCELLED
+//
+// 语义：
+//   · **DEFAULT DENY** —— 未列出的跨状态转换一律拒绝（409），禁止「看起来合理」的推断；
+//   · 同状态（X → X）为**幂等 no-op**，不视为状态转移（含 COMPLETED / CANCELLED 自身）；
+//   · 终态以「出向集合为空」表达，不额外定义终态常量。
+//
+// 范围（本表仅用于 **update 的状态变更**）：
+//   · create 初始状态策略**不变**（仍为 `body.status ?? ShipmentStatus.DRAFT`）；
+//   · delete **不**加状态门槛；
+//   · 不触碰数量语义（ShipmentItem.quantity 权威 / shippedQty 重算）、事务、Scope、OperationLog；
+//   · 不引入 QC / Production / SalesOrder 任何 Gate，也不做状态同步。
+//
+// 说明：`SHIPPED → CANCELLED` 仅代表该出运**单据**被业务作废，
+//       已发生的数量、操作日志与相关事实全部保留（不删除、不回滚 shippedQty）。
+// ============================================================
+const ALLOWED_SHIPMENT_TRANSITIONS: Record<ShipmentStatus, readonly ShipmentStatus[]> = {
+  [ShipmentStatus.DRAFT]: [ShipmentStatus.BOOKED, ShipmentStatus.CANCELLED],
+  [ShipmentStatus.BOOKED]: [ShipmentStatus.SHIPPED, ShipmentStatus.CANCELLED],
+  [ShipmentStatus.SHIPPED]: [ShipmentStatus.ARRIVED, ShipmentStatus.CANCELLED],
+  [ShipmentStatus.ARRIVED]: [ShipmentStatus.COMPLETED],
+  // 终态：出向全部禁止（同状态 no-op 不受影响）
+  [ShipmentStatus.COMPLETED]: [],
+  [ShipmentStatus.CANCELLED]: [],
+};
+
+/** 状态转移 Gate 结果：ok=false 时由调用方统一按 409 处理 */
+export type ShipmentStatusGateResult = { ok: true } | { ok: false; message: string };
+
+/**
+ * Shipment 状态转移 Gate（纯函数，无 IO —— 便于静态矩阵验证）。
+ *
+ * 判定顺序：
+ *   1) 同状态 → 幂等 no-op（允许，含 COMPLETED / CANCELLED 自身重复提交）
+ *   2) 跨状态 → 白名单（DEFAULT DENY，未列出即拒绝）
+ *
+ * 导出仅为可测试性；业务上只由本控制器 `updateShipment` 调用。
+ */
+export function checkShipmentStatusTransition(
+  currentStatus: ShipmentStatus,
+  requestedStatus: ShipmentStatus,
+): ShipmentStatusGateResult {
+  // 1) 同状态：幂等 no-op（终态「不可离开」与「同状态重复提交」并不冲突）
+  if (currentStatus === requestedStatus) return { ok: true };
+
+  // 2) 跨状态：白名单，未列出即拒绝
+  if (!ALLOWED_SHIPMENT_TRANSITIONS[currentStatus].includes(requestedStatus)) {
+    return {
+      ok: false,
+      message: `出运单状态不能从 ${currentStatus} 转换为 ${requestedStatus}`,
+    };
+  }
+
+  return { ok: true };
+}
+
 /** 出运单基础字段组装（create / update 共用） */
 type ShipmentBaseInput = Partial<z.infer<typeof createSchema>>;
 
@@ -556,7 +618,8 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
 
     const existing = await prisma.shipment.findFirst({
       where: await scopedWhere(req, id),
-      select: { id: true, shipmentNo: true, salesOrderId: true, customerId: true },
+      // status：状态转移 Gate 所需（scope 通过后才读取）
+      select: { id: true, shipmentNo: true, salesOrderId: true, customerId: true, status: true },
     });
     if (!existing) {
       fail(res, 404, '出运单不存在');
@@ -569,6 +632,16 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
     if (rest.customerId !== undefined && rest.customerId !== existing.customerId) {
       fail(res, 400, '不支持修改所属客户，请重建出运单');
       return;
+    }
+
+    // ---- 状态转移 Gate（Round 3C-3-E-1：scope 已通过，此处仅判定「该转换是否合法」）----
+    // 必须在任何写入之前完成（早于 $transaction 与 data.status），同状态为幂等 no-op。
+    if (rest.status !== undefined) {
+      const gate = checkShipmentStatusTransition(existing.status, rest.status);
+      if (!gate.ok) {
+        fail(res, 409, gate.message);
+        return;
+      }
     }
 
     let parsedLines: ResolvedLine[] | null = null;
