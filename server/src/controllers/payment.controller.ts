@@ -118,13 +118,22 @@ type ResolveOwnerResult =
  *
  * IN  → salesOrderId 必填、purchaseOrderId 必须为空、customerId = SalesOrder.customerId
  * OUT → purchaseOrderId 必填、salesOrderId 必须为空、customerId 必须为空（供应商付款不得写入客户）
+ *
+ * 【F-3C4-01 · 宿主 Scope（DATA SCOPE）】
+ * 宿主解析必须施加数据范围，否则任意登录用户可凭 id 把 Payment 挂到他人宿主上
+ * （IN 还会连带对他人 SalesOrder 写入 paidAmountCny）。
+ * scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+ * 不可见与不存在返回同一结果（404 / 400 文案不变），不泄露宿主存在性。
  */
-async function resolveOwner(input: {
-  direction: PaymentDirection;
-  salesOrderId?: string | null;
-  purchaseOrderId?: string | null;
-  customerId?: string | null;
-}): Promise<ResolveOwnerResult> {
+async function resolveOwner(
+  req: AuthRequest,
+  input: {
+    direction: PaymentDirection;
+    salesOrderId?: string | null;
+    purchaseOrderId?: string | null;
+    customerId?: string | null;
+  },
+): Promise<ResolveOwnerResult> {
   const salesOrderId = input.salesOrderId ?? null;
   const purchaseOrderId = input.purchaseOrderId ?? null;
 
@@ -135,8 +144,9 @@ async function resolveOwner(input: {
     if (!salesOrderId) {
       return { ok: false, status: 400, message: '收款（IN）必须关联销售订单' };
     }
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: salesOrderId },
+    // F-3C4-01：宿主 SalesOrder 必须在本用户数据范围内（SalesOrder.ownerId）
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope({ id: salesOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, customerId: true },
     });
     if (!salesOrder) return { ok: false, status: 404, message: '销售订单不存在' };
@@ -163,8 +173,9 @@ async function resolveOwner(input: {
   if (input.customerId) {
     return { ok: false, status: 400, message: '付款（OUT）不得写入客户' };
   }
-  const purchaseOrder = await prisma.purchaseOrder.findUnique({
-    where: { id: purchaseOrderId },
+  // F-3C4-01：宿主 PurchaseOrder 必须在本用户数据范围内（PurchaseOrder.ownerId）
+  const purchaseOrder = await prisma.purchaseOrder.findFirst({
+    where: applyScope({ id: purchaseOrderId }, await roleScope(req, { field: 'ownerId' })),
     select: { id: true },
   });
   if (!purchaseOrder) return { ok: false, status: 404, message: '采购单不存在' };
@@ -358,7 +369,7 @@ export const createPayment = async (req: AuthRequest, res: Response): Promise<vo
   try {
     const body = createSchema.parse(req.body);
 
-    const resolved = await resolveOwner(body);
+    const resolved = await resolveOwner(req, body);
     if (!resolved.ok) {
       fail(res, resolved.status, resolved.message);
       return;
@@ -467,7 +478,7 @@ export const updatePayment = async (req: AuthRequest, res: Response): Promise<vo
 
     // 合并后的最终 owner 组合 → 重新完整校验（exactly-one + direction 一致 + 客户一致）
     const nextDirection = rest.direction ?? existing.direction;
-    const resolved = await resolveOwner({
+    const resolved = await resolveOwner(req, {
       direction: nextDirection,
       salesOrderId: rest.salesOrderId !== undefined ? rest.salesOrderId : existing.salesOrderId,
       purchaseOrderId:

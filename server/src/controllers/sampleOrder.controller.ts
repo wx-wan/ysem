@@ -291,6 +291,20 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
     );
     const feeAmount = round(body.feeAmount ?? null, DECIMAL_PRECISION.amount);
 
+    // D-C4-B（Option B，CREATE）：显式指定业务归属时，目标用户必须在本用户数据范围内
+    // （ALL/admin → 任意合法用户；DEPT → 本部门及下级成员；SELF → 仅本人）。
+    // 未提供（undefined / null）时下方 `?? req.userId` 归当前用户，不进入显式校验。
+    if (body.ownerId !== undefined && body.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: body.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
+
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const item = await prisma.$transaction(async (tx) => {
       const sampleNo = await getNextNumber(tx, 'SMP');
@@ -446,6 +460,21 @@ export const updateSampleOrder = async (req: AuthRequest, res: Response): Promis
     }
     if (rest.feeCurrency !== undefined) data.feeCurrency = rest.feeCurrency;
     if (rest.feeRecoverable !== undefined) data.feeRecoverable = rest.feeRecoverable;
+    // D-C4-B（Option B，UPDATE）：改派归属必须通过数据范围校验，且**先于任何写入**。
+    // SampleOrder **无公海语义**，故 `null`（含 ''）一律拒绝。
+    if (rest.ownerId !== undefined) {
+      if (
+        rest.ownerId === null ||
+        rest.ownerId === '' ||
+        !(await prisma.user.findFirst({
+          where: applyScope({ id: rest.ownerId }, await roleScope(req, { field: 'id' })),
+          select: { id: true },
+        }))
+      ) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
     if (rest.ownerId !== undefined) data.ownerId = rest.ownerId;
     if (rest.notes !== undefined) data.notes = rest.notes;
     data.updatedBy = req.userId ?? null;

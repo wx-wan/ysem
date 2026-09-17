@@ -6,7 +6,7 @@ import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
 import prisma from "../lib/prisma";
 import { getNextNumber } from "../lib/numberSequence";
-import { includePublicSea, publicSeaScope, roleScope } from "../utils/scope";
+import { applyScope, includePublicSea, publicSeaScope, roleScope } from "../utils/scope";
 import { BUSINESS_TYPE } from "../lib/business-type";
 import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
 import * as XLSX from "xlsx";
@@ -595,8 +595,15 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
 // ========== 客户详情（含订单列表） ==========
 export const getById = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
-    const customer = await prisma.customer.findUnique({
-      where: { id: req.params.id },
+    // F-3C4-05：客户详情必须施加**规范化客户读取边界**（与 listMy 非 public 分支同口径）：
+    //   includePublicSea(roleScope) ⇒ SELF/DEPT = 本人/本部门 ∪ 公海；ALL/admin = 全量。
+    //   ⇒ 他人所属客户不可见（404），公海客户按既有公海规则可见。
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const customer = await prisma.customer.findFirst({
+      where: applyScope(
+        { id: req.params.id },
+        includePublicSea(await roleScope(req)),
+      ),
       include: {
         owner: { select: { id: true, username: true, realName: true, role: { select: { code: true } } } },
         // V1.0：Customer.orders → Customer.salesOrders；按 SalesOrder 实际 schema 选取字段

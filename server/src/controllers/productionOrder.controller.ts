@@ -439,13 +439,16 @@ export const createProductionOrder = async (req: AuthRequest, res: Response): Pr
   try {
     const body = createSchema.parse(req.body);
 
-    // SalesOrder 必须存在；ProductionOrder 无 customerId，客户经此派生（用于 OperationLog / CustomerActivity）
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: body.salesOrderId },
+    // SalesOrder 必须存在**且在本用户数据范围内**（F-3C4-03：SalesOrder.ownerId）；
+    // ProductionOrder 无 customerId，客户经此派生（用于 OperationLog / CustomerActivity）。
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    // 不可见与不存在统一 404（不泄露他人销售订单是否存在）。
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope({ id: body.salesOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, orderNo: true, customerId: true },
     });
     if (!salesOrder) {
-      fail(res, 400, '销售订单不存在');
+      fail(res, 404, '销售订单不存在');
       return;
     }
 
@@ -455,10 +458,16 @@ export const createProductionOrder = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    if (body.ownerId) {
-      const owner = await prisma.user.findUnique({ where: { id: body.ownerId }, select: { id: true } });
+    // D-C4-B（Option B）：显式指定生产负责人时，目标用户必须在本用户数据范围内
+    // （ALL/admin → 任意合法用户；DEPT → 本部门及下级成员；SELF → 仅本人）。
+    // 未提供（undefined / null）时下方 `?? req.userId` 归当前用户，不进入显式校验。
+    if (body.ownerId !== undefined && body.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: body.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
       if (!owner) {
-        fail(res, 400, '生产负责人不存在');
+        fail(res, 400, '生产负责人不存在或无权限指派');
         return;
       }
     }
@@ -583,6 +592,21 @@ export const updateProductionOrder = async (req: AuthRequest, res: Response): Pr
     }
     if (rest.actualEndAt !== undefined) {
       data.actualEndAt = rest.actualEndAt ? new Date(rest.actualEndAt) : null;
+    }
+    // D-C4-B（Option B，UPDATE）：改派负责人必须通过数据范围校验，且**先于任何写入**。
+    // ProductionOrder **无公海语义**，故 `null`（含 '' → 原 disconnect 语义）一律拒绝，不得借 disconnect 放行。
+    if (rest.ownerId !== undefined) {
+      if (
+        rest.ownerId === null ||
+        rest.ownerId === '' ||
+        !(await prisma.user.findFirst({
+          where: applyScope({ id: rest.ownerId }, await roleScope(req, { field: 'id' })),
+          select: { id: true },
+        }))
+      ) {
+        fail(res, 400, '生产负责人不存在或无权限指派');
+        return;
+      }
     }
     if (rest.ownerId !== undefined) {
       // ProductionOrderUpdateInput 不暴露 ownerId 标量（该字段带 User relation），必须走 relation

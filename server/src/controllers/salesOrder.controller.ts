@@ -277,22 +277,37 @@ type RefCheckResult =
   | { ok: true; customerId: string }
   | { ok: false; message: string };
 
-async function resolveRefs(input: {
-  opportunityId: string;
-  customerId?: string | null;
-  quotationId?: string | null;
-  sampleOrderId?: string | null;
-}): Promise<RefCheckResult> {
-  const opportunity = await prisma.opportunity.findUnique({
-    where: { id: input.opportunityId },
+/**
+ * 【F-3C4-04 · 事务引用 Scope（DATA SCOPE）】
+ *
+ * Opportunity / Quotation / SampleOrder 属**事务对象**，必须遵循各自 `ownerId` 数据范围：
+ * 否则任意用户可凭 id 把 SalesOrder 挂到他人事务对象上（并回吐其编号/标题）。
+ * scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+ * scope 外与不存在**同文案**（400），不新增存在性 oracle。
+ *
+ * 【D-C4-A = Option C · Customer 引用从属于上游事务对象】
+ * `customer` **不**施加独立 Customer scope：客户由已授权的上游事务对象传递授权
+ * （`customerId` 恒被约束为等于 `opportunity.customerId`，见下方一致性校验）。
+ */
+async function resolveRefs(
+  req: AuthRequest,
+  input: {
+    opportunityId: string;
+    customerId?: string | null;
+    quotationId?: string | null;
+    sampleOrderId?: string | null;
+  },
+): Promise<RefCheckResult> {
+  const opportunity = await prisma.opportunity.findFirst({
+    where: applyScope({ id: input.opportunityId }, await roleScope(req, { field: 'ownerId' })),
     select: { id: true, customerId: true },
   });
   if (!opportunity) return { ok: false, message: '商机不存在' };
 
   let quotation: { id: string; customerId: string } | null = null;
   if (input.quotationId) {
-    quotation = await prisma.quotation.findUnique({
-      where: { id: input.quotationId },
+    quotation = await prisma.quotation.findFirst({
+      where: applyScope({ id: input.quotationId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, customerId: true },
     });
     if (!quotation) return { ok: false, message: '报价单不存在' };
@@ -300,8 +315,8 @@ async function resolveRefs(input: {
 
   let sampleOrder: { id: string; customerId: string } | null = null;
   if (input.sampleOrderId) {
-    sampleOrder = await prisma.sampleOrder.findUnique({
-      where: { id: input.sampleOrderId },
+    sampleOrder = await prisma.sampleOrder.findFirst({
+      where: applyScope({ id: input.sampleOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, customerId: true },
     });
     if (!sampleOrder) return { ok: false, message: '打样单不存在' };
@@ -411,12 +426,26 @@ export const createSalesOrder = async (req: AuthRequest, res: Response): Promise
   try {
     const body = createSchema.parse(req.body);
 
-    const refs = await resolveRefs(body);
+    const refs = await resolveRefs(req, body);
     if (!refs.ok) {
       fail(res, 400, refs.message);
       return;
     }
     const customerId = refs.customerId;
+
+    // D-C4-B（Option B，CREATE）：显式指定业务归属时，目标用户必须在本用户数据范围内
+    // （ALL/admin → 任意合法用户；DEPT → 本部门及下级成员；SELF → 仅本人）。
+    // 未提供（undefined / null）时下方 `?? req.userId` 归当前用户，不进入显式校验。
+    if (body.ownerId !== undefined && body.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: body.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
 
     const currency = body.currency ?? Currency.USD;
     const parsed = await parseItems(body.items, currency);
@@ -535,7 +564,23 @@ export const updateSalesOrder = async (req: AuthRequest, res: Response): Promise
       rest.sampleOrderId !== undefined ? rest.sampleOrderId : existing.sampleOrderId;
     const nextCustomerId = rest.customerId !== undefined ? rest.customerId : existing.customerId;
 
-    const refs = await resolveRefs({
+    // D-C4-B（Option B，UPDATE）：改派归属必须通过数据范围校验，且**先于任何写入**。
+    // SalesOrder **无公海语义**，故 `null`（含 '' → 原 disconnect 语义）一律拒绝。
+    if (rest.ownerId !== undefined) {
+      if (
+        rest.ownerId === null ||
+        rest.ownerId === '' ||
+        !(await prisma.user.findFirst({
+          where: applyScope({ id: rest.ownerId }, await roleScope(req, { field: 'id' })),
+          select: { id: true },
+        }))
+      ) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
+
+    const refs = await resolveRefs(req, {
       opportunityId: nextOpportunityId,
       customerId: nextCustomerId,
       quotationId: nextQuotationId ?? null,

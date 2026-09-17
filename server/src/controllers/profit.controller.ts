@@ -362,8 +362,11 @@ export const createProfit = async (req: AuthRequest, res: Response): Promise<voi
   try {
     const body = createSchema.parse(req.body);
 
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: body.salesOrderId },
+    // F-3C4-02：宿主 SalesOrder 必须在本用户数据范围内（SalesOrder.ownerId）。
+    // 必须**先于** duplicate 检查：否则 scope 外用户可凭 409 文案读到他人 profitNo。
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope({ id: body.salesOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: {
         id: true,
         orderNo: true,
