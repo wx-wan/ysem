@@ -463,6 +463,17 @@ export const submitApproval = async (req: AuthRequest, res: Response): Promise<v
       fail(res, 409, e.message);
       return;
     }
+    // 并发重复提交：两个请求的 findFirst(PENDING) 均未命中时，
+    // 由 DB 的 partial unique index
+    //   "ApprovalRecord_bizType_businessId_pending_key"
+    //   ON ("bizType","businessId") WHERE "status" = 'PENDING'
+    // 承担最终并发断言 → 后者命中 P2002。
+    // 与顺序重复路径（ApprovalConflictError）保持同一 409 语义与文案；
+    // 只输出稳定业务错误，不泄漏 Prisma message / index name / SQL。
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+      fail(res, 409, '该业务单据已存在待审批记录');
+      return;
+    }
     fail(res, 500, '服务器错误');
   }
 };
