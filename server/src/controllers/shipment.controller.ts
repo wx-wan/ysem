@@ -196,10 +196,41 @@ async function parseLines(
 }
 
 /**
+ * 锁定受影响的 SalesOrderItem 行（并发硬化）。
+ *
+ * 目的：把「读聚合 → 判定 / 写回」纳入同一临界区，消除两类并发缺陷：
+ *   1) over-shipment：两个并发请求各自读到 already = 0 → 双双通过上限校验；
+ *   2) shippedQty 缓存陈旧：recalcShippedQty 的「groupBy 读 → UPDATE 写回」是两条语句，
+ *      后提交方可能以更早快照的求和值整值覆写（经典 lost update）。
+ *
+ * 约束（不得放宽）：
+ *   · 只锁 `SalesOrderItem` —— 它同时是「判定依据 quantity」与「派生缓存 shippedQty」的宿主；
+ *   · 必须 `ORDER BY id ASC` —— 多行锁的确定性顺序，消除 AB/BA 循环等待；
+ *   · 必须在**调用方的事务**内执行（锁随该事务提交/回滚释放）；
+ *   · 入参先做 Set 去重 + 过滤空值；空数组直接返回（不得生成 `IN ()`）。
+ */
+async function lockSalesOrderItems(
+  tx: Prisma.TransactionClient,
+  salesOrderItemIds: Array<string | null | undefined>,
+): Promise<void> {
+  const ids = Array.from(new Set(salesOrderItemIds.filter((v): v is string => Boolean(v)))).sort();
+  if (ids.length === 0) return;
+
+  await tx.$queryRaw`
+    SELECT id
+    FROM "SalesOrderItem"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id ASC
+    FOR UPDATE
+  `;
+}
+
+/**
  * 出货数量上限校验：**本次请求量 <= 订单数量 - 已出货量**。
  *
  * 必须在「本单旧明细已删除」之后调用（同一事务内），此时 ShipmentItem 全集即为「其他出运单」的合计，
  * 因此天然避免重复累计。
+ * 调用前必须已通过 lockSalesOrderItems 锁定相关订单行，否则判定与写入之间仍存在 TOCTOU 窗口。
  */
 async function assertShippable(
   tx: Prisma.TransactionClient,
@@ -437,6 +468,9 @@ export const createShipment = async (req: AuthRequest, res: Response): Promise<v
     const data = baseData(body);
 
     const item = await prisma.$transaction(async (tx) => {
+      // 并发硬化：先锁定受影响的订单行（id ASC），使上限校验与 recalc 处于同一临界区
+      await lockSalesOrderItems(tx, parsed.lines.map((l) => l.salesOrderItemId));
+
       // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
       const shipmentNo = await getNextNumber(tx, 'SHP');
 
@@ -556,6 +590,13 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
       });
       const affected = new Set(oldItems.map((i) => i.salesOrderItemId));
 
+      // 并发硬化：必须在 deleteMany 之前锁定「旧明细 + 新明细」的全部订单行（id ASC）。
+      // 若先删除再加锁，其他事务可能在临界区外观察到「旧明细已删、新明细未建」的中间状态。
+      await lockSalesOrderItems(tx, [
+        ...oldItems.map((i) => i.salesOrderItemId),
+        ...(parsedLines ?? []).map((l) => l.salesOrderItemId),
+      ]);
+
       if (parsedLines) {
         // 先删旧明细，使 assertShippable 的聚合基数 = 其他出运单 → 避免重复累计
         await tx.shipmentItem.deleteMany({ where: { shipmentId: existing.id } });
@@ -662,6 +703,10 @@ export const removeShipment = async (req: AuthRequest, res: Response): Promise<v
         where: { shipmentId: existing.id },
         select: { salesOrderItemId: true },
       });
+      // 并发硬化：delete 路径不经过 assertShippable，必须显式锁定受影响订单行（id ASC），
+      // 以与并发 create/update 的上限校验与 recalc 串行化。
+      await lockSalesOrderItems(tx, oldItems.map((i) => i.salesOrderItemId));
+
       // Shipment → ShipmentItem 为 Cascade（遵守 schema，不自行改变 relation）
       await tx.shipment.delete({ where: { id: existing.id } });
       await recalcShippedQty(

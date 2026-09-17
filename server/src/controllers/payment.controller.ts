@@ -175,9 +175,41 @@ async function resolveOwner(input: {
 }
 
 /**
+ * 锁定受影响的 SalesOrder 行（并发硬化）。
+ *
+ * 目的：把「aggregate 读 → paidAmountCny 写回」纳入同一临界区。
+ * recalcPaidAmountCny 由两条语句构成（SUM 聚合 + 整值覆写），写回的是**先前算好的常量**，
+ * 因此在无锁情况下后提交方会以更早快照的求和值覆盖正确值（经典 lost update）。
+ *
+ * 约束（不得放宽）：
+ *   · 只锁 `SalesOrder` —— 它是 paidAmountCny 的唯一宿主；
+ *     OUT 方向宿主为 PurchaseOrder，而 PurchaseOrder **无**任何金额派生字段 ⇒ 无需加锁；
+ *   · 必须 `ORDER BY id ASC` —— owner 迁移（SO-A ↔ SO-B）会同时涉及两行，
+ *     确定性顺序可消除 AB/BA 循环等待；
+ *   · 必须在**调用方的事务**内执行（锁随该事务提交/回滚释放）；
+ *   · 入参先做 Set 去重 + 过滤空值；空数组直接返回（不得生成 `IN ()`）。
+ */
+async function lockSalesOrders(
+  tx: Prisma.TransactionClient,
+  salesOrderIds: Array<string | null | undefined>,
+): Promise<void> {
+  const ids = Array.from(new Set(salesOrderIds.filter((v): v is string => Boolean(v)))).sort();
+  if (ids.length === 0) return;
+
+  await tx.$queryRaw`
+    SELECT id
+    FROM "SalesOrder"
+    WHERE id IN (${Prisma.join(ids)})
+    ORDER BY id ASC
+    FOR UPDATE
+  `;
+}
+
+/**
  * 重算 SalesOrder.paidAmountCny = SUM(Payment.amountCny WHERE IN + CONFIRMED)。
  * 必须以「重算」取代「累加」，否则 status / amount / owner 变更后会留下错误累计。
  * SUM 忽略 NULL；无有效金额 → 写 0。
+ * 调用前必须已通过 lockSalesOrders 锁定相关宿主，否则聚合与写回之间仍存在 lost update 窗口。
  */
 async function recalcPaidAmountCny(
   tx: Prisma.TransactionClient,
@@ -345,6 +377,9 @@ export const createPayment = async (req: AuthRequest, res: Response): Promise<vo
     const status = body.status ?? PaymentStatus.PENDING;
 
     const item = await prisma.$transaction(async (tx) => {
+      // 并发硬化：先锁定受影响宿主（仅 IN 方向有 SalesOrder 宿主；OUT 传 null 自动跳过）
+      await lockSalesOrders(tx, [owner.salesOrderId]);
+
       // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
       const paymentNo = await getNextNumber(tx, 'PAY');
 
@@ -496,6 +531,12 @@ export const updatePayment = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     const item = await prisma.$transaction(async (tx) => {
+      // 并发硬化：必须在 payment.update 之前锁定「旧宿主 + 新宿主」两行（id ASC）。
+      // 新宿主取自事务外的 resolveOwner 结果（= data.salesOrderId），
+      // 与 update 后的 updatedPayment.salesOrderId 恒等，故可安全前置。
+      // owner 可变 ⇒ 单事务可能写两个 SalesOrder 的派生字段；排序即消除 AB/BA 死锁。
+      await lockSalesOrders(tx, [existing.salesOrderId, owner.salesOrderId]);
+
       const updatedPayment = await tx.payment.update({
         where: { id: existing.id },
         data,
@@ -544,6 +585,9 @@ export const removePayment = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     await prisma.$transaction(async (tx) => {
+      // 并发硬化：先锁定宿主（OUT 宿主为 null → 自动跳过，不锁 PurchaseOrder）
+      await lockSalesOrders(tx, [existing.salesOrderId]);
+
       await tx.payment.delete({ where: { id: existing.id } });
       // OUT 无 SalesOrder 宿主 → recalcAll 自动跳过
       await recalcAll(tx, [existing.salesOrderId]);
