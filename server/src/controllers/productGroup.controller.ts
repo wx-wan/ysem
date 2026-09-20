@@ -7,6 +7,31 @@ import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { buildSkuCode, withSkuRetry, SkuConcurrencyError } from '../lib/skuCode';
+import { projectProductRows } from '../utils/scope';
+
+/**
+ * ComboProduct 成员产品的公开字段（DQ-3=C 投影白名单）。
+ * `visibility` / `createdBy` / `visibleUsers` 为**内部授权字段**，仅用于可见性判定，不得进入响应。
+ */
+const GROUP_ITEM_PRODUCT_FIELDS = ['id', 'name', 'sku'] as const;
+
+/** 成员产品关联 select：含内部授权字段，响应前必须经 projectProductRows 投影 */
+const GROUP_ITEM_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
+
+/** 读取侧（DQ-3=C）：对含 `items[].product` 的 ComboProduct 记录做可见性投影 */
+const withProductVisibility = <T>(req: AuthRequest, group: T): T => {
+  const rec = group as Record<string, unknown>;
+  const items = rec.items as Record<string, unknown>[] | undefined;
+  if (!items) return group;
+  return { ...rec, items: projectProductRows(req, items, GROUP_ITEM_PRODUCT_FIELDS) } as T;
+};
 
 /** 业务规则违例（事务内抛出以回滚），由 handler 统一转为 400 */
 class ProductGroupRuleError extends Error {}
@@ -68,16 +93,17 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
         include: {
           items: {
             orderBy: { sort: 'asc' },
-            include: { product: { select: { id: true, name: true, sku: true } } },
+            include: { product: { select: GROUP_ITEM_PRODUCT_SELECT } },
           },
         },
       }),
       prisma.comboProduct.count({ where }),
     ]);
 
-    // 组装成员产品 + 数量
+    // 组装成员产品 + 数量（读取侧 DQ-3=C：不可见 PRIVATE 产品不得进入响应）
     const groups = list.map((g) => {
-      const products = g.items
+      const items = projectProductRows(req, g.items, GROUP_ITEM_PRODUCT_FIELDS);
+      const products = items
         .filter((it) => it.product)
         .map((it) => ({
           id: it.product!.id,
@@ -87,7 +113,7 @@ export const getProductGroups = async (req: AuthRequest, res: Response): Promise
           price: it.price,
         }));
       const productCount = g.items.length;
-      const { items, ...rest } = g;
+      const { items: _items, ...rest } = g;
       return { ...rest, productCount, products };
     });
 
@@ -104,7 +130,9 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
       include: {
         items: {
           orderBy: { sort: 'asc' },
-          include: { product: { select: { id: true, name: true, sku: true, weight: true } } },
+          include: {
+            product: { select: { ...GROUP_ITEM_PRODUCT_SELECT, weight: true } },
+          },
         },
       },
     });
@@ -112,7 +140,9 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
       fail(res, 404, '产品组不存在');
       return;
     }
-    const products = group.items
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品不得进入响应
+    const detailItems = projectProductRows(req, group.items, GROUP_ITEM_PRODUCT_FIELDS);
+    const products = detailItems
       .filter((it) => it.product)
       .map((it) => ({
         id: it.product!.id,
@@ -120,8 +150,8 @@ export const getProductGroupById = async (req: AuthRequest, res: Response): Prom
         sku: it.product!.sku,
         quantity: it.quantity,
         price: it.price,
-        }));
-        const { items, ...rest } = group;
+      }));
+    const { items: _items, ...rest } = group;
     success(res, { ...rest, productCount: group.items.length, products });
   } catch {
     fail(res, 500, '服务器错误');
@@ -213,7 +243,7 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
             ? { create: itemData.map((d, i) => ({ ...d, sort: i })) }
             : undefined,
         },
-        include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+        include: { items: { include: { product: { select: GROUP_ITEM_PRODUCT_SELECT } } } },
       });
     }));
     void activityLogger.log({
@@ -227,7 +257,8 @@ export const createProductGroup = async (req: AuthRequest, res: Response): Promi
       businessNo: group.comboNo,
       summary: `创建了组合「${group.name}」${itemData.length ? `（含 ${itemData.length} 个单品）` : ''}`,
     });
-    created(res, group);
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    created(res, withProductVisibility(req, group));
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, err.errors.map((e) => e.message).join(', '));
@@ -342,7 +373,7 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
           })),
         },
       },
-      include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+      include: { items: { include: { product: { select: GROUP_ITEM_PRODUCT_SELECT } } } },
     });
     void activityLogger.log({
       userId: req.userId || '',
@@ -355,7 +386,8 @@ export const updateGroupProducts = async (req: AuthRequest, res: Response): Prom
       businessNo: group.comboNo,
       summary: `更新了组合「${group.name}」的单品明细`,
     });
-    success(res, created);
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, created));
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, err.errors.map((e) => e.message).join(', '));

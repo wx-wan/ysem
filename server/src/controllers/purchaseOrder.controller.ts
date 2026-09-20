@@ -129,11 +129,15 @@ async function resolveExchangeRate(
 }
 
 /** 关联实体存在性校验（一次批量查询，避免逐行 N+1） */
-async function assertRefsExist(input: {
-  supplierId?: string | null;
-  salesOrderId?: string | null;
-  productionOrderId?: string | null;
-}): Promise<{ ok: true } | { ok: false; status: 404; message: string }> {
+async function assertRefsExist(
+  req: AuthRequest,
+  input: {
+    supplierId?: string | null;
+    salesOrderId?: string | null;
+    productionOrderId?: string | null;
+  },
+): Promise<{ ok: true } | { ok: false; status: 404; message: string }> {
+  // Supplier = 共享采购主数据（DQ-4=A）：仅校验存在性，**不施加** owner 数据范围。
   if (input.supplierId) {
     const supplier = await prisma.supplier.findUnique({
       where: { id: input.supplierId },
@@ -141,16 +145,18 @@ async function assertRefsExist(input: {
     });
     if (!supplier) return { ok: false, status: 404, message: '供应商不存在' };
   }
+  // SalesOrder / ProductionOrder = 业务归属对象（P5-REF-01=ACCEPT）：
+  // 引用必须落在当前用户 ownerId 数据范围内；scope 外与不存在同响应 404（无存在性泄露）。
   if (input.salesOrderId) {
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: input.salesOrderId },
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope({ id: input.salesOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true },
     });
     if (!salesOrder) return { ok: false, status: 404, message: '销售订单不存在' };
   }
   if (input.productionOrderId) {
-    const productionOrder = await prisma.productionOrder.findUnique({
-      where: { id: input.productionOrderId },
+    const productionOrder = await prisma.productionOrder.findFirst({
+      where: applyScope({ id: input.productionOrderId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true },
     });
     if (!productionOrder) return { ok: false, status: 404, message: '生产工单不存在' };
@@ -451,10 +457,24 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
   try {
     const body = createSchema.parse(req.body);
 
-    const refs = await assertRefsExist(body);
+    const refs = await assertRefsExist(req, body);
     if (!refs.ok) {
       fail(res, refs.status, refs.message);
       return;
+    }
+
+    // P5-OWN-01（F-NEW-03）：显式指定业务归属人时必须落在当前用户数据范围内，
+    // 且**先于事务与任何写入**（与 update 侧同款校验；形态与 quotation / salesOrder /
+    // productionOrder / sampleOrder 一致）。`undefined` / `null` 均表示未指定 → 下方 `?? req.userId`。
+    if (body.ownerId !== undefined && body.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: body.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
     }
 
     const currency = body.currency ?? Currency.CNY;
@@ -566,7 +586,7 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    const refs = await assertRefsExist({
+    const refs = await assertRefsExist(req, {
       supplierId: rest.supplierId !== undefined ? rest.supplierId : existing.supplierId,
       salesOrderId: rest.salesOrderId !== undefined ? rest.salesOrderId : existing.salesOrderId,
       productionOrderId:
@@ -575,6 +595,21 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
     if (!refs.ok) {
       fail(res, refs.status, refs.message);
       return;
+    }
+
+    // D-C4-B（Option B，UPDATE）：改派归属必须通过数据范围校验，且**先于任何写入**
+    // （含下方 `prisma.$transaction` 内的明细重建与 PurchaseOrder 更新）。
+    // 故本校验置于事务之外、与其它前置校验同段（形态与 quotation / salesOrder / sampleOrder 一致）。
+    if (rest.ownerId !== undefined) {
+      if (
+        !(await prisma.user.findFirst({
+          where: applyScope({ id: rest.ownerId }, await roleScope(req, { field: 'id' })),
+          select: { id: true },
+        }))
+      ) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
     }
 
     const currency = rest.currency ?? existing.currency;

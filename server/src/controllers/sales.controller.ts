@@ -7,7 +7,7 @@ import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
 import { activityLogger } from '../lib/activity-logger';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere, projectProductRows } from '../utils/scope';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { paginateList } from '../utils/query';
 import { deriveStages, PIPELINE_STAGES, type PipelineStage } from '../utils/pipelineStage';
@@ -50,13 +50,40 @@ const createOpportunitySchema = z.object({
 
 const updateOpportunitySchema = createOpportunitySchema.partial();
 
+/** 商机明细关联产品的公开字段（DQ-3=C 投影白名单；内部授权字段不得进入响应） */
+const OPPORTUNITY_ITEM_PRODUCT_FIELDS = ['id', 'name', 'sku'] as const;
+
+/** 产品关联 select：含内部授权字段，响应前必须经 withProductVisibility 投影 */
+const OPPORTUNITY_ITEM_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
+
+/** 读取侧（DQ-3=C）：明细关联产品按可见性投影（不可见 ⇒ product=null 且快照 productName=null） */
+const withProductVisibility = <T>(req: AuthRequest, record: T): T => {
+  const rec = record as Record<string, unknown>;
+  return {
+    ...rec,
+    items: projectProductRows(
+      req,
+      (rec.items ?? []) as Record<string, unknown>[],
+      OPPORTUNITY_ITEM_PRODUCT_FIELDS,
+      { nameField: 'productName' },
+    ),
+  } as T;
+};
+
 /** 商机详情统一 include（V1.0 关系：owner / customer / lead / items / activities） */
 const OPPORTUNITY_INCLUDE = {
   owner: { select: { id: true, realName: true, username: true } },
   customer: { select: { id: true, companyName: true, contactName: true } },
   lead: { select: { id: true, leadNo: true, leadName: true } },
   items: {
-    include: { product: { select: { id: true, name: true, sku: true } } },
+    include: { product: { select: OPPORTUNITY_ITEM_PRODUCT_SELECT } },
     orderBy: { sort: 'asc' },
   },
 } as const;
@@ -72,11 +99,14 @@ function splitProbability(raw?: string | null): { intentLevel?: (typeof INTENT_L
 
 /** 构建 OpportunityItem 创建数据（V1.0 要求 productName 快照） */
 async function buildItems(
+  req: AuthRequest,
   products: { productId: string; quantity?: number }[] | null | undefined,
 ): Promise<{ productId: string; productName: string; quantity: number }[]> {
   if (!products || products.length === 0) return [];
   const found = await prisma.product.findMany({
-    where: { id: { in: products.map((p) => p.productId) } },
+    // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内（单次批量查询，不引入 N+1）；
+    // 不可见与不存在在此**同样被剔除**（沿用既有静默剔除语义，不引入存在性 oracle）。
+    where: { id: { in: products.map((p) => p.productId) }, ...productVisibilityWhere(req) },
     select: { id: true, name: true },
   });
   const nameById = new Map(found.map((p) => [p.id, p.name]));
@@ -87,6 +117,15 @@ async function buildItems(
       productName: nameById.get(p.productId)!,
       quantity: p.quantity ?? 1,
     }));
+}
+
+/**
+ * 「当前用户数据范围（ALL / DEPT / SELF）+ id」的查询条件。
+ * 所有商机单条读写都必须经此条件，杜绝越权访问。
+ * Opportunity 有直接 ownerId（非经关联继承），故不传 relation；本条件**不并入公海**（Opportunity 公海 = FUTURE）。
+ */
+async function scopedWhere(req: AuthRequest, id: string): Promise<Record<string, unknown>> {
+  return applyScope({ id }, await roleScope(req, { field: 'ownerId' }));
 }
 
 // ============ 列表 ============
@@ -143,8 +182,9 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
       const filtered = all.filter((o) => stageMap.get(o.id) === wantStage);
       const total = filtered.length;
       const slice = filtered.slice((pageNum - 1) * pageSizeNum, pageNum * pageSizeNum);
+      // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
       success(res, {
-        list: slice.map((o) => ({ ...o, stage: stageMap.get(o.id) })),
+        list: slice.map((o) => ({ ...withProductVisibility(req, o), stage: stageMap.get(o.id) })),
         total,
         page: pageNum,
         pageSize: pageSizeNum,
@@ -166,8 +206,9 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
     // 附加派生阶段
     const rows = list as { id: string; leadId?: string | null }[];
     const stageMap = await deriveStages(rows);
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
     success(res, {
-      list: rows.map((o) => ({ ...o, stage: stageMap.get(o.id) })),
+      list: rows.map((o) => ({ ...withProductVisibility(req, o), stage: stageMap.get(o.id) })),
       total,
       page: p,
       pageSize: ps,
@@ -227,8 +268,10 @@ export const getKanban = async (req: AuthRequest, res: Response): Promise<void> 
 
 export const getOpportunity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const opportunity = await prisma.opportunity.findUnique({
-      where: { id: req.params.id },
+    // 数据范围：目标商机本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const opportunity = await prisma.opportunity.findFirst({
+      where: await scopedWhere(req, req.params.id),
       include: {
         ...OPPORTUNITY_INCLUDE,
         activities: { orderBy: { createdAt: 'desc' }, take: 30 },
@@ -238,7 +281,8 @@ export const getOpportunity = async (req: AuthRequest, res: Response): Promise<v
 
     // 阶段为派生值，附加到详情返回
     const stageMap = await deriveStages([opportunity]);
-    success(res, { ...opportunity, stage: stageMap.get(opportunity.id) });
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    success(res, { ...withProductVisibility(req, opportunity), stage: stageMap.get(opportunity.id) });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -309,8 +353,22 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
     });
     if (!customer) { fail(res, 400, '客户不存在'); return; }
 
+    // DQ-5=A：显式指定业务归属时必须落在当前用户数据范围内（scope 外与不存在同文案）。
+    // 未指定 / 显式 null 一律回落 `req.userId`（V1.0 不允许创建「无主公海商机」）。
+    if (data.ownerId !== undefined && data.ownerId !== null) {
+      if (
+        !(await prisma.user.findFirst({
+          where: applyScope({ id: data.ownerId }, await roleScope(req, { field: 'id' })),
+          select: { id: true },
+        }))
+      ) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
+
     const { intentLevel, probability } = splitProbability(data.probability);
-    const items = await buildItems(data.products);
+    const items = await buildItems(req, data.products);
 
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const opportunity = await prisma.$transaction(async (tx) => {
@@ -322,7 +380,7 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
           title: data.title,
           customerId: data.customerId,
           leadId: data.leadId ?? null,
-          ownerId: data.ownerId ?? null,
+          ownerId: data.ownerId ?? req.userId ?? null,
           estimatedAmount: data.estimatedAmount ?? undefined,
           estimatedCloseDate: data.estimatedCloseDate ? new Date(data.estimatedCloseDate) : null,
           intentLevel: data.intentLevel ?? intentLevel ?? undefined,
@@ -356,7 +414,8 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
       customerId: data.customerId,
     });
 
-    created(res, opportunity, '创建成功');
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    created(res, withProductVisibility(req, opportunity), '创建成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, '参数校验失败：' + err.errors.map(e => e.message).join(', '));
@@ -373,17 +432,45 @@ export const updateOpportunity = async (req: AuthRequest, res: Response): Promis
   try {
     const data = updateOpportunitySchema.parse(req.body);
 
-    const existing = await prisma.opportunity.findUnique({ where: { id: req.params.id } });
+    // 数据范围：目标商机本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // 该门**先于任何写入**（opportunityItem.deleteMany / opportunity.update）。
+    const existing = await prisma.opportunity.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: {
+        id: true,
+        title: true,
+        estimatedAmount: true,
+        notes: true,
+        customerId: true,
+      },
+    });
     if (!existing) { fail(res, 404, '记录不存在'); return; }
+
+    // P5-OWN-01（F-NEW-06）：显式改派业务归属人时必须落在当前用户数据范围内，且**先于任何写入**
+    // （opportunityItem.deleteMany / opportunity.update / activityLogger）。
+    // `null` 沿用既有 update 语义（透传，不改动）；`undefined` 表示不修改，不触发校验。
+    if (data.ownerId !== undefined && data.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: data.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
 
     // 从 data 中提取 products（非 Opportunity 模型字段），剩余字段用于更新
     const { products, probability, ...opportunityData } = data;
 
+    // 引用侧（DQ-3=C）：产品可见性校验（buildItems 内建谓词）必须**先于任何写入**，
+    // 故先构建明细、再执行下方 opportunityItem.deleteMany 重建。
+    const items = products !== undefined ? await buildItems(req, products) : [];
+
     // 若传入 products，则重建商机-产品关联
     if (products !== undefined) {
-      await prisma.opportunityItem.deleteMany({ where: { opportunityId: req.params.id } });
+      await prisma.opportunityItem.deleteMany({ where: { opportunityId: existing.id } });
     }
-    const items = products !== undefined ? await buildItems(products) : [];
 
     const { intentLevel, probability: numericProbability } = splitProbability(probability);
 
@@ -403,7 +490,7 @@ export const updateOpportunity = async (req: AuthRequest, res: Response): Promis
     if (numericProbability === undefined) delete updateData.probability;
 
     const opportunity = await prisma.opportunity.update({
-      where: { id: req.params.id },
+      where: { id: existing.id },
       data: updateData,
       include: OPPORTUNITY_INCLUDE,
     });
@@ -429,7 +516,8 @@ export const updateOpportunity = async (req: AuthRequest, res: Response): Promis
       customerId: existing.customerId,
     });
 
-    success(res, opportunity, '更新成功');
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, opportunity), '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, '参数校验失败：' + err.errors.map(e => e.message).join(', '));
@@ -444,10 +532,15 @@ export const updateOpportunity = async (req: AuthRequest, res: Response): Promis
 
 export const deleteOpportunity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const existing = await prisma.opportunity.findUnique({ where: { id: req.params.id } });
+    // 数据范围：目标商机本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // 该门**先于 delete 与 activityLogger**（拒绝路径零副作用）。
+    const existing = await prisma.opportunity.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true, opportunityNo: true, title: true, customerId: true },
+    });
     if (!existing) { fail(res, 404, '记录不存在'); return; }
 
-    await prisma.opportunity.delete({ where: { id: req.params.id } });
+    await prisma.opportunity.delete({ where: { id: existing.id } });
 
     await activityLogger.log({
       userId: req.userId!,
@@ -472,8 +565,11 @@ export const deleteOpportunity = async (req: AuthRequest, res: Response): Promis
 export const batchDelete = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { ids } = z.object({ ids: z.array(z.string()) }).parse(req.body);
-    await prisma.opportunity.deleteMany({ where: { id: { in: ids } } });
-    success(res, null, `已删除 ${ids.length} 条记录`);
+    // 数据范围：scope 条件进入 where（非前置过滤 ids）⇒ 越权 id 由 scope 静默排除（部分成功语义）
+    const result = await prisma.opportunity.deleteMany({
+      where: applyScope({ id: { in: ids } }, await roleScope(req, { field: 'ownerId' })),
+    });
+    success(res, null, `已删除 ${result.count} 条记录`);
   } catch (err) {
     if (err instanceof z.ZodError) {
       fail(res, 400, '参数校验失败');

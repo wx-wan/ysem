@@ -4,7 +4,7 @@ import { Currency, Prisma, QuotationStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere, projectProductRows } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { getNextNumber } from '../lib/numberSequence';
@@ -31,12 +31,39 @@ import {
 //  - parentId 版本链行为未定，暂不写入
 // ============================================================
 
+/** 明细关联产品的公开字段（DQ-3=C 投影白名单；内部授权字段不得进入响应） */
+const QUOTATION_ITEM_PRODUCT_FIELDS = ['id', 'name', 'sku'] as const;
+
+/** 产品关联 select：含内部授权字段，响应前必须经 withProductVisibility 投影 */
+const QUOTATION_ITEM_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
+
+/** 读取侧（DQ-3=C）：明细关联产品按可见性投影（不可见 ⇒ product=null 且快照 productName=null） */
+const withProductVisibility = <T>(req: AuthRequest, record: T): T => {
+  const rec = record as Record<string, unknown>;
+  return {
+    ...rec,
+    items: projectProductRows(
+      req,
+      (rec.items ?? []) as Record<string, unknown>[],
+      QUOTATION_ITEM_PRODUCT_FIELDS,
+      { nameField: 'productName' },
+    ),
+  } as T;
+};
+
 /** 列表 / 详情统一 include：客户、商机、明细（含产品） */
 const QUOTATION_INCLUDE: Prisma.QuotationInclude = {
   customer: { select: { id: true, customerNo: true, companyName: true } },
   opportunity: { select: { id: true, opportunityNo: true, title: true } },
   items: {
-    include: { product: { select: { id: true, name: true, sku: true } } },
+    include: { product: { select: QUOTATION_ITEM_PRODUCT_SELECT } },
     orderBy: { sort: 'asc' },
   },
 };
@@ -145,6 +172,7 @@ interface ParsedItemsFail {
  * Product 无 `spec` / `craft` 列，故这几项只取入参，不做推断（Schema limitation）。
  */
 async function parseItems(
+  req: AuthRequest,
   raw: QuotationItemInput[] | undefined,
   currency: Currency,
 ): Promise<ParsedItemsOk | ParsedItemsFail> {
@@ -155,7 +183,8 @@ async function parseItems(
   );
   const products = productIds.length
     ? await prisma.product.findMany({
-        where: { id: { in: productIds } },
+        // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内（保持单次批量查询，不引入 N+1）
+        where: { id: { in: productIds }, ...productVisibilityWhere(req) },
         select: { id: true, name: true, sku: true, packaging: true },
       })
     : [];
@@ -166,6 +195,11 @@ async function parseItems(
 
   for (const [index, item] of raw.entries()) {
     const product = item.productId ? productById.get(item.productId) : undefined;
+    // 引用侧（DQ-3=C）：指定 productId 但产品不存在 / 不在 caller 可见范围 ⇒ **同结果**
+    // （不可见与不存在文案一致，不引入 Product existence oracle）
+    if (item.productId && !product) {
+      return { ok: false, message: `第 ${index + 1} 条明细产品不存在` };
+    }
     const productName = item.productName ?? product?.name;
     if (!productName) {
       return { ok: false, message: `第 ${index + 1} 条明细缺少产品名称` };
@@ -239,7 +273,13 @@ export const listQuotations = async (req: AuthRequest, res: Response): Promise<v
       }),
       prisma.quotation.count({ where }),
     ]);
-    success(res, { list, total, page: pageNum, pageSize: pageSizeNum });
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    success(res, {
+      list: list.map((row) => withProductVisibility(req, row)),
+      total,
+      page: pageNum,
+      pageSize: pageSizeNum,
+    });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -256,7 +296,8 @@ export const getQuotation = async (req: AuthRequest, res: Response): Promise<voi
       fail(res, 404, '报价不存在');
       return;
     }
-    success(res, item);
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, item));
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -285,7 +326,7 @@ export const createQuotation = async (req: AuthRequest, res: Response): Promise<
     }
 
     const currency = body.currency ?? Currency.USD;
-    const parsed = await parseItems(body.items, currency);
+    const parsed = await parseItems(req, body.items, currency);
     if (!parsed.ok) {
       fail(res, 400, parsed.message);
       return;
@@ -369,7 +410,8 @@ export const createQuotation = async (req: AuthRequest, res: Response): Promise<
       customerId,
     });
 
-    created(res, item);
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    created(res, withProductVisibility(req, item));
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
@@ -399,7 +441,7 @@ export const updateQuotation = async (req: AuthRequest, res: Response): Promise<
     let totalAmount: Prisma.Decimal | null = null;
 
     if (rest.items !== undefined) {
-      const parsed = await parseItems(rest.items, currency);
+      const parsed = await parseItems(req, rest.items, currency);
       if (!parsed.ok) {
         fail(res, 400, parsed.message);
         return;
@@ -488,7 +530,8 @@ export const updateQuotation = async (req: AuthRequest, res: Response): Promise<
       customerId: item.customerId,
     });
 
-    success(res, item, '更新成功');
+    // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, item), '更新成功');
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));

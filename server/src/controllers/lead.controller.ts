@@ -5,7 +5,7 @@ import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere, projectProductRows } from '../utils/scope';
 import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
@@ -84,6 +84,30 @@ const LEAD_WRITABLE_FIELDS = [
   'ownerId',
 ] as const;
 
+/**
+ * LeadItem 关联产品的公开字段（DQ-3=C 投影白名单）。
+ * `visibility` / `createdBy` / `visibleUsers` 为**内部授权字段**，只用于可见性判定，不得进入响应。
+ */
+const LEAD_ITEM_PRODUCT_FIELDS = ['id', 'name'] as const;
+
+/** LeadItem 关联产品的读取侧 include（含内部授权字段，响应前必须经 projectProductRows 投影） */
+const LEAD_ITEM_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
+
+/**
+ * 「当前用户数据范围（ALL / DEPT / SELF）+ id」的查询条件。
+ * 所有线索单条读写都必须经此条件，杜绝越权访问。
+ * Lead 有直接 ownerId（非经关联继承），故不传 relation；本条件**不并入公海**（DQ-1=A1）。
+ */
+async function scopedWhere(req: AuthRequest, id: string): Promise<Record<string, unknown>> {
+  return applyScope({ id }, await roleScope(req, { field: 'ownerId' }));
+}
+
 // 列表：分页 + 多维筛选
 export const getLeads = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -140,12 +164,17 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
           // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
-          items: { include: { product: { select: { id: true, name: true } } } },
+          items: { include: { product: { select: LEAD_ITEM_PRODUCT_SELECT } } },
           owner: { select: { id: true, username: true, realName: true } },
         },
-      },
-    );
-    success(res, { list, total, page: p, pageSize: ps });
+        },
+        );
+        // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+        const safeList = (list as { items: Record<string, unknown>[] }[]).map((lead) => ({
+          ...lead,
+          items: projectProductRows(req, lead.items, LEAD_ITEM_PRODUCT_FIELDS, { nameField: 'productName' }),
+        }));
+        success(res, { list: safeList, total, page: p, pageSize: ps });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -153,12 +182,14 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
 
 export const getLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const item = await prisma.lead.findUnique({
-      where: { id: req.params.id },
+    // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const item = await prisma.lead.findFirst({
+      where: await scopedWhere(req, req.params.id),
       include: {
         customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
         // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
-        items: { include: { product: { select: { id: true, name: true } } } },
+        items: { include: { product: { select: LEAD_ITEM_PRODUCT_SELECT } } },
         owner: { select: { id: true, username: true, realName: true } },
       },
     });
@@ -167,15 +198,11 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
       return;
     }
 
-    // 数据范围校验：管理员不受限；其余角色只能查看自己负责或公海的线索
-    if (req.roleCode !== 'admin' && req.roleCode !== 'ADMIN') {
-      if (item.ownerId && item.ownerId !== req.userId) {
-        fail(res, 403, '无权查看该线索');
-        return;
-      }
-    }
-
-    success(res, item);
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    success(res, {
+      ...item,
+      items: projectProductRows(req, item.items, LEAD_ITEM_PRODUCT_FIELDS, { nameField: 'productName' }),
+    });
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -190,15 +217,35 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照
     let leadItems: { productId: string; productName: string | null; quantity: number }[] | undefined;
     if (data.productId) {
-      const product = await prisma.product.findUnique({
-        where: { id: data.productId },
+      // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内；**先于事务与任何写入**。
+      // 不可见与不存在**同结果**（400 `产品不存在`），不引入存在性 oracle。
+      const product = await prisma.product.findFirst({
+        where: { id: data.productId, ...productVisibilityWhere(req) },
         select: { name: true },
       });
+      if (!product) {
+        fail(res, 400, '产品不存在');
+        return;
+      }
       leadItems = [{
         productId: data.productId,
-        productName: product?.name ?? data.productName ?? null,
+        productName: product.name,
         quantity: data.quantity || 1,
       }];
+    }
+
+    // P5-OWN-01（F-NEW-01）：显式指定业务归属人时必须落在当前用户数据范围内，
+    // 且**先于事务与任何写入**（形态与 quotation / salesOrder / productionOrder / sampleOrder 一致）。
+    // Lead 的 `ownerId` 缺省或显式 null 表示**公海**（DQ-1=A1），故仅在传入具体用户时校验。
+    if (data.ownerId !== undefined && data.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: data.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
     }
 
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
@@ -255,21 +302,57 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     for (const field of LEAD_WRITABLE_FIELDS) {
       if (leadData[field] !== undefined) update[field] = leadData[field];
     }
-    await prisma.lead.update({ where: { id: req.params.id }, data: update });
+    // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // 该门**先于任何写入**（lead.update / leadItem.deleteMany / leadItem.create）。
+    const existing = await prisma.lead.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true },
+    });
+    if (!existing) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+
+    // P5-OWN-01（F-NEW-05）：`ownerId` 属 LEAD_WRITABLE_FIELDS，改派归属必须通过目标用户
+    // 数据范围校验，且**先于任何写入**（lead.update / leadItem.deleteMany / leadItem.create）。
+    // `ownerId = null` 表示释放到公海（DQ-1=A1），允许；`undefined` 表示不修改，不触发校验。
+    if (leadData.ownerId !== undefined && leadData.ownerId !== null) {
+      const owner = await prisma.user.findFirst({
+        where: applyScope({ id: leadData.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true },
+      });
+      if (!owner) {
+        fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
+
+    // 引用侧（DQ-3=C）：产品可见性校验必须**先于任何写入**（含 lead.update 与明细重建），
+    // 否则拒绝发生在写入之后会造成「授权后于变更」。不可见与不存在同结果（400）。
+    let resolvedProductName: string | null = null;
+    if (productId) {
+      const product = await prisma.product.findFirst({
+        where: { id: productId, ...productVisibilityWhere(req) },
+        select: { name: true },
+      });
+      if (!product) {
+        fail(res, 400, '产品不存在');
+        return;
+      }
+      resolvedProductName = product.name;
+    }
+
+    await prisma.lead.update({ where: { id: existing.id }, data: update });
 
     // V1.0：产品关联整表重建于 LeadItem（owner 为 leadId，不能误用 opportunityId）
     if (productId !== undefined) {
-      await prisma.leadItem.deleteMany({ where: { leadId: req.params.id } });
+      await prisma.leadItem.deleteMany({ where: { leadId: existing.id } });
       if (productId) {
-        const product = await prisma.product.findUnique({
-          where: { id: productId },
-          select: { name: true },
-        });
         await prisma.leadItem.create({
           data: {
-            leadId: req.params.id,
+            leadId: existing.id,
             productId,
-            productName: product?.name ?? productName ?? null,
+            productName: resolvedProductName ?? productName ?? null,
             quantity: data.quantity || 1,
           },
         });
@@ -391,7 +474,9 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
     const productIds = lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v));
     if (productIds.length) {
       const products = await prisma.product.findMany({
-        where: { id: { in: productIds } },
+        // 引用侧（DQ-3=C / F-NEW-09）：不可见产品不得进入归属改写目标；
+        // claim 主体（线索 / 客户归属）不受影响，仍应成功。
+        where: { id: { in: productIds }, ...productVisibilityWhere(req) },
         select: { id: true, ownerId: true },
       });
       const freeIds = products.filter((p) => !p.ownerId).map((p) => p.id);
@@ -443,8 +528,19 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       fail(res, 403, '无权转交该线索');
       return;
     }
-    const newOwner = await prisma.user.findUnique({ where: { id: newOwnerId } });
-    if (!newOwner || newOwner.status !== 'ACTIVE') {
+    // P5-OWN-02（F-NEW-02）：目标 owner 必须同时满足「存在 + 属于调用方数据范围 + ACTIVE」。
+    // 「有权转交当前线索」≠「可转交给任意用户」——后者为独立授权边界；且本次转交会联动
+    // 改写 customer.ownerId 与 PRIVATE 产品可见人，故必须在**任何写入之前**完成校验。
+    // scope 外与不存在使用同一文案，不泄露目标用户是否存在（不引入 403）。
+    const newOwner = await prisma.user.findFirst({
+      where: applyScope({ id: newOwnerId }, await roleScope(req, { field: 'id' })),
+      select: { id: true, status: true, username: true, realName: true },
+    });
+    if (!newOwner) {
+      fail(res, 400, '业务归属人不存在或无权限指派');
+      return;
+    }
+    if (newOwner.status !== 'ACTIVE') {
       fail(res, 400, '目标用户不存在或已停用');
       return;
     }
@@ -506,12 +602,17 @@ export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise
   try {
     // V1.0：与 Prisma LeadStatus 严格一致（不含 VALID）
     const { status } = z.object({ status: z.nativeEnum(LeadStatus) }).parse(req.body);
-    const existing = await prisma.lead.findUnique({ where: { id: req.params.id } });
+    // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const existing = await prisma.lead.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true, leadNo: true, status: true, customerId: true },
+    });
     if (!existing) {
       fail(res, 404, '线索不存在');
       return;
     }
-    await prisma.lead.update({ where: { id: req.params.id }, data: { status } });
+    await prisma.lead.update({ where: { id: existing.id }, data: { status } });
 
     const label = LEAD_STATUS_LABEL[status] || status;
     void activityLogger.log({

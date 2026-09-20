@@ -15,6 +15,23 @@ import {
   SkuContextError,
   SkuConcurrencyError,
 } from '../lib/skuCode';
+import { projectProductRows } from '../utils/scope';
+
+/**
+ * getMixedProducts「组合（GROUP）」分支中成员产品的公开字段（DQ-3=C 投影白名单）。
+ * 仅用于该分支的读取侧投影；内部授权字段不得进入响应。
+ */
+const MIXED_GROUP_PRODUCT_FIELDS = ['id', 'name', 'sku'] as const;
+
+/** 组合分支成员产品关联 select（含内部授权字段，响应前必须投影） */
+const MIXED_GROUP_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
 
 // ========== V1.0 标量适配工具 ==========
 // 尺寸 / 克重：V1.0 Product 为 Float?，旧版以 String 存储，统一归一为 number | null
@@ -465,15 +482,31 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
       };
     }
     // 工艺或受众变化时，SKU 按新组合自动重新生成；未变化则保留原 SKU
-    const existing = await prisma.product.findUnique({
-      where: { id: req.params.id },
+    // DQ-3=C：保留 PUBLIC / PRIVATE visibility 模型，授权门与列表（L217-223 / L262-263）及详情（L306-316）
+    // 的可见性谓词**逐字一致**：PUBLIC ∨（PRIVATE ∧ 本人创建）∨（PRIVATE ∧ 在可见人名单）。
+    // DQ-6=404：scope 外与不存在统一 404，不泄露 PRIVATE 产品存在性。
+    const uid = req.userId;
+    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
+    const existing = await prisma.product.findFirst({
+      where: {
+        id: req.params.id,
+        ...(isAdmin || !uid
+          ? {}
+          : {
+              OR: [
+                { visibility: 'PUBLIC' },
+                { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
+                { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
+              ],
+            }),
+      },
       include: {
         crafts: { select: { productCraft: { select: { id: true, name: true } } } },
         visibleUsers: { select: { userId: true } },
       },
     });
     if (!existing) { fail(res, 404, '产品不存在'); return; }
-    // 可见即可编辑：能查看到该产品即允许修改（列表/详情已按可见性过滤），不再单独校验修改权限
+    // 可见即可编辑：授权门已上移至上方 scoped findFirst，与列表/详情可见性口径一致。
     // 工艺/受众变化判定为纯计算（事务外）；SKU 生成与 Product update 必须同事务（见下）
     let skuNeedsRegen = false;
     let finalCraftIds: string[] = [];
@@ -635,13 +668,18 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
       const groupsRaw = await prisma.comboProduct.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        include: { items: { include: { product: { select: { id: true, name: true, sku: true } } } } },
+        include: { items: { include: { product: { select: MIXED_GROUP_PRODUCT_SELECT } } } },
       });
-      const groups = groupsRaw.map((g) => ({
-        ...g,
-        productCount: g.items.length,
-        products: g.items.map((it) => it.product).filter(Boolean),
-      }));
+      const groups = groupsRaw.map((g) => {
+        // 读取侧（DQ-3=C）：组合成员产品按可见性投影（不可见 ⇒ product=null，不得进入 products）
+        const items = projectProductRows(req, g.items, MIXED_GROUP_PRODUCT_FIELDS);
+        return {
+          ...g,
+          items,
+          productCount: g.items.length,
+          products: items.map((it) => it.product).filter(Boolean),
+        };
+      });
       groups.forEach((g) => entries.push({ type: 'GROUP', data: g as unknown as Record<string, unknown> }));
     }
 

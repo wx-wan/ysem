@@ -4,7 +4,7 @@ import { Currency, Prisma, SalesOrderStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { getNextNumber } from '../lib/numberSequence';
@@ -188,6 +188,7 @@ interface ParsedItemsFail {
  * Product 无 `spec` / `craft` / `size` 列，故这几项只取入参，不做推断（Schema limitation）。
  */
 async function parseItems(
+  req: AuthRequest,
   raw: SalesOrderItemInput[] | undefined,
   currency: Currency,
 ): Promise<ParsedItemsOk | ParsedItemsFail> {
@@ -198,7 +199,9 @@ async function parseItems(
   );
   const products = productIds.length
     ? await prisma.product.findMany({
-        where: { id: { in: productIds } },
+        // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内（保持单次批量查询，不引入 N+1）
+        // 不可见 ⇒ 与「不存在」同走下方 `第 N 行明细产品不存在` 分支（无存在性 oracle）
+        where: { id: { in: productIds }, ...productVisibilityWhere(req) },
         select: { id: true, name: true, sku: true, packaging: true, material: true, colors: true },
       })
     : [];
@@ -448,7 +451,7 @@ export const createSalesOrder = async (req: AuthRequest, res: Response): Promise
     }
 
     const currency = body.currency ?? Currency.USD;
-    const parsed = await parseItems(body.items, currency);
+    const parsed = await parseItems(req, body.items, currency);
     if (!parsed.ok) {
       fail(res, 400, parsed.message);
       return;
@@ -596,7 +599,7 @@ export const updateSalesOrder = async (req: AuthRequest, res: Response): Promise
     let totalAmount: Prisma.Decimal | null = null;
 
     if (rest.items !== undefined) {
-      const parsed = await parseItems(rest.items, currency);
+      const parsed = await parseItems(req, rest.items, currency);
       if (!parsed.ok) {
         fail(res, 400, parsed.message);
         return;

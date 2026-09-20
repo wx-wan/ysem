@@ -134,3 +134,94 @@ export const applyScope = (
   }
   return { ...where, AND: [scope] };
 };
+
+/* ============================================================
+ * Product 可见性授权（DQ-3=C：**对象级**授权）
+ *
+ * 语义与 product.controller 既有四处实现**完全等价**（getProducts / getProductOptions /
+ * getProductById / getMixedProducts 的 PRODUCT 分支）：
+ *   Product 可见 ⟺ visibility !== 'PRIVATE'
+ *               OR createdBy === caller
+ *               OR caller ∈ visibleUsers
+ *               OR caller 为 admin（roleCode admin|ADMIN）
+ *
+ * 说明：
+ *  - 管理员判据**严格**沿用 `isAdmin`（roleCode），**不**使用 dataScope === 'ALL'；
+ *  - 本组 helper 只抽取既有语义，不改变 Product 权限模型，也不涉及 ownerId 数据范围。
+ * ============================================================ */
+
+/** 引用侧：可注入 Prisma `where` 的可见性条件（admin / 无 uid ⇒ 无约束，返回 {}） */
+export const productVisibilityWhere = (req: AuthRequest): Record<string, unknown> => {
+  if (isAdmin(req)) return {};
+  const uid = req.userId;
+  if (!uid) return {};
+  return {
+    OR: [
+      { visibility: 'PUBLIC' },
+      { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
+      { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
+    ],
+  };
+};
+
+/** 读取侧判定所需的 Product 形态（必须由调用方在 select 中显式取回） */
+export interface ProductVisibilityShape {
+  visibility?: string | null;
+  createdBy?: string | null;
+  visibleUsers?: { userId: string }[] | null;
+}
+
+/**
+ * 读取侧：单对象可见性判定（post-filter 用）。
+ *
+ * ⚠️ **fail-closed**：若调用方未 select `visibility`（字段缺失），视为不可见——
+ *    防止「忘记补 select」导致过滤静默失效。调用方必须 select visibility / createdBy / visibleUsers。
+ */
+export const canReadProduct = (
+  req: AuthRequest,
+  product: ProductVisibilityShape | null | undefined,
+): boolean => {
+  if (!product) return false;
+  if (isAdmin(req)) return true;
+  const uid = req.userId;
+  if (!uid) return true;
+  if (product.visibility === undefined || product.visibility === null) return false;
+  if (product.visibility !== 'PRIVATE') return true;
+  if (product.createdBy === uid) return true;
+  return (product.visibleUsers ?? []).some((v) => v.userId === uid);
+};
+
+/**
+ * 读取侧投影：对「带 `product` 关联（+ 可选 `productId` / `productName` 快照）」的单行做可见性投影。
+ *
+ *  - 关联产品**不可见** ⇒ `product = null`；且当 `productId != null` 时，快照字段
+ *    （`options.nameField`，如 productName）一并置 null（人工录入名称不受影响）
+ *  - 关联产品**可见** ⇒ `product` 仅保留 `fields` 白名单内的公开字段
+ *    （`visibility` / `createdBy` / `visibleUsers` 等内部授权字段**必须**被剔除，不得进入响应）
+ */
+export const projectProductRow = <T>(
+  req: AuthRequest,
+  row: T,
+  fields: readonly string[],
+  options: { nameField?: string } = {},
+): T => {
+  const record = row as Record<string, unknown>;
+  const raw = record.product as (ProductVisibilityShape & Record<string, unknown>) | null | undefined;
+  if (!raw) return row;
+  if (!canReadProduct(req, raw)) {
+    const next: Record<string, unknown> = { ...record, product: null };
+    if (options.nameField && record.productId != null) next[options.nameField] = null;
+    return next as T;
+  }
+  const projected: Record<string, unknown> = {};
+  for (const f of fields) if (f in raw) projected[f] = raw[f];
+  return { ...record, product: projected } as T;
+};
+
+/** 读取侧投影（批量）：等价于对每行调用 projectProductRow */
+export const projectProductRows = <T>(
+  req: AuthRequest,
+  rows: readonly T[],
+  fields: readonly string[],
+  options: { nameField?: string } = {},
+): T[] => rows.map((row) => projectProductRow(req, row, fields, options));

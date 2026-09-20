@@ -4,7 +4,7 @@ import { Currency, Prisma, SampleRoundResult, SampleStatus } from '@prisma/clien
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere, projectProductRow } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { getNextNumber } from '../lib/numberSequence';
@@ -26,11 +26,28 @@ import { DECIMAL_PRECISION, round } from '../utils/currency';
 //  - feeAmount 的 CNY 折算（schema 无 exchangeRate / amountCny 列，不得伪造）
 // ============================================================
 
+/** 打样单关联产品的公开字段（DQ-3=C 投影白名单；内部授权字段不得进入响应） */
+const SAMPLE_ORDER_PRODUCT_FIELDS = ['id', 'name', 'sku'] as const;
+
+/** 产品关联 select：含内部授权字段，响应前必须经 withProductVisibility 投影 */
+const SAMPLE_ORDER_PRODUCT_SELECT = {
+  id: true,
+  name: true,
+  sku: true,
+  visibility: true,
+  createdBy: true,
+  visibleUsers: { select: { userId: true } },
+} as const;
+
+/** 读取侧（DQ-3=C）：不可见 PRIVATE 产品 ⇒ product = null，且快照 productName 同步置空 */
+const withProductVisibility = <T>(req: AuthRequest, record: T): T =>
+  projectProductRow(req, record, SAMPLE_ORDER_PRODUCT_FIELDS, { nameField: 'productName' });
+
 /** 列表统一 include：客户、商机、产品、轮次（roundNo 升序） */
 const SAMPLE_ORDER_INCLUDE: Prisma.SampleOrderInclude = {
   customer: { select: { id: true, customerNo: true, companyName: true } },
   opportunity: { select: { id: true, opportunityNo: true, title: true } },
-  product: { select: { id: true, name: true, sku: true } },
+  product: { select: SAMPLE_ORDER_PRODUCT_SELECT },
   rounds: { orderBy: { roundNo: 'asc' } },
 };
 
@@ -135,7 +152,7 @@ type SnapshotResult =
  * Product 后续改名不会回溯修改已落库的 SampleOrder。
  * Product 无 `spec` / `craft` / `size` 列（仅有包装 `packaging`），故这几项只取入参，不做推断。
  */
-async function resolveProductSnapshot(input: {
+async function resolveProductSnapshot(req: AuthRequest, input: {
   productId?: string | null;
   productName?: string | null;
   spec?: string | null;
@@ -145,8 +162,10 @@ async function resolveProductSnapshot(input: {
 }): Promise<SnapshotResult> {
   let product: { id: string; name: string; packaging: string | null } | null = null;
   if (input.productId) {
-    product = await prisma.product.findUnique({
-      where: { id: input.productId },
+    // 引用侧（DQ-3=C）：产品必须落在 caller 可见范围内（授权先于任何写入）；
+    // 不可见与不存在**同结果**（400 `产品不存在`），不引入存在性 oracle。
+    product = await prisma.product.findFirst({
+      where: { id: input.productId, ...productVisibilityWhere(req) },
       select: { id: true, name: true, packaging: true },
     });
     if (!product) return { ok: false, message: '产品不存在' };
@@ -227,7 +246,13 @@ export const listSampleOrders = async (req: AuthRequest, res: Response): Promise
       }),
       prisma.sampleOrder.count({ where }),
     ]);
-    success(res, { list, total, page: pageNum, pageSize: pageSizeNum });
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    success(res, {
+      list: list.map((row) => withProductVisibility(req, row)),
+      total,
+      page: pageNum,
+      pageSize: pageSizeNum,
+    });
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
@@ -248,7 +273,8 @@ export const getSampleOrder = async (req: AuthRequest, res: Response): Promise<v
       fail(res, 404, '打样单不存在');
       return;
     }
-    success(res, item);
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, item));
   } catch {
     fail(res, 500, '服务器错误');
   }
@@ -287,7 +313,7 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
       }
     }
 
-    const snapshot = await resolveProductSnapshot(body);
+    const snapshot = await resolveProductSnapshot(req, body);
     if (!snapshot.ok) {
       fail(res, 400, snapshot.message);
       return;
@@ -359,7 +385,8 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
       customerId,
     });
 
-    created(res, item);
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    created(res, withProductVisibility(req, item));
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
@@ -437,7 +464,7 @@ export const updateSampleOrder = async (req: AuthRequest, res: Response): Promis
       rest.size !== undefined ||
       rest.packaging !== undefined;
     if (productTouched) {
-      const snapshot = await resolveProductSnapshot({
+      const snapshot = await resolveProductSnapshot(req, {
         productId: rest.productId !== undefined ? rest.productId : existing.productId,
         productName: rest.productName !== undefined ? rest.productName : existing.productName,
         spec: rest.spec !== undefined ? rest.spec : existing.spec,
@@ -508,7 +535,8 @@ export const updateSampleOrder = async (req: AuthRequest, res: Response): Promis
       customerId: item.customerId,
     });
 
-    success(res, item, '更新成功');
+    // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    success(res, withProductVisibility(req, item), '更新成功');
   } catch (e) {
     if (e instanceof z.ZodError) {
       fail(res, 400, e.errors.map((err) => err.message).join(', '));
