@@ -500,8 +500,14 @@ export const updateProfit = async (req: AuthRequest, res: Response): Promise<voi
       return;
     }
 
-    const salesOrder = await prisma.salesOrder.findUnique({
-      where: { id: existing.salesOrderId },
+    // F-3C4-02（对齐 createProfit）：宿主 SalesOrder 必须在本用户数据范围内；
+    // scope 外与不存在同响应 404，且 gate 先于任何 mutation（否则可凭本路径读取
+    // 已移出范围的宿主金额）。`profit.salesOrderId` 不可变约束不变。
+    const salesOrder = await prisma.salesOrder.findFirst({
+      where: applyScope(
+        { id: existing.salesOrderId },
+        await roleScope(req, { field: 'ownerId' }),
+      ),
       select: {
         id: true,
         orderNo: true,
@@ -513,7 +519,7 @@ export const updateProfit = async (req: AuthRequest, res: Response): Promise<voi
       },
     });
     if (!salesOrder) {
-      fail(res, 400, '销售订单不存在');
+      fail(res, 404, '销售订单不存在');
       return;
     }
 

@@ -410,17 +410,19 @@ export const submitApproval = async (req: AuthRequest, res: Response): Promise<v
       businessId: paramId ?? req.body?.businessId,
     });
 
-    // 1. 业务对象存在性
-    const loaded = await loadBusinessRef(body.bizType, body.businessId);
-    if (!loaded.ok) {
-      fail(res, loaded.status, loaded.message);
+    // 1. 业务 Scope（禁止越权为其他部门/他人的单据发起审批）：
+    //    不可见与不存在统一 404 `${label}不存在`，消除「存在但越权」的存在性 oracle。
+    //    hasBusinessAccess 只读（ownerScopeOf + scopedBusinessIds 白名单），无副作用。
+    const allowed = await hasBusinessAccess(req, body.bizType, body.businessId);
+    if (!allowed) {
+      fail(res, 404, `${BIZ_META[body.bizType].label}不存在`);
       return;
     }
 
-    // 2. 业务 Scope（禁止越权为其他部门/他人的单据发起审批）
-    const allowed = await hasBusinessAccess(req, body.bizType, body.businessId);
-    if (!allowed) {
-      fail(res, 403, '无权对该业务单据发起审批');
+    // 2. 业务对象存在性（通过范围判定后，此处失败仅剩「不存在 / 并发删除」）
+    const loaded = await loadBusinessRef(body.bizType, body.businessId);
+    if (!loaded.ok) {
+      fail(res, loaded.status, loaded.message);
       return;
     }
 

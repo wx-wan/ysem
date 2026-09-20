@@ -386,8 +386,10 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
     const { id } = req.params;
 
     // V1.0：产品通过 LeadItem 关联（Lead 1:N LeadItem）
-    const lead = await prisma.lead.findUnique({
-      where: { id },
+    // P5-SCOPE（F-NEW-13-A）：目标线索必须落在调用方数据范围内（scoped single-record 语义，
+    // 与 3C-6-3 的单条读取口径一致）；scope 外与不存在同响应 404。
+    const lead = await prisma.lead.findFirst({
+      where: await scopedWhere(req, id),
       include: { items: { select: { productId: true } } },
     });
     if (!lead) {
@@ -398,8 +400,10 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       fail(res, 400, '该线索已在公海');
       return;
     }
+    // actor 规则不变（owner OR admin）；非本人统一 404「线索不存在」（可见 ≠ 可操作，
+    // DEPT 成员的线索对本用户不可执行）—— 消除 404/403 可区分的存在性/归属 oracle。
     if (lead.ownerId !== userId && roleCode !== 'admin') {
-      fail(res, 403, '无权释放该线索');
+      fail(res, 404, '线索不存在');
       return;
     }
     const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: null } })];
@@ -512,8 +516,10 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
     const userId = req.userId || '';
     const roleCode = req.roleCode;
 
-    const lead = await prisma.lead.findUnique({
-      where: { id },
+    // P5-SCOPE（F-NEW-13-B）：目标线索必须落在调用方数据范围内（与 releaseLead / 3C-6-3 一致）；
+    // scope 外与不存在同响应 404。
+    const lead = await prisma.lead.findFirst({
+      where: await scopedWhere(req, id),
       include: {
         owner: { select: { id: true, realName: true } },
         // V1.0：产品通过 LeadItem 关联（Lead 1:N LeadItem）
@@ -524,8 +530,9 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       fail(res, 404, '线索不存在');
       return;
     }
+    // actor 规则不变（owner OR admin）；非本人统一 404「线索不存在」（可见 ≠ 可操作）。
     if (lead.ownerId !== userId && roleCode !== 'admin') {
-      fail(res, 403, '无权转交该线索');
+      fail(res, 404, '线索不存在');
       return;
     }
     // P5-OWN-02（F-NEW-02）：目标 owner 必须同时满足「存在 + 属于调用方数据范围 + ACTIVE」。

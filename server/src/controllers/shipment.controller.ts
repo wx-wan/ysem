@@ -792,12 +792,17 @@ export const updateShipment = async (req: AuthRequest, res: Response): Promise<v
       existing.status === ShipmentStatus.BOOKED && rest.status === ShipmentStatus.SHIPPED;
 
     if (hasItemsMutation || isBookedToShipped) {
-      const salesOrder = await prisma.salesOrder.findUnique({
-        where: { id: existing.salesOrderId },
+      // F-3C4-02（对齐 createShipment）：宿主 SalesOrder 必须在本用户数据范围内；
+      // scope 外与不存在同响应 404（select 仅 id/status，不扩大）。
+      const salesOrder = await prisma.salesOrder.findFirst({
+        where: applyScope(
+          { id: existing.salesOrderId },
+          await roleScope(req, { field: 'ownerId' }),
+        ),
         select: { id: true, status: true },
       });
       if (!salesOrder) {
-        fail(res, 400, '销售订单不存在');
+        fail(res, 404, '销售订单不存在');
         return;
       }
       // 沿用既有 SalesOrder SHIPPABLE 规则：**保持原有 400**（R-3(c) 冻结，不改既有语义）
