@@ -169,14 +169,19 @@ async function resolveProductSnapshot(input: {
 }
 
 /** 解析客户：显式 customerId 优先，否则回填商机所属客户（SampleOrder.customerId 必填） */
-async function resolveCustomerId(input: {
-  customerId?: string | null;
-  opportunityId?: string | null;
-}): Promise<{ ok: true; customerId: string } | { ok: false; message: string }> {
+async function resolveCustomerId(
+  req: AuthRequest,
+  input: {
+    customerId?: string | null;
+    opportunityId?: string | null;
+  },
+): Promise<{ ok: true; customerId: string } | { ok: false; message: string }> {
   if (input.customerId) return { ok: true, customerId: input.customerId };
   if (input.opportunityId) {
-    const opportunity = await prisma.opportunity.findUnique({
-      where: { id: input.opportunityId },
+    // 数据范围：商机引用必须落在当前用户 ownerId 范围内（scope 外与不存在同文案）
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const opportunity = await prisma.opportunity.findFirst({
+      where: applyScope({ id: input.opportunityId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, customerId: true },
     });
     if (!opportunity) return { ok: false, message: '商机不存在' };
@@ -254,7 +259,7 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
   try {
     const body = createSchema.parse(req.body);
 
-    const resolved = await resolveCustomerId(body);
+    const resolved = await resolveCustomerId(req, body);
     if (!resolved.ok) {
       fail(res, 400, resolved.message);
       return;
@@ -270,8 +275,10 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
     }
 
     if (body.opportunityId) {
-      const opportunity = await prisma.opportunity.findUnique({
-        where: { id: body.opportunityId },
+      // 数据范围：商机引用必须落在当前用户 ownerId 范围内（scope 外与不存在同文案）
+      // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+      const opportunity = await prisma.opportunity.findFirst({
+        where: applyScope({ id: body.opportunityId }, await roleScope(req, { field: 'ownerId' })),
         select: { id: true },
       });
       if (!opportunity) {
@@ -405,8 +412,10 @@ export const updateSampleOrder = async (req: AuthRequest, res: Response): Promis
     }
     if (rest.opportunityId !== undefined) {
       if (rest.opportunityId) {
-        const opportunity = await prisma.opportunity.findUnique({
-          where: { id: rest.opportunityId },
+        // 数据范围：商机引用必须落在当前用户 ownerId 范围内（scope 外与不存在同文案）
+        // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+        const opportunity = await prisma.opportunity.findFirst({
+          where: applyScope({ id: rest.opportunityId }, await roleScope(req, { field: 'ownerId' })),
           select: { id: true },
         });
         if (!opportunity) {

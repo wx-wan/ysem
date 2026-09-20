@@ -46,7 +46,6 @@ const PRODUCTION_ORDER_DETAIL_INCLUDE: Prisma.ProductionOrderInclude = {
       status: true,
       customerId: true,
       currency: true,
-      totalAmount: true,
       customer: { select: { id: true, customerNo: true, companyName: true } },
     },
   },

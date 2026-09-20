@@ -98,6 +98,15 @@ const updateSchema = createSchema.partial().extend({
 });
 
 /**
+ * 「当前用户数据范围（ALL / DEPT / SELF）+ id」的查询条件。
+ * 所有报价单读写都必须经此条件，杜绝越权访问。
+ * Quotation 有直接 ownerId（非经关联继承），故不传 relation。
+ */
+async function scopedWhere(req: AuthRequest, id: string): Promise<Record<string, unknown>> {
+  return applyScope({ id }, await roleScope(req, { field: 'ownerId' }));
+}
+
+/**
  * 解析汇率（冻结语义 rateToCny：1 单位原币 = X CNY）。
  *  - 本位币 CNY：恒为 1（定义性汇率，非伪造）
  *  - 其余币种：入参优先，其次取 DailyExchangeRate 最近一期
@@ -239,8 +248,8 @@ export const listQuotations = async (req: AuthRequest, res: Response): Promise<v
 // ============ 详情 ============
 export const getQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const item = await prisma.quotation.findUnique({
-      where: { id: req.params.id },
+    const item = await prisma.quotation.findFirst({
+      where: await scopedWhere(req, req.params.id),
       include: QUOTATION_INCLUDE,
     });
     if (!item) {
@@ -259,8 +268,10 @@ export const createQuotation = async (req: AuthRequest, res: Response): Promise<
     const body = createSchema.parse(req.body);
 
     // V1.0：Quotation.customerId 必填，未传时取商机所属客户（Quotation 1:1 归属 Opportunity.customer）
-    const opportunity = await prisma.opportunity.findUnique({
-      where: { id: body.opportunityId },
+    // 数据范围：商机引用必须落在当前用户 ownerId 范围内（scope 外与不存在同文案）
+    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+    const opportunity = await prisma.opportunity.findFirst({
+      where: applyScope({ id: body.opportunityId }, await roleScope(req, { field: 'ownerId' })),
       select: { id: true, customerId: true, title: true },
     });
     if (!opportunity) {
@@ -373,8 +384,9 @@ export const updateQuotation = async (req: AuthRequest, res: Response): Promise<
   try {
     const { id, ...rest } = updateSchema.parse({ id: req.params.id, ...req.body });
 
-    const existing = await prisma.quotation.findUnique({
-      where: { id },
+    // 数据范围：目标报价单本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    const existing = await prisma.quotation.findFirst({
+      where: await scopedWhere(req, id),
       select: { id: true, quotationNo: true, title: true, currency: true, totalAmount: true, customerId: true },
     });
     if (!existing) {
@@ -399,7 +411,21 @@ export const updateQuotation = async (req: AuthRequest, res: Response): Promise<
       totalAmount = round(rest.totalAmount, DECIMAL_PRECISION.amount);
     }
 
-    if (rest.opportunityId) data.opportunity = { connect: { id: rest.opportunityId } };
+    if (rest.opportunityId) {
+      // 数据范围：商机引用必须落在当前用户 ownerId 范围内（scope 外与不存在同文案）
+      // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
+      const opportunity = await prisma.opportunity.findFirst({
+        where: applyScope({ id: rest.opportunityId }, await roleScope(req, { field: 'ownerId' })),
+        select: { id: true, customerId: true, title: true },
+      });
+
+      if (!opportunity) {
+        fail(res, 400, '商机不存在');
+        return;
+      }
+
+      data.opportunity = { connect: { id: rest.opportunityId } };
+    }
     if (rest.customerId) data.customer = { connect: { id: rest.customerId } };
     if (rest.title !== undefined) data.title = rest.title;
     if (rest.currency !== undefined) data.currency = rest.currency;
@@ -475,8 +501,9 @@ export const updateQuotation = async (req: AuthRequest, res: Response): Promise<
 // ============ 删除 ============
 export const removeQuotation = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const existing = await prisma.quotation.findUnique({
-      where: { id: req.params.id },
+    // 数据范围：目标报价单本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
+    const existing = await prisma.quotation.findFirst({
+      where: await scopedWhere(req, req.params.id),
       select: { id: true, quotationNo: true, title: true, customerId: true },
     });
     if (!existing) {
