@@ -877,12 +877,33 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     // 首次下单日期：firstOrderAt（V1.0）优先，兼容旧入参别名；内部只写 firstOrderAt
     const firstOrderAt = body.firstOrderAt !== undefined ? body.firstOrderAt : body.firstOrderDate;
 
-    const existing = await prisma.customer.findUnique({ where: { id } });
+    // BC-8-2（DQ-8-C）：目标客户必须落在调用方客户可见范围（owner ∪ 公海 ∪ admin/ALL）；
+    // scope 外与不存在同为 404 `客户不存在`（移除「存在但非本人」403 oracle）。
+    const existing = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
+    });
     if (!existing) return error(res, "客户不存在", 404);
 
-    // 只有客户归属人或管理员可以编辑
+    // 只有客户归属人或管理员可以编辑（不可操作时与不存在同响应，不泄露存在性）
     if (existing.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权编辑该客户，请先认领", 403);
+      return error(res, "客户不存在", 404);
+    }
+
+    // F-NEW-20 / DQ-8-A（= BC-8-1 同规则）：`ownerId` 与 transfer 的 `newOwnerId` 同属
+    // Customer ownership mutation ⇒ 显式非空用户必须通过**同一**目标用户授权
+    // （存在 + ACTIVE + ∈ caller dataScope），且必须**先于** customer.update（authorization before mutation）。
+    // `null` = 进入公海（既有契约，不校验）；`undefined` = 不注入、保留原值（不校验）。
+    if (ownerId !== undefined && ownerId !== null) {
+      const targetOwner = await prisma.user.findFirst({
+        where: applyScope({ id: ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true, status: true },
+      });
+      if (!targetOwner) {
+        return error(res, "业务归属人不存在或无权限指派", 400);
+      }
+      if (targetOwner.status !== 'ACTIVE') {
+        return error(res, "目标用户不存在或已停用", 400);
+      }
     }
 
     const changes: string[] = [];
@@ -952,12 +973,15 @@ export const remove = async (req: AuthRequest, res: Response, next: NextFunction
     const { id } = req.params;
     const userId = req.userId!;
     const roleCode = req.roleCode;
-    const existing = await prisma.customer.findUnique({ where: { id } });
+    // BC-8-2（DQ-8-C）：scoped 目标解析；scope 外与不存在同为 404（不泄露存在性）
+    const existing = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
+    });
     if (!existing) return error(res, "客户不存在", 404);
 
-    // 只有客户归属人或管理员可以删除
+    // 只有客户归属人或管理员可以删除（不可操作时与不存在同响应）
     if (existing.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权删除该客户", 403);
+      return error(res, "客户不存在", 404);
     }
 
     await prisma.customer.delete({ where: { id } });
@@ -974,7 +998,11 @@ export const claim = async (req: AuthRequest, res: Response, next: NextFunction)
     const username = req.username!;
     const { id } = req.params;
 
-    const customer = await prisma.customer.findUnique({ where: { id } });
+    // BC-8-2（DQ-8-C）：公海客户对全体已认证用户可见（公海语义保留 ⇒ 仍可达「可认领」分支）；
+    // 他人已认领且不在 caller scope 的客户 → 404（不泄露存在性）。
+    const customer = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
+    });
     if (!customer) return error(res, "客户不存在", 404);
 
     // 公海客户：仅 ownerId 为 null
@@ -1012,7 +1040,10 @@ export const release = async (req: AuthRequest, res: Response, next: NextFunctio
     const roleCode = req.roleCode;
     const { id } = req.params;
 
-    const customer = await prisma.customer.findUnique({ where: { id } });
+    // BC-8-2（DQ-8-C）：scoped 目标解析（公海并入 ⇒ 公海客户仍可见，「已在公海」业务分支保持可达）
+    const customer = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
+    });
     if (!customer) return error(res, "客户不存在", 404);
 
     // 公海客户：仅 ownerId 为 null
@@ -1020,9 +1051,9 @@ export const release = async (req: AuthRequest, res: Response, next: NextFunctio
       return error(res, "该客户已在公海", 400);
     }
 
-    // 只有客户归属人或管理员可以释放
+    // 只有客户归属人或管理员可以释放（不可操作时与不存在同响应，不泄露存在性）
     if (customer.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权释放该客户", 403);
+      return error(res, "客户不存在", 404);
     }
 
     await prisma.customer.update({
@@ -1057,21 +1088,30 @@ export const transfer = async (req: AuthRequest, res: Response, next: NextFuncti
     const userId = req.userId!;
     const roleCode = req.roleCode;
 
-    const customer = await prisma.customer.findUnique({
-      where: { id },
+    // BC-8-2（DQ-8-C）：scoped 目标解析；不可操作时与不存在同响应 404。
+    const customer = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
       include: { owner: { select: { id: true, realName: true } } },
     });
     if (!customer) return error(res, "客户不存在", 404);
 
-    // 只有客户归属人或管理员可以转交
+    // 只有客户归属人或管理员可以转交（3C-8-1a 裁定：actor gate = owner | admin，保持不变）
     if (customer.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权转交该客户", 403);
+      return error(res, "客户不存在", 404);
     }
 
     if (!newOwnerId) return error(res, "请选择新负责人", 400);
 
-    const newOwner = await prisma.user.findUnique({ where: { id: newOwnerId } });
-    if (!newOwner || newOwner.status !== 'ACTIVE') {
+    // BC-8-1（DQ-8-A）：目标用户必须 存在 + ACTIVE + ∈ caller dataScope；
+    // admin 仅 bypass dataScope（不豁免存在性/ACTIVE）。不使用裸 findUnique 作为授权判据。
+    const newOwner = await prisma.user.findFirst({
+      where: applyScope({ id: newOwnerId }, await roleScope(req, { field: 'id' })),
+      select: { id: true, status: true, username: true, realName: true },
+    });
+    if (!newOwner) {
+      return error(res, "业务归属人不存在或无权限指派", 400);
+    }
+    if (newOwner.status !== 'ACTIVE') {
       return error(res, "目标用户不存在或已停用", 400);
     }
 
@@ -1216,11 +1256,14 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
     // V1.0 入参校验：tags 归一为 string[]（字符串兼容，按 `,` / `，` 拆分）
     const { tags } = z.object({ tags: tagsField }).parse(req.body);
 
-    const existing = await prisma.customer.findUnique({ where: { id } });
+    // BC-8-2（DQ-8-C）：scoped 目标解析；scope 外与不存在同为 404（不泄露存在性）
+    const existing = await prisma.customer.findFirst({
+      where: applyScope({ id }, includePublicSea(await roleScope(req))),
+    });
     if (!existing) return error(res, "客户不存在", 404);
 
     if (existing.ownerId !== userId && roleCode !== 'admin') {
-      return error(res, "无权编辑该客户", 403);
+      return error(res, "客户不存在", 404);
     }
 
     const customer = await prisma.customer.update({

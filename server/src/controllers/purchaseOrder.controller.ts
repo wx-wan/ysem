@@ -11,7 +11,7 @@ import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope } from '../utils/scope';
+import { applyScope, roleScope, productVisibilityWhere } from '../utils/scope';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import {
@@ -193,6 +193,7 @@ interface ParsedItemsFail {
  * 否则并发删除生产明细时 FK 的 `onDelete: SetNull` 会在校验通过后静默解绑。
  */
 async function parseItems(
+  req: AuthRequest,
   raw: PurchaseOrderItemInput[] | undefined,
   currency: Currency,
   db: Prisma.TransactionClient,
@@ -218,8 +219,13 @@ async function parseItems(
     new Set(raw.map((i) => i.productId).filter((v): v is string => Boolean(v))),
   );
   if (productIds.length > 0) {
-    const found = await db.product.count({ where: { id: { in: productIds } } });
-    if (found !== productIds.length) {
+    // BC-8-5（DQ-8-E）：Product 引用必须复用 DQ-3=C 的**同一**对象级授权边界
+    // （productVisibilityWhere）。「不存在」与「对 caller 不可见」同结果（保持既有 404 `产品不存在`）。
+    const visibleProducts = await db.product.findMany({
+      where: { id: { in: productIds }, ...productVisibilityWhere(req) },
+      select: { id: true },
+    });
+    if (visibleProducts.length !== productIds.length) {
       return { ok: false, status: 404, message: '产品不存在' };
     }
   }
@@ -487,7 +493,7 @@ export const createPurchaseOrder = async (req: AuthRequest, res: Response): Prom
     const item = await prisma.$transaction(async (tx) => {
       await lockProductionOrderItems(tx, (body.items ?? []).map((i) => i.productionOrderItemId));
 
-      const parsed = await parseItems(body.items, currency, tx);
+      const parsed = await parseItems(req, body.items, currency, tx);
       if (!parsed.ok) {
         throw new PurchaseOrderRuleError(parsed.message, parsed.status);
       }
@@ -652,7 +658,7 @@ export const updatePurchaseOrder = async (req: AuthRequest, res: Response): Prom
       ]);
 
       if (rest.items !== undefined) {
-        const parsed = await parseItems(rest.items, currency, tx, preserveByLine);
+        const parsed = await parseItems(req, rest.items, currency, tx, preserveByLine);
         if (!parsed.ok) {
           throw new PurchaseOrderRuleError(parsed.message, parsed.status);
         }

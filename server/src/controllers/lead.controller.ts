@@ -5,7 +5,7 @@ import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
 import { success, created, fail } from '../utils/response';
-import { applyScope, roleScope, productVisibilityWhere, projectProductRows } from '../utils/scope';
+import { applyScope, roleScope, includePublicSea, productVisibilityWhere, projectProductRows } from '../utils/scope';
 import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
@@ -248,6 +248,20 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
+    // BC-8-3（DQ-8-B B1）：`customerId` 属**引用**，必须解析于 caller 的 Customer 可见范围
+    // （owner ∪ 公海 ∪ admin/ALL）；不可见与不存在同结果（400 `客户不存在`），不泄露存在性。
+    // 不引入 `Lead.ownerId == Customer.ownerId` 约束（未冻结）。先于事务与任何写入。
+    if (data.customerId !== undefined && data.customerId !== null) {
+      const customer = await prisma.customer.findFirst({
+        where: applyScope({ id: data.customerId }, includePublicSea(await roleScope(req))),
+        select: { id: true },
+      });
+      if (!customer) {
+        fail(res, 400, '客户不存在');
+        return;
+      }
+    }
+
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const item = await prisma.$transaction(async (tx) => {
       const leadNo = await getNextNumber(tx, 'LEAD');
@@ -323,6 +337,19 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
       });
       if (!owner) {
         fail(res, 400, '业务归属人不存在或无权限指派');
+        return;
+      }
+    }
+
+    // BC-8-3（DQ-8-B B1）：`customerId` 引用授权（与 createLead 同口径）；
+    // `null` 表示清空引用（透传）；不可见与不存在同结果（400 `客户不存在`）。先于任何写入。
+    if (leadData.customerId !== undefined && leadData.customerId !== null) {
+      const customer = await prisma.customer.findFirst({
+        where: applyScope({ id: leadData.customerId }, includePublicSea(await roleScope(req))),
+        select: { id: true },
+      });
+      if (!customer) {
+        fail(res, 400, '客户不存在');
         return;
       }
     }
@@ -407,21 +434,45 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       return;
     }
     const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: null } })];
-    // 联动释放客户到公海（ownerId 置空）
-    if (lead.customerId) {
+
+    // BC-8-3B（DQ-8-B B2）：Customer 联动必须**独立于 Lead 访问权**做 Customer 变更授权
+    // （仅 Customer owner 或 admin）；授权条件直接表达在查询中（不以裸 findUnique 作为授权判据）。
+    // 无权修改时**跳过**联动，Lead 释放主操作照常成功（先例：claimLead「避免抢夺他人客户」保护）。
+    const mutableCustomer = lead.customerId
+      ? await prisma.customer.findFirst({
+          where:
+            roleCode === 'admin'
+              ? { id: lead.customerId }
+              : { id: lead.customerId, ownerId: userId },
+          select: { id: true },
+        })
+      : null;
+    if (mutableCustomer && lead.customerId) {
+      // 联动释放客户到公海（ownerId 置空）
       updates.push(
         prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: null, isKeyAccount: false } }),
       );
     }
-    // 联动产品释放：默认公开（visibility -> PUBLIC），并清空负责人
+
+    // BC-8-4（DQ-8-D）：产品联动必须在**mutation 时刻**重新执行当前 Product 可见性授权
+    // （attach-time 校验不足以防 TOCTOU）；不再可见的产品从 mutation 集合中排除（跳过，不阻断主操作）。
     const productIds = lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v));
+    let releasedProductIds: string[] = [];
     if (productIds.length) {
-      updates.push(
-        prisma.product.updateMany({
-          where: { id: { in: productIds } },
-          data: { visibility: 'PUBLIC', ownerId: null },
-        }),
-      );
+      const visibleProducts = await prisma.product.findMany({
+        where: { id: { in: productIds }, ...productVisibilityWhere(req) },
+        select: { id: true },
+      });
+      releasedProductIds = visibleProducts.map((p) => p.id);
+      if (releasedProductIds.length) {
+        // 联动产品释放：默认公开（visibility -> PUBLIC），并清空负责人
+        updates.push(
+          prisma.product.updateMany({
+            where: { id: { in: releasedProductIds } },
+            data: { visibility: 'PUBLIC', ownerId: null },
+          }),
+        );
+      }
     }
     await prisma.$transaction(updates);
     await activityLogger.log({
@@ -433,7 +484,8 @@ export const releaseLead = async (req: AuthRequest, res: Response): Promise<void
       businessType: BUSINESS_TYPE.LEAD,
       businessId: id,
       businessNo: lead.leadNo,
-      summary: `${username} 释放该线索到公海${lead.customerId ? '，并释放关联客户到公海' : ''}${productIds.length ? `，关联 ${productIds.length} 个产品置为公开` : ''}`,
+      // BC-8-3B B3：日志只描述**实际发生**的联动（跳过时不得虚报）
+      summary: `${username} 释放该线索到公海${mutableCustomer ? '，并释放关联客户到公海' : ''}${releasedProductIds.length ? `，关联 ${releasedProductIds.length} 个产品置为公开` : ''}`,
       customerId: lead.customerId || undefined,
     });
     success(res, null, '释放成功');
@@ -554,18 +606,41 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
     const oldOwnerName = lead.owner?.realName || '未分配';
 
     const updates: any[] = [prisma.lead.update({ where: { id }, data: { ownerId: newOwnerId } })];
-    if (lead.customerId) {
+
+    // BC-8-3B（DQ-8-B B2）：同 releaseLead —— Customer 联动必须独立授权（仅 Customer owner 或 admin），
+    // 授权条件直接表达在查询中（不以裸 findUnique 作为授权判据）；无权时跳过联动，转交主操作照常成功。
+    const mutableCustomer = lead.customerId
+      ? await prisma.customer.findFirst({
+          where:
+            roleCode === 'admin'
+              ? { id: lead.customerId }
+              : { id: lead.customerId, ownerId: userId },
+          select: { id: true },
+        })
+      : null;
+    if (mutableCustomer && lead.customerId) {
       // 转移客户：负责人改为当前(目标)用户
       updates.push(prisma.customer.update({ where: { id: lead.customerId }, data: { ownerId: newOwnerId } }));
     }
     // 转移产品：私密(PRIVATE)则把目标用户加入可见人，公开(PUBLIC)保持
     // visibleUsers 是关联表（ProductVisibleUser）而非字符串数组，需用关系型写入；
     // 联合唯一 (productId, userId) 保证重复转交不会插入重复可见人
+    // BC-8-4（DQ-8-D）：在 mutation 时刻按**当前** Product 可见性重新校验（关闭 TOCTOU）；
+    // 当前已不可见的产品从 mutation 集合中排除（跳过，不阻断主操作）。
     const privateProductIds = lead.items
       .map((i) => i.product)
       .filter((p) => p && p.visibility === 'PRIVATE')
       .map((p) => p!.id);
-    for (const productId of privateProductIds) {
+    let transferProductIds: string[] = [];
+    if (privateProductIds.length) {
+      const visibleProducts = await prisma.product.findMany({
+        where: { id: { in: privateProductIds }, ...productVisibilityWhere(req) },
+        select: { id: true },
+      });
+      const visibleIdSet = new Set(visibleProducts.map((p) => p.id));
+      transferProductIds = privateProductIds.filter((pid) => visibleIdSet.has(pid));
+    }
+    for (const productId of transferProductIds) {
       updates.push(
         prisma.product.update({
           where: { id: productId },
@@ -591,7 +666,7 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
       businessType: BUSINESS_TYPE.LEAD,
       businessId: id,
       businessNo: lead.leadNo,
-      summary: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${lead.customerId ? '，并转移关联客户' : ''}${privateProductIds.length ? `，关联 ${privateProductIds.length} 个私密产品加入可见人` : ''}`,
+      summary: `${username} 将线索从「${oldOwnerName}」转交给「${newOwner.realName || newOwner.username}」${mutableCustomer ? '，并转移关联客户' : ''}${transferProductIds.length ? `，关联 ${transferProductIds.length} 个私密产品加入可见人` : ''}`,
       customerId: lead.customerId || undefined,
     });
     success(res, null, '转交成功');
