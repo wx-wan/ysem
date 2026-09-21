@@ -3,7 +3,8 @@
 面向外贸企业的全链路业务管理平台，覆盖「线索 → 客户 → 商机 → 报价 → 打样 → 订单 → 生产 → 采购 → 出货 → 质检 → 收付款」全流程，并包含产品库、审批、权限、设置等基础模块。
 
 > **当前版本：V1.0 — CLOSED / CONTRACT FROZEN**
-> 冻结基线：`1dc0b2beb3dd94dd70865dc5a276955ec7421c4a`（`HEAD == origin/master`，ahead/behind = `0/0`）
+> V1.0 代码冻结基线（application code）：`1dc0b2beb3dd94dd70865dc5a276955ec7421c4a`
+> 当前仓库 HEAD：`84d2d8c2241f74948c6af8f22bfb31f586553e42`（纯文档提交；`HEAD == origin/master`，ahead/behind = `0/0`）
 > 当前阶段：**Backend V1.0 Security Hardening 已完成** → 进入 **Frontend Sync / Full-Stack Development**
 >
 > 本文件同时承担两个职责：**项目使用说明** 与 **工程流程规范（Project Standard）**。
@@ -35,10 +36,21 @@
 | Current Version | **V1.0** |
 | Status | **CLOSED / CONTRACT FROZEN** |
 | Contract Freeze | **PASS** |
-| Final Baseline | `1dc0b2beb3dd94dd70865dc5a276955ec7421c4a` |
+| V1.0 Code Freeze Baseline（application code） | `1dc0b2beb3dd94dd70865dc5a276955ec7421c4a` |
+| Current Repository HEAD | `84d2d8c2241f74948c6af8f22bfb31f586553e42` |
 | Remote Sync | `HEAD == origin/master`，ahead/behind = `0/0`，worktree CLEAN |
 | Current Phase | Frontend Sync / Full-Stack Development |
 | Next Decision Gate | 前端影响面审计（Frontend Contract / Impact Audit） |
+
+> **两个基线概念必须区分（避免版本语义混淆）**
+>
+> - **V1.0 Code Freeze Baseline = `1dc0b2b…`**：YSEM V1.0 **application code** 的最终 Contract Freeze 基线。
+> - **Current Repository HEAD = `84d2d8c…`**：当前 Git 仓库 HEAD，提交为
+>   `docs: update README with V1.0 baseline and development lifecycle standard`，属 **documentation-only** 提交，
+>   **不修改 V1.0 application code**，因此**不代表重新冻结 V1.0**。
+>
+> V1.0 code freeze 之后，仓库 HEAD 可以因**纯文档提交**或**未来版本（V1.1+）**的工作继续前进；
+> 这类提交**不改变**已冻结的 V1.0 application-code 基线，也**不重新打开** V1.0（Contract Freeze 仍然有效）。
 
 **V1.0 已完成的收口范围（摘要）**
 
@@ -511,8 +523,10 @@ git ls-remote origin refs/heads/<branch>  ==  HEAD
 当一轮/一个版本范围内的审计、实施、验证、提交、推送全部 PASS 且同步完成后，可将当前 HEAD 冻结为该版本的基线，并在 §2 记录：
 
 ```text
-Version / Status / Contract Freeze / Final Baseline / Remote Sync / Next Phase
+Version / Status / Contract Freeze / 版本代码冻结基线 / 当前仓库 HEAD / Remote Sync / Next Phase
 ```
+
+> 冻结后仓库 HEAD 可能继续前进（纯文档提交、下一版本工作）。此类提交**不改变**该版本的 application-code 基线，也不重新打开该版本；因此 §2 必须**分别**记录「版本代码冻结基线」与「当前仓库 HEAD」两个值。
 
 ---
 
@@ -544,7 +558,7 @@ V1.1+
 ```
 
 - 前端同步开发**不得**以「前端需要」为由直接改动 V1.0 冻结的后端行为。
-- 冻结基线一旦推进（例如发布 V1.1），必须在 §2 同步更新 `Final Baseline` 与状态，保持本文件与仓库真实状态一致。
+- 版本代码冻结基线一旦推进（例如发布 V1.1），必须在 §2 同步更新「版本代码冻结基线」与「当前仓库 HEAD」两个字段及状态，保持本文件与仓库真实状态一致。
 
 ---
 
@@ -685,8 +699,13 @@ Frontend Commit / Push               （走 §7.7–§7.9 同一套门禁）
 | --- | --- |
 | 版本 | V1.0 |
 | 状态 | CLOSED / CONTRACT FROZEN |
-| 冻结基线 | `1dc0b2beb3dd94dd70865dc5a276955ec7421c4a` |
-| 远端同步 | `origin/master` 与之相同，ahead/behind = `0/0` |
+| V1.0 Code Freeze Baseline（application code） | `1dc0b2beb3dd94dd70865dc5a276955ec7421c4a` |
+| 冻结时远端同步 | `origin/master` 与之相同，ahead/behind = `0/0` |
+| 冻结后提交（documentation-only） | `84d2d8c2241f74948c6af8f22bfb31f586553e42` — `docs: update README with V1.0 baseline and development lifecycle standard` |
+| Current Repository HEAD | `84d2d8c2241f74948c6af8f22bfb31f586553e42` |
 | 收口案例 | `F-NEW-20`（更新侧 ownership 授权，提交 `5f74c51`）→ `F-NEW-20b`（创建侧 ownership 授权，提交 `1dc0b2b`），均经 Read-only Audit → Decision Freeze → Implementation → Runtime Verification（25/25）→ Regression → Commit Gate → Push 验证 → Contract Freeze |
+
+> 本表中「V1.0 Code Freeze Baseline」指 **application code** 的冻结点；「Current Repository HEAD」在其之后可因文档提交或未来版本工作继续前进。
+> `84d2d8c` 为 **documentation-only** 提交，**不修改** V1.0 application code ⇒ V1.0 **未重新打开**，Contract Freeze **仍然有效**。
 
 后续版本的冻结记录追加于本表下方或更新 §2，保持「当前状态」唯一且准确。
