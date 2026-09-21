@@ -25,6 +25,7 @@ import dayjs from 'dayjs';
 import { Customer, CustomerActivity, customerApi, type SalesOrderSummary, type OpportunitySummary } from '../../../api/customers';
 import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/salesOrders';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
+import { useAuthStore } from '../../../stores/useAuthStore';
 import Price from '../../common/Price';
 import { getCustomerLogicLabel } from '../shared/utils';
 import { intentLevelToPipelineLevel } from '../shared/intentLevel';
@@ -115,6 +116,12 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const [hoveredPipelineId, setHoveredPipelineId] = useState<string | null>(null);
 
   const ct = getCustomerTier(customer);
+
+  // F-02（Decision Freeze 4B）：释放 / 转交按钮可见性 = 后端 actor contract（owner | admin）的**前端镜像**。
+  // 仅 UX 层隐藏；后端仍为唯一安全权威（可见 ≠ 可操作，后端对非 owner/非 admin 统一 404）。
+  const currentUser = useAuthStore((s) => s.user);
+  const isAdmin = currentUser?.role?.code === 'admin';
+  const canAct = !!customer && (customer.ownerId === currentUser?.id || isAdmin);
 
   // 头像/标签主题色：与卡片视图（CustomerCard）保持一致
   const avatarBg = getAvatarColor(ct.tier, token);
@@ -652,7 +659,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
                   {/* 操作图标 */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {onTransfer && (
+                    {onTransfer && canAct && (
                       <button type="button" onClick={() => onTransfer(customer)} title="转交"
                         style={circleBtnStyle(ct.primaryLight)}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
@@ -662,8 +669,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                         <SwapOutlined style={{ color: ct.primary }} />
                       </button>
                     )}
-                    {/* 公海客户（无归属人）不显示释放按钮，避免点了必然失败 */}
-                    {onRelease && customer?.ownerId && (
+                    {/* 释放：需 canAct（owner | admin）且非公海客户（无归属人时后端必然返回 400） */}
+                    {onRelease && customer?.ownerId && canAct && (
                       <button type="button" onClick={() => onRelease(customer)} title="释放"
                         style={circleBtnStyle(ct.primaryLight)}
                         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
