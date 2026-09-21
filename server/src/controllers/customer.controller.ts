@@ -797,6 +797,22 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
     // 如果 ownerId 传入 null 则放入公海；未传入则归当前用户
     const finalOwnerId: string | null = body.ownerId !== undefined ? body.ownerId : userId;
 
+    // F-NEW-20b / DQ-8-A（= F-NEW-20 同规则）：显式非空 `ownerId` 属**请求可控的 ownership mutation**，
+    // 目标用户必须「存在 + ACTIVE + ∈ caller dataScope」，且必须**先于**事务与任何写入
+    // （authorization before mutation）。`null` = 公海、`undefined` = 归当前用户，均不触发校验。
+    if (body.ownerId !== undefined && body.ownerId !== null) {
+      const targetOwner = await prisma.user.findFirst({
+        where: applyScope({ id: body.ownerId }, await roleScope(req, { field: 'id' })),
+        select: { id: true, status: true },
+      });
+      if (!targetOwner) {
+        return error(res, "业务归属人不存在或无权限指派", 400);
+      }
+      if (targetOwner.status !== 'ACTIVE') {
+        return error(res, "目标用户不存在或已停用", 400);
+      }
+    }
+
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const customer = await prisma.$transaction(async (tx) => {
       const customerNo = await getNextNumber(tx, "CUS");
