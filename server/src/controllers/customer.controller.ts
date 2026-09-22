@@ -9,6 +9,12 @@ import { getNextNumber } from "../lib/numberSequence";
 import { applyScope, includePublicSea, publicSeaScope, roleScope } from "../utils/scope";
 import { BUSINESS_TYPE } from "../lib/business-type";
 import { deriveStages, type PipelineStage } from "../utils/pipelineStage";
+import {
+  INTENT_LEVEL_ORDER,
+  deriveCustomerIntentLevel,
+  deriveCustomerIntentLevels,
+  withCustomerIntent,
+} from "../utils/customerIntent";
 import * as XLSX from "xlsx";
 
 
@@ -68,6 +74,26 @@ const getPipelineAggregates = async (customerIds: string[]): Promise<Record<stri
   return map;
 };
 
+/**
+ * 构建 `intentBreakdown`（D-INTENT v2）。
+ *
+ * 保持既有稀疏结构 `[{ level, count }]`（仅返回 count > 0 的等级；顺序 = 业务等级由低到高），
+ * 唯一新增：末位「无意向」条目 —— 无商机 / 全部商机 intentLevel 为 null 时派生结果为 `null`，
+ * 其 level 即 `null`（前端类型 `level: IntentLevel | null` 已兼容）。
+ * 数据来源为**派生计数**（商机意向聚合），不读取 legacy 列 `Customer.intentLevel`。
+ */
+const buildIntentBreakdown = (
+  counts: Map<IntentLevel, number>,
+  noIntentCount: number,
+): { level: IntentLevel | null; count: number }[] => {
+  const rows: { level: IntentLevel | null; count: number }[] = INTENT_LEVEL_ORDER.map((level) => ({
+    level: level as IntentLevel | null,
+    count: counts.get(level) ?? 0,
+  })).filter((row) => row.count > 0);
+  if (noIntentCount > 0) rows.push({ level: null, count: noIntentCount });
+  return rows;
+};
+
 // 统计维度
 const getCustomerStats = async (ownerId?: string) => {
   const currentYear = new Date().getFullYear();
@@ -83,7 +109,7 @@ const getCustomerStats = async (ownerId?: string) => {
     totalWhere = {};
   }
 
-  const [total, newCustomers, oldCustomers, keyAccounts, intentStats] = await Promise.all([
+  const [total, newCustomers, oldCustomers, keyAccounts, intentGroups, noIntentCount] = await Promise.all([
     prisma.customer.count({ where: totalWhere }),
     prisma.customer.count({
       where: {
@@ -102,12 +128,26 @@ const getCustomerStats = async (ownerId?: string) => {
     prisma.customer.count({
       where: { ...where, isKeyAccount: true },
     }),
-    prisma.customer.groupBy({
-      by: ["intentLevel"],
-      where: { ...where, isKeyAccount: true, intentLevel: { not: null } },
+    // D-INTENT v2（读时派生）Q1：商机侧 (customerId, intentLevel) 批量聚合 —— 单次 groupBy，无 N+1，
+    // 不再读取 legacy 列 Customer.intentLevel，也不再以 isKeyAccount 作为过滤条件。
+    prisma.opportunity.groupBy({
+      by: ["customerId", "intentLevel"],
+      where: { customer: where },
       _count: true,
     }),
+    // D-INTENT v2 Q2：无意向客户 = 无商机 ∨ 全部商机 intentLevel 均为 null
+    prisma.customer.count({
+      where: { ...where, opportunities: { none: { intentLevel: { not: null } } } },
+    }),
   ]);
+
+  // 内存聚合：customerId → 最高意向（与列表/详情共用同一 primitive，口径完全一致）
+  const derivedIntentByCustomer = deriveCustomerIntentLevels(intentGroups);
+  const derivedIntentCounts = new Map<IntentLevel, number>();
+  for (const level of derivedIntentByCustomer.values()) {
+    if (level === null) continue;
+    derivedIntentCounts.set(level, (derivedIntentCounts.get(level) ?? 0) + 1);
+  }
 
   // 无订单客户（V1.0：firstOrderAt 为 null）
   const noOrder = await prisma.customer.count({
@@ -124,10 +164,7 @@ const getCustomerStats = async (ownerId?: string) => {
     oldCount: oldCustomers,
     noOrderCount: noOrder,
     keyCount: keyAccounts,
-    intentBreakdown: intentStats.map((i) => ({
-      level: i.intentLevel,
-      count: i._count,
-    })),
+    intentBreakdown: buildIntentBreakdown(derivedIntentCounts, noIntentCount),
   };
 };
 
@@ -286,12 +323,15 @@ export const listMy = async (req: AuthRequest, res: Response, next: NextFunction
       getOrderAggregates(list.map((c) => c.id)),
       getPipelineAggregates(list.map((c) => c.id)),
     ]);
-    const enriched = list.map((c) => ({
-      ...c,
-      totalAmount: orderAgg[c.id]?.totalAmount || 0,
-      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
-      pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
-    }));
+    const enriched = list.map((c) =>
+      // D-INTENT v2：Customer.intentLevel 以商机最高意向**派生值**覆盖（不读 legacy 存储列）
+      withCustomerIntent({
+        ...c,
+        totalAmount: orderAgg[c.id]?.totalAmount || 0,
+        lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+        pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
+      }),
+    );
 
     success(res, { list: enriched, total, page: Number(page), pageSize: take, stats, ...subFilterCounts, estimatedAmount: estimatedAgg._sum.estimatedAmount || 0, totalContractAmount: Number(totalAmountAgg._sum.totalAmountCny ?? 0), estimatedBreakdown, contractBreakdown });
   } catch (err) {
@@ -342,11 +382,14 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
     ]);
 
     const orderAgg = await getOrderAggregates(list.map((c) => c.id));
-    const enriched = list.map((c) => ({
-      ...c,
-      totalAmount: orderAgg[c.id]?.totalAmount || 0,
-      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
-    }));
+    const enriched = list.map((c) =>
+      // D-INTENT v2：Customer.intentLevel 以商机最高意向**派生值**覆盖（不读 legacy 存储列）
+      withCustomerIntent({
+        ...c,
+        totalAmount: orderAgg[c.id]?.totalAmount || 0,
+        lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+      }),
+    );
 
     success(res, { list: enriched, total, page: Number(page), pageSize: take });
   } catch (err) {
@@ -531,12 +574,15 @@ export const listAll = async (req: AuthRequest, res: Response, next: NextFunctio
       getOrderAggregates(list.map((c) => c.id)),
       getPipelineAggregates(list.map((c) => c.id)),
     ]);
-    const enriched = list.map((c) => ({
-      ...c,
-      totalAmount: orderAgg[c.id]?.totalAmount || 0,
-      lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
-      pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
-    }));
+    const enriched = list.map((c) =>
+      // D-INTENT v2：Customer.intentLevel 以商机最高意向**派生值**覆盖（不读 legacy 存储列）
+      withCustomerIntent({
+        ...c,
+        totalAmount: orderAgg[c.id]?.totalAmount || 0,
+        lastOrderDate: orderAgg[c.id]?.lastOrderDate || null,
+        pipelineAmount: pipelineAgg[c.id]?.pipelineAmount || 0,
+      }),
+    );
 
     const ownerStats = assignees.map((u) => ({
       id: u.id,
@@ -659,7 +705,8 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
       },
     });
     if (!customer) return error(res, "客户不存在", 404);
-    success(res, customer);
+    // D-INTENT v2：响应中的 intentLevel 一律为**派生值**（opportunities 已 include，零额外查询）
+    success(res, withCustomerIntent(customer));
   } catch (err) {
     next(err);
   }
@@ -742,7 +789,7 @@ const customerCreateSchema = z.object({
   ownerId: z.string().nullish(),
   isKeyAccount: z.boolean().optional(),
   tags: tagsField,
-  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  // D-INTENT v2：Customer.intentLevel 为系统派生字段，**不再接受人工输入**（无 intentLevel 入参）
   coverImage: coverImageField,
   images: coverImageField,
 });
@@ -764,7 +811,7 @@ const customerUpdateSchema = z.object({
   ownerId: z.string().nullish(),
   isKeyAccount: z.boolean().optional(),
   tags: tagsField,
-  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  // D-INTENT v2：Customer.intentLevel 为系统派生字段，**不再接受人工输入/修改**（无 intentLevel 入参）
   // 首次下单日期：V1.0 字段 firstOrderAt 优先（下方末键为 1D 保留的旧入参兼容别名）
   firstOrderAt: dateField,
   firstOrderDate: dateField,
@@ -782,7 +829,7 @@ const customerImportSchema = z.object({
   source: z.nativeEnum(LeadSource).nullish(),
   notes: z.string().trim().max(2000).nullish(),
   isKeyAccount: z.boolean().optional(),
-  intentLevel: z.nativeEnum(IntentLevel).nullish(),
+  // D-INTENT v2：Customer.intentLevel 为系统派生字段，Excel 导入不接受该列
   firstOrderAt: dateField,
 });
 
@@ -833,7 +880,7 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
           isKeyAccount: body.isKeyAccount ?? false,
           // V1.0：Customer.tags 为 PG 原生数组（String[]），不接受逗号字符串
           tags: body.tags ?? [],
-          intentLevel: body.isKeyAccount ? body.intentLevel ?? null : null,
+          // D-INTENT v2：intentLevel 由商机读时派生 ⇒ 创建时不写入（legacy 列不再接受人工赋值）
         },
       });
     });
@@ -850,7 +897,9 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       customerId: customer.id,
     });
 
-    success(res, customer, "创建成功");
+    // D-INTENT v2：新建客户必然没有关联商机 ⇒ 派生意向为 null（D-INTENT-4 的最小、确定性结果；
+    // 不为此额外查询 Opportunity，也不读取 legacy 列）
+    success(res, { ...customer, intentLevel: null }, "创建成功");
   } catch (err) {
     if (err instanceof z.ZodError) {
       return error(res, err.errors.map((e) => e.message).join("；"), 400);
@@ -885,7 +934,6 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       ownerId,
       isKeyAccount,
       tags,
-      intentLevel,
     } = body;
 
     // 主图：coverImage 优先，images 仅作兼容输入
@@ -897,6 +945,9 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     // scope 外与不存在同为 404 `客户不存在`（移除「存在但非本人」403 oracle）。
     const existing = await prisma.customer.findFirst({
       where: applyScope({ id }, includePublicSea(await roleScope(req))),
+      // D-INTENT v2：复用**既有**响应/授权查询结构附带商机意向投影（不新增查询、不产生 N+1），
+      // 供本 handler 的响应返回派生意向；商机集合不被本 handler 修改。
+      include: { opportunities: { select: { intentLevel: true } } },
     });
     if (!existing) return error(res, "客户不存在", 404);
 
@@ -928,8 +979,8 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       const a = existing.isKeyAccount ? "取消重点" : "标记为重点";
       changes.push(`${a}客户`);
     }
-    if (intentLevel && intentLevel !== existing.intentLevel)
-      changes.push(`意向等级: ${existing.intentLevel || "无"} → ${intentLevel}`);
+    // D-INTENT v2：Customer.intentLevel 已非人工字段 ⇒ 不再记录「意向等级变更」日志
+    // （Opportunity.intentLevel 的维护与留痕不受本规则影响）
     if (tags !== undefined && !sameTags(tags, existing.tags)) changes.push(`标签已更新`);
 
     const customer = await prisma.customer.update({
@@ -954,7 +1005,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         ...(isKeyAccount !== undefined ? { isKeyAccount } : {}),
         // V1.0：Customer.tags 为 PG 原生数组（String[]）
         ...(tags !== undefined ? { tags } : {}),
-        intentLevel: isKeyAccount === false ? null : intentLevel !== undefined ? intentLevel : existing.intentLevel,
+        // D-INTENT v2：不再写入 intentLevel（系统派生字段；isKeyAccount 与客户意向完全解耦）
         // V1.0：字段为 firstOrderAt（DateTime?）；不再写入旧字符串列
         ...(firstOrderAt !== undefined ? { firstOrderAt } : {}),
       },
@@ -974,7 +1025,8 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       });
     }
 
-    success(res, customer, "更新成功");
+    // D-INTENT v2：响应 intentLevel 为派生值（本 handler 不修改商机集合，故复用已读取的 opportunities）
+    success(res, { ...customer, intentLevel: deriveCustomerIntentLevel(existing.opportunities) }, "更新成功");
   } catch (err) {
     if (err instanceof z.ZodError) {
       return error(res, err.errors.map((e) => e.message).join("；"), 400);
@@ -1184,7 +1236,7 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       备注: "notes",
       notes: "notes",
       重点客户: "isKeyAccount",
-      意向等级: "intentLevel",
+      // D-INTENT v2：Customer.intentLevel 为系统派生字段 ⇒ 移除 Excel「意向等级」导入映射（避免死字段）
       // V1.0：Customer 字段为 firstOrderAt（DateTime?），不再写旧字符串列
       首次下单日期: "firstOrderAt",
     };
@@ -1275,6 +1327,8 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
     // BC-8-2（DQ-8-C）：scoped 目标解析；scope 外与不存在同为 404（不泄露存在性）
     const existing = await prisma.customer.findFirst({
       where: applyScope({ id }, includePublicSea(await roleScope(req))),
+      // D-INTENT v2：复用既有查询附带商机意向投影（不新增查询），供响应返回派生意向
+      include: { opportunities: { select: { intentLevel: true } } },
     });
     if (!existing) return error(res, "客户不存在", 404);
 
@@ -1301,7 +1355,8 @@ export const updateTags = async (req: AuthRequest, res: Response, next: NextFunc
       });
     }
 
-    success(res, customer, "标签更新成功");
+    // D-INTENT v2：响应 intentLevel 为派生值（本 handler 不修改商机集合）
+    success(res, { ...customer, intentLevel: deriveCustomerIntentLevel(existing.opportunities) }, "标签更新成功");
   } catch (err) {
     if (err instanceof z.ZodError) {
       return error(res, err.errors.map((e) => e.message).join("；"), 400);
