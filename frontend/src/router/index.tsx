@@ -7,6 +7,7 @@ import Dashboard from '../pages/Dashboard';
 import Login from '../pages/Login';
 import NotFound from '../pages/NotFound';
 import Placeholder from '../pages/Placeholder';
+import ProductListPage from '../pages/products/ProductListPage';
 import { APP_MENU, collectMenuPaths } from './menu';
 
 /**
@@ -20,8 +21,8 @@ import { APP_MENU, collectMenuPaths } from './menu';
  * 已登录 → 外壳内 404（真正不存在的 /setting/not-exist 亦然）。
  */
 export default function AppRoutes() {
-  // /dashboard 与 /data/customers 已有真实页面，其余菜单 path 仍用占位页
-  const implementedRoutes = ['/dashboard', '/data/customers'];
+  // /dashboard、/data/customers 与 /data/products 已有真实页面，其余菜单 path 仍用占位页
+  const implementedRoutes = ['/dashboard', '/data/customers', '/data/products'];
   const placeholderRoutes = collectMenuPaths(APP_MENU).filter((r) => !implementedRoutes.includes(r.path));
 
   return (
@@ -41,6 +42,9 @@ export default function AppRoutes() {
         {/* F-6：客户列表；F-7：客户详情（均为真实页面，详情只读） */}
         <Route path="data/customers" element={<CustomerListPage />} />
         <Route path="data/customers/:id" element={<CustomerDetailPage />} />
+
+        {/* F-S1：产品 MVP（列表 + 新建/编辑；路由 path 与菜单 product-center.products 同源） */}
+        <Route path="data/products" element={<ProductListPage />} />
 
         {placeholderRoutes.map((r) => (
           <Route
