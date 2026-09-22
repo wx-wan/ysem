@@ -1,4 +1,4 @@
-import type { CustomerLevel, CustomerListType, LeadSource } from '../../types/customer';
+import type { CustomerLevel, CustomerListType } from '../../types/customer';
 
 /**
  * Customer List UI 常量（Round F-6）
@@ -174,14 +174,6 @@ export const CUSTOMER_LEVEL_OPTIONS: { value: CustomerLevel; label: string }[] =
  * 供 CustomerTable / CustomerDetailPage / CustomerStats 复用。
  */
 export const NO_INTENT_LABEL = '无意向';
-
-/** 客户来源选项（LeadSource；create 缺省 MANUAL 由后端决定，前端不新增来源） */
-export const LEAD_SOURCE_OPTIONS: { value: LeadSource; label: string }[] = [
-  { value: 'MANUAL', label: '手工录入' },
-  { value: 'EXCEL', label: 'Excel 导入' },
-  { value: 'RPA', label: 'RPA 抓取' },
-  { value: 'SYNC', label: '第三方同步' },
-];
 
 /** 字段实体消歧（IC-FE-3）：Customer.intentLevel 与 Opportunity.intentLevel 是两个实体 */
 export const CUSTOMER_INTENT_LABEL = '客户意向';

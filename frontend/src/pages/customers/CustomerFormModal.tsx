@@ -11,9 +11,8 @@ import type {
   CustomerDetail,
   CustomerLevel,
   CustomerUpdateRequest,
-  LeadSource,
 } from '../../types/customer';
-import { CUSTOMER_LEVEL_OPTIONS, LEAD_SOURCE_OPTIONS } from './constants';
+import { CUSTOMER_LEVEL_OPTIONS } from './constants';
 
 const { Text } = Typography;
 
@@ -33,7 +32,6 @@ interface CustomerFormValues {
   /** Edit only（Create 不开放 —— D-CUSTOMER-LEVEL） */
   customerLevel?: CustomerLevel;
   customerType?: string;
-  source?: LeadSource;
   tags?: string[];
   notes?: string;
   isKeyAccount: boolean;
@@ -107,7 +105,7 @@ export default function CustomerFormModal({ mode, open, initial, onCancel, onSav
         coverImage: initial.coverImage ?? undefined,
         customerLevel: initial.customerLevel,
         customerType: initial.customerType ?? undefined,
-        source: initial.source ?? undefined,
+        // D-SOURCE-9：Customer.source 为只读系统字段 ⇒ 不由表单回填/编辑
         tags: initial.tags,
         notes: initial.notes ?? undefined,
         isKeyAccount: initial.isKeyAccount,
@@ -188,7 +186,7 @@ export default function CustomerFormModal({ mode, open, initial, onCancel, onSav
           phone: values.phone ?? null,
           country: values.country ?? null,
           customerType: values.customerType ?? null,
-          source: values.source ?? null,
+          // D-SOURCE-2：create 请求体不含 source（后端固定 MANUAL）
           tags: values.tags ?? [],
           notes: values.notes ?? null,
           coverImage: values.coverImage ?? null,
@@ -216,7 +214,7 @@ export default function CustomerFormModal({ mode, open, initial, onCancel, onSav
           coverImage: values.coverImage ?? null,
           customerLevel: values.customerLevel ?? initial.customerLevel,
           customerType: values.customerType ?? null,
-          source: values.source ?? null,
+          // D-SOURCE-4：update 请求体不含 source（普通 update 不得修改 source）
           tags: values.tags ?? [],
           notes: values.notes ?? null,
           isKeyAccount: values.isKeyAccount,
@@ -312,10 +310,7 @@ export default function CustomerFormModal({ mode, open, initial, onCancel, onSav
           <Select allowClear showSearch options={customerTypeOptions} placeholder="客户类型" optionFilterProp="label" />
         </Form.Item>
 
-        <Form.Item name="source" label="客户来源" extra="与线索来源是两个独立字段，不会自动继承。">
-          <Select allowClear options={LEAD_SOURCE_OPTIONS} placeholder="客户来源" />
-        </Form.Item>
-
+        {/* D-SOURCE-9：客户来源为系统字段（由对应 API 赋值），表单不再提供人工选择入口 */}
         <Form.Item name="tags" label="标签" extra="自由文本，无字典；可输入多个（回车分隔）。">
           <Select mode="tags" notFoundContent={null} placeholder="输入标签后回车" />
         </Form.Item>

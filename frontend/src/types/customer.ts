@@ -336,7 +336,7 @@ export interface CustomerCreateRequest {
   phone?: string | null;
   country?: string | null;
   customerType?: string | null;
-  source?: LeadSource | null;
+  // D-SOURCE-2（F-8G-D 冻结）：Create 请求体**不含** source —— 手工创建的 source 由后端 API 固定为 MANUAL
   tags?: string[];
   notes?: string | null;
   coverImage?: string | null;
@@ -369,7 +369,7 @@ export interface CustomerUpdateRequest {
   coverImage?: string | null;
   customerLevel?: CustomerLevel;
   customerType?: string | null;
-  source?: LeadSource | null;
+  // D-SOURCE-4（F-8G-D 冻结）：Update 请求体**不含** source —— 普通 update 不得修改 Customer.source
   notes?: string | null;
   tags?: string[];
   isKeyAccount?: boolean;

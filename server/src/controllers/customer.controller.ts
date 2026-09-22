@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { z } from "zod";
-import { CustomerLevel, IntentLevel, LeadSource } from "@prisma/client";
+import { CustomerLevel, IntentLevel } from "@prisma/client";
 import { success, error } from "../utils/response";
 import { activityLogger } from "../lib/activity-logger";
 import { AuthRequest } from "../middleware/auth";
@@ -784,7 +784,7 @@ const customerCreateSchema = z.object({
   phone: z.string().trim().max(50).nullish(),
   country: z.string().trim().max(100).nullish(),
   customerType: z.string().trim().max(100).nullish(),
-  source: z.nativeEnum(LeadSource).nullish(),
+  // D-SOURCE-2：Customer.source 由 API 业务语义固定为 MANUAL ⇒ create 不接受 source 入参
   notes: z.string().trim().max(2000).nullish(),
   ownerId: z.string().nullish(),
   isKeyAccount: z.boolean().optional(),
@@ -806,7 +806,7 @@ const customerUpdateSchema = z.object({
   region: z.string().trim().max(100).nullish(),
   customerLevel: z.nativeEnum(CustomerLevel).optional(),
   customerType: z.string().trim().max(100).nullish(),
-  source: z.nativeEnum(LeadSource).nullish(),
+  // D-SOURCE-4：普通 update 不得修改 Customer.source ⇒ 不接受 source 入参
   notes: z.string().trim().max(2000).nullish(),
   ownerId: z.string().nullish(),
   isKeyAccount: z.boolean().optional(),
@@ -826,7 +826,7 @@ const customerImportSchema = z.object({
   email: z.string().trim().max(200).nullish(),
   phone: z.string().trim().max(50).nullish(),
   country: z.string().trim().max(100).nullish(),
-  source: z.nativeEnum(LeadSource).nullish(),
+  // D-SOURCE-3：Excel 导入的 source 由 API 业务语义固定为 EXCEL ⇒ 不接受「来源 / source」列
   notes: z.string().trim().max(2000).nullish(),
   isKeyAccount: z.boolean().optional(),
   // D-INTENT v2：Customer.intentLevel 为系统派生字段，Excel 导入不接受该列
@@ -874,7 +874,8 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
           country: body.country ?? null,
           customerType: body.customerType ?? null,
           coverImage: normalizeCoverImage(body) ?? null,
-          source: body.source ?? "MANUAL",
+          // D-SOURCE-2：手工创建由 API 业务语义固定为 MANUAL（显式赋值，不依赖 DB default）
+          source: "MANUAL",
           notes: body.notes ?? null,
           ownerId: finalOwnerId,
           isKeyAccount: body.isKeyAccount ?? false,
@@ -929,7 +930,6 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       region,
       customerLevel,
       customerType,
-      source,
       notes,
       ownerId,
       isKeyAccount,
@@ -999,7 +999,7 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         ...(coverImage !== undefined ? { coverImage } : {}),
         ...(customerLevel !== undefined ? { customerLevel } : {}),
         ...(customerType !== undefined ? { customerType } : {}),
-        ...(source !== undefined ? { source } : {}),
+        // D-SOURCE-4：普通 update 不写 source（该字段不可由普通 Customer API 修改）
         ...(notes !== undefined ? { notes } : {}),
         ...(ownerId !== undefined ? { ownerId } : {}),
         ...(isKeyAccount !== undefined ? { isKeyAccount } : {}),
@@ -1231,8 +1231,7 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
       phone: "phone",
       国家: "country",
       country: "country",
-      来源: "source",
-      source: "source",
+      // D-SOURCE-3：移除 Excel「来源 / source」映射（source 不再由 Excel 决定）
       备注: "notes",
       notes: "notes",
       重点客户: "isKeyAccount",
@@ -1276,7 +1275,8 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
               email: parsedRow.data.email ?? null,
               phone: parsedRow.data.phone ?? null,
               country: parsedRow.data.country ?? null,
-              source: parsedRow.data.source ?? "EXCEL",
+              // D-SOURCE-3：导入客户由 API 业务语义固定为 EXCEL
+              source: "EXCEL",
               notes: parsedRow.data.notes ?? null,
               ownerId: null, // V1.0：导入客户默认进公海
               isKeyAccount: parsedRow.data.isKeyAccount ?? false,
