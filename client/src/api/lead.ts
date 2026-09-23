@@ -37,8 +37,24 @@ export interface Lead {
   // 详情扩展字段
   targetMarket?: string | null;
   productType?: string | null;
-  productDesc?: string | null;
-  images?: string[] | string | null;
+  productDesc?: string | null; // 兼容旧取值（Lead 标量，已废弃；真实值见 items[0].productDesc）
+  images?: string[] | string | null; // 兼容旧取值（已废弃；真实值见 attachments）
+  // F-8L-B：来源渠道 / 来源平台（channelId/shopId → Channel 自关联树）
+  channelId?: string | null;
+  channel?: { id: string; name: string } | null;
+  shopId?: string | null;
+  shop?: { id: string; name: string } | null;
+  // F-8L-B：采购产品明细（V1.0 产品关联落在 LeadItem）
+  items?: Array<{
+    id: string;
+    productId?: string | null;
+    product?: { id: string; name: string } | null;
+    productName?: string | null;
+    quantity?: number;
+    productDesc?: string | null;
+  }>;
+  // D1：参考图片附件（Attachment ownerType=LEAD）
+  attachments?: Array<{ id: string; url: string; name?: string | null; category?: string; sort?: number }>;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;
@@ -58,7 +74,8 @@ export interface Lead {
 export interface LeadPayload {
   leadName?: string;
   customerId?: string | null;
-  sourceChannel?: string | null;
+  channelId?: string | null;
+  shopId?: string | null;
   productId?: string | null;
   quantity?: number;
   source?: LeadSource;
@@ -76,7 +93,7 @@ export interface LeadPayload {
   targetMarket?: string | null;
   productType?: string | null;
   productDesc?: string | null;
-  images?: string[] | string | null;
+  images?: { url: string; name?: string }[] | null;
   targetPrice?: string | null;
   certRequire?: string | null;
   packageReq?: string | null;

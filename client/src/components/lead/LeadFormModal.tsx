@@ -107,7 +107,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const fetchUsers = useUserStore((s) => s.fetchUsers);
 
   // ============ 表单联动 ============
-  const selectedChannel = Form.useWatch('channel', form);
+  const selectedChannel = Form.useWatch('channelId', form);
   const watchTargetMarket = Form.useWatch('targetMarket', form);
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
@@ -115,16 +115,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const channelOptions = useMemo(() => flattenChannelOptions(channels), [channels]);
 
-  // 平台选项：随渠道联动；无子平台时兜底为渠道本身
+  // 平台选项：随渠道联动（value = 平台 ID，与后端 shopId 对齐）；无子平台时兜底为渠道本身
   const formPlatformOptions = useMemo(() => {
     if (!selectedChannel) return [];
-    const node = channels.find((c) => c.name === selectedChannel);
+    const node = channels.find((c) => c.id === selectedChannel);
     const children = node?.children || [];
-    if (!children.length) return [{ label: selectedChannel, value: selectedChannel, title: selectedChannel }];
+    if (!children.length) return [{ label: node?.name || selectedChannel, value: node?.id || selectedChannel, title: node?.name || selectedChannel }];
     return children.map((child) => ({
       label: child.name,
-      value: `${selectedChannel} / ${child.name}`,
-      title: `${selectedChannel} / ${child.name}`,
+      value: child.id,
+      title: child.name,
     }));
   }, [channels, selectedChannel]);
 
@@ -180,13 +180,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       const item = res.data;
       // 用详情接口的权威数据更新 editing（确保 status 等字段最新、完整）
       setEditing(item);
-      // 来源渠道回填：若为「渠道 / 平台」路径则拆分，渠道自动带出
-      const sourceParts = (item.sourceChannel || '').split(' / ');
       form.setFieldsValue({
         customerKey: item.customer?.companyName || item.companyName || undefined,
-        channel: sourceParts.length > 1 ? sourceParts[0] : item.sourceChannel || '',
-        sourceChannel: item.sourceChannel || undefined,
-        productKey: item.product?.name || item.productName || undefined,
+        // 来源渠道 / 来源平台：回填后端 channel/shop 关系（ID）
+        channelId: item.channel?.id || undefined,
+        shopId: item.shop?.id || undefined,
+        // 采购产品：回填 LeadItem 明细（V1.0 产品关联落在 items）
+        productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
         contactMethod: item.contactMethod || undefined,
         quantity: item.quantity ?? undefined,
         // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
@@ -194,14 +194,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         // 详情扩展字段
         targetMarket: item.targetMarket || undefined,
         productType: item.productType || undefined,
-        productDesc: item.productDesc || undefined,
+        // 产品描述：回填 LeadItem.productDesc
+        productDesc: item.items?.[0]?.productDesc || undefined,
         targetPrice: item.targetPrice || undefined,
         certRequire: item.certRequire || undefined,
         packageReq: item.packageReq || undefined,
         deliveryReq: item.deliveryReq || undefined,
         specialReq: item.specialReq || undefined,
         customerType: item.customerType || undefined,
-        images: typeof item.images === 'string' ? item.images : Array.isArray(item.images) ? JSON.stringify(item.images) : '',
+        // 参考图片：回填 Attachment(ownerType=LEAD) 记录
+        images: item.attachments && item.attachments.length
+          ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
+          : '',
       });
       // 溯源：若已关联商机，加载商机信息用于展示
       if (item.pipelineId) {
@@ -250,7 +254,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       customerId,
       companyName,
       contactMethod: values.contactMethod || null,
-      sourceChannel: values.sourceChannel || values.channel || null,
+      // 来源渠道 / 来源平台：传 ID（与后端 channelId/shopId 对齐）
+      channelId: values.channelId ?? null,
+      shopId: values.shopId ?? null,
       productId,
       productName,
       quantity: values.quantity ? Number(values.quantity) || 0 : 0,
@@ -266,7 +272,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       deliveryReq: values.deliveryReq || null,
       specialReq: values.specialReq || null,
       customerType: values.customerType || null,
-      images: parseImages(values.images).map((i) => i.url),
+      // 参考图片：对象数组（url + name），后端转为 Attachment(ownerType=LEAD) 记录
+      images: parseImages(values.images).map((i) => ({ url: i.url, name: i.name })),
     };
     try {
       if (editing?.id) {
@@ -430,7 +437,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const confirmCreateProduct = () => {
     if (readonly) return;
-    const name = editing?.productName || watchProductKey;
+    const name = editing?.items?.[0]?.productName || watchProductKey;
     if (!name) return;
     productEditRef.current?.open(null, { name });
   };
@@ -689,19 +696,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           <Row gutter={[16, 24]} className="lead-form-grid">
             {/* 第一行：来源渠道 / 来源平台 / 目标市场 / 客户类型 */}
             <Col span={6}>
-              <Form.Item name="channel" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
+              <Form.Item name="channelId" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
                 <Select
                   showSearch
                   allowClear
                   placeholder={t('lead.channelPlaceholder')}
                   optionFilterProp="label"
                   options={channelOptions}
-                  onChange={() => form.setFieldsValue({ sourceChannel: undefined })}
+                  onChange={() => form.setFieldsValue({ shopId: undefined })}
                 />
               </Form.Item>
             </Col>
             <Col span={6}>
-              <Form.Item name="sourceChannel" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
+              <Form.Item name="shopId" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
                 <Select
                   showSearch
                   allowClear
@@ -724,8 +731,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
             {/* 参考图片纵向跨三行（左侧）；右侧三行：客户/沟通账号、采购产品/数量要求、目标价位/产品描述（最底行） */}
             <Col span={12}>
-              <Form.Item name="images" label={t('lead.images')}>
-                <ProductImageList disabled={readonly} />
+              <Form.Item name="images" label={t('lead.attachments')}>
+                <ProductImageList disabled={readonly} allowFiles />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -770,7 +777,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="productKey"
                     label={
-                      (editing?.productName && !editing.productId) ||
+                      (editing?.items?.[0]?.productName && !editing?.items?.[0]?.productId) ||
                       (watchProductKey && !productNameOptions.some((p) => p.label === watchProductKey)) ? (
                         <Space size={4}>
                           <span>{t('lead.product')}</span>
@@ -778,7 +785,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                             color="orange"
                             style={{ cursor: 'pointer', marginInlineEnd: 0 }}
                             onClick={confirmCreateProduct}
-                            title={t('lead.productPendingTip', { name: editing?.productName || watchProductKey })}
+                            title={t('lead.productPendingTip', { name: editing?.items?.[0]?.productName || watchProductKey })}
                           >
                             {t('lead.pendingTag')}
                           </Tag>

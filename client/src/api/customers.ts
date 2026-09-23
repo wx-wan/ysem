@@ -22,7 +22,7 @@ export interface Customer {
   ownerId?: string;
   isKeyAccount: boolean;
   intentLevel?: string;
-  tags?: string;     // 逗号分隔的标签
+  tags?: string[];   // V1.0 canonical：PG 原生数组（GET 返回 string[]；写入亦传数组）
   /** V1.0 canonical：首次下单时间（Prisma DateTime → ISO 字符串）；由履约层回写，null = 无成交 */
   firstOrderAt?: string | null;
   estimatedAmount?: number;
@@ -213,8 +213,8 @@ export const customerApi = {
     });
   },
 
-  // 专用的标签更新接口
-  updateTags: (id: string, tags: string) =>
+  // 专用的标签更新接口（body 保持数组 string[]，不在 API 层转逗号字符串）
+  updateTags: (id: string, tags: string[]) =>
     request.patch<ApiResponse<Customer>>(`/customers/${id}/tags`, { tags }),
 
   report: () =>

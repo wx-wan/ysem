@@ -427,3 +427,65 @@
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
   pointer-events: none;
 }
+
+/* ============ 非图片附件：主图区文件卡片 ============ */
+.pil-hero-file {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 16px;
+  text-align: center;
+  color: var(--c-text-secondary, #64748b);
+}
+.pil-hero-file-icon {
+  font-size: 48px;
+  color: var(--c-primary, #1677ff);
+}
+.pil-hero-file-name {
+  max-width: 90%;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--c-text-primary, #334155);
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pil-hero-file-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: var(--c-primary, #1677ff);
+  color: #fff;
+  font-size: 12px;
+  text-decoration: none;
+  transition: opacity 0.18s ease;
+}
+.pil-hero-file-dl:hover {
+  opacity: 0.88;
+  color: #fff;
+}
+
+/* ============ 缩略图条：附件（非图片）以扩展名角标呈现 ============ */
+.pil-thumb-file {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--c-primary, #1677ff) 6%, var(--c-fill-quaternary, #f5f5f5));
+  border: 1px dashed color-mix(in srgb, var(--c-primary, #1677ff) 30%, var(--c-border-strong, #e2e8f0));
+}
+.pil-thumb-ext {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--c-primary, #1677ff);
+  text-transform: uppercase;
+}
+

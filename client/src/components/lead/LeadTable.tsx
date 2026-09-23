@@ -88,12 +88,13 @@ export default function LeadTable({
       },
       {
         title: t('lead.channel'),
-        dataIndex: 'sourceChannel',
+        dataIndex: 'channel',
         width: 180,
-        render: (v?: string) => {
-          if (!v) return '-';
-          const parts = v.split(' / ');
-          return parts.length > 1 ? `${parts[0]} / ${parts[1]}` : v;
+        render: (_: unknown, r?: Lead) => {
+          const ch = r?.channel?.name;
+          const sh = r?.shop?.name;
+          if (!ch && !sh) return '-';
+          return [ch, sh].filter(Boolean).join(' / ');
         },
       },
       {

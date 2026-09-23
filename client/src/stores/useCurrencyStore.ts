@@ -21,7 +21,7 @@ export const CURRENCIES: CurrencyInfo[] = [
 interface CurrencyState {
   // 当前选中币种
   currency: CurrencyInfo;
-  // 汇率表: { USD: 7.25, EUR: 7.89, ... } 相对于 CNY
+  // 汇率表（rateToCny 语义）: { USD: 7.25, EUR: 7.89, ... }，即 1 单位该币种 = X CNY
   rates: Record<string, number>;
   // 加载状态
   loading: boolean;
@@ -30,7 +30,7 @@ interface CurrencyState {
 
   setCurrency: (code: string) => void;
   fetchRates: () => Promise<void>;
-  // 转换金额
+  // 转换金额（CNY → 当前币种）
   convert: (amountCNY: number) => number;
   // 格式化金额
   format: (amountCNY: number) => string;
@@ -40,6 +40,9 @@ interface CurrencyState {
 
 const STORAGE_KEY = 'ysem_currency';
 const RATES_CACHE_KEY = 'ysem_exchange_rates';
+
+/** 后端汇率语义标记：rates[X] 表示 1 单位 X = rates[X] CNY（V1.0 rateToCny） */
+const RATE_TYPE_RATE_TO_CNY = 'rateToCny';
 
 // 汇率本地缓存结构（按日期缓存，当天不再向后端请求）
 interface RatesCache {
@@ -93,10 +96,12 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   },
 
   fetchRates: async () => {
-    // 1. 本地缓存命中（当天日期）：直接使用，不再请求后端
+    // 1. 本地缓存命中（当天已拉取过）：直接使用，不再请求后端。
+    //    用 savedAt 判断而非 date：外部源失败时后端会回退最近一次历史汇率，
+    //    date 是旧日期，若按 date === today 判断会永不命中、反复请求。
     const cached = loadRatesCache();
     const today = new Date().toISOString().slice(0, 10);
-    if (cached && cached.date === today) {
+    if (cached && cached.savedAt.slice(0, 10) === today) {
       set({ rates: cached.rates, loading: false, lastUpdated: cached.savedAt });
       return;
     }
@@ -108,8 +113,14 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         params: { from: 'CNY' },
         timeout: 8000,
       });
-      const rates = data.data?.rates || {};
-      const date = data.data?.date || today;
+      const payload = data.data || {};
+      // 语义校验：rates 必须是 rateToCny 方向（1 单位外币 = X CNY）。
+      // 方向不符时拒绝使用并走兜底，避免把反向汇率当成 rateToCny 参与换算。
+      if (payload.rateType && payload.rateType !== RATE_TYPE_RATE_TO_CNY) {
+        throw new Error(`Unexpected exchange rateType: ${payload.rateType}`);
+      }
+      const rates = payload.rates || {};
+      const date = payload.date || today;
       const savedAt = new Date().toISOString();
       saveRatesCache({ date, rates, savedAt });
       set({ rates, loading: false, lastUpdated: savedAt });
@@ -120,12 +131,13 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
         return;
       }
       set({
+        // rateToCny 方向的内置参考汇率（与后端 FALLBACK_RATES 一致）
         rates: {
-          USD: 0.14,
-          EUR: 0.13,
-          GBP: 0.11,
-          JPY: 20.5,
-          KRW: 185,
+          USD: 7.14285714,
+          EUR: 7.69230769,
+          GBP: 9.09090909,
+          JPY: 0.04878049,
+          KRW: 0.00540541,
         },
         loading: false,
         lastUpdated: null,
@@ -136,9 +148,10 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   convert: (amountCNY: number) => {
     const { currency, rates } = get();
     if (currency.code === 'CNY') return amountCNY;
+    // rates 为 rateToCny 语义（1 单位外币 = X CNY），CNY → 外币需除以汇率
     const rate = rates[currency.code];
     if (!rate) return amountCNY;
-    return amountCNY * rate;
+    return amountCNY / rate;
   },
 
   format: (amountCNY: number) => {
@@ -158,13 +171,12 @@ export const useCurrencyStore = create<CurrencyState>((set, get) => ({
   getRateToCNY: () => {
     const { currency, rates } = get();
     if (currency.code === 'CNY') return null;
+    // rates 已是 rateToCny（1 单位外币 = X CNY），直接展示
     const rate = rates[currency.code];
     if (!rate) return null;
-    // rate 表示 1 CNY = rate <target>，因此 1 <target> = 1/rate CNY
-    const toCNY = 1 / rate;
     if (currency.code === 'JPY' || currency.code === 'KRW') {
-      return `1 ${currency.code} ≈ ${toCNY.toFixed(4)} CNY`;
+      return `1 ${currency.code} ≈ ${rate.toFixed(4)} CNY`;
     }
-    return `1 ${currency.code} ≈ ${toCNY.toFixed(3)} CNY`;
+    return `1 ${currency.code} ≈ ${rate.toFixed(3)} CNY`;
   },
 }));

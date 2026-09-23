@@ -77,7 +77,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         country: customer.country,
         region: customer.region,
         notes: customer.notes,
-        tags: customer.tags || '',
+        // V1.0 canonical：tags 为 string[]（该字段本抽屉不渲染、payload 白名单亦不提交，仅保持类型一致）
+        tags: customer.tags ?? [],
         // V1.0 canonical：firstOrderAt 为 ISO 字符串，DatePicker 需 dayjs 对象
         firstOrderAt: customer.firstOrderAt ? dayjs(customer.firstOrderAt) : undefined,
       });

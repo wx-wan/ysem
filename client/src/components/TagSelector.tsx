@@ -7,18 +7,19 @@ function parseTag(tagStr: string): { name: string } {
   return { name: idx > 0 ? tagStr.slice(0, idx) : tagStr };
 }
 
-function tagsToArray(tags?: string): { name: string }[] {
-  if (!tags) return [];
-  return tags.split(',').filter(Boolean).map(parseTag);
+/** V1.0 canonical：Customer.tags 为 string[]（PG text[]），组件内部一律按数组处理，不再 split(',') */
+function toTagItems(tags?: string[]): { name: string }[] {
+  return (tags ?? []).map(parseTag);
 }
 
-function tagsArrayToString(tags: { name: string }[]): string {
-  return tags.map((t) => t.name).join(',');
+function toTagValues(tags: { name: string }[]): string[] {
+  return tags.map((t) => t.name);
 }
 
 export interface TagSelectorProps {
-  value?: string;
-  onChange?: (v: string) => void;
+  /** V1.0 canonical：string[]（Customer.tags）——不再接受逗号分隔字符串 */
+  value?: string[];
+  onChange?: (v: string[]) => void;
   placeholder?: string;
   showAddButton?: boolean;
   /** 主题色（十六进制，如 #1677ff），标签实色背景；不传回退主蓝 */
@@ -32,7 +33,7 @@ export interface TagSelectorProps {
 export default function TagSelector({ value, onChange, placeholder = '输入标签名称', showAddButton = true, color, style, maxCount = 5 }: TagSelectorProps) {
   const { token } = theme.useToken();
   const themeColor = color || token.colorPrimary;
-  const tags = tagsToArray(value);
+  const tags = toTagItems(value);
   const [inputVisible, setInputVisible] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const composingRef = useRef(false);
@@ -52,7 +53,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
     }
     if (!tags.some((t) => t.name === name)) {
       const newTags = [...tags, { name }];
-      onChange?.(tagsArrayToString(newTags));
+      onChange?.(toTagValues(newTags));
     }
     setInputValue('');
     setInputVisible(false);
@@ -61,7 +62,7 @@ export default function TagSelector({ value, onChange, placeholder = '输入标�
   const removeTag = useCallback(
     (index: number) => {
       const newTags = tags.filter((_, i) => i !== index);
-      onChange?.(tagsArrayToString(newTags));
+      onChange?.(toTagValues(newTags));
     },
     [tags, onChange]
   );

@@ -19,20 +19,20 @@ export const SOURCE_META: Record<LeadSource, { color: string; label: string }> =
   SYNC: { color: 'cyan', label: 'lead.sourceSync' },
 };
 
-/** 渠道根节点展平为下拉选项 */
+/** 渠道根节点展平为下拉选项（value = 渠道 ID，与后端 channelId 对齐） */
 export const flattenChannelOptions = (channels: Channel[]) =>
-  channels.map((c) => ({ label: c.name, value: c.name }));
+  channels.filter((c) => !c.parentId).map((c) => ({ label: c.name, value: c.id }));
 
-/** 平台选项：选中渠道后只列其下平台；未选渠道则列出所有平台（带渠道前缀区分） */
+/** 平台选项：选中渠道后只列其下平台（value = 平台 ID，与后端 shopId 对齐）；未选渠道则列出所有平台 */
 export const flattenPlatformOptions = (channels: Channel[], channel?: string) => {
   const opts: { label: string; value: string }[] = [];
   const collect = (node: Channel) => {
     (node.children || []).forEach((child) => {
-      opts.push({ label: `${node.name} / ${child.name}`, value: child.name });
+      opts.push({ label: `${node.name} / ${child.name}`, value: child.id });
     });
   };
   if (channel) {
-    const node = channels.find((c) => c.name === channel);
+    const node = channels.find((c) => c.id === channel);
     if (node) collect(node);
   } else {
     channels.forEach(collect);

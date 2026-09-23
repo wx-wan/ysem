@@ -93,7 +93,8 @@ const CustomerList = memo(function CustomerList({
       title: '标签',
       dataIndex: 'tags',
       key: 'tags',
-      render: (tags: string) => {
+      // V1.0 canonical：Customer.tags = string[]（不做 join，原样传给展示组件）
+      render: (tags: string[]) => {
         if (!tags || filterCustomTags(tags).length === 0) return '-';
         return <CustomerTags tags={tags} token={token} />;
       },

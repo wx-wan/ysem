@@ -127,6 +127,8 @@ model LeadItem {
   product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
   /// 未建档产品时直接记录名称（待确认建档）
   productName String?
+  /// D2（F-8L）：采购产品的描述（材质 / 规格 / 工艺 / 用途等），落在明细行而非 Lead 标量
+  productDesc String?
   quantity    Int      @default(1) // 意向数量，保留 Int（04 §12#7）
   sort        Int      @default(0)
   createdAt   DateTime @default(now())

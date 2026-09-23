@@ -242,7 +242,7 @@ export default function CustomersPage() {
   }, [mergeKeepAgg]);
 
   // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
-  const handleTagsChanged = useCallback((id: string, tags: string) => {
+  const handleTagsChanged = useCallback((id: string, tags: string[]) => {
     setDetailCustomer((prev) => (prev && prev.id === id ? { ...prev, tags } : prev));
     setList((prev) =>
       sortCustomers(prev.map((item) => (item.id === id ? { ...item, tags } : item)))

@@ -365,7 +365,6 @@ html, body {
   white-space: nowrap;
   margin-left: 4px;
   background: var(--c-surface);
-  padding: 4px 8px;
   border-radius: var(--radius-sm);
 }
 

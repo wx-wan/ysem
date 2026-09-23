@@ -134,9 +134,12 @@ export default function CustomerToolbar({
         }))}
       />
 
+      {/* 边界适配：此处的 TagSelector 承载的是「标签筛选字符串」（非 Customer.tags 数据），
+          因此在组件边界完成 string[] ↔ 逗号字符串转换；TagSelector 自身保持严格 string[] 契约。
+          （筛选 state 仍为 string：Customers.tsx 的 params.tags 语义未变，见 FOLLOW-UP） */}
       <TagSelector
-        value={filterTags}
-        onChange={(v) => { setFilterTags(v); setPage(1); }}
+        value={filterTags ? filterTags.split(',').filter(Boolean) : []}
+        onChange={(v) => { setFilterTags(v.join(',')); setPage(1); }}
         placeholder="输入标签名称"
         showAddButton={false}
       />

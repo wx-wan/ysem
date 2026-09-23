@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { Image as AntImage, App } from 'antd';
-import { PlusOutlined, LoadingOutlined, DeleteOutlined, LeftOutlined, RightOutlined, StarOutlined, ZoomInOutlined, EditOutlined } from '@ant-design/icons';
+import { PlusOutlined, LoadingOutlined, DeleteOutlined, LeftOutlined, RightOutlined, StarOutlined, ZoomInOutlined, EditOutlined, FileTextOutlined, DownloadOutlined } from '@ant-design/icons';
 import { ProductImageItem, parseImages, serializeImages } from '../../utils/productImages';
 import './ProductImageList.css';
 
@@ -19,6 +19,20 @@ interface ProductImageListProps {
   height?: number;
   /** 透传的 id（供 Form.Item 关联 label 使用，a11y） */
   id?: string;
+  /** 是否允许上传非图片附件（PDF / 文档等），默认 false 仅图片 */
+  allowFiles?: boolean;
+  /** input accept 属性；不传时按 allowFiles 自动决定默认范围 */
+  accept?: string;
+}
+
+/** 图片类扩展名判定（用于区分「图片」与「附件」展示） */
+function isImageUrl(s: string): boolean {
+  return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(s || '');
+}
+/** 取文件名扩展名（大写，最多 4 字符）用于附件角标 */
+function fileExt(name: string): string {
+  const m = (name || '').split('.').pop();
+  return m && m.length <= 4 ? m.toUpperCase() : 'FILE';
 }
 
 /** 使用原生 canvas 等比压缩（最大边 2000px，质量 0.85） */
@@ -61,9 +75,9 @@ function compressImage(file: File, quality = 0.85, maxEdge = 2000): Promise<Blob
   });
 }
 
-async function uploadFile(blob: Blob, uploadUrl: string): Promise<string> {
+async function uploadFile(blob: Blob, uploadUrl: string, fileName = 'image.jpg'): Promise<string> {
   const form = new FormData();
-  form.append('file', blob, 'image.jpg');
+  form.append('file', blob, fileName);
   const base = uploadUrl.startsWith('/api') ? '' : '/api';
   const res = await fetch(`${base}${uploadUrl}`, {
     method: 'POST',
@@ -114,7 +128,12 @@ export default function ProductImageList({
   disabled,
   height = 200,
   id,
+  allowFiles = false,
+  accept,
 }: ProductImageListProps) {
+  const inputAccept = accept ?? (allowFiles
+    ? 'image/png,image/jpeg,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip'
+    : 'image/png,image/jpeg,image/webp');
   const { message } = App.useApp();
   const items = parseImages(value);
   const [uploading, setUploading] = useState(false);
@@ -130,7 +149,7 @@ export default function ProductImageList({
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       if (disabled) return;
-      const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type.startsWith('image/'));
+      const files = Array.from(e.clipboardData?.files || []).filter((f) => allowFiles || f.type.startsWith('image/'));
       if (!files.length) return;
       e.preventDefault();
       files.forEach(queueFile);
@@ -166,17 +185,21 @@ export default function ProductImageList({
     try {
       const uploaded = await Promise.all(
         slice.map(async (file) => {
-          const compressed = await compressImage(file);
-          const url = await uploadFile(compressed, uploadUrl);
+          const blob = file.type.startsWith('image/') ? await compressImage(file) : file;
+          const url = await uploadFile(blob, uploadUrl, file.name);
           return url;
         }),
       );
       const base = parseImages(value);
       const startIndex = base.length;
-      const newItems = uploaded.map((url, i) => ({
-        url,
-        name: startIndex + i === 0 ? '主图' : `图片${startIndex + i + 1}`,
-      }));
+      const newItems = uploaded.map((url, i) => {
+        const f = slice[i];
+        const isImg = f.type.startsWith('image/');
+        const name = isImg
+          ? startIndex + i === 0 ? '主图' : `图片${startIndex + i + 1}`
+          : (f.name || `附件${startIndex + i + 1}`);
+        return { url, name };
+      });
       commit([...base, ...newItems]);
       message.success(`成功上传 ${newItems.length} 张`);
     } catch (err: any) {
@@ -195,7 +218,7 @@ export default function ProductImageList({
 
   /** 把选中的文件排入上传队列（原生 input 与普通上传共用） */
   const queueFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
+    if (!allowFiles && !file.type.startsWith('image/')) {
       message.error('请选择图片文件');
       return;
     }
@@ -240,57 +263,73 @@ export default function ProductImageList({
     commit(next);
   };
 
+  const currentItem = items[safeCurrent];
+  const currentIsImg = !!currentItem && (isImageUrl(currentItem.url) || isImageUrl(currentItem.name || ''));
+
   return (
     <div className={`pil ${items.length ? 'pil-has-images' : 'pil-empty'}`}>
       {/* 主图展示区：显示当前选中图片的缩略图（完整 contain），点击展开原始大小 */}
       <div className="pil-hero" style={{ height }}>
         {items.length ? (
           <>
-            {/* 显示层：原生 img，样式完全可控，不受 antd 默认样式干扰 */}
-            <img
-              className="pil-hero-img"
-              src={items[safeCurrent].url}
-              alt={items[safeCurrent].name}
-              title={`${items[safeCurrent].name}（点击查看原图）`}
-              onClick={() => setZoomed(true)}
-            />
-            {/* 预览层：隐藏的 AntImage，只负责管理全屏放大预览 */}
-            <AntImage
-              style={{ display: 'none' }}
-              src={items[safeCurrent].url}
-              alt={items[safeCurrent].name}
-              preview={{
-                open: zoomed,
-                onOpenChange: (v) => setZoomed(v),
-                imageRender: (current: React.ReactNode) => (
-                  <>
-                    {current}
-                    <div className="pil-preview-name">{items[safeCurrent]?.name}</div>
-                  </>
-                ),
-              }}
-            />
-            {items.length > 1 && !zoomed && (
+            {currentIsImg ? (
               <>
-                <button
-                  type="button"
-                  className="pil-nav pil-nav-prev"
-                  onClick={() => go(-1)}
-                  aria-label="上一张"
-                >
-                  <LeftOutlined />
-                </button>
-                <button
-                  type="button"
-                  className="pil-nav pil-nav-next"
-                  onClick={() => go(1)}
-                  aria-label="下一张"
-                >
-                  <RightOutlined />
-                </button>
+                {/* 显示层：原生 img，样式完全可控，不受 antd 默认样式干扰 */}
+                <img
+                  className="pil-hero-img"
+                  src={currentItem.url}
+                  alt={currentItem.name}
+                  title={`${currentItem.name}（点击查看原图）`}
+                  onClick={() => setZoomed(true)}
+                />
+                {/* 预览层：隐藏的 AntImage，只负责管理全屏放大预览 */}
+                <AntImage
+                  style={{ display: 'none' }}
+                  src={currentItem.url}
+                  alt={currentItem.name}
+                  preview={{
+                    open: zoomed,
+                    onOpenChange: (v) => setZoomed(v),
+                    imageRender: (current: React.ReactNode) => (
+                      <>
+                        {current}
+                        <div className="pil-preview-name">{currentItem?.name}</div>
+                      </>
+                    ),
+                  }}
+                />
+                {items.length > 1 && !zoomed && (
+                  <>
+                    <button
+                      type="button"
+                      className="pil-nav pil-nav-prev"
+                      onClick={() => go(-1)}
+                      aria-label="上一张"
+                    >
+                      <LeftOutlined />
+                    </button>
+                    <button
+                      type="button"
+                      className="pil-nav pil-nav-next"
+                      onClick={() => go(1)}
+                      aria-label="下一张"
+                    >
+                      <RightOutlined />
+                    </button>
+                  </>
+                )}
+                {safeCurrent === 0 && !zoomed && <span className="pil-main-badge">主图</span>}
               </>
+            ) : (
+              /* 非图片附件：文件卡片 + 下载入口 */
+              <div className="pil-hero-file">
+                <FileTextOutlined className="pil-hero-file-icon" />
+                <div className="pil-hero-file-name" title={currentItem.name}>{currentItem.name}</div>
+                <a className="pil-hero-file-dl" href={currentItem.url} target="_blank" rel="noreferrer" download>
+                  <DownloadOutlined /> 下载 / 打开
+                </a>
+              </div>
             )}
-            {safeCurrent === 0 && !zoomed && <span className="pil-main-badge">主图</span>}
             <div className="pil-hero-meta">
               {editingName && !disabled ? (
                 <input
@@ -318,7 +357,7 @@ export default function ProductImageList({
                   title={disabled ? undefined : '点击编辑名称'}
                   onClick={() => {
                     if (disabled) return;
-                    setNameDraft(items[safeCurrent].name);
+                    setNameDraft(currentItem.name);
                     setEditingName(true);
                   }}
                 >
@@ -327,30 +366,30 @@ export default function ProductImageList({
                       className="pil-hero-name-edit"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setNameDraft(items[safeCurrent].name);
+                        setNameDraft(currentItem.name);
                         setEditingName(true);
                       }}
                     >
                       <EditOutlined />
                     </span>
                   )}
-                  {items[safeCurrent].name}
+                  {currentItem.name}
                 </span>
               )}
               <span className="pil-hero-count">{safeCurrent + 1} / {items.length}</span>
             </div>
 
-            {/* 放大预览使用 antd Image 自带预览（点击图片或顶部「放大预览」按钮触发） */}
-
-            {/* 顶部胶囊操作条：放大预览 / 设为主图 / 删除 */}
+            {/* 顶部胶囊操作条：放大预览（仅图片）/ 设为主图（仅图片）/ 删除 */}
             <div className="pil-hero-ops">
-              <PilOpButton
-                icon={<ZoomInOutlined />}
-                onClick={() => setZoomed(true)}
-              >
-                放大预览
-              </PilOpButton>
-              {safeCurrent !== 0 && !disabled && (
+              {currentIsImg && (
+                <PilOpButton
+                  icon={<ZoomInOutlined />}
+                  onClick={() => setZoomed(true)}
+                >
+                  放大预览
+                </PilOpButton>
+              )}
+              {currentIsImg && safeCurrent !== 0 && !disabled && (
                 <PilOpButton
                   icon={<StarOutlined />}
                   onClick={() => moveToFirst(safeCurrent)}
@@ -387,7 +426,7 @@ export default function ProductImageList({
             <span className="pil-hero-drop-icon">
               {uploading ? <LoadingOutlined className="is-spin" /> : <PlusOutlined />}
             </span>
-            <span className="pil-hero-drop-text">{uploading ? '上传中…' : '添加图片'}</span>
+            <span className="pil-hero-drop-text">{uploading ? '上传中…' : (allowFiles ? '添加图片 / 附件' : '添加图片')}</span>
             <span className="pil-hero-drop-hint">粘贴 / 拖拽至此上传</span>
           </button>
         )}
@@ -395,28 +434,35 @@ export default function ProductImageList({
 
       {/* 缩略图条 + 添加入口（始终显示，空态仅显示「+」新增框） */}
       <div className="pil-thumbs">
-        {items.map((it, i) => (
-          <button
-            type="button"
-            key={i}
-            className={`pil-thumb ${i === safeCurrent ? 'is-active' : ''}`}
-            onClick={() => setCurrent(i)}
-          >
-            <AntImage className="pil-thumb-img" src={it.url} alt={it.name} preview={false} />
-            {i === 0 && <span className="pil-thumb-badge">主</span>}
-            {!disabled && i !== 0 && (
-              <span
-                className="pil-thumb-del"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeAt(i);
-                }}
-              >
-                <DeleteOutlined />
-              </span>
-            )}
-          </button>
-        ))}
+        {items.map((it, i) => {
+          const img = isImageUrl(it.url) || isImageUrl(it.name || '');
+          return (
+            <button
+              type="button"
+              key={i}
+              className={`pil-thumb ${i === safeCurrent ? 'is-active' : ''} ${img ? '' : 'pil-thumb-file'}`}
+              onClick={() => setCurrent(i)}
+            >
+              {img ? (
+                <AntImage className="pil-thumb-img" src={it.url} alt={it.name} preview={false} />
+              ) : (
+                <span className="pil-thumb-ext">{fileExt(it.name)}</span>
+              )}
+              {img && i === 0 && <span className="pil-thumb-badge">主</span>}
+              {!disabled && i !== 0 && (
+                <span
+                  className="pil-thumb-del"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeAt(i);
+                  }}
+                >
+                  <DeleteOutlined />
+                </span>
+              )}
+            </button>
+          );
+        })}
         {items.length < maxCount && !disabled && (
           <button
             type="button"
@@ -433,7 +479,7 @@ export default function ProductImageList({
         type="file"
         id={id}
         name="file"
-        accept="image/png,image/jpeg,image/webp"
+        accept={inputAccept}
         multiple
         className="pil-file-input"
         onChange={onPick}

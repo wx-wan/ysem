@@ -43,7 +43,12 @@ const leadSchema = z.object({
   targetMarket: z.string().trim().max(200).nullable().optional(),
   productType: z.string().trim().max(200).nullable().optional(),
   productDesc: z.string().trim().max(2000).nullable().optional(),
-  images: z.array(z.string().trim().max(500)).max(20).nullable().optional(),
+  // D1：参考图片接受「URL 字符串」或「{url,name}」对象数组；后端转为 Attachment(ownerType=LEAD) 记录
+  images: z
+    .array(z.object({ url: z.string().trim().min(1).max(500), name: z.string().trim().max(200).optional() }).or(z.string().trim().min(1).max(500)))
+    .max(20)
+    .nullable()
+    .optional(),
   targetPrice: z.string().trim().max(200).nullable().optional(),
   certRequire: z.string().trim().max(1000).nullable().optional(),
   packageReq: z.string().trim().max(1000).nullable().optional(),
@@ -104,6 +109,72 @@ const LEAD_ITEM_PRODUCT_SELECT = {
   createdBy: true,
   visibleUsers: { select: { userId: true } },
 } as const;
+
+/**
+ * D1：归一化前端传来的参考图片/附件。接受「URL 字符串」或「{url,name}」对象数组，
+ * 从 /api/uploads/{filename} 还原文件名，并按扩展名推导正确的 mimeType 与 category
+ * （图片 → IMAGE，其它 → OTHER），避免把非图片文件误标成 image/*。
+ * 仅保留 /api/uploads/ 下的文件，避免把任意外链写入 Attachment 表。
+ */
+const MIME_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  ppt: 'application/vnd.ms-powerpoint',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  txt: 'text/plain',
+  zip: 'application/zip',
+  rar: 'application/x-rar-compressed',
+};
+
+function normalizeImages(
+  images?: (string | { url: string; name?: string })[] | null,
+): { url: string; fileName: string; mimeType: string; category: string; name?: string }[] {
+  if (!Array.isArray(images)) return [];
+  return images
+    .map((i) => (typeof i === 'string' ? { url: i, name: undefined } : { url: i.url, name: i.name }))
+    .filter((x) => x.url && x.url.startsWith('/api/uploads/'))
+    .map((x) => {
+      const m = x.url.match(/\/api\/uploads\/(.+)$/);
+      const fileName = m ? m[1] : x.url;
+      const ext = fileName.includes('.') ? fileName.split('.').pop()!.toLowerCase() : '';
+      const mimeType = MIME_BY_EXT[ext] || 'application/octet-stream';
+      const category = mimeType.startsWith('image/') ? 'IMAGE' : 'OTHER';
+      return { url: x.url, fileName, mimeType, category, name: x.name };
+    });
+}
+
+/** D1：批量拉取线索参考图片附件（ownerType=LEAD），按 ownerId 分组（避免 N+1） */
+async function loadLeadAttachments(leadIds: string[]): Promise<Record<string, any[]>> {
+  if (!leadIds.length) return {};
+  const rows = await prisma.attachment.findMany({
+    where: { ownerType: 'LEAD', ownerId: { in: leadIds } },
+    orderBy: { sort: 'asc' },
+  });
+  const map: Record<string, any[]> = {};
+  for (const r of rows) (map[r.ownerId] ||= []).push(r);
+  return map;
+}
+
+/** D1：附件对外投影，剥离内部字段，仅暴露展示所需 {id,url,name,category,sort} */
+function projectAttachments(rows: any[]): { id: string; url: string; name: string | null; category: string; sort: number }[] {
+  return rows.map((a) => ({
+    id: a.id,
+    url: a.filePath,
+    name: a.fileName,
+    category: a.category,
+    sort: a.sort,
+  }));
+}
 
 /**
  * 「当前用户数据范围（ALL / DEPT / SELF）+ id」的查询条件。
@@ -182,16 +253,13 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         { phone: { contains: keyword } },
       ];
     }
-    // 来源渠道按「渠道 / 平台」两维筛选（sourceChannel 存渠道名或「渠道 / 平台」完整路径）
+    // 来源渠道 / 来源平台：按 channelId / shopId 精确匹配（前端筛选项已改为传 ID）
     if (channel && platform) {
-      where.AND = [
-        { sourceChannel: { contains: channel } },
-        { sourceChannel: { contains: platform } },
-      ];
+      where.AND = [{ channelId: channel }, { shopId: platform }];
     } else if (channel) {
-      where.sourceChannel = { contains: channel };
+      where.channelId = channel;
     } else if (platform) {
-      where.sourceChannel = { contains: platform };
+      where.shopId = platform;
     }
     if (status) where.status = status;
     if (source) where.source = source;
@@ -225,9 +293,13 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
         },
         );
         // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
-        const safeList = (list as { items: Record<string, unknown>[] }[]).map((lead) => ({
+        const leadIds = (list as { id: string }[]).map((l) => l.id);
+        const attMap = await loadLeadAttachments(leadIds);
+        const safeList = (list as { id: string; items: Record<string, unknown>[] }[]).map((lead) => ({
           ...lead,
           items: projectProductRows(req, lead.items, LEAD_ITEM_PRODUCT_FIELDS, { nameField: 'productName' }),
+          // D1：参考图片（Attachment ownerType=LEAD）
+          attachments: projectAttachments(attMap[lead.id] || []),
         }));
         success(res, { list: safeList, total, page: p, pageSize: ps });
   } catch {
@@ -257,9 +329,12 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
     }
 
     // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
+    const attachments = await loadLeadAttachments([item.id]);
     success(res, {
       ...item,
       items: projectProductRows(req, item.items, LEAD_ITEM_PRODUCT_FIELDS, { nameField: 'productName' }),
+      // D1：参考图片（Attachment ownerType=LEAD）
+      attachments: projectAttachments(attachments[item.id] || []),
     });
   } catch {
     fail(res, 500, '服务器错误');
@@ -273,7 +348,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
 
     // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照
-    let leadItems: { productId: string; productName: string | null; quantity: number }[] | undefined;
+    let leadItems: { productId: string; productName: string | null; quantity: number; productDesc: string | null }[] | undefined;
     if (data.productId) {
       // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内；**先于事务与任何写入**。
       // 不可见与不存在**同结果**（400 `产品不存在`），不引入存在性 oracle。
@@ -289,6 +364,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         productId: data.productId,
         productName: product.name,
         quantity: data.quantity || 1,
+        // D2：产品描述落在 LeadItem 明细行
+        productDesc: data.productDesc ?? null,
       }];
     }
 
@@ -329,7 +406,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     const item = await prisma.$transaction(async (tx) => {
       const leadNo = await getNextNumber(tx, 'LEAD');
 
-      return tx.lead.create({
+      const lead = await tx.lead.create({
         data: {
           leadName,
           customerId: data.customerId ?? null,
@@ -359,6 +436,25 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           ...(leadItems ? { items: { create: leadItems } } : {}),
         },
       });
+
+      // D1：参考图片 → Attachment(ownerType=LEAD) 记录（全仓 Attachment 范式；Lead 为首个落地资源）
+      const atts = normalizeImages(data.images);
+      if (atts.length) {
+        await tx.attachment.createMany({
+          data: atts.map((a) => ({
+            ownerType: 'LEAD',
+            ownerId: lead.id,
+            category: a.category,
+            fileName: a.fileName,
+            filePath: a.url,
+            mimeType: a.mimeType,
+            fileSize: null,
+            uploadedBy: req.userId ?? null,
+          })),
+        });
+      }
+
+      return lead;
     });
     created(res, item);
   } catch (err) {
@@ -373,8 +469,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
 export const updateLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.partial().parse(req.body);
-    // V1.0：productId / productName 不再属于 Lead 标量，改由 LeadItem 承载
-    const { productId, productName, ...leadData } = data;
+    // V1.0：productId / productName 不再属于 Lead 标量，改由 LeadItem 承载；productDesc 落在 LeadItem
+    const { productId, productName, productDesc, ...leadData } = data;
     // V1.0：只写入与 Prisma Lead 标量一致的字段（legacy sourceChannel / productType /
     // productDesc / images 被接受但不落库，见 LEAD_WRITABLE_FIELDS；null 亦会透传以支持清空）
     const update: Record<string, unknown> = {};
@@ -443,6 +539,26 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
 
     await prisma.lead.update({ where: { id: existing.id }, data: update });
 
+    // D1：参考图片 → Attachment(ownerType=LEAD)；以「整组替换」语义维护（传入则删除旧记录后重建）
+    if (data.images !== undefined) {
+      await prisma.attachment.deleteMany({ where: { ownerType: 'LEAD', ownerId: existing.id } });
+      const atts = normalizeImages(data.images);
+      if (atts.length) {
+        await prisma.attachment.createMany({
+          data: atts.map((a) => ({
+            ownerType: 'LEAD',
+            ownerId: existing.id,
+            category: a.category,
+            fileName: a.fileName,
+            filePath: a.url,
+            mimeType: a.mimeType,
+            fileSize: null,
+            uploadedBy: req.userId ?? null,
+          })),
+        });
+      }
+    }
+
     // V1.0：产品关联整表重建于 LeadItem（owner 为 leadId，不能误用 opportunityId）
     if (productId !== undefined) {
       await prisma.leadItem.deleteMany({ where: { leadId: existing.id } });
@@ -452,10 +568,20 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
             leadId: existing.id,
             productId,
             productName: resolvedProductName ?? productName ?? null,
+            // D2：产品描述落在 LeadItem 明细行
+            productDesc: productDesc ?? null,
             quantity: data.quantity || 1,
           },
         });
       }
+    }
+
+    // D2：仅修改产品描述（未改产品）时，更新现有 LeadItem 的 productDesc
+    if (productDesc !== undefined && productId === undefined) {
+      await prisma.leadItem.updateMany({
+        where: { leadId: existing.id },
+        data: { productDesc: productDesc ?? null },
+      });
     }
     success(res, null, '更新成功');
   } catch (err) {
@@ -470,6 +596,33 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
 export const deleteLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     await prisma.lead.delete({ where: { id: req.params.id } });
+    success(res, null, '删除成功');
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};
+
+// ========== 删除线索参考图片附件（D1：Attachment ownerType=LEAD） ==========
+export const deleteLeadAttachment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // 数据范围：目标线索须落在当前用户范围内（scope 外与不存在同响应 404）
+    const lead = await prisma.lead.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true },
+    });
+    if (!lead) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+    // 附件须归属该线索且为 LEAD 宿主，杜绝越权删除他人附件
+    const att = await prisma.attachment.findFirst({
+      where: { id: req.params.attachmentId, ownerType: 'LEAD', ownerId: lead.id },
+    });
+    if (!att) {
+      fail(res, 404, '附件不存在');
+      return;
+    }
+    await prisma.attachment.delete({ where: { id: att.id } });
     success(res, null, '删除成功');
   } catch {
     fail(res, 500, '服务器错误');

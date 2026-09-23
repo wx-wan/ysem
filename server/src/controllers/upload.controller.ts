@@ -19,12 +19,27 @@ const storage = multer.diskStorage({
   },
 });
 
+// 允许上传的图片与常见附件类型（PDF / Office 文档 / 文本 / 压缩包）
+const ALLOWED_MIME = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'text/plain',
+  'application/zip',
+  'application/x-zip-compressed',
+];
+
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB（附件可能大于图片）
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) cb(null, true);
-    else cb(new Error('仅支持图片文件'));
+    const ok = file.mimetype.startsWith('image/') || ALLOWED_MIME.includes(file.mimetype);
+    if (ok) cb(null, true);
+    else cb(new Error('不支持的文件类型'));
   },
 });
 

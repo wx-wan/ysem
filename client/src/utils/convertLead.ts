@@ -5,33 +5,12 @@ import { salesApi } from '../api/sales';
 import { type ProductImageItem } from '../utils/productImages';
 
 /**
- * 将线索图片（string[] / 逗号分隔 URL / JSON 数组）转换为产品图片格式 [{url,name}]，
+ * 将线索参考图片附件（Attachment ownerType=LEAD）转换为产品图片格式 [{url,name}]，
  * 便于在「确认转商机 → 新建产品」时把线索参考图带入产品。
  */
-function leadImagesToProductImages(leadImages?: string[] | string | null): ProductImageItem[] {
-  if (!leadImages) return [];
-  let urls: string[] = [];
-  if (Array.isArray(leadImages)) {
-    urls = leadImages;
-  } else {
-    const t = leadImages.trim();
-    if (!t) return [];
-    if (t.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(t);
-        if (Array.isArray(parsed)) {
-          urls = parsed
-            .map((i: unknown) => (typeof i === 'string' ? i : (i as { url?: string })?.url))
-            .filter((u): u is string => typeof u === 'string' && !!u);
-        }
-      } catch {
-        urls = t.split(',').map((s) => s.trim()).filter(Boolean);
-      }
-    } else {
-      urls = t.split(',').map((s) => s.trim()).filter(Boolean);
-    }
-  }
-  return urls.map((url, i) => ({ url, name: i === 0 ? '主图' : `图片${i + 1}` }));
+function leadAttachmentsToProductImages(attachments?: { url: string; name?: string | null }[] | null): ProductImageItem[] {
+  if (!attachments || !attachments.length) return [];
+  return attachments.map((a, i) => ({ url: a.url, name: a.name || (i === 0 ? '主图' : `图片${i + 1}`) }));
 }
 
 export interface ConvertResult {
@@ -103,8 +82,8 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   const leadRes = await leadApi.get(leadId);
   const lead: Lead = leadRes.data;
   const { openCustomerForm, openProductForm, showCreateSummary } = options;
-  // 线索参考图转换为产品图片格式，带入新建产品流程
-  const productImages = leadImagesToProductImages(lead.images);
+  // 线索参考图（Attachment ownerType=LEAD）转换为产品图片格式，带入新建产品流程
+  const productImages = leadAttachmentsToProductImages(lead.attachments);
 
   // ---- 客户建档检测（先查线索已关联 / 精确同名，判断是否需要新建） ----
   let customerId: string | null = lead.customerId ?? null;
@@ -113,12 +92,13 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   }
   const needCustomer = !customerId && !!lead.companyName;
 
-  // ---- 产品建档检测 ----
-  let productId: string | null = lead.productId ?? null;
-  if (!productId && lead.productName) {
-    productId = await findProductByName(lead.productName);
+  // ---- 产品建档检测（V1.0 产品关联落在 items）----
+  const firstItem = lead.items?.[0];
+  let productId: string | null = firstItem?.productId ?? null;
+  if (!productId && firstItem?.productName) {
+    productId = await findProductByName(firstItem.productName);
   }
-  const needProduct = !productId && !!lead.productName;
+  const needProduct = !productId && !!firstItem?.productName;
 
   let customerCreated = false;
   let productCreated = false;
@@ -127,7 +107,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   if ((needCustomer || needProduct) && showCreateSummary) {
     const ids = await showCreateSummary({
       customerName: needCustomer ? lead.companyName! : undefined,
-      productName: needProduct ? lead.productName! : undefined,
+      productName: needProduct ? firstItem?.productName! : undefined,
       images: needProduct ? productImages : undefined,
     });
     if (needCustomer && ids.customerId) {
@@ -158,7 +138,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
       }
     }
     if (needProduct) {
-      const created = await openProductForm?.({ name: lead.productName!, description: lead.productDesc ?? undefined, images: productImages });
+      const created = await openProductForm?.({ name: firstItem?.productName!, description: firstItem?.productDesc ?? undefined, images: productImages });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;
@@ -168,7 +148,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   }
 
   // ---- 新建商机 ----
-  const title = lead.leadName || [lead.companyName, lead.productName].filter(Boolean).join('-') || '商机';
+  const title = lead.leadName || [lead.companyName, firstItem?.productName].filter(Boolean).join('-') || '商机';
   const pipelineRes: any = await salesApi.create({
     title,
     // 阶段由后端按关联单据派生，创建时不传 stage
@@ -178,7 +158,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     email: lead.email ?? undefined,
     phone: lead.phone ?? undefined,
     country: lead.country ?? undefined,
-    source: lead.sourceChannel ?? undefined,
+    source: lead.channel?.name || lead.shop?.name || undefined,
     customerId: customerId ?? undefined,
     products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
     ownerId: lead.ownerId ?? undefined,

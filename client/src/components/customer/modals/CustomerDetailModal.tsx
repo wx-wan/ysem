@@ -58,7 +58,7 @@ interface CustomerDetailModalProps {
   /** 抽屉编辑保存成功后由父级同步数据 */
   onSaved?: (customer: Customer) => void;
   /** 标签变更：仅传入客户 id 与最新的标签字符串，由父级做最小化同步 */
-  onTagsChanged?: (id: string, tags: string) => void;
+  onTagsChanged?: (id: string, tags: string[]) => void;
   /** 商机操作回调 */
   onEditPipeline?: (pipeline: RealPipeline) => void;
   onConvertPipeline?: (pipeline: RealPipeline) => void;
@@ -127,9 +127,10 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const avatarBg = getAvatarColor(ct.tier, token);
 
   // 标签本地自治：内部维护状态并自行调用 API，避免依赖外部对象重建
-  const [localTags, setLocalTags] = useState<string>(typeof customer?.tags === 'string' ? customer.tags : '');
+  // V1.0 canonical：Customer.tags = string[]（不再用 typeof 守卫静默丢弃数组）
+  const [localTags, setLocalTags] = useState<string[]>(customer?.tags ?? []);
   useEffect(() => {
-    setLocalTags(typeof customer?.tags === 'string' ? customer.tags : '');
+    setLocalTags(customer?.tags ?? []);
   }, [customer?.id, customer?.tags]);
 
   // 客户编码：CUS-{创建日期 YYMMDD}-{当天序号}
@@ -610,7 +611,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       })
                       .catch(() => {
                         // 失败回滚本地显示
-                        setLocalTags(typeof customer.tags === 'string' ? customer.tags : '');
+                        setLocalTags(customer.tags ?? []);
                         message.error('标签更新失败');
                       });
                   }}

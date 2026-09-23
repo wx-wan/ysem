@@ -6,6 +6,7 @@ import {
   createLead,
   updateLead,
   deleteLead,
+  deleteLeadAttachment,
   changeLeadStatus,
   releaseLead,
   claimLead,
@@ -23,5 +24,7 @@ router.post('/:id/claim', authenticate, claimLead);
 router.post('/:id/transfer', authenticate, transferLead);
 router.put('/:id', authenticate, updateLead);
 router.delete('/:id', authenticate, authorize('admin'), deleteLead);
+// D1：线索参考图片附件（ownerType=LEAD）删除
+router.delete('/:id/attachments/:attachmentId', authenticate, deleteLeadAttachment);
 
 export default router;

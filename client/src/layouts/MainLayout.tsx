@@ -12,7 +12,6 @@ import {
   ShopOutlined,
   UnorderedListOutlined,
   SolutionOutlined,
-  ProfileOutlined,
   SendOutlined,
   TeamOutlined,
   FileDoneOutlined,
@@ -63,8 +62,6 @@ const routeTitles: Record<string, string> = {
   '/data': '数据',
   '/data/customers': '客户',
   '/data/products': '产品',
-  '/data/materials': '物料',
-  '/data/bom': 'BOM',
   '/data/craft': '工艺',
   '/data/suppliers': '供应商',
   '/setting/user': '用户管理',
@@ -179,8 +176,6 @@ export default function MainLayout() {
   const dataChildren = [
     ...(hasPerm('customers') ? [{ key: '/data/customers', icon: <TeamOutlined />, label: t('menu.customers') }] : []),
     ...(hasPerm('products') ? [{ key: '/data/products', icon: <AppstoreOutlined />, label: t('menu.products') }] : []),
-    ...(hasPerm('materials') ? [{ key: '/data/materials', icon: <ContainerOutlined />, label: t('menu.materials') }] : []),
-    ...(hasPerm('bom') ? [{ key: '/data/bom', icon: <ProfileOutlined />, label: t('menu.bom') }] : []),
     ...(hasPerm('craft') ? [{ key: '/data/craft', icon: <ExperimentOutlined />, label: t('menu.craft') }] : []),
     ...(hasPerm('suppliers') ? [{ key: '/data/suppliers', icon: <TeamOutlined />, label: t('menu.suppliers') }] : []),
   ].filter(Boolean);
@@ -240,8 +235,6 @@ export default function MainLayout() {
     if (path.startsWith('/finance/settlement')) return '/finance/settlement';
     if (path.startsWith('/data/customers')) return '/data/customers';
     if (path.startsWith('/data/products')) return '/data/products';
-    if (path.startsWith('/data/materials')) return '/data/materials';
-    if (path.startsWith('/data/bom')) return '/data/bom';
     if (path.startsWith('/data/craft')) return '/data/craft';
     if (path.startsWith('/data/suppliers')) return '/data/suppliers';
     return path;

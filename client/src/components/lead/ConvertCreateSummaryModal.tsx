@@ -167,7 +167,7 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
         <Row
           icon={<AppstoreAddOutlined />}
           label={t('lead.createProductConfirmTitle')}
-          name={[items.productName, items.images?.length ? `（含 ${items.images.length} 张参考图）` : ''].join(' ')}
+          name={[items.productName, items.images?.length ? `（含 ${items.images.length} 张附件）` : ''].join(' ')}
           built={!!builtProductId}
           loading={loadingProduct}
           onBuild={handleBuildProduct}

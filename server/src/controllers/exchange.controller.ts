@@ -173,8 +173,8 @@ export const getDailyRates = async (req: Request, res: Response, next: NextFunct
   try {
     const date = (req.query.date as string) || getToday();
 
-    // 1. 查库
-    const existing = await prisma.dailyExchangeRate.findMany({ where: { date } });
+    // 1. 查库（date 列为 DateTime @db.Date，必须传 Date 对象，纯字符串会被 Prisma 拒绝）
+    const existing = await prisma.dailyExchangeRate.findMany({ where: { date: toDbDate(date) } });
     if (existing.length > 0) {
       return success(res, ratePayload(date, toResponseRates(existing)));
     }

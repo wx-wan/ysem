@@ -127,9 +127,11 @@ export default function CustomerToolbar({
           })}
         </div>
 
+        {/* 边界适配（同 list/CustomerToolbar）：本处为「标签筛选字符串」，非 Customer.tags 数据；
+            TagSelector 保持严格 string[] 契约，转换只发生在此边界。注：该文件当前无引用（死代码） */}
         <TagSelector
-          value={filterTags}
-          onChange={(v) => { setFilterTags(v); setPage(1); }}
+          value={filterTags ? filterTags.split(',').filter(Boolean) : []}
+          onChange={(v) => { setFilterTags(v.join(',')); setPage(1); }}
           placeholder="输入标签名称"
           showAddButton={false}
         />

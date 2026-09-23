@@ -14,27 +14,24 @@ function parseTag(tagStr: string): { name: string; color?: string } {
 const SYSTEM_TAGS = ['重点客户', '未成交客户', '本年度新客', '往年老客'];
 
 /**
- * 解析 tags 字符串，过滤掉系统标签，只返回自定义标签
+ * 解析 tags（V1.0 canonical：string[]），过滤掉系统标签，只返回自定义标签
  */
-export function filterCustomTags(tags?: string): { name: string; color?: string }[] {
-  if (!tags) return [];
-  return tags
-    .split(',')
-    .filter(Boolean)
-    .map(parseTag)
-    .filter((t) => !SYSTEM_TAGS.includes(t.name));
+export function filterCustomTags(tags?: string[]): { name: string; color?: string }[] {
+  if (!tags || tags.length === 0) return [];
+  return tags.filter(Boolean).map(parseTag).filter((t) => !SYSTEM_TAGS.includes(t.name));
 }
 
 /**
- * 解析 tags 字符串，返回所有标签（不过滤系统标签）
+ * 解析 tags（V1.0 canonical：string[]），返回所有标签（不过滤系统标签）
  */
-export function parseAllTags(tags?: string): { name: string; color?: string }[] {
-  if (!tags) return [];
-  return tags.split(',').filter(Boolean).map(parseTag);
+export function parseAllTags(tags?: string[]): { name: string; color?: string }[] {
+  if (!tags || tags.length === 0) return [];
+  return tags.filter(Boolean).map(parseTag);
 }
 
 interface CustomerTagsProps {
-  tags?: string;
+  /** V1.0 canonical：string[]（Customer.tags） */
+  tags?: string[];
   token: any;
   /** 'default' - 白色背景卡片中使用 | 'overlay' - 渐变背景中使用 */
   variant?: 'default' | 'overlay';

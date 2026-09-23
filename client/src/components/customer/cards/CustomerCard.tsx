@@ -77,13 +77,13 @@ const CustomerCard = memo(function CustomerCard({
   const displayTotalAmount = customer.totalAmount
     ?? (customer.salesOrders || []).reduce((sum, o) => sum + Number(o.totalAmountCny ?? 0), 0);
 
-  // 本地标签状态（可编辑，直接调接口更新）
-  const [localTags, setLocalTags] = useState(customer.tags || '');
+  // 本地标签状态（可编辑，直接调接口更新）；V1.0 canonical：Customer.tags = string[]
+  const [localTags, setLocalTags] = useState<string[]>(customer.tags ?? []);
 
   // 客户切换时同步本地标签
-  useEffect(() => { setLocalTags(customer.tags || ''); }, [customer.id, customer.tags]);
+  useEffect(() => { setLocalTags(customer.tags ?? []); }, [customer.id, customer.tags]);
 
-  const handleTagsChange = useCallback((next: string) => {
+  const handleTagsChange = useCallback((next: string[]) => {
     setLocalTags(next);
     customerApi
       .updateTags(customer.id, next)
@@ -94,7 +94,7 @@ const CustomerCard = memo(function CustomerCard({
       })
       .catch(() => {
         message.error('标签更新失败');
-        setLocalTags(customer.tags || '');
+        setLocalTags(customer.tags ?? []);
       });
   }, [customer.id, customer.tags, onListUpdate]);
 
