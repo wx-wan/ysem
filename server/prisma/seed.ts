@@ -287,10 +287,11 @@ const CUSTOMER_TYPES = [
 ];
 
 /**
- * 历史客户类型（按生命周期分类）：不再出现在启用列表，但**只停用不删除** ——
- * 保留主数据行以便历史 `Customer.customerType` / `Lead.customerType` 字符串仍有对照。
+ * 已废弃客户类型（按生命周期分类）：不再使用，**直接删除**主数据行。
+ * `Customer.customerType` / `Lead.customerType` 为有意不建外键的字符串，
+ * 历史数据保留原字符串即可，无需主数据对照。
  */
-const CUSTOMER_TYPES_RETIRED = ['意向客户', '成交客户', '战略客户', '流失客户'];
+const CUSTOMER_TYPES_DEPRECATED = ['意向客户', '成交客户', '战略客户', '流失客户'];
 
 const PRODUCT_CRAFTS = [
   { name: '搪胶', code: 'TJ', sort: 1 },
@@ -518,10 +519,9 @@ async function seedCustomerTypes(tx: Prisma.TransactionClient): Promise<void> {
     });
   }
 
-  // 历史类型仅停用（保留行）：避免历史 Customer/Lead 的 customerType 字符串失去主数据对照
-  await tx.customerType.updateMany({
-    where: { name: { in: [...CUSTOMER_TYPES_RETIRED] } },
-    data: { isActive: false },
+  // 废弃类型直接删除：保持主数据干净，历史 Customer/Lead 仍保留原 customerType 字符串
+  await tx.customerType.deleteMany({
+    where: { name: { in: [...CUSTOMER_TYPES_DEPRECATED] } },
   });
 }
 
