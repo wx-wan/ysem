@@ -103,6 +103,18 @@ export default function OpportunityDetailPage() {
 
   const backToList = useCallback(() => navigate('/sales/opportunities'), [navigate]);
 
+  /**
+   * F-S3：新建报价入口（**仅新增入口**，不改变商机业务规则）
+   *
+   * 行为：跳转 /sales/quotes?opportunityId=<当前商机 id> ⇒ 报价列表页自动打开「新建报价」弹窗并锁定该商机；
+   * 明细由报价侧读取本商机的 items 后带入（后端 create 不自动复制商机内容）。
+   * 不在此处做任何写请求、不复制报价表单、不修改商机数据。
+   */
+  const createQuotation = useCallback(() => {
+    if (!detail?.id) return;
+    navigate(`/sales/quotes?opportunityId=${encodeURIComponent(detail.id)}`);
+  }, [navigate, detail?.id]);
+
   if (loading && !detail) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 80 }}>
@@ -158,6 +170,7 @@ export default function OpportunityDetailPage() {
           <Button type="primary" onClick={() => setEditOpen(true)}>
             编辑
           </Button>
+          <Button onClick={createQuotation}>新建报价</Button>
           <Button onClick={backToList}>返回商机列表</Button>
         </Space>
       </div>
