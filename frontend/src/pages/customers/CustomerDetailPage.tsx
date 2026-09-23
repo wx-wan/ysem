@@ -169,6 +169,18 @@ export default function CustomerDetailPage() {
 
   const backToList = useCallback(() => navigate(getListReturnPath()), [navigate]);
 
+  /**
+   * F-S2：新建商机入口（**仅新增入口**，不改变任何客户业务规则）
+   *
+   * 行为：跳转 /sales/opportunities?customerId=<当前客户 id> ⇒ 商机列表页自动打开创建弹窗并
+   * **锁定该客户**（不可更换）。客户名称由商机侧 CustomerSelect 按 id 解析，故此处只传 id。
+   * 不写任何 Customer 数据、不改 Customer API、不触碰 Customer 派生值 / 归属 / 意向等字段。
+   */
+  const createOpportunity = useCallback(() => {
+    if (!id) return;
+    navigate(`/sales/opportunities?customerId=${encodeURIComponent(id)}`);
+  }, [navigate, id]);
+
   const header = (
     <div>
       <Breadcrumb items={[{ title: '客户管理' }, { title: '客户详情' }]} />
@@ -182,6 +194,7 @@ export default function CustomerDetailPage() {
             编辑
           </Button>
         ) : null}
+        {detail ? <Button onClick={createOpportunity}>新建商机</Button> : null}
         <Button onClick={backToList}>返回客户列表</Button>
       </Space>
     </div>

@@ -1,6 +1,6 @@
 import type { ApiResponse } from './request';
 import request from './request';
-import { unwrapPageWithExtras, unwrapResponse } from '../utils/response';
+import { unwrapArray, unwrapPageWithExtras, unwrapResponse } from '../utils/response';
 import type {
   CustomerAllQuery,
   CustomerAllResponse,
@@ -9,6 +9,7 @@ import type {
   CustomerDetail,
   CustomerMyQuery,
   CustomerMyResponse,
+  CustomerOption,
   CustomerPublicQuery,
   CustomerPublicResponse,
   CustomerReport,
@@ -60,6 +61,11 @@ export const customerApi = {
   create: (payload: CustomerCreateRequest) => request.post<ApiResponse<CustomerBase>>('/customers', payload),
   update: (id: string, payload: CustomerUpdateRequest) =>
     request.put<ApiResponse<CustomerBase>>(`/customers/${encodeURIComponent(id)}`, payload),
+  /**
+   * F-S2 additive：客户选项（GET /api/customers/options）—— 后端**既有**端点，仅补前端绑定。
+   * 不改变任何 Customer 契约/业务规则；返回数组（后端无分页），已按 roleScope 过滤。
+   */
+  options: () => request.get<ApiResponse<CustomerOption[]>>('/customers/options'),
 };
 
 /** 我的客户（/my）：分页 + stats + 子筛选计数 + 金额聚合，**保留全部统计字段** */
@@ -102,3 +108,14 @@ export const createCustomer = async (payload: CustomerCreateRequest): Promise<Cu
  */
 export const updateCustomer = async (id: string, payload: CustomerUpdateRequest): Promise<CustomerBase> =>
   unwrapResponse(await customerApi.update(id, payload), 'PUT /customers/:id').data;
+
+/**
+ * 客户选项列表（GET /api/customers/options）—— **F-S2 additive**
+ *
+ * 用途：商机创建/编辑时的「客户」选择数据源（F-S2）。
+ * 语义：后端按 `roleScope(req)` 过滤，**无分页**、无 keyword 参数；返回 { id, companyName, contactName, … }。
+ * 边界：不改变任何 Customer 契约/业务规则；前端不得据此放宽可见性（后端始终是权威）。
+ * （F-4A 已判定 customerOptions 为 page-level 数据集 ⇒ 不进入 master data store，由页面按需加载。）
+ */
+export const getCustomerOptions = async (): Promise<CustomerOption[]> =>
+  unwrapArray(await customerApi.options(), 'GET /customers/options');

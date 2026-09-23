@@ -8,6 +8,8 @@ import Login from '../pages/Login';
 import NotFound from '../pages/NotFound';
 import Placeholder from '../pages/Placeholder';
 import ProductListPage from '../pages/products/ProductListPage';
+import OpportunityDetailPage from '../pages/sales/opportunities/OpportunityDetailPage';
+import OpportunityListPage from '../pages/sales/opportunities/OpportunityListPage';
 import { APP_MENU, collectMenuPaths } from './menu';
 
 /**
@@ -21,8 +23,8 @@ import { APP_MENU, collectMenuPaths } from './menu';
  * 已登录 → 外壳内 404（真正不存在的 /setting/not-exist 亦然）。
  */
 export default function AppRoutes() {
-  // /dashboard、/data/customers 与 /data/products 已有真实页面，其余菜单 path 仍用占位页
-  const implementedRoutes = ['/dashboard', '/data/customers', '/data/products'];
+  // /dashboard、/data/customers、/data/products、/sales/opportunities 已有真实页面，其余菜单 path 仍用占位页
+  const implementedRoutes = ['/dashboard', '/data/customers', '/data/products', '/sales/opportunities'];
   const placeholderRoutes = collectMenuPaths(APP_MENU).filter((r) => !implementedRoutes.includes(r.path));
 
   return (
@@ -45,6 +47,10 @@ export default function AppRoutes() {
 
         {/* F-S1：产品 MVP（列表 + 新建/编辑；路由 path 与菜单 product-center.products 同源） */}
         <Route path="data/products" element={<ProductListPage />} />
+
+        {/* F-S2：商机 MVP（列表 + 新建/编辑 + 详情；path 与菜单 sales-center.sales:opportunities 同源） */}
+        <Route path="sales/opportunities" element={<OpportunityListPage />} />
+        <Route path="sales/opportunities/:id" element={<OpportunityDetailPage />} />
 
         {placeholderRoutes.map((r) => (
           <Route

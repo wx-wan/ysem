@@ -413,6 +413,25 @@ export interface CustomerAllResponse extends PageResult<CustomerPipelineListItem
   contractBreakdown: CustomerContractBreakdownItem[];
 }
 
+/**
+ * 客户选项投影（GET /api/customers/options）—— **F-S2 additive**
+ *
+ * 后端既有端点（server/src/controllers/customer.controller.ts `listOptions`）：按 `roleScope(req)` 过滤后
+ * 返回 { id, companyName, contactName, customerNo, email, phone, country, ownerId }，**无分页**。
+ * 该端点在 F-4A 已被判定为 page-level 数据集（不进入 master data store），故此处仅补类型声明，
+ * 不改变任何 Customer 业务规则 / 契约（本类型为纯读取用）。
+ */
+export interface CustomerOption {
+  id: string;
+  companyName: string;
+  contactName: string | null;
+  customerNo: string;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  ownerId: string | null;
+}
+
 /** /report：管道与转化统计（与 list stats **不同**，独立定义） */
 export interface CustomerReport {
   leadCount: number;
