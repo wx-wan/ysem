@@ -14,6 +14,8 @@ import QuotationDetailPage from '../pages/sales/quotations/QuotationDetailPage';
 import QuotationListPage from '../pages/sales/quotations/QuotationListPage';
 import SalesOrderDetailPage from '../pages/sales/orders/SalesOrderDetailPage';
 import SalesOrderListPage from '../pages/sales/orders/SalesOrderListPage';
+import ShipmentDetailPage from '../pages/logistics/shipment/ShipmentDetailPage';
+import ShipmentListPage from '../pages/logistics/shipment/ShipmentListPage';
 import { APP_MENU, collectMenuPaths } from './menu';
 
 /**
@@ -35,6 +37,7 @@ export default function AppRoutes() {
     '/sales/opportunities',
     '/sales/quotes',
     '/sales/orders',
+    '/logistics/shipment',
   ];
   const placeholderRoutes = collectMenuPaths(APP_MENU).filter((r) => !implementedRoutes.includes(r.path));
 
@@ -70,6 +73,10 @@ export default function AppRoutes() {
         {/* F-S4：销售订单 MVP（列表 + 由报价创建 + 详情/编辑；path 与菜单 sales-center.sales:orders 同源） */}
         <Route path="sales/orders" element={<SalesOrderListPage />} />
         <Route path="sales/orders/:id" element={<SalesOrderDetailPage />} />
+
+        {/* F-S5：出运 MVP（列表 + 由订单创建 + 详情；path 与菜单 production-center.shipment 同源） */}
+        <Route path="logistics/shipment" element={<ShipmentListPage />} />
+        <Route path="logistics/shipment/:id" element={<ShipmentDetailPage />} />
 
         {placeholderRoutes.map((r) => (
           <Route

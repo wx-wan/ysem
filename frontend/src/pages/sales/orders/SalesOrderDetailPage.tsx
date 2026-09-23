@@ -112,6 +112,16 @@ export default function SalesOrderDetailPage() {
 
   const backToList = useCallback(() => navigate('/sales/orders'), [navigate]);
 
+  /**
+   * F-S5：创建出运单入口（唯一入口；不改变订单业务规则）
+   * 跳转 /logistics/shipment?salesOrderId=<当前订单 id> ⇒ 出运列表页自动打开创建弹窗并带入订单明细；
+   * 出运数量由后端校验上限并重算 shippedQty（前端不计算、不回写）。
+   */
+  const createShipment = useCallback(() => {
+    if (!detail?.id) return;
+    navigate(`/logistics/shipment?salesOrderId=${encodeURIComponent(detail.id)}`);
+  }, [navigate, detail?.id]);
+
   if (loading && !detail) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 80 }}>
@@ -168,6 +178,7 @@ export default function SalesOrderDetailPage() {
           <Button type="primary" onClick={() => setEditOpen(true)}>
             编辑
           </Button>
+          <Button onClick={createShipment}>创建出运单</Button>
           <Button onClick={backToList}>返回订单列表</Button>
         </Space>
       </div>
