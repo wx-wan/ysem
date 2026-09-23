@@ -23,7 +23,6 @@ import PurchasesPage from './pages/Purchases';
 import ProductionPage from './pages/Production';
 import ShipmentPage from './pages/Shipment';
 import InventoryPage from './pages/Inventory';
-import CraftPage from './pages/Craft';
 import SuppliersPage from './pages/Suppliers';
 import UserManagementPage from './pages/UserManagement';
 import PermPage from './pages/Perm';
@@ -113,12 +112,11 @@ function App() {
           <Route path="settlement" element={<PermRoute perm="sales:settlement"><SettlementPage /></PermRoute>} />
         </Route>
 
-        {/* 数据：客户 / 产品 / 工艺 / 供应商 */}
+        {/* 数据：客户 / 产品 / 供应商 */}
         <Route path="data" element={<GroupLayout />}>
           <Route index element={<Navigate to="/data/customers" replace />} />
           <Route path="customers" element={<PermRoute perm="customers"><CustomersPage /></PermRoute>} />
           <Route path="products" element={<PermRoute perm="products"><ProductsPage /></PermRoute>} />
-          <Route path="craft" element={<PermRoute perm="craft"><CraftPage /></PermRoute>} />
           <Route path="suppliers" element={<PermRoute perm="suppliers"><SuppliersPage /></PermRoute>} />
         </Route>
 
