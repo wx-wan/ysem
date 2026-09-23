@@ -30,10 +30,24 @@ function saveCache(data: CacheShape['data']) {
   }
 }
 
+function clearCache() {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 interface CustomerTypeState {
   types: { name: string; id: string }[];
   loading: boolean;
   fetchTypes: () => Promise<{ name: string; id: string }[]>;
+  /**
+   * 主数据被改动后调用（系统设置 → 客户类型 的新增/编辑/删除/启停/排序）：
+   * 清掉本地缓存并**立即**重新拉取，令所有下拉组件即时生效。
+   * 否则 TTL（10 分钟）内的下拉仍会显示旧选项。
+   */
+  invalidate: () => Promise<{ name: string; id: string }[]>;
 }
 
 export const useCustomerTypeStore = create<CustomerTypeState>((set, get) => ({
@@ -58,6 +72,11 @@ export const useCustomerTypeStore = create<CustomerTypeState>((set, get) => ({
       set({ loading: false });
       return cached?.data ?? [];
     }
+  },
+
+  invalidate: async () => {
+    clearCache();
+    return get().fetchTypes();
   },
 }));
 

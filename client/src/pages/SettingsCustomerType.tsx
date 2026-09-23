@@ -23,6 +23,7 @@ import {
 } from '@ant-design/icons';
 import customerTypeApi, { CustomerType, CustomerTypeInput } from '../api/customerType';
 import PageSkeleton from '../components/PageSkeleton';
+import { useCustomerTypeStore } from '../stores/useCustomerTypeStore';
 
 export default function SettingsCustomerType() {
   const { t } = useTranslation();
@@ -32,6 +33,16 @@ export default function SettingsCustomerType() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerType | null>(null);
   const [form] = Form.useForm();
+  const invalidateCustomerTypes = useCustomerTypeStore((s) => s.invalidate);
+
+  /**
+   * 下拉选项由 `useCustomerTypeStore` 提供，带 10 分钟本地缓存（localStorage `ysem_customer_type_options`）。
+   * 本页任何改动（新增 / 编辑 / 删除 / 启停 / 排序）后必须让该缓存失效并重拉 —— 否则
+   * 客户、线索表单里的下拉会在 TTL 内继续显示旧选项（需手动清缓存或等待 10 分钟）。
+   */
+  const syncDropdownOptions = useCallback(() => {
+    void invalidateCustomerTypes();
+  }, [invalidateCustomerTypes]);
 
   const fetchList = useCallback(async () => {
     setLoading(true);
@@ -75,6 +86,7 @@ export default function SettingsCustomerType() {
       }
       setModalOpen(false);
       fetchList();
+      syncDropdownOptions();
     } catch {
       message.error(t('common.saveFailed'));
     }
@@ -85,6 +97,7 @@ export default function SettingsCustomerType() {
       await customerTypeApi.delete(id);
       message.success(t('common.deleted'));
       fetchList();
+      syncDropdownOptions();
     } catch {
       message.error(t('common.deleteFailed'));
     }
@@ -103,6 +116,7 @@ export default function SettingsCustomerType() {
       await customerTypeApi.updateSort(updated);
       message.success(t('common.saved'));
       fetchList();
+      syncDropdownOptions();
     } catch {
       message.error(t('common.saveFailed'));
     }
@@ -113,6 +127,7 @@ export default function SettingsCustomerType() {
       await customerTypeApi.update(record.id, { isActive: !record.isActive });
       message.success(t('common.saved'));
       fetchList();
+      syncDropdownOptions();
     } catch {
       message.error(t('common.saveFailed'));
     }
