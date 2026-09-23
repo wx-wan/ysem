@@ -22,6 +22,9 @@ const leadSchema = z.object({
   // 名称可选：未传时由系统按「渠道-平台-采购产品-数量」规则自动生成
   leadName: z.string().min(1).optional(),
   customerId: z.string().optional().nullable(),
+  // F-8L-A：来源渠道 / 来源平台正式字段（Lead.channelId / Lead.shopId，均 → Channel）
+  channelId: z.string().optional().nullable(),
+  shopId: z.string().optional().nullable(),
   sourceChannel: z.string().optional().nullable(),
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
@@ -56,13 +59,16 @@ const leadSchema = z.object({
  *
  * 以下 legacy 入参仍被 leadSchema 接受（保持 API 兼容，不返回 400），但**不落库**
  * —— V1.0 Lead 无对应列：
- *   - sourceChannel  → V1.0 改为 channelId / shopId 关联（接入待后续轮次）
- *   - productType / productDesc → V1.0 无对应列；产品信息经 LeadItem.productName 承载
- *   - images         → V1.0 图片走 Attachment(ownerType=LEAD)（接入待后续轮次）
+ *   - sourceChannel  → V1.0 已改为 channelId / shopId 关联（F-8L-A 落库）；此处仍接受但不落库，避免历史前端 400
+ *   - productType / productDesc → V1.0 无对应列；产品信息经 LeadItem.productName 承载（本 Round 不处理）
+ *   - images         → V1.0 图片走 Attachment(ownerType=LEAD)（本 Round 不处理）
+ * 正式落库字段 channelId / shopId 已加入下方白名单（F-8L-A）。
  */
 const LEAD_WRITABLE_FIELDS = [
   'leadName',
   'customerId',
+  'channelId',
+  'shopId',
   'source',
   'status',
   'companyName',
@@ -106,6 +112,52 @@ const LEAD_ITEM_PRODUCT_SELECT = {
  */
 async function scopedWhere(req: AuthRequest, id: string): Promise<Record<string, unknown>> {
   return applyScope({ id }, await roleScope(req, { field: 'ownerId' }));
+}
+
+/**
+ * F-8L-A · Lead 来源渠道/来源平台契约校验（create / update 共用）。
+ *
+ * 现系统对 Channel / Shop **没有** per-user permission / ownership / visibility 机制
+ * （Channel 属全局主数据，无 ownerId、无 visibility；scope 工具仅覆盖 ownerId 资源与
+ * Product 对象级可见性，见 utils/scope.ts）。故本校验**仅**做：
+ *   1) 引用存在性：传入的 channelId / shopId 必须是 ACTIVE 的 Channel（可空，不强制必填）；
+ *   2) 硬业务规则：当 channelId 与 shopId **同时非空**时，必须满足 `shop.parentId === channelId`。
+ * 不发明第二套 Channel 权限体系（遵循 D3 / 第 5 节约束）。存在性校验先于任何写入，
+ * 不可见与不存在同结果（400），避免引入存在性 oracle。
+ *
+ * @returns false 时已通过 fail(res,...) 写入错误响应，调用方须 return。
+ */
+async function validateChannelShop(
+  res: Response,
+  channelId: string | null | undefined,
+  shopId: string | null | undefined,
+): Promise<boolean> {
+  if (channelId !== undefined && channelId !== null) {
+    const ch = await prisma.channel.findUnique({
+      where: { id: channelId },
+      select: { id: true, status: true },
+    });
+    if (!ch || ch.status !== 'ACTIVE') {
+      fail(res, 400, '来源渠道不存在');
+      return false;
+    }
+  }
+  if (shopId !== undefined && shopId !== null) {
+    const shop = await prisma.channel.findUnique({
+      where: { id: shopId },
+      select: { id: true, parentId: true, status: true },
+    });
+    if (!shop || shop.status !== 'ACTIVE') {
+      fail(res, 400, '来源平台不存在');
+      return false;
+    }
+    // 硬规则：仅当两者均非空时校验父子一致性（channelId 为空则跳过，遵循冻结契约）
+    if (channelId !== undefined && channelId !== null && shop.parentId !== channelId) {
+      fail(res, 400, '来源平台不属于所选来源渠道');
+      return false;
+    }
+  }
+  return true;
 }
 
 // 列表：分页 + 多维筛选
@@ -166,6 +218,9 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
           // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
           items: { include: { product: { select: LEAD_ITEM_PRODUCT_SELECT } } },
           owner: { select: { id: true, username: true, realName: true } },
+          // F-8L-A：来源渠道 / 来源平台关系（仅投影 id + name，剔除无关字段）
+          channel: { select: { id: true, name: true } },
+          shop: { select: { id: true, name: true } },
         },
         },
         );
@@ -191,6 +246,9 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
         // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
         items: { include: { product: { select: LEAD_ITEM_PRODUCT_SELECT } } },
         owner: { select: { id: true, username: true, realName: true } },
+        // F-8L-A：来源渠道 / 来源平台关系（仅投影 id + name，剔除无关字段）
+        channel: { select: { id: true, name: true } },
+        shop: { select: { id: true, name: true } },
       },
     });
     if (!item) {
@@ -262,6 +320,11 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
+    // F-8L-A · 来源渠道/来源平台：引用存在性 + 父子一致性（shop.parentId === channelId）。
+    // 仅校验引用合法性，不发明 Channel/Shop 的 per-user 权限（系统无此机制，Channel 为全局主数据）。
+    // 先于事务与任何写入（与 customerId / productId / ownerId 同口径）。
+    if (!(await validateChannelShop(res, data.channelId, data.shopId))) return;
+
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const item = await prisma.$transaction(async (tx) => {
       const leadNo = await getNextNumber(tx, 'LEAD');
@@ -270,6 +333,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         data: {
           leadName,
           customerId: data.customerId ?? null,
+          channelId: data.channelId ?? null,
+          shopId: data.shopId ?? null,
           quantity: data.quantity ?? 0,
           source: data.source ?? 'MANUAL',
           status: data.status ?? 'NEW',
@@ -320,7 +385,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     // 该门**先于任何写入**（lead.update / leadItem.deleteMany / leadItem.create）。
     const existing = await prisma.lead.findFirst({
       where: await scopedWhere(req, req.params.id),
-      select: { id: true },
+      select: { id: true, channelId: true, shopId: true },
     });
     if (!existing) {
       fail(res, 404, '线索不存在');
@@ -353,6 +418,13 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
         return;
       }
     }
+
+    // F-8L-A · 来源渠道/来源平台：编辑时同样必须重新校验（先于任何写入）。
+    // 仅传其一（另一保持原值）时，用持久值补齐构成有效组合，再校验父子一致性；
+    // 不自动替用户改写 shopId（如只改 channelId 导致 shop.parentId !== newChannelId，则拒绝）。
+    const effChannelId = leadData.channelId !== undefined ? leadData.channelId : existing.channelId;
+    const effShopId = leadData.shopId !== undefined ? leadData.shopId : existing.shopId;
+    if (!(await validateChannelShop(res, effChannelId, effShopId))) return;
 
     // 引用侧（DQ-3=C）：产品可见性校验必须**先于任何写入**（含 lead.update 与明细重建），
     // 否则拒绝发生在写入之后会造成「授权后于变更」。不可见与不存在同结果（400）。
