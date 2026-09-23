@@ -65,3 +65,29 @@ export const LIST_FILTER_NOTE = '列表支持关键词（订单号 / 客户名�
 
 /** 不展示快照字段（D-FS4-025） */
 export const SNAPSHOT_OMIT_NOTE = '下单快照字段后端尚未写入，本阶段不展示。';
+
+/* ============ F-S6：收付款展示（键 = prisma PaymentStatus / PaymentType） ============ */
+
+export const PAYMENT_STATUS_LABEL: Record<string, string> = {
+  PENDING: '待确认',
+  RECEIVED: '已收款',
+  CONFIRMED: '已确认',
+  FAILED: '失败',
+};
+
+export const PAYMENT_STATUS_COLOR: Record<string, string> = {
+  PENDING: 'gold',
+  RECEIVED: 'blue',
+  CONFIRMED: 'green',
+  FAILED: 'red',
+};
+
+export const PAYMENT_TYPE_LABEL: Record<string, string> = {
+  DEPOSIT: '定金',
+  BALANCE: '尾款',
+  FULL: '全款',
+  OTHER: '其他',
+};
+
+/** 已收累计口径（Payment direction=IN + status=CONFIRMED 汇总回写） */
+export const PAID_AMOUNT_HINT = '「已收（CNY）」由后端按已确认收款自动汇总（收款创建即确认）。';

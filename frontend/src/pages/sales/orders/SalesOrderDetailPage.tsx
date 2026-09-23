@@ -1,8 +1,8 @@
-import { Breadcrumb, Button, Card, Descriptions, Empty, Result, Space, Spin, Table, Tag, Typography } from 'antd';
+import { App, Breadcrumb, Button, Card, Descriptions, Empty, Popconfirm, Result, Space, Spin, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { getSalesOrder } from '../../../api/salesOrders';
+import { completeSalesOrder, getSalesOrder } from '../../../api/salesOrders';
 import { getErrorMessage, getErrorStatus } from '../../../api/request';
 import type { SalesOrderDetail, SalesOrderItem } from '../../../types/salesOrder';
 import { formatDate, formatDateTime, formatDecimalString, textOrDash } from '../../../utils/format';
@@ -10,9 +10,14 @@ import {
   ITEM_PRODUCT_UNAVAILABLE_LABEL,
   ORDER_STATUS_COLOR,
   ORDER_STATUS_LABEL,
+  PAID_AMOUNT_HINT,
+  PAYMENT_STATUS_COLOR,
+  PAYMENT_STATUS_LABEL,
+  PAYMENT_TYPE_LABEL,
   SNAPSHOT_OMIT_NOTE,
   STATUS_READONLY_HINT,
 } from './constants';
+import PaymentFormModal from './PaymentFormModal';
 import SalesOrderFormModal from './SalesOrderFormModal';
 
 const { Title, Text } = Typography;
@@ -56,6 +61,30 @@ const itemColumns: ColumnsType<SalesOrderItem> = [
   { title: '行备注', dataIndex: 'remark', width: 160, render: (v: string | null) => textOrDash(v) },
 ];
 
+/** 订单关联的收款行（后端 detail 的 payments 只读投影，字段少于 Payment 完整行） */
+type OrderPaymentRow = SalesOrderDetail['payments'][number];
+
+/** 收款记录列（F-S6；仅展示，不改 Payment 业务） */
+const paymentColumns: ColumnsType<OrderPaymentRow> = [
+  { title: '收款单号', dataIndex: 'paymentNo', width: 170 },
+  {
+    title: '类型',
+    dataIndex: 'type',
+    width: 100,
+    render: (value: string) => PAYMENT_TYPE_LABEL[value] ?? value,
+  },
+  { title: '金额', dataIndex: 'amount', width: 130, align: 'right', render: (v: string) => formatDecimalString(v) },
+  { title: '币种', dataIndex: 'currency', width: 80 },
+  {
+    title: '状态',
+    dataIndex: 'status',
+    width: 100,
+    render: (value: string) => (
+      <Tag color={PAYMENT_STATUS_COLOR[value] ?? 'default'}>{PAYMENT_STATUS_LABEL[value] ?? value}</Tag>
+    ),
+  },
+];
+
 /** 详情请求 in-flight 去重（模块级；与 F-S2/F-S3 同型） */
 const detailInFlight = new Map<string, Promise<SalesOrderDetail>>();
 
@@ -78,6 +107,7 @@ const loadDetail = (id: string, fetcher: () => Promise<SalesOrderDetail>): Promi
 export default function SalesOrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { message } = App.useApp();
 
   const [detail, setDetail] = useState<SalesOrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -85,6 +115,8 @@ export default function SalesOrderDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
   const [editOpen, setEditOpen] = useState(false);
+  const [payOpen, setPayOpen] = useState(false);
+  const [completing, setCompleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -121,6 +153,24 @@ export default function SalesOrderDetailPage() {
     if (!detail?.id) return;
     navigate(`/logistics/shipment?salesOrderId=${encodeURIComponent(detail.id)}`);
   }, [navigate, detail?.id]);
+
+  /**
+   * F-S6：标记订单完成 —— 调用后端既有 `PUT /api/sales-orders/:id { status: 'COMPLETED' }`
+   * （无独立 completion API、无状态机；成功后后端写 completedAt）。
+   */
+  const markCompleted = useCallback(async () => {
+    if (!detail?.id) return;
+    setCompleting(true);
+    try {
+      await completeSalesOrder(detail.id);
+      message.success('订单已标记为已完成');
+      setReloadToken((token) => token + 1);
+    } catch (err) {
+      message.error(getErrorMessage(err));
+    } finally {
+      setCompleting(false);
+    }
+  }, [detail?.id, message]);
 
   if (loading && !detail) {
     return (
@@ -179,6 +229,18 @@ export default function SalesOrderDetailPage() {
             编辑
           </Button>
           <Button onClick={createShipment}>创建出运单</Button>
+          <Button onClick={() => setPayOpen(true)}>登记收款</Button>
+          {detail.status !== 'COMPLETED' && detail.status !== 'CANCELLED' ? (
+            <Popconfirm
+              title="将订单标记为已完成？"
+              description="该操作会把订单状态置为「已完成」（后端无流转校验，可由后续编辑取消）。"
+              okText="确认完成"
+              cancelText="取消"
+              onConfirm={() => void markCompleted()}
+            >
+              <Button loading={completing}>标记完成</Button>
+            </Popconfirm>
+          ) : null}
           <Button onClick={backToList}>返回订单列表</Button>
         </Space>
       </div>
@@ -301,6 +363,24 @@ export default function SalesOrderDetailPage() {
         />
       </Card>
 
+      <Card size="small" title={`收款记录（${detail.payments.length}）`}>
+        {detail.payments.length > 0 ? (
+          <>
+            <Table<OrderPaymentRow>
+              rowKey="id"
+              size="small"
+              pagination={false}
+              dataSource={detail.payments}
+              columns={paymentColumns}
+              scroll={{ x: 'max-content' }}
+            />
+            <Text type="secondary">{PAID_AMOUNT_HINT}</Text>
+          </>
+        ) : (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无收款记录" />
+        )}
+      </Card>
+
       <SalesOrderFormModal
         mode="edit"
         open={editOpen}
@@ -308,6 +388,17 @@ export default function SalesOrderDetailPage() {
         onCancel={() => setEditOpen(false)}
         onSaved={() => {
           setEditOpen(false);
+          setReloadToken((token) => token + 1);
+        }}
+      />
+
+      <PaymentFormModal
+        open={payOpen}
+        order={detail}
+        onCancel={() => setPayOpen(false)}
+        onSaved={() => {
+          setPayOpen(false);
+          // 重读订单详情以获取后端重算后的 paidAmountCny（前端不自行计算）
           setReloadToken((token) => token + 1);
         }}
       />

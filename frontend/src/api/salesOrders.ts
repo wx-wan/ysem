@@ -57,3 +57,17 @@ export const createSalesOrder = async (payload: SalesOrderCreatePayload): Promis
 /** 更新订单（PUT /api/sales-orders/:id；未传字段后端保持原值） */
 export const updateSalesOrder = async (id: string, payload: SalesOrderUpdatePayload): Promise<SalesOrderListItem> =>
   unwrapResponse(await salesOrderApi.update(id, payload), 'PUT /sales-orders/:id').data;
+
+/**
+ * F-S6：将订单置为「已完成」—— 复用后端既有 `PUT /api/sales-orders/:id`（status 可直接写，
+ * 无独立 completion 端点，亦无状态流转校验），成功后后端自动写 `completedAt`。
+ *
+ * ★ 仅由订单详情页的「标记完成」动作调用；F-S4 的编辑表单不提交 status（状态在表单中只读）。
+ */
+export const completeSalesOrder = async (id: string): Promise<SalesOrderListItem> =>
+  unwrapResponse(
+    await request.put<ApiResponse<SalesOrderListItem>>(`/sales-orders/${encodeURIComponent(id)}`, {
+      status: 'COMPLETED',
+    }),
+    'PUT /sales-orders/:id (COMPLETED)',
+  ).data;
