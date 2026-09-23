@@ -111,6 +111,18 @@ export default function QuotationDetailPage() {
 
   const backToList = useCallback(() => navigate('/sales/quotes'), [navigate]);
 
+  /**
+   * F-S4：创建销售订单入口（**唯一入口** — D-FS4-002；不改变报价业务规则）
+   *
+   * 行为：跳转 /sales/orders?quotationId=<当前报价 id> ⇒ 订单列表页自动打开创建弹窗并锁定商机/客户/报价，
+   * 明细由订单侧读取本报价的 items 后带出（后端 create 不复制报价内容 — D-FS4-003）。
+   * 不在此处 POST、不复制订单表单、不修改报价数据。
+   */
+  const createSalesOrder = useCallback(() => {
+    if (!detail?.id) return;
+    navigate(`/sales/orders?quotationId=${encodeURIComponent(detail.id)}`);
+  }, [navigate, detail?.id]);
+
   if (loading && !detail) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 80 }}>
@@ -169,6 +181,7 @@ export default function QuotationDetailPage() {
           <Button type="primary" onClick={() => setEditOpen(true)}>
             编辑
           </Button>
+          <Button onClick={createSalesOrder}>创建销售订单</Button>
           <Button onClick={backToList}>返回报价列表</Button>
         </Space>
       </div>
