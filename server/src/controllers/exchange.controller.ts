@@ -38,13 +38,27 @@ const FALLBACK_RATES: Record<string, number> = {
 };
 
 interface RateRow {
-  date: string;
+  /** Prisma `DateTime @db.Date` 的写入参数必须是 Date 对象（纯日期串会被校验拒绝） */
+  date: Date;
   currencyCode: Currency;
   rateToCny: Prisma.Decimal;
 }
 
 function getToday(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * `YYYY-MM-DD` → Prisma `DateTime` 参数（UTC 零点）。
+ *
+ * `DailyExchangeRate.date` 是 `DateTime @db.Date`：传纯日期串 `"2026-09-23"` 会触发
+ * Prisma 参数校验错误（premature end of input. Expected ISO-8601 DateTime）→ 500。
+ * 此处显式补齐时间与 `Z`，不使用隐式 `new Date('2026-09-23')` 解析，避免时区歧义。
+ *
+ * 仅用于**传给 Prisma 的查询/写入参数**；接口对外返回的日期仍是 `YYYY-MM-DD` 字符串。
+ */
+function toDbDate(date: string): Date {
+  return new Date(`${date}T00:00:00.000Z`);
 }
 
 /**
@@ -73,7 +87,8 @@ function buildRateRows(date: string, apiRates: Record<string, number>): RateRow[
     if (!isQuotedCurrency(code)) continue;
     const rateToCny = normalizeRate(rawRate, EXTERNAL_RATE_DIRECTION);
     if (!rateToCny) continue;
-    rows.push({ date, currencyCode: code, rateToCny });
+    // 落库参数必须是 Date（`@db.Date`），对外响应日期仍由调用方传入的字符串决定
+    rows.push({ date: toDbDate(date), currencyCode: code, rateToCny });
   }
   return rows;
 }
@@ -110,7 +125,8 @@ export const getTodayRates = async (_req: Request, res: Response, next: NextFunc
     const today = getToday();
 
     // 1. DB 缓存命中（跨重启同样生效，每天自然按日期刷新）
-    const existing = await prisma.dailyExchangeRate.findMany({ where: { date: today } });
+    // 查询参数必须是 Date 对象：`date` 列为 `DateTime @db.Date`，传 "YYYY-MM-DD" 会被 Prisma 拒绝（500）
+    const existing = await prisma.dailyExchangeRate.findMany({ where: { date: toDbDate(today) } });
     if (existing.length > 0) {
       return success(res, ratePayload(today, toResponseRates(existing)));
     }
