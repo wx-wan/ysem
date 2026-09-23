@@ -1,7 +1,7 @@
 import { Alert, Breadcrumb, Button, Card, Descriptions, Empty, Image, Result, Space, Spin, Table, Tag, Timeline, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { getErrorMessage, getErrorStatus } from '../../api/request';
 import { useCustomers } from '../../hooks/useCustomers';
 import type { CustomerActivity, CustomerDetail, CustomerOpportunity, CustomerSalesOrder, CustomerSalesOrderItem } from '../../types/customer';
@@ -46,8 +46,19 @@ const loadDetail = (id: string, fetcher: () => Promise<CustomerDetail>): Promise
 
 /** 商机表列（字段严格取自 CustomerOpportunity；Decimal 以 string 原样规整展示） */
 const opportunityColumns: ColumnsType<CustomerOpportunity> = [
-  { title: '商机编号', dataIndex: 'opportunityNo', width: 150 },
-  { title: '商机名称', dataIndex: 'title', ellipsis: true },
+  {
+    title: '商机编号',
+    dataIndex: 'opportunityNo',
+    width: 150,
+    // F-S7 销售链入口整合：客户 → 商机详情（只加导航，不改任何客户业务规则）
+    render: (value: string, row) => <Link to={`/sales/opportunities/${row.id}`}>{textOrDash(value)}</Link>,
+  },
+  {
+    title: '商机名称',
+    dataIndex: 'title',
+    ellipsis: true,
+    render: (value: string, row) => <Link to={`/sales/opportunities/${row.id}`}>{textOrDash(value)}</Link>,
+  },
   {
     title: '负责人',
     dataIndex: 'owner',
@@ -98,7 +109,13 @@ const orderItemColumns: ColumnsType<CustomerSalesOrderItem> = [
 
 /** 销售订单列（CustomerSalesOrder 投影） */
 const salesOrderColumns: ColumnsType<CustomerSalesOrder> = [
-  { title: '销售订单号', dataIndex: 'orderNo', width: 160 },
+  {
+    // F-S7 销售链入口整合：客户 → 销售订单详情（只加导航）
+    title: '销售订单号',
+    dataIndex: 'orderNo',
+    width: 160,
+    render: (value: string, row) => <Link to={`/sales/orders/${row.id}`}>{textOrDash(value)}</Link>,
+  },
   {
     title: '状态',
     dataIndex: 'status',
