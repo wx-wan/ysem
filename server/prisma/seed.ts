@@ -272,12 +272,25 @@ const CHANNELS: ChannelSeed[] = [
   { name: '展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
 ];
 
+/**
+ * 客户类型基线：按**业务形态**分类（启用项，出现在下拉中的顺序即 sort 升序）。
+ * `name` 即 `Customer.customerType` / `Lead.customerType` 的存储值（有意不建外键）。
+ */
 const CUSTOMER_TYPES = [
-  { name: '意向客户', description: '有明确采购意向，跟进中', sort: 0 },
-  { name: '成交客户', description: '已完成首单或多次成交', sort: 1 },
-  { name: '战略客户', description: '大客户/长期合作重点', sort: 2 },
-  { name: '流失客户', description: '长期无跟进或无意向', sort: 3 },
+  { name: '跨境电商类型', sort: 0 },
+  { name: '传统商超类型', sort: 1 },
+  { name: '品牌 & 代工类型', sort: 2 },
+  { name: '教育文旅类型', sort: 3 },
+  { name: '渠道分销 & 代理类', sort: 4 },
+  { name: '政企 & 单位采购类', sort: 5 },
+  { name: '传统贸易类型', sort: 6 },
 ];
+
+/**
+ * 历史客户类型（按生命周期分类）：不再出现在启用列表，但**只停用不删除** ——
+ * 保留主数据行以便历史 `Customer.customerType` / `Lead.customerType` 字符串仍有对照。
+ */
+const CUSTOMER_TYPES_RETIRED = ['意向客户', '成交客户', '战略客户', '流失客户'];
 
 const PRODUCT_CRAFTS = [
   { name: '搪胶', code: 'TJ', sort: 1 },
@@ -497,12 +510,19 @@ async function seedChannels(tx: Prisma.TransactionClient): Promise<void> {
 
 async function seedCustomerTypes(tx: Prisma.TransactionClient): Promise<void> {
   for (const ct of CUSTOMER_TYPES) {
+    // isActive 显式置 true：可重复执行的 seed 在被人工停用后能恢复为启用基线
     await tx.customerType.upsert({
       where: { name: ct.name },
-      update: { description: ct.description, sort: ct.sort },
-      create: { name: ct.name, description: ct.description, sort: ct.sort, isActive: true },
+      update: { sort: ct.sort, isActive: true },
+      create: { name: ct.name, sort: ct.sort, isActive: true },
     });
   }
+
+  // 历史类型仅停用（保留行）：避免历史 Customer/Lead 的 customerType 字符串失去主数据对照
+  await tx.customerType.updateMany({
+    where: { name: { in: [...CUSTOMER_TYPES_RETIRED] } },
+    data: { isActive: false },
+  });
 }
 
 async function seedProductMasterData(tx: Prisma.TransactionClient): Promise<void> {
