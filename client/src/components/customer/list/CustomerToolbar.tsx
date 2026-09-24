@@ -98,7 +98,6 @@ export default function CustomerToolbar({
       extra={
         (showNoOrderSub || showDoneSub) ? (
           <CapsuleSwitch
-            tone="sub"
             value={subFilterType}
             onChange={handleSubFilterChange}
             activeColor="#1677ff"
