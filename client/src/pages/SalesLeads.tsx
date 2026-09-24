@@ -11,6 +11,7 @@ import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
 import { leadApi, type Lead } from '../api/lead';
 import { convertLeadToOpportunity } from '../utils/convertLead';
+import { useReleaseToPool } from '../hooks/useReleaseToPool';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
@@ -35,6 +36,8 @@ export default function SalesLeads() {
 
   // 列表数据 + 筛选 + 分页
   const list = useLeadList();
+  // 统一「释放到公海」确认弹窗（客户 / 线索共用）
+  const releaseToPool = useReleaseToPool();
   // 表单选项数据（渠道 / 产品 / 分类 / 客户）
   const { channels, productOptions, crafts, audiences, customerOptions, fetchCustomers, fetchProducts } =
     useLeadOptions();
@@ -154,6 +157,18 @@ export default function SalesLeads() {
     [list, message, t],
   );
 
+  // 释放线索到公海（私海 → 公海）：复用统一确认弹窗（useReleaseToPool）
+  const handleRelease = useCallback(
+    (r: Lead) => {
+      releaseToPool({
+        name: r.leadName || r.companyName || '',
+        action: () => leadApi.release(r.id),
+        onSuccess: () => list.refresh(),
+      });
+    },
+    [releaseToPool, list],
+  );
+
   // 「新建客户」弹窗（强制建档）保存成功
   const handleCustomerFormSuccess = (customer?: { id: string }) => {
     setCustomerFormOpen(false);
@@ -226,6 +241,7 @@ export default function SalesLeads() {
           onRemove={list.remove}
           onConvert={handleConvert}
           onClaim={handleClaim}
+          onRelease={handleRelease}
         />
       </Card>
 

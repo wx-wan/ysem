@@ -4,7 +4,7 @@ import {
   AuditOutlined,
   CheckCircleOutlined,
   DeleteOutlined,
-  StopOutlined,
+  RollbackOutlined,
   UserAddOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
@@ -24,6 +24,8 @@ interface Props {
   onConvert: (record: Lead) => void;
   /** 认领公海线索（无负责人线索） */
   onClaim: (record: Lead) => void;
+  /** 释放线索到公海（私海线索） */
+  onRelease: (record: Lead) => void;
 }
 
 /** 线索列表表格（含行选择 / 操作列） */
@@ -37,6 +39,7 @@ export default function LeadTable({
   onRemove,
   onConvert,
   onClaim,
+  onRelease,
 }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -164,6 +167,16 @@ export default function LeadTable({
                   onClick={() => onConvert(r)}
                 />
               </Tooltip>
+              {/* 释放到公海：仅已分配负责人（私海）线索可操作；只读态禁用（二次确认由 useReleaseToPool 统一处理） */}
+              <Tooltip title={t('lead.release')}>
+                <Button
+                  type="link"
+                  size="small"
+                  icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
+                  disabled={readonly}
+                  onClick={() => onRelease(r)}
+                />
+              </Tooltip>
               {isAdmin && (
                 <Popconfirm title={t('common.confirmDelete')} onConfirm={() => onRemove(r.id)}>
                   <Button type="link" size="small" danger icon={<DeleteOutlined />} disabled={readonly} />
@@ -174,7 +187,7 @@ export default function LeadTable({
         },
       },
     ],
-    [t, isAdmin, userNameMap, onEdit, onRemove, onClaim],
+    [t, isAdmin, userNameMap, onEdit, onRemove, onClaim, onRelease],
   );
 
   return (
