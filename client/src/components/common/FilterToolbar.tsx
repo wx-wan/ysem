@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button, Input, Select, theme } from 'antd';
-import { DownOutlined, UpOutlined, SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined } from '@ant-design/icons';
+import ExpandChevron from './ExpandChevron';
 import { useTranslation } from 'react-i18next';
 
 /** 筛选组选项（key 为空字符串时表示「全部」） */
@@ -147,11 +148,7 @@ export default function FilterToolbar({
                   {activeCount}
                 </span>
               )}
-              {expanded ? (
-                <UpOutlined style={{ fontSize: 10, color: token.colorTextSecondary }} />
-              ) : (
-                <DownOutlined style={{ fontSize: 10, color: token.colorTextSecondary }} />
-              )}
+              <ExpandChevron expanded={expanded} size={10} color={token.colorTextSecondary} />
             </span>
           </Button>
           {sortOptions?.length ? (
