@@ -6,7 +6,8 @@ import LeadCreateCard from '../components/lead/LeadCreateCard';
 import LeadFilterBar from '../components/lead/LeadFilterBar';
 import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
-import LeadTable from '../components/lead/LeadTable';
+import LeadCardList from '../components/lead/LeadCardList';
+import LeadDetailPanel from '../components/lead/LeadDetailPanel';
 import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
 import { leadApi, type Lead } from '../api/lead';
@@ -44,6 +45,56 @@ export default function SalesLeads() {
 
   const formModalRef = useRef<LeadFormModalHandle>(null);
   const navigate = useNavigate();
+
+  // 卡片选中 → 右侧详情面板：拉取完整详情（含联系人/附件等列表接口不含的字段）
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Lead | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const refetchDetail = useCallback(async () => {
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    setDetailLoading(true);
+    try {
+      const res = await leadApi.get(selectedId);
+      setDetail(res.data);
+    } catch {
+      setDetail(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [selectedId]);
+
+  useEffect(() => {
+    refetchDetail();
+  }, [refetchDetail]);
+
+  // 列表刷新后：选中项不在列表中则自动选中第一条，保持右侧面板始终有内容
+  useEffect(() => {
+    if (!list.listData.length) {
+      setSelectedId(null);
+      setDetail(null);
+      return;
+    }
+    if (!selectedId || !list.listData.some((l) => l.id === selectedId)) {
+      setSelectedId(list.listData[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.listData]);
+
+  // 删除（详情面板/列表通用）：删除的是当前选中项时清空右侧面板
+  const handleRemove = useCallback(
+    async (id: string) => {
+      await list.remove(id);
+      if (selectedId === id) {
+        setSelectedId(null);
+        setDetail(null);
+      }
+    },
+    [list, selectedId],
+  );
 
   // 转商机强制建档：真实「新建客户 / 新建产品」弹窗（与客户页 / 产品页一致）
   const [customerFormOpen, setCustomerFormOpen] = useState(false);
@@ -135,6 +186,7 @@ export default function SalesLeads() {
               ),
             });
             list.refresh();
+            refetchDetail();
           } catch {
             // convertLead 内部已 message.error，此处仅吞掉异常避免 unhandled rejection
           }
@@ -150,11 +202,12 @@ export default function SalesLeads() {
         await leadApi.claim(r.id);
         message.success(t('lead.claimSuccess'));
         list.refresh();
+        refetchDetail();
       } catch (err: any) {
         message.error(err?.response?.data?.message || t('lead.claimFailed'));
       }
     },
-    [list, message, t],
+    [list, message, t, refetchDetail],
   );
 
   // 释放线索到公海（私海 → 公海）：复用统一确认弹窗（useReleaseToPool）
@@ -163,10 +216,13 @@ export default function SalesLeads() {
       releaseToPool({
         name: r.leadName || r.companyName || '',
         action: () => leadApi.release(r.id),
-        onSuccess: () => list.refresh(),
+        onSuccess: () => {
+          list.refresh();
+          refetchDetail();
+        },
       });
     },
-    [releaseToPool, list],
+    [releaseToPool, list, refetchDetail],
   );
 
   // 「新建客户」弹窗（强制建档）保存成功
@@ -231,18 +287,33 @@ export default function SalesLeads() {
           onBatchDelete={() => list.batchRemove(list.selectedKeys)}
         />
 
-        <LeadTable
-          dataSource={list.listData}
-          loading={list.loading}
-          selectedKeys={list.selectedKeys}
-          onSelectionChange={(keys) => list.setSelectedKeys(keys)}
-          isAdmin={isAdmin}
-          onEdit={(r) => formModalRef.current?.openEdit(r)}
-          onRemove={list.remove}
-          onConvert={handleConvert}
-          onClaim={handleClaim}
-          onRelease={handleRelease}
-        />
+        {/* 卡片列表 + 右侧详情面板（点击卡片联动，参考询盘列表交互） */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 16 }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <LeadCardList
+              dataSource={list.listData}
+              loading={list.loading}
+              selectedId={selectedId}
+              onSelect={(r) => setSelectedId(r.id)}
+            />
+          </div>
+          <div className="lead-detail-col">
+            <LeadDetailPanel
+              detail={detail}
+              loading={detailLoading}
+              isAdmin={isAdmin}
+              onClose={() => {
+                setSelectedId(null);
+                setDetail(null);
+              }}
+              onEdit={(r) => formModalRef.current?.openEdit(r)}
+              onConvert={handleConvert}
+              onClaim={handleClaim}
+              onRelease={handleRelease}
+              onRemove={handleRemove}
+            />
+          </div>
+        </div>
       </Card>
 
       {list.total > list.pageSize && (
@@ -271,7 +342,10 @@ export default function SalesLeads() {
         customerOptions={customerOptions}
         onRefreshCustomers={fetchCustomers}
         onRefreshProducts={fetchProducts}
-        onSaved={list.refresh}
+        onSaved={() => {
+          list.refresh();
+          refetchDetail();
+        }}
       />
 
       {/* 转商机时未检测到客户：弹出「新建客户」弹窗（与客户页一致），强制建档 */}

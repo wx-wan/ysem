@@ -341,6 +341,156 @@
   white-space: nowrap;
 }
 
+/* ========== 线索列表 · 卡片 + 右侧详情面板 ========== */
+.lead-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.lead-card {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid var(--c-border, #eef0f3);
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lead-card:hover {
+  border-color: #ddd6fe;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
+}
+.lead-card.is-active {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+}
+.lead-card__avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+.lead-card__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lead-card__no-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lead-card__no {
+  color: #7c3aed;
+  font-weight: 600;
+  font-size: 13px;
+}
+.lead-card__tag {
+  margin-inline-end: 0;
+}
+.lead-card__company {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 15px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+  min-width: 0;
+}
+.lead-card__company-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lead-card__prod {
+  margin-top: 2px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.65);
+}
+.lead-card__meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+.lead-card__desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.lead-card__side {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.lead-card__date {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+.lead-card__owner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.88);
+}
+.lead-card__owner-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lead-card__more {
+  font-size: 12px;
+  color: #7c3aed;
+}
+.lead-detail-col {
+  flex: 0 0 380px;
+  position: sticky;
+  top: 16px;
+}
+.lead-detail-panel {
+  background: #fff;
+  border: 1px solid var(--c-border, #eef0f3);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+.lead-detail-panel__header {
+  background: linear-gradient(120deg, #8b5cf6 0%, #6d28d9 100%);
+  color: #fff;
+  padding: 16px 18px;
+  position: relative;
+}
+.lead-detail-panel__empty {
+  background: #fff;
+  border: 1px dashed var(--c-border, #e5e7eb);
+  border-radius: 16px;
+  padding: 56px 16px;
+  text-align: center;
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+}
+
+
 
 html, body, #root {
   height: 100%;
