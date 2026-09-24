@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { create } from 'zustand';
 import commToolApi from '../api/commTool';
 
@@ -82,10 +83,15 @@ export const useCommToolStore = create<CommToolState>((set, get) => ({
 // 方便组件直接拿 options 的 hook
 export function useCommToolOptions() {
   const tools = useCommToolStore((s) => s.tools);
+  const loading = useCommToolStore((s) => s.loading);
   const fetchTools = useCommToolStore((s) => s.fetchTools);
+  // 挂载即拉取（store 默认 tools 为空，否则下拉永远无值）；缓存命中时秒回，不会重复请求
+  useEffect(() => {
+    fetchTools();
+  }, [fetchTools]);
   return {
     options: tools.map((item) => ({ label: item.name, value: item.name })),
-    loading: useCommToolStore((s) => s.loading),
+    loading,
     fetchTools,
   };
 }
