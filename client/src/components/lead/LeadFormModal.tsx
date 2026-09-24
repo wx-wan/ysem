@@ -13,9 +13,8 @@ import {
   Space,
   Tag,
   Modal,
-  theme,
 } from 'antd';
-import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined, ApartmentOutlined, UserOutlined, PictureOutlined, FileTextOutlined } from '@ant-design/icons';
+import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -45,6 +44,16 @@ export interface LeadFormModalHandle {
   openEdit: (record: Lead) => void;
 }
 
+// 三步向导各步骤包含的表单字段（「下一步」仅校验当前步骤字段）
+const STEP_FIELDS: string[][] = [
+  ['customerKey', 'targetMarket', 'customerType', 'channelId', 'shopId', 'contactMethods'],
+  ['productKey', 'quantity', 'targetPrice', 'productDesc', 'images', 'specialReq', 'certRequire', 'packageReq', 'deliveryReq'],
+  ['ownerId'],
+];
+
+// 负责人头像底色（按列表顺序循环取色）
+const OWNER_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+
 interface Props {
   channels: Channel[];
   productOptions: ProductOption[];
@@ -59,14 +68,13 @@ interface Props {
 }
 
 /**
- * 线索新建 / 编辑 / 详情弹窗。
- * Form 包裹整个弹窗（含标题栏负责人字段），确认建档子弹窗（客户 / 产品）一并内聚于此。
+ * 线索新建 / 编辑 / 详情弹窗：三步向导（客户信息 → 需求详情 → 分配跟进）。
+ * Form 包裹整个弹窗，字段沿用原有逻辑，按步骤分组校验后统一提交。
  */
 const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
   const { message, modal } = App.useApp();
   const releaseToPool = useReleaseToPool();
-  const { token } = theme.useToken();
   const [form] = Form.useForm();
 
   const {
@@ -82,6 +90,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
+  // 三步向导当前步骤（0 客户信息 / 1 需求详情 / 2 分配跟进）
+  const [step, setStep] = useState(0);
   const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
   const navigate = useNavigate();
   const [transferOpen, setTransferOpen] = useState(false);
@@ -107,6 +117,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const currentUser = useAuthStore((s) => s.user);
   const fetchUsers = useUserStore((s) => s.fetchUsers);
+  const users = useUserStore((s) => s.users);
 
   // ============ 表单联动 ============
   const selectedChannel = Form.useWatch('channelId', form);
@@ -114,6 +125,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
   const watchCustomerKey = Form.useWatch('customerKey', form);
+  const watchOwnerId = Form.useWatch('ownerId', form);
 
   const channelOptions = useMemo(() => flattenChannelOptions(channels), [channels]);
 
@@ -167,10 +179,26 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     return Promise.resolve();
   };
 
+  // ============ 三步向导 ============
+  const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepAssign')];
+
+  const goNext = async () => {
+    try {
+      // 仅校验当前步骤字段，通过后进入下一步
+      await form.validateFields(STEP_FIELDS[step]);
+      setStep((s) => Math.min(s + 1, wizardSteps.length - 1));
+    } catch {
+      /* 校验失败停留在当前步，错误提示由 Form.Item 展示 */
+    }
+  };
+
+  const goPrev = () => setStep((s) => Math.max(s - 1, 0));
+
   // ============ 打开 / 提交 ============
   const openCreate = () => {
     setEditing(null);
     setLinkedPipeline(null);
+    setStep(0);
     form.resetFields();
     // 默认至少一条空的联系方式记录
     form.setFieldsValue({ contactMethods: [{ tool: '', account: '' }] });
@@ -192,6 +220,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const openEdit = async (record: Lead) => {
     setEditing(record);
     setLinkedPipeline(null);
+    setStep(0);
     onRefreshCustomers();
     try {
       const res = await leadApi.get(record.id);
@@ -516,359 +545,341 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           title={
-            <Space size={8} align="center" style={{ width: '100%', justifyContent: 'center' }}>
-              <span>{editing?.id ? editing.leadName || t('lead.editTitle') : leadNamePreview || t('lead.createTitle')}</span>
-              {editing?.id && editing.leadNo && (
-                <Tag color="blue" style={{ marginInlineEnd: 0 }}>
-                  {editing.leadNo}
-                </Tag>
-              )}
-            </Space>
+            <div className="lead-wizard-header">
+              <button type="button" className="lead-wizard-header__close" onClick={() => setDrawerOpen(false)}>
+                <CloseOutlined />
+              </button>
+              <div className="lead-wizard-header__title">
+                <span>{editing?.id ? editing.leadName || t('lead.editTitle') : t('lead.createTitle')}</span>
+                {editing?.id && editing.leadNo && <span className="lead-wizard-header__no">{editing.leadNo}</span>}
+              </div>
+              <div className="lead-wizard-header__subtitle">{t('lead.wizardSubtitle')}</div>
+              <div className="lead-wizard-steps">
+                {wizardSteps.map((label, i) => (
+                  <div
+                    key={label}
+                    className={`lead-wizard-steps__item${i === step ? ' is-active' : ''}${i < step ? ' is-done' : ''}`}
+                    onClick={i < step ? () => setStep(i) : undefined}
+                    style={i < step ? { cursor: 'pointer' } : undefined}
+                  >
+                    <span className="lead-wizard-steps__dot">{i < step ? <CheckOutlined /> : i + 1}</span>
+                    <span className="lead-wizard-steps__label">{label}</span>
+                    {i < wizardSteps.length - 1 && <span className="lead-wizard-steps__line" />}
+                  </div>
+                ))}
+              </div>
+            </div>
           }
           closable={false}
           headerBorder={false}
           width={960}
-          bodyPadding={20}
+          bodyPadding={24}
           style={{ borderRadius: 20 }}
-          extra={
-            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              {/* 负责人信息 */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: '50%',
-                    background: 'linear-gradient(135deg, #fa8c16 0%, #f5a623 100%)',
-                    color: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: 16,
-                    fontWeight: 600,
-                    flexShrink: 0,
-                  }}
-                >
-                  {editing?.owner?.realName?.[0] ||
-                    editing?.owner?.username?.[0] ||
-                    '?'}
-                </div>
-                <div style={{ lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>{t('sales.assignedTo')}</div>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>
-                    {editing?.owner?.realName || t('sales.unassigned')}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
-                    {editing?.owner?.username || ''}
-                  </div>
-                </div>
-              </div>
-              {/* 转交 / 释放（仅已有线索详情展示，新建时隐藏） */}
-              {!isCreate && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {/* 转交：未分配也允许（便于指派负责人）；只读态禁用 */}
-                  <Button
-                    shape="circle"
-                    size="middle"
-                    icon={<SwapOutlined style={{ color: token.colorWarning }} />}
-                    style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                    disabled={readonly}
-                    onClick={() => setTransferOpen(true)}
-                    title={t('lead.transfer')}
-                  />
-                  {/* 释放：仅已分配负责人时显示；只读态禁用（点击后弹窗二次确认） */}
-                  {editing?.ownerId && (
-                    <Button
-                      shape="circle"
-                      size="middle"
-                      icon={<RollbackOutlined style={{ color: token.colorWarning }} />}
-                      style={{ background: token.colorWarningBg, borderColor: token.colorWarningBg }}
-                      disabled={readonly}
-                      title={t('lead.release')}
-                      onClick={handleReleaseLead}
-                    />
-                  )}
-                </div>
-              )}
-              {/* 关闭按钮（与客户详情样式一致） */}
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(false)}
-                title="关闭"
-                style={{
-                  width: 36,
-                  height: 36,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  border: 'none',
-                  borderRadius: '50%',
-                  cursor: 'pointer',
-                  backgroundColor: token.colorFillQuaternary,
-                  fontSize: 15,
-                  lineHeight: 1,
-                  transition: 'all 0.22s ease',
-                  padding: 0,
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = token.colorFillSecondary;
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = token.colorFillQuaternary;
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.boxShadow = `0 0 0 3px ${token.colorFillSecondary}`;
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.boxShadow = 'none';
-                }}
-              >
-                <CloseOutlined style={{ color: token.colorTextSecondary }} />
-              </button>
-            </div>
-          }
           footer={
-            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-              <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>{t('lead.formRequiredHint')}</span>
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <Button size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
-                {/* 公海线索：仅可认领，确认（转商机）不可用 */}
-                {isPoolLead && (
-                  <Button size="large" type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
-                    {t('lead.claim')}
-                  </Button>
+            <div className="lead-wizard-footer">
+              <div className="lead-wizard-footer__side">
+                {step > 0 ? (
+                  <Button size="large" icon={<ArrowLeftOutlined />} onClick={goPrev}>{t('lead.prevStep')}</Button>
+                ) : (
+                  <Button size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
                 )}
-                {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
-                  <Button size="large" type="primary" ghost onClick={handleConfirmLead}>
-                    {t('lead.confirmLead')}
+              </div>
+              <div className="lead-wizard-footer__dots">
+                {wizardSteps.map((_, i) => (
+                  <span key={i} className={`lead-wizard-footer__dot${i === step ? ' is-active' : ''}`} />
+                ))}
+              </div>
+              <div className="lead-wizard-footer__side lead-wizard-footer__side--right">
+                {step < wizardSteps.length - 1 ? (
+                  <Button size="large" type="primary" onClick={goNext}>
+                    {t('lead.nextStep')} <ArrowRightOutlined />
                   </Button>
-                )}
-                {(!editing?.id || !readonly) && (
-                  <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
+                ) : (
+                  <>
+                    {/* 公海线索：仅可认领，确认（转商机）不可用 */}
+                    {isPoolLead && (
+                      <Button size="large" type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
+                        {t('lead.claim')}
+                      </Button>
+                    )}
+                    {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
+                      <Button size="large" type="primary" ghost onClick={handleConfirmLead}>
+                        {t('lead.confirmLead')}
+                      </Button>
+                    )}
+                    {(!editing?.id || !readonly) && (
+                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           }
         >
-          {/* 负责人以只读文本显示于右上角，此处保留隐藏字段以便提交时携带 ownerId */}
+          {/* 负责人：步骤三以卡片选择，此处保留隐藏字段以便提交时携带 ownerId */}
           <Form.Item name="ownerId" hidden>
             <Input />
           </Form.Item>
-          {/* 溯源：已关联商机 */}
-          {(editing?.pipelineId || linkedPipeline) && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 16 }}
-              title={
-                <Space>
-                  <span>
-                    {t('lead.linkedPipeline')}：<b>{linkedPipeline?.opportunityNo || editing?.pipelineId}</b>
-                  </span>
-                  <Button
-                    type="link"
-                    size="small"
-                    disabled={!editing?.pipelineId && !linkedPipeline?.id}
-                    onClick={() => {
-                      const id = editing?.pipelineId || linkedPipeline?.id;
-                      if (id) navigate(`/sales/opportunities?pipelineId=${id}`);
-                      else navigate('/sales/opportunities');
-                    }}
-                  >
-                    {t('lead.viewPipeline')}
-                  </Button>
-                </Space>
-              }
-            />
+
+          {/* 步骤一：客户信息 */}
+          {step === 0 && (
+            <Row gutter={[16, 0]}>
+              <Col span={24}>
+                <Form.Item
+                  name="customerKey"
+                  label={
+                    (editing?.companyName && !editing.customerId) ||
+                    (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
+                      <Space size={4}>
+                        <span>{t('lead.customer')}</span>
+                        <Tag
+                          color="orange"
+                          style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                          onClick={confirmCreateCustomer}
+                          title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
+                        >
+                          {t('lead.pendingTag')}
+                        </Tag>
+                      </Space>
+                    ) : (
+                      t('lead.customer')
+                    )
+                  }
+                  rules={[{ required: true, message: t('lead.customerRequired') }]}
+                >
+                  <AutoComplete
+                    allowClear
+                    variant="filled"
+                    placeholder={t('lead.customerPlaceholder')}
+                    options={customerNameOptions}
+                    filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
+                  <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} variant="filled" size="large" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="customerType" label={t('lead.customerType')}>
+                  <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} variant="filled" size="large" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="channelId" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
+                  <Select
+                    showSearch
+                    allowClear
+                    variant="filled"
+                    placeholder={t('lead.channelPlaceholder')}
+                    optionFilterProp="label"
+                    options={channelOptions}
+                    onChange={() => form.setFieldsValue({ shopId: undefined })}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="shopId" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
+                  <Select
+                    showSearch
+                    allowClear
+                    variant="filled"
+                    placeholder={t('lead.platformPlaceholder')}
+                    optionFilterProp="label"
+                    options={formPlatformOptions}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item
+                  name="contactMethods"
+                  label={t('lead.contactMethods')}
+                  required
+                  rules={[{ validator: validateContactMethods }]}
+                >
+                  <ContactMethodInput options={commToolOptions} variant="filled" size="large" />
+                </Form.Item>
+              </Col>
+            </Row>
           )}
-          {/* 分区卡片：整体表单布局参考线索新建参考图，配色 / 文案 / 字段逻辑沿用现有实现 */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* 来源信息 */}
-            <section className="lead-section-card">
-              <div className="lead-section-card__head">
-                <span className="lead-section-card__icon"><ApartmentOutlined /></span>
-                <span className="lead-section-card__title">{t('lead.sectionSource')}</span>
-              </div>
-              <Row gutter={[16, 0]}>
-                <Col span={12}>
-                  <Form.Item name="channelId" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
-                    <Select
-                      showSearch
-                      allowClear
-                      variant="filled"
-                      placeholder={t('lead.channelPlaceholder')}
-                      optionFilterProp="label"
-                      options={channelOptions}
-                      onChange={() => form.setFieldsValue({ shopId: undefined })}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="shopId" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
-                    <Select
-                      showSearch
-                      allowClear
-                      variant="filled"
-                      placeholder={t('lead.platformPlaceholder')}
-                      optionFilterProp="label"
-                      options={formPlatformOptions}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
-                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} variant="filled" size="large" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="customerType" label={t('lead.customerType')}>
-                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} variant="filled" size="large" />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </section>
 
-            {/* 客户与产品 */}
-            <section className="lead-section-card">
-              <div className="lead-section-card__head">
-                <span className="lead-section-card__icon"><UserOutlined /></span>
-                <span className="lead-section-card__title">{t('lead.sectionCustomer')}</span>
-              </div>
-              <Row gutter={[16, 0]}>
-                <Col span={12}>
-                  <Form.Item
-                    name="customerKey"
-                    label={
-                      (editing?.companyName && !editing.customerId) ||
-                      (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
-                        <Space size={4}>
-                          <span>{t('lead.customer')}</span>
-                          <Tag
-                            color="orange"
-                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                            onClick={confirmCreateCustomer}
-                            title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
+          {/* 步骤二：需求详情 */}
+          {step === 1 && (
+            <Row gutter={[16, 0]}>
+              <Col span={24}>
+                <Form.Item
+                  name="productKey"
+                  label={
+                    (editing?.items?.[0]?.productName && !editing?.items?.[0]?.productId) ||
+                    (watchProductKey && !productNameOptions.some((p) => p.label === watchProductKey)) ? (
+                      <Space size={4}>
+                        <span>{t('lead.product')}</span>
+                        <Tag
+                          color="orange"
+                          style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                          onClick={confirmCreateProduct}
+                          title={t('lead.productPendingTip', { name: editing?.items?.[0]?.productName || watchProductKey })}
+                        >
+                          {t('lead.pendingTag')}
+                        </Tag>
+                      </Space>
+                    ) : (
+                      t('lead.product')
+                    )
+                  }
+                  rules={[{ required: true, message: t('lead.productRequired') }]}
+                >
+                  <AutoComplete
+                    allowClear
+                    variant="filled"
+                    placeholder={t('lead.productPlaceholder')}
+                    options={productNameOptions}
+                    filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
+                  <Input autoComplete="off" variant="filled" placeholder={t('lead.quantityRequirementPlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
+                  <Input autoComplete="off" variant="filled" placeholder={t('lead.targetPricePlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="productDesc" label={t('lead.productDesc')}>
+                  <Input.TextArea rows={3} autoComplete="off" variant="filled" placeholder={t('lead.productDescPlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="images" label={t('lead.attachments')}>
+                  <ProductImageList disabled={readonly} allowFiles />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="specialReq" label={t('lead.specialReq')}>
+                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.specialReqPlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="certRequire" label={t('lead.certRequire')}>
+                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.certRequirePlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="packageReq" label={t('lead.packageReq')}>
+                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.packageReqPlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
+                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.deliveryReqPlaceholder')} />
+                </Form.Item>
+              </Col>
+            </Row>
+          )}
+
+          {/* 步骤三：分配跟进 */}
+          {step === 2 && (
+            <>
+              {/* 溯源：已关联商机 */}
+              {(editing?.pipelineId || linkedPipeline) && (
+                <Alert
+                  type="info"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  title={
+                    <Space>
+                      <span>
+                        {t('lead.linkedPipeline')}：<b>{linkedPipeline?.opportunityNo || editing?.pipelineId}</b>
+                      </span>
+                      <Button
+                        type="link"
+                        size="small"
+                        disabled={!editing?.pipelineId && !linkedPipeline?.id}
+                        onClick={() => {
+                          const id = editing?.pipelineId || linkedPipeline?.id;
+                          if (id) navigate(`/sales/opportunities?pipelineId=${id}`);
+                          else navigate('/sales/opportunities');
+                        }}
+                      >
+                        {t('lead.viewPipeline')}
+                      </Button>
+                    </Space>
+                  }
+                />
+              )}
+
+              {/* 分配给：负责人头像卡片（点击回写 ownerId 隐藏字段） */}
+              <div className="lead-wizard-block">
+                <div className="lead-wizard-block__title">{t('lead.assignTo')}</div>
+                {!isPoolLead && (
+                  <div className="lead-wizard-owner-grid">
+                    {users.map((u, idx) => {
+                      const active = watchOwnerId === u.id;
+                      return (
+                        <button
+                          type="button"
+                          key={u.id}
+                          className={`lead-wizard-owner-card${active ? ' is-active' : ''}`}
+                          disabled={readonly}
+                          onClick={() => form.setFieldsValue({ ownerId: u.id })}
+                        >
+                          <span
+                            className="lead-wizard-owner-card__avatar"
+                            style={{ background: OWNER_COLORS[idx % OWNER_COLORS.length] }}
                           >
-                            {t('lead.pendingTag')}
-                          </Tag>
-                        </Space>
-                      ) : (
-                        t('lead.customer')
-                      )
-                    }
-                    rules={[{ required: true, message: t('lead.customerRequired') }]}
-                  >
-                    <AutoComplete
-                      allowClear
-                      variant="filled"
-                      placeholder={t('lead.customerPlaceholder')}
-                      options={customerNameOptions}
-                      filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="contactMethods"
-                    label={t('lead.contactMethods')}
-                    required
-                    rules={[{ validator: validateContactMethods }]}
-                  >
-                    <ContactMethodInput options={commToolOptions} variant="filled" size="large" />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item
-                    name="productKey"
-                    label={
-                      (editing?.items?.[0]?.productName && !editing?.items?.[0]?.productId) ||
-                      (watchProductKey && !productNameOptions.some((p) => p.label === watchProductKey)) ? (
-                        <Space size={4}>
-                          <span>{t('lead.product')}</span>
-                          <Tag
-                            color="orange"
-                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                            onClick={confirmCreateProduct}
-                            title={t('lead.productPendingTip', { name: editing?.items?.[0]?.productName || watchProductKey })}
-                          >
-                            {t('lead.pendingTag')}
-                          </Tag>
-                        </Space>
-                      ) : (
-                        t('lead.product')
-                      )
-                    }
-                    rules={[{ required: true, message: t('lead.productRequired') }]}
-                  >
-                    <AutoComplete
-                      allowClear
-                      variant="filled"
-                      placeholder={t('lead.productPlaceholder')}
-                      options={productNameOptions}
-                      filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
-                    />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                    <Input autoComplete="off" variant="filled" placeholder={t('lead.quantityRequirementPlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                    <Input autoComplete="off" variant="filled" placeholder={t('lead.targetPricePlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                    <Input.TextArea rows={4} autoComplete="off" variant="filled" placeholder={t('lead.productDescPlaceholder')} />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </section>
-
-            {/* 参考图片 */}
-            <section className="lead-section-card">
-              <div className="lead-section-card__head">
-                <span className="lead-section-card__icon"><PictureOutlined /></span>
-                <span className="lead-section-card__title">{t('lead.attachments')}</span>
+                            {(u.realName || u.username || '?')[0]}
+                          </span>
+                          <span className="lead-wizard-owner-card__meta">
+                            <span className="lead-wizard-owner-card__name">{u.realName || u.username}</span>
+                            <span className="lead-wizard-owner-card__desc">{u.username}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {/* 转交 / 释放（仅已有线索展示，新建时隐藏） */}
+                {!isCreate && (
+                  <Space size={8} style={{ marginTop: 10 }}>
+                    <Button size="small" icon={<SwapOutlined />} disabled={readonly} onClick={() => setTransferOpen(true)}>
+                      {t('lead.transfer')}
+                    </Button>
+                    {editing?.ownerId && (
+                      <Button size="small" icon={<RollbackOutlined />} disabled={readonly} onClick={handleReleaseLead}>
+                        {t('lead.release')}
+                      </Button>
+                    )}
+                  </Space>
+                )}
               </div>
-              <Form.Item name="images" label={null} style={{ marginBottom: 0 }}>
-                <ProductImageList disabled={readonly} allowFiles />
-              </Form.Item>
-            </section>
 
-            {/* 补充信息 */}
-            <section className="lead-section-card">
-              <div className="lead-section-card__head">
-                <span className="lead-section-card__icon"><FileTextOutlined /></span>
-                <span className="lead-section-card__title">{t('lead.sectionExtra')}</span>
+              {/* 确认信息摘要 */}
+              <div className="lead-wizard-summary">
+                <div className="lead-wizard-summary__title">{t('lead.confirmInfo')}</div>
+                {[
+                  { label: t('lead.customer'), value: watchCustomerKey },
+                  { label: t('lead.targetMarket'), value: watchTargetMarket },
+                  { label: t('lead.product'), value: watchProductKey },
+                  { label: t('lead.quantityRequirement'), value: watchQuantity },
+                  { label: t('lead.channel'), value: channelOptions.find((o) => o.value === selectedChannel)?.label },
+                  {
+                    label: t('lead.assignee'),
+                    value: users.find((u) => u.id === watchOwnerId)?.realName || editing?.owner?.realName || t('sales.unassigned'),
+                  },
+                ].map((row) => (
+                  <div key={row.label} className="lead-wizard-summary__row">
+                    <span className="lead-wizard-summary__label">{row.label}</span>
+                    <span className="lead-wizard-summary__value">{row.value || '—'}</span>
+                  </div>
+                ))}
               </div>
-              <Row gutter={[16, 0]}>
-                <Col span={12}>
-                  <Form.Item name="specialReq" label={t('lead.specialReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.specialReqPlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="certRequire" label={t('lead.certRequire')}>
-                    <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.certRequirePlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="packageReq" label={t('lead.packageReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.packageReqPlaceholder')} />
-                  </Form.Item>
-                </Col>
-                <Col span={12}>
-                  <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
-                    <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.deliveryReqPlaceholder')} />
-                  </Form.Item>
-                </Col>
-              </Row>
-            </section>
-          </div>
+            </>
+          )}
         </AppModal>
       </Form>
 
