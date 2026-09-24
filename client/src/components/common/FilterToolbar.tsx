@@ -118,7 +118,6 @@ export default function FilterToolbar({
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Input
           allowClear
-          size="large"
           prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
           placeholder={searchPlaceholder}
           value={searchValue}
@@ -127,7 +126,7 @@ export default function FilterToolbar({
           style={{ flex: '1 1 240px', minWidth: 200 }}
         />
         <div style={{ display: 'inline-flex', gap: 12, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <Button size="large" onClick={() => setExpanded((v) => !v)}>
+          <Button onClick={() => setExpanded((v) => !v)}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {t('common.filter')}
               {activeCount > 0 && (
@@ -155,7 +154,6 @@ export default function FilterToolbar({
           {sortOptions?.length ? (
             sortOptions.length === 2 ? (
               <Button
-                size="large"
                 onClick={() => {
                   const idx = sortOptions.findIndex((o) => o.value === sortValue);
                   const next = sortOptions[(idx + 1) % sortOptions.length];
