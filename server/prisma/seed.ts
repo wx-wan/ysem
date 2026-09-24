@@ -295,6 +295,15 @@ const CUSTOMER_TYPES = [
  */
 const CUSTOMER_TYPES_DEPRECATED = ['意向客户', '成交客户', '战略客户', '流失客户'];
 
+/** 沟通工具基线数据（系统设置 → 沟通工具维护，用作线索/客户联系方式下拉选项） */
+const COMMUNICATION_TOOLS = [
+  { name: '旺旺号', sort: 0 },
+  { name: '邮箱', sort: 1 },
+  { name: '手机', sort: 2 },
+  { name: 'WhatsApp', sort: 3 },
+  { name: '微信', sort: 4 },
+];
+
 const PRODUCT_CRAFTS = [
   { name: '搪胶', code: 'TJ', sort: 1 },
   { name: '注塑', code: 'ZS', sort: 2 },
@@ -527,6 +536,17 @@ async function seedCustomerTypes(tx: Prisma.TransactionClient): Promise<void> {
   });
 }
 
+async function seedCommunicationTools(tx: Prisma.TransactionClient): Promise<void> {
+  for (const tool of COMMUNICATION_TOOLS) {
+    // isActive 显式置 true：可重复执行的 seed 在被人工停用后能恢复为启用基线
+    await tx.communicationTool.upsert({
+      where: { name: tool.name },
+      update: { sort: tool.sort, isActive: true },
+      create: { name: tool.name, sort: tool.sort, isActive: true },
+    });
+  }
+}
+
 async function seedProductMasterData(tx: Prisma.TransactionClient): Promise<void> {
   for (const craft of PRODUCT_CRAFTS) {
     await tx.productCraft.upsert({
@@ -579,6 +599,7 @@ async function main(): Promise<void> {
       await seedNumberSequences(tx);
       await seedChannels(tx);
       await seedCustomerTypes(tx);
+      await seedCommunicationTools(tx);
       await seedProductMasterData(tx);
 
       return {
@@ -590,6 +611,7 @@ async function main(): Promise<void> {
         numberSequences: NUMBER_SEQUENCES.length,
         channels: CHANNELS.reduce((sum, c) => sum + 1 + c.shops.length, 0),
         customerTypes: CUSTOMER_TYPES.length,
+        communicationTools: COMMUNICATION_TOOLS.length,
         crafts: PRODUCT_CRAFTS.length,
         audiences: PRODUCT_AUDIENCES.length,
         categories: PRODUCT_AUDIENCES.reduce((sum, a) => sum + a.categories.length, 0),
