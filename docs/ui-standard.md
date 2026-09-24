@@ -65,8 +65,8 @@
 ### 4.2 范围切换 / 分段筛选（`CapsuleSwitch`，线索页用法）
 - 容器：白底 + 1px 描边 + 圆角 12 + 轻投影。
 - 选中项：蓝色 `#1677ff` 实心胶囊，白字 + 主色投影；未选中：灰字 `#64748b`。
-- 胶囊整体高度取 `token.controlHeightLG`（40）、字号取 `token.fontSizeLG`（14），与 large 筛选框的 `Select`/`Input`/`Button` 完全一致；内外圆角共用同一 `borderRadius`（外部传入优先，默认 24）。
-- 尺寸：padding `4px`，项 padding `5px 14px`，字号 13。
+- 胶囊高度由容器 padding 撑开（约 32–34px）、字号 13/12；内外圆角共用同一 `borderRadius`（外部传入优先，默认 24），保持内外一致。
+- 尺寸：padding `3px 4px`，项 padding `5px 14px`，字号 13。
 - 用法：我的线索 / 公海 切换；参考图「全部/待处理/跟进中/已报价」同款。
 
 ### 4.3 卡片列表（`LeadCardList` / `LeadCard`）
@@ -85,19 +85,19 @@
 ### 4.5 三步向导弹窗（`LeadFormModal`）
 - 头部：**蓝色渐变**，含关闭键、标题（线索名/新建标题 + 线索号徽标）、副标题（第 X/3 步 · 步骤名）、步骤条。
 - 步骤条：已完成=白底蓝字对勾；当前=放大 1.18× + 白底蓝字 + 外圈光晕，标签加粗放大带阴影；已完成段连接线高亮白。
-- 表单：`size="large"`，控件 `variant="filled"`；自定义控件透传 `size`。
-- 底部：左侧返回/取消，中间进度小圆点，右侧下一步/保存/认领/确认（均 `size="large"`，主按钮蓝）。
+- 表单：控件 `variant="filled"`；自定义控件透传 `size`（向导主按钮/选择沿用页面原始 large）。
+- 底部：左侧返回/取消，中间进度小圆点，右侧下一步/保存/认领/确认（主按钮蓝；转交/释放等次级操作为 `size="small"`）。
 - 负责人卡片：选中=蓝描边 + 蓝浅底 `#e6f4ff` + 外圈 ring；hover=蓝浅描边。
 
 ### 4.6 按钮
-- 主按钮：`type="primary"`（蓝），圆角（antd 默认 token 12），`size="large"` 用于向导/详情主操作。
+- 主按钮：`type="primary"`（蓝），圆角（antd 默认 token 12），标准尺寸（antd 默认）；向导/详情主操作用主按钮。
 - 次/文字按钮：白底描边或纯文字，灰字；危险用 `danger`。
 
 ### 4.7 标签 / 状态（`STATUS_META`）
 - 状态用 antd `Tag` 的 `color`（语义色）；客户类型等用默认描边 Tag。
 
 ### 4.8 输入框 / 选择
-- 全部 `size="large"`；表单内 `variant="filled"`（浅填充）。
+- 标准尺寸（antd 默认）；表单内 `variant="filled"`（浅填充）。
 - 自定义封装（CountrySelect/CustomerTypeSelect/ContactMethodInput）已支持 `size` 透传；统一 `variant="filled"`。
 
 ### 4.9 表格（`LeadTable`，旧版/兜底）
@@ -114,7 +114,7 @@
 | 卡片列表/卡片 | ✅ 圆角 16 + 统一 hover 阴影 + 蓝选中 |
 | 详情面板 | ✅ 蓝渐变头部 + summary 块 |
 | 三步向导 | ✅ 蓝渐变头 + 强调步骤条 + 蓝选中 |
-| 按钮/输入 | ✅ large + filled |
+| 按钮/输入 | ✅ 标准尺寸 + filled |
 | 全局主色 | ✅ 已为蓝 `#1677ff`（与标准一致） |
 
 ---
@@ -124,6 +124,6 @@
 1. 页面外层 `Card` 圆角 16、描边、轻阴影统一。
 2. 分段/筛选用 `CapsuleSwitch`（白底描边 + 蓝实心）。
 3. 主按钮/链接/激活态统一蓝；状态用语义色。
-4. 表单 `size="large"` + `variant="filled"`；页面根节点包 `ConfigProvider componentSize="large"`，使按钮/输入框/下拉默认 large（弹窗经 React portal 仍继承该 context）。
+4. 表单控件 `variant="filled"`；页面/弹窗的按钮与输入框使用 antd 标准尺寸（不强制 large）。
 5. 复用 `.lead-wizard-summary`、`.lead-card*` 等已验证样式类，避免重造。
 6. 全站主色已是蓝，无需改 token；仅需对齐组件风格。
