@@ -52,7 +52,7 @@ const STEP_FIELDS: string[][] = [
 ];
 
 // 负责人头像底色（按列表顺序循环取色）
-const OWNER_COLORS = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+const OWNER_COLORS = ['#1677ff', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
 
 interface Props {
   channels: Channel[];

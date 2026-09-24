@@ -25,15 +25,15 @@ export default function LeadCreateCard({ onClick }: Props) {
         marginBottom: 16,
         borderRadius: token.borderRadiusLG,
         cursor: 'pointer',
-        background: 'linear-gradient(120deg, #8b5cf6 0%, #6d28d9 100%)',
+        background: 'linear-gradient(120deg, #4096ff 0%, #1677ff 100%)',
         color: '#fff',
-        boxShadow: '0 8px 24px rgba(109, 40, 217, 0.28)',
+        boxShadow: '0 8px 24px rgba(22, 119, 255, 0.28)',
         transition: 'transform .18s ease, box-shadow .18s ease',
         outline: 'none',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow = '0 12px 30px rgba(109, 40, 217, 0.36)';
+        e.currentTarget.style.boxShadow = '0 12px 30px rgba(22, 119, 255, 0.36)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0)';
@@ -76,7 +76,7 @@ export default function LeadCreateCard({ onClick }: Props) {
           height: 36,
           borderRadius: '50%',
           background: '#fff',
-          color: '#6d28d9',
+          color: '#1677ff',
           fontSize: 16,
           flexShrink: 0,
         }}

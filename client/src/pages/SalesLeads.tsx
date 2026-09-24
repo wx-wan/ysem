@@ -257,7 +257,7 @@ export default function SalesLeads() {
                 { key: 'mine', label: t('lead.scopeMine') },
                 { key: 'pool', label: t('lead.scopePool') },
               ]}
-              activeColor="#6d28d9"
+              activeColor="#1677ff"
               style={{
                 background: '#fff',
                 border: `1px solid ${token.colorBorderSecondary}`,

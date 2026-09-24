@@ -7,7 +7,7 @@ import { STATUS_META } from './constants';
 
 /** 头像底色（按 seed 稳定取色，同一负责人颜色不变） */
 export const leadAvatarColor = (seed?: string | null) => {
-  const palette = ['#7c3aed', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+  const palette = ['#1677ff', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
   if (!seed) return palette[0];
   let h = 0;
   for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) % 997;
