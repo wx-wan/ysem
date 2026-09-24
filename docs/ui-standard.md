@@ -63,7 +63,7 @@
 - hover：整体上浮 2px + 阴影增强；支持键盘 Enter/Space。
 
 ### 4.2 范围切换 / 分段筛选（`CapsuleSwitch`，线索页用法）
-- 容器：白底 + 1px 描边 + 圆角 12 + 轻投影。
+- 容器：白底（#fff），无描边，圆角由外部传入（线索页用 `token.borderRadius`），与筛选栏控件协调。
 - 选中项：蓝色 `#1677ff` 实心胶囊，白字 + 主色投影；未选中：灰字 `#64748b`。
 - 胶囊高度取 `token.controlHeight`（32，与渠道/平台/状态筛选 `Select` 一致）、字号 13/12；内外圆角共用同一 `borderRadius`（外部传入优先，默认 24），保持内外一致。
 - 尺寸：padding `3px 4px`，项 padding `5px 14px`，字号 13。

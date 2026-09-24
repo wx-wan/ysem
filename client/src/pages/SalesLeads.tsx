@@ -260,7 +260,6 @@ export default function SalesLeads() {
               activeColor="#1677ff"
               style={{
                 background: '#fff',
-                border: `1px solid ${token.colorBorder}`,
                 borderRadius: token.borderRadius,
                 padding: 4,
               }}
