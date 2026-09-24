@@ -147,6 +147,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'system:approval', name: '审批管理', type: 'MENU', path: '/setting/approval', icon: 'NodeIndexOutlined', sort: 7, parent: 'system' },
   { code: 'system:approval:edit', name: '审批编辑', type: 'BUTTON', sort: 1, parent: 'system:approval' },
   { code: 'system:logs', name: '操作日志', type: 'MENU', path: '/setting/logs', icon: 'BarChartOutlined', sort: 8, parent: 'system' },
+  { code: 'system:data', name: '数据管理', type: 'MENU', path: '/setting/data', icon: 'DollarOutlined', sort: 9, parent: 'system' },
+  { code: 'system:data:edit', name: '数据维护编辑', type: 'BUTTON', sort: 1, parent: 'system:data' },
 ];
 
 interface RoleSeed {
@@ -302,6 +304,18 @@ const COMMUNICATION_TOOLS = [
   { name: '手机', sort: 2 },
   { name: 'WhatsApp', sort: 3 },
   { name: '微信', sort: 4 },
+];
+
+/** 币种基线数据（系统设置 → 数据管理，用作顶部币种切换 + 线索目标价位前缀；汇率取每日汇率，不在此写死） */
+const CURRENCIES = [
+  { code: 'CNY', name: '人民币', symbol: '¥', sort: 0 },
+  { code: 'USD', name: '美元', symbol: '$', sort: 1 },
+];
+
+/** 单位基线数据（系统设置 → 数据管理，用作线索数量需求后缀） */
+const UNITS = [
+  { name: '个', sort: 0 },
+  { name: '套', sort: 1 },
 ];
 
 const PRODUCT_CRAFTS = [
@@ -547,6 +561,28 @@ async function seedCommunicationTools(tx: Prisma.TransactionClient): Promise<voi
   }
 }
 
+async function seedCurrencies(tx: Prisma.TransactionClient): Promise<void> {
+  for (const c of CURRENCIES) {
+    // isActive 显式置 true：可重复执行的 seed 在被人工停用后能恢复为启用基线
+    await tx.currencyRate.upsert({
+      where: { code: c.code },
+      update: { name: c.name, symbol: c.symbol, sort: c.sort, isActive: true },
+      create: { code: c.code, name: c.name, symbol: c.symbol, sort: c.sort, isActive: true },
+    });
+  }
+}
+
+async function seedUnits(tx: Prisma.TransactionClient): Promise<void> {
+  for (const u of UNITS) {
+    // isActive 显式置 true：可重复执行的 seed 在被人工停用后能恢复为启用基线
+    await tx.unit.upsert({
+      where: { name: u.name },
+      update: { sort: u.sort, isActive: true },
+      create: { name: u.name, sort: u.sort, isActive: true },
+    });
+  }
+}
+
 async function seedProductMasterData(tx: Prisma.TransactionClient): Promise<void> {
   for (const craft of PRODUCT_CRAFTS) {
     await tx.productCraft.upsert({
@@ -600,6 +636,8 @@ async function main(): Promise<void> {
       await seedChannels(tx);
       await seedCustomerTypes(tx);
       await seedCommunicationTools(tx);
+      await seedCurrencies(tx);
+      await seedUnits(tx);
       await seedProductMasterData(tx);
 
       return {
@@ -612,6 +650,8 @@ async function main(): Promise<void> {
         channels: CHANNELS.reduce((sum, c) => sum + 1 + c.shops.length, 0),
         customerTypes: CUSTOMER_TYPES.length,
         communicationTools: COMMUNICATION_TOOLS.length,
+        currencies: CURRENCIES.length,
+        units: UNITS.length,
         crafts: PRODUCT_CRAFTS.length,
         audiences: PRODUCT_AUDIENCES.length,
         categories: PRODUCT_AUDIENCES.reduce((sum, a) => sum + a.categories.length, 0),
@@ -628,6 +668,8 @@ async function main(): Promise<void> {
   console.log(`   NumberSequence  : ${result.numberSequences}`);
   console.log(`   Channel         : ${result.channels}`);
   console.log(`   CustomerType    : ${result.customerTypes}`);
+  console.log(`   Currency        : ${result.currencies}`);
+  console.log(`   Unit            : ${result.units}`);
   console.log(`   ProductCraft    : ${result.crafts}`);
   console.log(`   ProductAudience : ${result.audiences}`);
   console.log(`   ProductCategory : ${result.categories}`);

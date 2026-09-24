@@ -58,6 +58,21 @@ export default function CountrySelect({
     );
   }
 
+  // 搜索字段：中文名 / 英文名 / ISO 缩写，三者任一命中即匹配（由 optionFilterProp 数组驱动，
+  // rc-select 内置过滤对字段与输入都做 toUpperCase，大小写不敏感）
+  const countryOptions = COUNTRIES.map((c) => ({
+    value: c.zh,
+    label: (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <FlagIcon country={c.code} style={{ borderRadius: 2 }} />
+        {c.zh}
+      </span>
+    ),
+    zh: c.zh,
+    en: c.en,
+    code: c.code,
+  }));
+
   return (
     <Select
       id={id}
@@ -71,13 +86,8 @@ export default function CountrySelect({
       style={{ width: '100%', ...style }}
       styles={{ popup: { root: { minWidth: 220 } } }}
       allowClear
-      filterOption={(input, option) => {
-        const children =
-          typeof option?.children === 'string' ? option.children : '';
-        return children
-          .toLowerCase()
-          .includes(String(input ?? '').toLowerCase());
-      }}
+      options={countryOptions}
+      optionFilterProp={['zh', 'en', 'code']}
       optionRender={({ value: optValue, label }) => {
         const info = findCountry(optValue as string);
         if (info) {
@@ -102,15 +112,6 @@ export default function CountrySelect({
         }
         return <span style={{ display: 'inline-flex', alignItems: 'center', lineHeight: '22px' }}>{label}</span>;
       }}
-    >
-      {COUNTRIES.map((c) => (
-        <Select.Option key={c.code} value={c.zh}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <FlagIcon country={c.code} style={{ borderRadius: 2 }} />
-            {c.zh}
-          </span>
-        </Select.Option>
-      ))}
-    </Select>
+    />
   );
 }

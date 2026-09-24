@@ -68,6 +68,7 @@ const routeTitles: Record<string, string> = {
   '/setting/archive': '产品档案',
   '/setting/channel': '渠道管理',
   '/setting/customer-type': '客户类型',
+  '/setting/data': '数据管理',
   '/setting/approval': '审批管理',
   '/setting/logs': '操作日志',
 };
@@ -144,6 +145,7 @@ export default function MainLayout() {
     ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
     ...(hasPerm('system:channel') ? [{ key: '/setting/channel', icon: <ApiOutlined />, label: t('menu.systemChannel') }] : []),
     ...(hasPerm('system:customer-type') ? [{ key: '/setting/customer-type', icon: <TagsOutlined />, label: t('menu.customerType') }] : []),
+    ...(hasPerm('system:data') ? [{ key: '/setting/data', icon: <DollarOutlined />, label: t('menu.systemData') }] : []),
     ...(hasPerm('system:approval') ? [{ key: '/setting/approval', icon: <NodeIndexOutlined />, label: t('menu.systemApproval') }] : []),
     ...(hasPerm('system:logs') ? [{ key: '/setting/logs', icon: <BarChartOutlined />, label: t('menu.systemLogs') }] : []),
   ];

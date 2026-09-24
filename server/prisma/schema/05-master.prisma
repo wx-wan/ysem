@@ -1,0 +1,30 @@
+// ============ 币种（系统设置维护；线索目标价位前缀 + 顶部汇率切换数据源）============
+// 注意：Prisma 已存在 `Currency` 枚举（被 Product / Opportunity 使用），此处用 `CurrencyRate`
+// 承载「可运行时维护」的币种主数据（显示名/符号），与枚举解耦，避免命名冲突。
+// 汇率不在此维护：换算与展示统一取每日汇率（GET /api/ext/exchange，表 DailyExchangeRate）。
+model CurrencyRate {
+  id        String   @id @default(cuid())
+  code      String   @unique // ISO 4217，如 CNY / USD（与 Currency 枚举值对齐）
+  name      String // 中文名，如 人民币 / 美元
+  symbol    String // 符号，如 ¥ / $
+  isActive  Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sort])
+  @@index([isActive])
+}
+
+// ============ 单位（系统设置维护；线索数量需求后缀取值）============
+model Unit {
+  id        String   @id @default(cuid())
+  name      String   @unique // 如 个 / 套
+  isActive  Boolean  @default(true)
+  sort      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sort])
+  @@index([isActive])
+}

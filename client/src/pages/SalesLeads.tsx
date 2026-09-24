@@ -346,7 +346,7 @@ export default function SalesLeads() {
               dataSource={list.listData}
               loading={list.loading}
               selectedId={selectedId}
-              onSelect={(r) => setSelectedId(r.id)}
+              onSelect={(r) => setSelectedId((prev) => (prev === r.id ? null : r.id))}
             />
           </div>
           <div className="lead-detail-col">

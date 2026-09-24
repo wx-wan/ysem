@@ -220,11 +220,13 @@ model Lead {
   productInterest String?
   quantity        Int     @default(1) // 采购数量
   targetPrice     String?
-  certRequire     String?
-  packageReq      String?
-  deliveryReq     String?
+  /// 目标价位汇率快照：**1 单位 currency = targetPriceRate CNY**（与 ADR-18 `exchangeRate` 同义，CNY 恒为 1）。
+  /// 金额必带：录入时随金额一起落库，后续展示 / 币种切换都用该快照计算，不取实时汇率。
+  targetPriceRate Decimal? @db.Decimal(18, 8)
   targetMarket    String?
-  specialReq      String?
+  currency        String? // 币种（Currency.code），目标价位前缀，默认 CNY
+  unit            String? // 单位（Unit.name），数量需求后缀，默认 个
+  expectedDelivery DateTime? // 客户期望交期
   remark          String?
 
   // ---------- 状态机 ----------

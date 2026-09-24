@@ -1,6 +1,5 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import { LeadStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import { getNextNumber } from '../lib/numberSequence';
 import { AuthRequest } from '../middleware/auth';
@@ -10,12 +9,12 @@ import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 
+/** 线索状态中文名（4 态；状态由单据事件自动推进，无人工改动入口） */
 const LEAD_STATUS_LABEL: Record<string, string> = {
-  NEW: '新建',
-  CONTACTED: '已联系',
-  QUALIFIED: '已确认',
-  INVALID: '无效',
-  CONVERTED: '已转化',
+  NEW: '新线索',
+  CONFIRMED: '已确认',
+  SAMPLED: '已打样',
+  WON: '已成交',
 };
 
 const leadSchema = z.object({
@@ -25,12 +24,15 @@ const leadSchema = z.object({
   // F-8L-A：来源渠道 / 来源平台正式字段（Lead.channelId / Lead.shopId，均 → Channel）
   channelId: z.string().optional().nullable(),
   shopId: z.string().optional().nullable(),
+  // 来源渠道/平台组合值（前端下拉项为 JSON 字符串 {channelId, shopId}）；入库前拆为 channelId/shopId。
+  // 与显式 channelId/shopId 二选一传入，sourceKey 优先级更高（见 createLead / updateLead 拆分逻辑）。
+  sourceKey: z.string().trim().max(500).optional().nullable(),
   sourceChannel: z.string().optional().nullable(),
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
-  // V1.0：与 Prisma LeadStatus 严格一致（NEW / CONTACTED / QUALIFIED / CONVERTED / INVALID）
-  status: z.nativeEnum(LeadStatus).optional(),
+  // 线索状态不接受外部入参：只由单据事件自动推进（转商机 / 建打样单 / 建销售订单），
+  // 见 utils/leadStatus.ts。此处不声明 status（即使前端误传也会被 zod 剥离，不落库）。
   companyName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(100).nullable().optional(),
   // 联系方式：数组 [{tool, account}]，新增时至少一条（见 createLead 校验）
@@ -51,6 +53,8 @@ const leadSchema = z.object({
   productName: z.string().trim().max(200).nullable().optional(),
   remark: z.string().trim().max(1000).nullable().optional(),
   targetMarket: z.string().trim().max(200).nullable().optional(),
+  currency: z.string().trim().max(10).nullable().optional(),
+  unit: z.string().trim().max(20).nullable().optional(),
   productType: z.string().trim().max(200).nullable().optional(),
   productDesc: z.string().trim().max(2000).nullable().optional(),
   // D1：参考图片接受「URL 字符串」或「{url,name}」对象数组；后端转为 Attachment(ownerType=LEAD) 记录
@@ -59,11 +63,23 @@ const leadSchema = z.object({
     .max(20)
     .nullable()
     .optional(),
-  targetPrice: z.string().trim().max(200).nullable().optional(),
-  certRequire: z.string().trim().max(1000).nullable().optional(),
-  packageReq: z.string().trim().max(1000).nullable().optional(),
-  deliveryReq: z.string().trim().max(1000).nullable().optional(),
-  specialReq: z.string().trim().max(1000).nullable().optional(),
+  targetPrice: z
+    .union([z.string(), z.number()])
+    .nullable()
+    .optional()
+    .transform((v) => (v === null || v === undefined || v === '' ? null : String(v))),
+  // 目标价位汇率快照：1 单位该币种 = X CNY（与 ADR-18 exchangeRate 同义，CNY 恒为 1）。
+  // 金额必带：录入时随金额一起落库，后续展示 / 币种切换固定用该汇率计算，不取实时汇率。
+  targetPriceRate: z
+    .union([z.string(), z.number()])
+    .nullable()
+    .optional()
+    .transform((v) => {
+      if (v === null || v === undefined || v === '') return null;
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : null;
+    }),
+  expectedDelivery: z.string().trim().max(50).nullable().optional(),
   customerType: z.string().trim().max(100).nullable().optional(),
   ownerId: z.string().optional().nullable(),
   // V1.0：Lead 不再持有 pipelineId，商机关联由 Opportunity.leadId 单向持有（见 sales.controller）
@@ -85,7 +101,7 @@ const LEAD_WRITABLE_FIELDS = [
   'channelId',
   'shopId',
   'source',
-  'status',
+  // status 不在白名单：状态只由单据事件推进（utils/leadStatus.ts），不随线索编辑被改写
   'companyName',
   'contactName',
   'contactMethods',
@@ -96,11 +112,11 @@ const LEAD_WRITABLE_FIELDS = [
   'productInterest',
   'quantity',
   'targetPrice',
-  'certRequire',
-  'packageReq',
-  'deliveryReq',
+  'targetPriceRate',
   'targetMarket',
-  'specialReq',
+  'currency',
+  'unit',
+  'expectedDelivery',
   'remark',
   'ownerId',
 ] as const;
@@ -208,6 +224,23 @@ async function scopedWhere(req: AuthRequest, id: string): Promise<Record<string,
  *
  * @returns false 时已通过 fail(res,...) 写入错误响应，调用方须 return。
  */
+/**
+ * 拆分组合来源值（sourceKey = JSON `{channelId, shopId}`）为渠道/平台 ID。
+ * 用于入库前从前端下拉的组合项拆出独立列（F-8L-A）。解析失败返回空对象，交由显式 channelId/shopId 兜底。
+ */
+function splitSourceKey(raw?: string | null): { channelId?: string | null; shopId?: string | null } {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { channelId?: string; shopId?: string };
+    if (parsed && typeof parsed === 'object') {
+      return { channelId: parsed.channelId ?? null, shopId: parsed.shopId ?? null };
+    }
+  } catch {
+    /* 非 JSON 则忽略，回退到显式 channelId/shopId */
+  }
+  return {};
+}
+
 async function validateChannelShop(
   res: Response,
   channelId: string | null | undefined,
@@ -361,9 +394,42 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
   }
 };
 
+/**
+ * GET /api/leads/:id/logs —— 线索操作记录（详情面板「操作记录」Tab 数据源）。
+ *
+ * 只读 OperationLog 中 `businessType = LEAD` 且 `businessId = 线索 id` 的记录，
+ * 按时间倒序返回。数据范围门：线索不可见与不存在**同响应 404**（不泄露存在性）。
+ * 与全局日志页（`/api/operations`，需 `system:logs` 权限）解耦：业务用户查看自己可见
+ * 线索的操作记录无需审计权限，但仍受数据范围约束。
+ */
+export const getLeadLogs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const lead = await prisma.lead.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true },
+    });
+    if (!lead) {
+      fail(res, 404, '线索不存在');
+      return;
+    }
+    const list = await prisma.operationLog.findMany({
+      where: { businessType: BUSINESS_TYPE.LEAD, businessId: lead.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    success(res, list);
+  } catch {
+    fail(res, 500, '服务器错误');
+  }
+};
+
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
+    // 来源拆分：优先用组合 sourceKey（{channelId, shopId}）拆出渠道/平台，回退显式 channelId/shopId（F-8L-A）
+    const fromSourceKey = splitSourceKey(data.sourceKey);
+    const channelId = fromSourceKey.channelId !== undefined ? fromSourceKey.channelId : (data.channelId ?? null);
+    const shopId = fromSourceKey.shopId !== undefined ? fromSourceKey.shopId : (data.shopId ?? null);
     // 联系方式：新增线索必须至少一条有效记录（{tool, account} 均非空）
     if (!data.contactMethods || data.contactMethods.length === 0) {
       fail(res, 400, '请至少填写一条联系方式');
@@ -435,7 +501,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     // F-8L-A · 来源渠道/来源平台：引用存在性 + 父子一致性（shop.parentId === channelId）。
     // 仅校验引用合法性，不发明 Channel/Shop 的 per-user 权限（系统无此机制，Channel 为全局主数据）。
     // 先于事务与任何写入（与 customerId / productId / ownerId 同口径）。
-    if (!(await validateChannelShop(res, data.channelId, data.shopId))) return;
+    if (!(await validateChannelShop(res, channelId, shopId))) return;
 
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const item = await prisma.$transaction(async (tx) => {
@@ -445,11 +511,12 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         data: {
           leadName,
           customerId: data.customerId ?? null,
-          channelId: data.channelId ?? null,
-          shopId: data.shopId ?? null,
+          channelId: channelId ?? null,
+          shopId: shopId ?? null,
           quantity: data.quantity ?? 0,
           source: data.source ?? 'MANUAL',
-          status: data.status ?? 'NEW',
+          // 新建线索恒为「新线索」：状态推进只发生在绑定商机 / 生成打样单 / 生成订单时
+          status: 'NEW',
           companyName: data.companyName ?? null,
           contactName: data.contactName ?? null,
           contactMethods: data.contactMethods ?? undefined,
@@ -459,11 +526,11 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           productInterest: data.productInterest ?? null,
           remark: data.remark ?? null,
           targetMarket: data.targetMarket ?? null,
+          currency: data.currency ?? null,
+          unit: data.unit ?? null,
           targetPrice: data.targetPrice ?? null,
-          certRequire: data.certRequire ?? null,
-          packageReq: data.packageReq ?? null,
-          deliveryReq: data.deliveryReq ?? null,
-          specialReq: data.specialReq ?? null,
+          targetPriceRate: data.targetPriceRate ?? null,
+          expectedDelivery: data.expectedDelivery ?? null,
           customerType: data.customerType ?? null,
           ownerId: data.ownerId ?? null,
           createdBy: req.userId ?? null,
@@ -492,6 +559,22 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
 
       return lead;
     });
+
+    // 线索操作记录（详情面板「操作记录」Tab 的数据源）
+    void activityLogger.log({
+      userId: req.userId ?? '',
+      username: req.username ?? '',
+      realName: req.realName,
+      action: 'CREATE',
+      module: 'sales',
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: item.id,
+      businessNo: item.leadNo,
+      summary: `创建了线索「${item.leadName || item.leadNo}」`,
+      ip: req.ip,
+      customerId: item.customerId || undefined,
+    });
+
     created(res, item);
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -517,7 +600,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     // 该门**先于任何写入**（lead.update / leadItem.deleteMany / leadItem.create）。
     const existing = await prisma.lead.findFirst({
       where: await scopedWhere(req, req.params.id),
-      select: { id: true, channelId: true, shopId: true },
+      select: { id: true, channelId: true, shopId: true, leadNo: true, leadName: true },
     });
     if (!existing) {
       fail(res, 404, '线索不存在');
@@ -552,11 +635,19 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     }
 
     // F-8L-A · 来源渠道/来源平台：编辑时同样必须重新校验（先于任何写入）。
-    // 仅传其一（另一保持原值）时，用持久值补齐构成有效组合，再校验父子一致性；
-    // 不自动替用户改写 shopId（如只改 channelId 导致 shop.parentId !== newChannelId，则拒绝）。
+    // 若传入组合 sourceKey，优先拆出 channelId/shopId 覆盖显式值；仅传其一（另一保持原值）时，
+    // 用持久值补齐构成有效组合，再校验父子一致性；不自动替用户改写 shopId。
+    const fromSourceKey = splitSourceKey(leadData.sourceKey);
+    if (fromSourceKey.channelId !== undefined) leadData.channelId = fromSourceKey.channelId;
+    if (fromSourceKey.shopId !== undefined) leadData.shopId = fromSourceKey.shopId;
     const effChannelId = leadData.channelId !== undefined ? leadData.channelId : existing.channelId;
     const effShopId = leadData.shopId !== undefined ? leadData.shopId : existing.shopId;
     if (!(await validateChannelShop(res, effChannelId, effShopId))) return;
+
+    // 将拆分后的来源渠道/平台写回更新对象（LEAD_WRITABLE_FIELDS 循环在拆分之前执行，
+    // 仅读取了显式 channelId/shopId；此处用有效组合值覆盖，确保编辑时来源选择正确落库）。
+    update.channelId = effChannelId ?? null;
+    update.shopId = effShopId ?? null;
 
     // 引用侧（DQ-3=C）：产品可见性校验必须**先于任何写入**（含 lead.update 与明细重建），
     // 否则拒绝发生在写入之后会造成「授权后于变更」。不可见与不存在同结果（400）。
@@ -642,6 +733,22 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
         }
       }
     }
+
+    // 线索操作记录（详情面板「操作记录」Tab 的数据源）
+    void activityLogger.log({
+      userId: req.userId ?? '',
+      username: req.username ?? '',
+      realName: req.realName,
+      action: 'UPDATE',
+      module: 'sales',
+      businessType: BUSINESS_TYPE.LEAD,
+      businessId: existing.id,
+      businessNo: existing.leadNo,
+      summary: `更新了线索「${existing.leadName || existing.leadNo}」`,
+      ip: req.ip,
+      customerId: typeof update.customerId === 'string' ? update.customerId : undefined,
+    });
+
     success(res, null, '更新成功');
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -654,7 +761,28 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
 
 export const deleteLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    // 仅取日志所需字段，不改变既有删除行为（日志须在对象删除后仍存活，故删除前取值）
+    const lead = await prisma.lead.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, leadNo: true, leadName: true, customerId: true },
+    });
     await prisma.lead.delete({ where: { id: req.params.id } });
+
+    if (lead) {
+      void activityLogger.log({
+        userId: req.userId ?? '',
+        username: req.username ?? '',
+        realName: req.realName,
+        action: 'DELETE',
+        module: 'sales',
+        businessType: BUSINESS_TYPE.LEAD,
+        businessId: lead.id,
+        businessNo: lead.leadNo,
+        summary: `删除了线索「${lead.leadName || lead.leadNo}」`,
+        ip: req.ip,
+        customerId: lead.customerId || undefined,
+      });
+    }
     success(res, null, '删除成功');
   } catch {
     fail(res, 500, '服务器错误');
@@ -963,48 +1091,6 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-// 状态流转（如 转为已联系 / 已转化 / 无效 / 有效）
-export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    // V1.0：与 Prisma LeadStatus 严格一致；INVALID 已在下方显式禁用（标记无效功能已下线）
-    const { status } = z.object({ status: z.nativeEnum(LeadStatus) }).parse(req.body);
-    // DQ：标记无效功能已下线，禁止将线索置为 INVALID
-    if (status === 'INVALID') {
-      fail(res, 400, '标记无效功能已停用');
-      return;
-    }
-    // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
-    // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
-    const existing = await prisma.lead.findFirst({
-      where: await scopedWhere(req, req.params.id),
-      select: { id: true, leadNo: true, status: true, customerId: true },
-    });
-    if (!existing) {
-      fail(res, 404, '线索不存在');
-      return;
-    }
-    await prisma.lead.update({ where: { id: existing.id }, data: { status } });
-
-    const label = LEAD_STATUS_LABEL[status] || status;
-    void activityLogger.log({
-      userId: req.userId || '',
-      username: req.username || '',
-      realName: req.realName,
-      action: 'STATUS',
-      module: 'lead',
-      businessType: BUSINESS_TYPE.LEAD,
-      businessId: existing.id,
-      businessNo: existing.leadNo,
-      summary: `将线索状态${existing.status ? `由「${LEAD_STATUS_LABEL[existing.status] || existing.status}」` : ''}变更为「${label}」`,
-      customerId: existing.customerId || undefined,
-    });
-
-    success(res, null, '状态已更新');
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
-  }
-};
+// 人工改状态入口已下线：线索状态只由单据事件自动推进（绑定商机 → 已确认 / 建打样单 → 已打样 / 建订单 → 已成交），
+// 见 utils/leadStatus.ts。原 `PATCH /leads/:id/status`（changeLeadStatus）已从路由移除，
+// 且 `status` 不在 PUT 白名单内，避免状态与实际单据不一致的脏值。

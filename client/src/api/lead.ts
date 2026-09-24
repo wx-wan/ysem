@@ -2,7 +2,12 @@ import axios from './request';
 import type { ProductImageItem } from '../utils/productImages';
 
 export type LeadSource = 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
-export type LeadStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'CONVERTED';
+/**
+ * 线索状态（4 态，与后端 LeadStatus 一致）。
+ * 状态由单据事件自动推进，前端**不得**主动写入：
+ * NEW 新线索 / CONFIRMED 已确认（已绑定商机）/ SAMPLED 已打样 / WON 已成交。
+ */
+export type LeadStatus = 'NEW' | 'CONFIRMED' | 'SAMPLED' | 'WON';
 
 export interface LeadCustomer {
   id: string;
@@ -56,11 +61,12 @@ export interface Lead {
   // D1：参考图片附件（Attachment ownerType=LEAD）
   attachments?: Array<{ id: string; url: string; name?: string | null; category?: string; sort?: number }>;
   targetPrice?: string | null;
-  certRequire?: string | null;
-  packageReq?: string | null;
-  deliveryReq?: string | null;
-  specialReq?: string | null;
+  /** 目标价位汇率快照：1 单位该币种 = X CNY（与金额一同落库，后续换算固定用它） */
+  targetPriceRate?: number | null;
+  expectedDelivery?: string | null;
   customerType?: string | null;
+  currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
+  unit?: string | null; // 单位（Unit.name），数量需求后缀，默认 个
   /** 负责人 ID（V1.0 canonical 归属/请求字段） */
   ownerId?: string | null;
   /** 负责人（后端 owner relation；显示优先使用） */
@@ -76,6 +82,8 @@ export interface LeadPayload {
   customerId?: string | null;
   channelId?: string | null;
   shopId?: string | null;
+  /** 来源渠道/平台组合值（JSON {channelId, shopId}），由后端入库前拆分为独立列 */
+  sourceKey?: string | null;
   productId?: string | null;
   quantity?: number;
   source?: LeadSource;
@@ -95,13 +103,30 @@ export interface LeadPayload {
   productDesc?: string | null;
   images?: { url: string; name?: string }[] | null;
   targetPrice?: string | null;
-  certRequire?: string | null;
-  packageReq?: string | null;
-  deliveryReq?: string | null;
-  specialReq?: string | null;
+  /** 目标价位汇率快照：1 单位该币种 = X CNY（金额必带，CNY 恒为 1） */
+  targetPriceRate?: number | null;
+  expectedDelivery?: string | null;
   customerType?: string | null;
+  currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
+  unit?: string | null; // 单位（Unit.name），数量需求后缀，默认 个
   /** 负责人 ID（V1.0 canonical 请求字段） */
   ownerId?: string | null;
+}
+
+/** 线索操作日志条目（OperationLog 投影） */
+export interface LeadOperationLog {
+  id: string;
+  userId?: string | null;
+  username: string;
+  realName?: string | null;
+  /** CREATE / UPDATE / DELETE / CLAIM / RELEASE / TRANSFERRED ... */
+  action: string;
+  module?: string | null;
+  businessType?: string | null;
+  businessId?: string | null;
+  businessNo?: string | null;
+  summary?: string | null;
+  createdAt: string;
 }
 
 export interface LeadListParams {
@@ -127,13 +152,15 @@ export const leadApi = {
       })
       .then((r) => r.data),
   get: (id: string) => axios.get<{ code: number; data: Lead }>(`/leads/${id}`).then((r) => r.data),
+  /** 线索操作记录（操作日志，按时间倒序） */
+  getLogs: (id: string) =>
+    axios.get<{ code: number; data: LeadOperationLog[] }>(`/leads/${id}/logs`).then((r) => r.data),
   create: (payload: LeadPayload) =>
     axios.post<{ code: number; data: Lead }>('/leads', payload).then((r) => r.data),
   update: (id: string, payload: Partial<LeadPayload>) =>
     axios.put<{ code: number; data: null }>(`/leads/${id}`, payload).then((r) => r.data),
   delete: (id: string) => axios.delete<{ code: number; data: null }>(`/leads/${id}`).then((r) => r.data),
-  changeStatus: (id: string, status: LeadStatus) =>
-    axios.patch<{ code: number; data: null }>(`/leads/${id}/status`, { status }).then((r) => r.data),
+  // 注：状态变更接口已下线（状态只由单据事件推进），故不再提供 changeStatus
   transfer: (id: string, newOwnerId: string) =>
     axios.post<{ code: number; data: null }>(`/leads/${id}/transfer`, { newOwnerId }).then((r) => r.data),
   release: (id: string) =>

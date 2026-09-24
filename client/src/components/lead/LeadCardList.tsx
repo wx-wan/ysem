@@ -1,5 +1,5 @@
 import { Empty, Spin, Tag } from 'antd';
-import { RightOutlined } from '@ant-design/icons';
+import { RightCircleOutlined, UpCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import FlagIcon from '../FlagIcon';
 import { type Lead } from '../../api/lead';
@@ -37,17 +37,19 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
           const company = r.customer?.companyName || r.companyName || '-';
           const country = r.targetMarket || r.country || '';
           const product = r.items?.[0]?.productName || r.productName || r.productInterest || '';
-          const desc = r.items?.[0]?.productDesc || r.specialReq || '';
+          const desc = r.items?.[0]?.productDesc || r.productDesc || '';
           const statusMeta = STATUS_META[r.status];
-          const initial = (r.owner?.realName || r.owner?.username || company || '?')[0];
+          // 左侧大头像代表客户公司：取公司名首字，同一公司颜色稳定
+          const companyInitial = company !== '-' ? company[0] : '?';
+          const companySeed = company !== '-' ? company : r.id;
           return (
             <div
               key={r.id}
               className={`lead-card${selectedId === r.id ? ' is-active' : ''}`}
               onClick={() => onSelect(r)}
             >
-              <span className="lead-card__avatar" style={{ background: leadAvatarColor(ownerSeed) }}>
-                {initial}
+              <span className="lead-card__avatar" style={{ background: leadAvatarColor(companySeed) }}>
+                {companyInitial}
               </span>
               <div className="lead-card__main">
                 <div className="lead-card__no-row">
@@ -71,14 +73,24 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
                 <div className="lead-card__date">{r.createdAt?.slice(0, 10)}</div>
                 {ownerName && (
                   <div className="lead-card__owner">
-                    <span>{ownerName}</span>
                     <span className="lead-card__owner-avatar" style={{ background: leadAvatarColor(ownerSeed) }}>
                       {ownerName[0]}
                     </span>
+                    <span>{ownerName}</span>
                   </div>
                 )}
+                {/* 展开态：「收起」+ UpCircleOutlined；收起态：「查看详情」+ RightCircleOutlined。
+                    描边图标继承文字颜色（currentColor），文字与图标样式统一为主题色 */}
                 <span className="lead-card__more">
-                  {t('lead.viewDetail')} <RightOutlined />
+                  {selectedId === r.id ? (
+                    <>
+                      {t('lead.collapseDetail')} <UpCircleOutlined />
+                    </>
+                  ) : (
+                    <>
+                      {t('lead.viewDetail')} <RightCircleOutlined />
+                    </>
+                  )}
                 </span>
               </div>
             </div>

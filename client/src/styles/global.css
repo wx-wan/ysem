@@ -86,6 +86,29 @@
 .lead-form-v2 .ant-form-item:last-child {
   margin-bottom: 0;
 }
+/* 数量需求后缀（单位下拉）：addon 与下拉背景透明，与输入框视觉连成一体。
+   选择器带 .ant-form-item 提高特异性，避免被 antd 运行时注入的样式覆盖。 */
+.lead-quantity-item.ant-form-item .ant-input-group-addon,
+.lead-quantity-item.ant-form-item .ant-input-addon,
+.lead-quantity-item.ant-form-item .ant-input-group-addon *,
+.lead-quantity-item.ant-form-item .ant-input-addon * {
+  background: transparent;
+}
+
+/* 金额组件的币种下拉（目标价位前缀）：只显示 ¥ / $ 符号，选中值与下拉项均居中 */
+.money-currency-symbol {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+.money-currency-select .ant-select-selection-item,
+.money-currency-select .ant-select-selection-placeholder {
+  text-align: center;
+}
+.money-currency-dropdown .ant-select-item,
+.money-currency-dropdown .ant-select-item-option-content {
+  text-align: center;
+}
 .lead-section-card {
   background: var(--c-bg);
   border: 1px solid var(--c-border);
@@ -119,15 +142,14 @@
 
 /* ========== 线索新建/编辑 · 三步向导（参考询盘向导风格） ========== */
 .lead-wizard-header {
-  margin: -16px -20px;
-  padding: 20px 24px 12px;
-  height: 126px;
+  padding: 24px 36px;
   box-sizing: border-box;
   background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);
   color: #fff;
   position: relative;
 }
-.lead-wizard-header__close {
+.lead-wizard-header__close,
+.lead-detail-panel__edit {
   position: absolute;
   top: 16px;
   right: 16px;
@@ -145,7 +167,8 @@
   padding: 0;
   transition: background 0.2s ease;
 }
-.lead-wizard-header__close:hover {
+.lead-wizard-header__close:hover,
+.lead-detail-panel__edit:hover {
   background: rgba(255, 255, 255, 0.35);
 }
 .lead-wizard-header__title {
@@ -174,13 +197,15 @@
   align-items: center;
   gap: 8px;
   margin-top: 18px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  justify-content: space-between;
 }
 .lead-wizard-steps__item {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
 }
 .lead-wizard-steps__dot {
   width: 26px;
@@ -201,12 +226,10 @@
   background: rgba(255, 255, 255, 0.92);
   color: #1677ff;
 }
-/* 当前步骤：放大 + 白色实心 + 外圈光晕，强调当前进度 */
+/* 当前步骤：白色实心 + 蓝色字，简洁高亮 */
 .lead-wizard-steps__item.is-active .lead-wizard-steps__dot {
   background: #fff;
   color: #1677ff;
-  transform: scale(1.18);
-  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.25), 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 .lead-wizard-steps__label {
   font-size: 14px;
@@ -216,15 +239,14 @@
 }
 .lead-wizard-steps__item.is-active .lead-wizard-steps__label {
   color: #fff;
-  font-size: 15px;
   font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 .lead-wizard-steps__item.is-done .lead-wizard-steps__label {
   color: rgba(255, 255, 255, 0.92);
 }
 .lead-wizard-steps__line {
-  width: 56px;
+  flex: 1 1 auto;
+  min-width: 24px;
   height: 2px;
   background: rgba(255, 255, 255, 0.3);
   margin: 0 8px;
@@ -245,6 +267,19 @@
   display: flex;
   gap: 8px;
   flex: 1 1 0;
+}
+/* ghost 风格按钮（透明底 + 主题色描边文字，常驻可见；不使用 antd ghost 属性，便于显式控制外观） */
+.lead-ghost-btn.ant-btn {
+  background: transparent;
+  border: 1px solid var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-primary, #1677ff);
+  box-shadow: none;
+}
+.lead-ghost-btn.ant-btn:hover,
+.lead-ghost-btn.ant-btn:focus {
+  background: rgba(22, 119, 255, 0.06);
+  border-color: var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-primary, #1677ff);
 }
 .lead-wizard-footer__side--right {
   justify-content: flex-end;
@@ -333,7 +368,7 @@
   background: var(--c-bg, #f9fafb);
   border: 1px solid var(--c-border, #eef0f3);
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 12px 16px;
 }
 .lead-wizard-summary__title {
   font-size: 13px;
@@ -345,7 +380,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 0;
+  padding: 4px 0;
   font-size: 13px;
 }
 .lead-wizard-summary__label {
@@ -368,21 +403,23 @@
 }
 .lead-card {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   padding: 16px 18px;
   border: 1px solid var(--c-border, #eef0f3);
   border-radius: 16px;
   background: #fff;
+  /* 常驻阴影加重：与详情面板同档，弱化纯描边的「薄」感 */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   cursor: pointer;
   transition: all 0.2s ease;
 }
 .lead-card:hover {
   border-color: #91caff;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 .lead-card.is-active {
   border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15);
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.15), 0 8px 24px rgba(0, 0, 0, 0.12);
 }
 .lead-card__avatar {
   width: 40px;
@@ -418,9 +455,11 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  /* 标识组（编号+状态）与主标题同属「这条线索是谁」，紧跟 4px */
   margin-top: 4px;
   font-size: 15px;
   font-weight: 600;
+  line-height: 1.4;
   color: rgba(0, 0, 0, 0.88);
   min-width: 0;
 }
@@ -430,13 +469,17 @@
   white-space: nowrap;
 }
 .lead-card__prod {
-  margin-top: 2px;
+  /* 需求摘要组（产品 + 数量/描述）与主标题之间拉开 8px */
+  margin-top: 8px;
   font-size: 13px;
+  line-height: 1.5;
   color: rgba(0, 0, 0, 0.65);
 }
 .lead-card__meta {
-  margin-top: 6px;
+  /* 摘要组内保持 4px 紧凑 */
+  margin-top: 4px;
   font-size: 12px;
+  line-height: 1.5;
   color: rgba(0, 0, 0, 0.45);
   display: flex;
   gap: 12px;
@@ -454,10 +497,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
 }
 .lead-card__date {
   font-size: 12px;
+  line-height: 1.5;
   color: rgba(0, 0, 0, 0.45);
 }
 .lead-card__owner {
@@ -465,7 +509,8 @@
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.88);
+  /* 负责人为次等重要文本：比「查看详情」(0.45) 深、比公司名 (0.88) 浅 */
+  color: rgba(0, 0, 0, 0.65);
 }
 .lead-card__owner-avatar {
   width: 24px;
@@ -480,6 +525,19 @@
 .lead-card__more {
   font-size: 12px;
   color: #1677ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+/* 收起态：「查看详情」文字与图标为灰色；展开态保持默认主题色 */
+.lead-card:not(.is-active) .lead-card__more {
+  color: rgba(0, 0, 0, 0.45);
+}
+/* 圆形图标与文字基线对齐（TwoTone 图标自带 1px 视觉余量） */
+.lead-card__more .anticon {
+  font-size: 16px;
+  line-height: 1;
 }
 .lead-detail-col {
   flex: 0 0 380px;
@@ -491,7 +549,8 @@
   border: 1px solid var(--c-border, #eef0f3);
   border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  /* 双层阴影加重：近层保清晰边界，远层拉开与卡片的层级差 */
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 12px 32px rgba(0, 0, 0, 0.08);
 }
 .lead-detail-panel__header {
   background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);

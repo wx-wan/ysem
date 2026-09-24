@@ -29,6 +29,7 @@ import PermPage from './pages/Perm';
 import OperationLogsPage from './pages/OperationLogs';
 import SettingsApprovalPage from './pages/SettingsApproval';
 import SettingsCustomerTypePage from './pages/SettingsCustomerType';
+import SettingsDataManagementPage from './pages/SettingsDataManagement';
 import ChannelManagementPage from './pages/ChannelManagement';
 import NotFoundPage from './pages/NotFound';
 import ForbiddenPage from './pages/Forbidden';
@@ -42,6 +43,7 @@ function SettingIndex() {
     ['product:taxonomy:view', '/setting/archive'],
     ['system:channel', '/setting/channel'],
     ['system:customer-type', '/setting/customer-type'],
+    ['system:data', '/setting/data'],
     ['system:approval', '/setting/approval'],
     ['system:logs', '/setting/logs'],
   ].find(([perm]) => hasPerm(perm));
@@ -141,6 +143,7 @@ function App() {
           <Route path="logs" element={<PermRoute perm="system:logs"><OperationLogsPage /></PermRoute>} />
           <Route path="approval" element={<PermRoute perm="system:approval"><SettingsApprovalPage /></PermRoute>} />
           <Route path="customer-type" element={<PermRoute perm="system:customer-type"><SettingsCustomerTypePage /></PermRoute>} />
+          <Route path="data" element={<PermRoute perm="system:data"><SettingsDataManagementPage /></PermRoute>} />
         </Route>
       </Route>
       <Route path="/design" element={<Navigate to="/setting" />} />

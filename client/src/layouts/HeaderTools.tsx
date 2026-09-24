@@ -12,7 +12,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import i18n from '../i18n';
 import { useAuthStore } from '../stores/useAuthStore';
-import { useCurrencyStore, CURRENCIES } from '../stores/useCurrencyStore';
+import { useCurrencyStore } from '../stores/useCurrencyStore';
 import { useNavigate } from 'react-router-dom';
 import { usePermission } from '../hooks/usePermission';
 import type { MenuProps } from 'antd';
@@ -27,7 +27,7 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { hasPerm } = usePermission();
-  const { currency, rates } = useCurrencyStore();
+  const { currency, rates, currencies } = useCurrencyStore();
   // 响应式计算汇率展示文本（直接读 getState 不会随 rates 更新重新渲染）
   const rateToCNY = useMemo(() => {
     if (currency.code === 'CNY') return null;
@@ -64,6 +64,7 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
     'system:customer-type',
     'system:approval',
     'system:logs',
+    'system:data',
   ].some((code) => hasPerm(code));
 
   const avatarMenuItems: MenuProps['items'] = [
@@ -103,7 +104,7 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
 
       <Dropdown
         menu={{
-          items: CURRENCIES.map((c) => ({
+          items: currencies.map((c) => ({
             key: c.code,
             label: (
               <span>

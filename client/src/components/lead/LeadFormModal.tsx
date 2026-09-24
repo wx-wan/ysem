@@ -5,6 +5,7 @@ import {
   Alert,
   AutoComplete,
   Button,
+  DatePicker,
   Form,
   Input,
   Row,
@@ -14,7 +15,8 @@ import {
   Tag,
   Modal,
 } from 'antd';
-import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -31,12 +33,15 @@ import { type Product, type ProductAudience, type ProductCraft, type ProductOpti
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { useReleaseToPool } from '../../hooks/useReleaseToPool';
-import { flattenChannelOptions } from './constants';
+import ChipSelect from '../common/ChipSelect';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
-import ContactMethodInput, { type ContactMethodItem } from '../common/ContactMethodInput';
+import ContactMethodInput, { type ContactMethodHandle } from '../common/ContactMethodInput';
+import MoneyInput, { formatMoneyValue, currentRateOf, type MoneyValue } from '../common/MoneyInput';
 import { useCommToolOptions } from '../../stores/useCommToolStore';
+import { useUnitOptions } from '../../stores/useUnitStore';
+import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { parseImages, serializeImages, type ProductImageItem } from '../../utils/productImages';
 
 export interface LeadFormModalHandle {
@@ -46,13 +51,24 @@ export interface LeadFormModalHandle {
 
 // 三步向导各步骤包含的表单字段（「下一步」仅校验当前步骤字段）
 const STEP_FIELDS: string[][] = [
-  ['customerKey', 'targetMarket', 'customerType', 'channelId', 'shopId', 'contactMethods'],
-  ['productKey', 'quantity', 'targetPrice', 'productDesc', 'images', 'specialReq', 'certRequire', 'packageReq', 'deliveryReq'],
+  ['customerKey', 'targetMarket', 'customerType', 'sourceKey', 'contactName', 'contactMethods'],
+  ['productKey', 'quantity', 'targetPrice', 'productDesc', 'images', 'expectedDelivery'],
   ['ownerId'],
 ];
 
 // 负责人头像底色（按列表顺序循环取色）
 const OWNER_COLORS = ['#1677ff', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
+
+// 线索来源：安全解析 sourceKey JSON（{ channelId, shopId }）
+const safeParseSource = (raw?: string): { channelId?: string; shopId?: string } | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { channelId?: string; shopId?: string };
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
 
 interface Props {
   channels: Channel[];
@@ -99,6 +115,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
   const productEditRef = useRef<ProductEditModalHandle>(null);
+  // 联系方式「新增」按钮放在 Form.Item label 旁时，用 ref 触发组件内部 add()
+  const contactMethodRef = useRef<ContactMethodHandle>(null);
   // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   // 新建客户弹窗是否处于强制建档模式（隐藏取消按钮）
@@ -120,27 +138,29 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const users = useUserStore((s) => s.users);
 
   // ============ 表单联动 ============
-  const selectedChannel = Form.useWatch('channelId', form);
   const watchTargetMarket = Form.useWatch('targetMarket', form);
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
   const watchCustomerKey = Form.useWatch('customerKey', form);
   const watchOwnerId = Form.useWatch('ownerId', form);
+  const watchUnit = Form.useWatch('unit', form);
 
-  const channelOptions = useMemo(() => flattenChannelOptions(channels), [channels]);
-
-  // 平台选项：随渠道联动（value = 平台 ID，与后端 shopId 对齐）；无子平台时兜底为渠道本身
-  const formPlatformOptions = useMemo(() => {
-    if (!selectedChannel) return [];
-    const node = channels.find((c) => c.id === selectedChannel);
-    const children = node?.children || [];
-    if (!children.length) return [{ label: node?.name || selectedChannel, value: node?.id || selectedChannel, title: node?.name || selectedChannel }];
-    return children.map((child) => ({
-      label: child.name,
-      value: child.id,
-      title: child.name,
-    }));
-  }, [channels, selectedChannel]);
+  // 线索来源选项：来源渠道 + 来源平台由前端拼接为一个 JSON（{ channelId, shopId }）作为选项值；
+  // 无子平台的渠道兜底 shopId = 渠道自身 ID（与原「平台下拉兜底渠道本身」逻辑一致）
+  const sourceOptions = useMemo(() => {
+    const list: { label: string; value: string }[] = [];
+    channels.forEach((c) => {
+      const children = c.children || [];
+      if (!children.length) {
+        list.push({ label: c.name, value: JSON.stringify({ channelId: c.id, shopId: c.id }) });
+      } else {
+        children.forEach((child) => {
+          list.push({ label: `${c.name} · ${child.name}`, value: JSON.stringify({ channelId: c.id, shopId: child.id }) });
+        });
+      }
+    });
+    return list;
+  }, [channels]);
 
   // 线索名称：目标国家 + 产品名称 + 数量，自动生成
   const leadNamePreview = useMemo(() => {
@@ -167,22 +187,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 沟通工具下拉（取自系统设置 → 沟通工具维护，带 10 分钟本地缓存）
   const { options: commToolOptions } = useCommToolOptions();
-  // 联系方式：至少一条，且每条 tool / account 均非空（新增 / 编辑均强制）
-  const validateContactMethods = (_: unknown, val?: ContactMethodItem[]) => {
-    const arr = val || [];
-    if (arr.length === 0) return Promise.reject(new Error(t('lead.contactMethodsRequired')));
-    for (const it of arr) {
-      if (!it?.tool?.trim() || !it?.account?.trim()) {
-        return Promise.reject(new Error(t('lead.contactMethodRowRequired')));
-      }
-    }
-    return Promise.resolve();
-  };
+  // 单位下拉（取自系统设置 → 数据管理 → 单位维护）
+  const { options: unitOptions } = useUnitOptions();
+  // 币种列表（取自系统设置 → 数据管理 → 币种维护）：金额组件内部自行读取汇率，
+  // 此处仅用于摘要页按币种符号格式化展示
+  const { currencies, rates } = useCurrencyStore();
+  // 联系方式校验由 ContactMethodInput 内部按字段（沟通工具 / 账号）分开判定：
+  // 组件 ref.validate() 触发逐字段校验并飘红，字段变化且有值时组件自动清除该字段飘红。
+  // 这里只负责在「下一步 / 提交」时触发它，不再用 Form.Item rules 做整体校验。
+  const validateContactMethods = () => contactMethodRef.current?.validate() ?? true;
 
   // ============ 三步向导 ============
-  const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepAssign')];
+  const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepConfirm')];
 
   const goNext = async () => {
+    // 联系方式是自定义组件，字段级校验单独触发（沟通工具 / 账号分开判定）
+    if (step === 0 && !validateContactMethods()) return;
     try {
       // 仅校验当前步骤字段，通过后进入下一步
       await form.validateFields(STEP_FIELDS[step]);
@@ -200,8 +220,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setLinkedPipeline(null);
     setStep(0);
     form.resetFields();
+    // 清空联系方式组件内部的字段级校验状态（避免上一次的飘红残留）
+    contactMethodRef.current?.reset();
     // 默认至少一条空的联系方式记录
     form.setFieldsValue({ contactMethods: [{ tool: '', account: '' }] });
+    // 默认单位 个；目标价位默认 CNY（汇率恒为 1），金额待填
+    form.setFieldsValue({
+      unit: '个',
+      targetPrice: { currency: 'CNY', amount: null, exchangeRate: 1 } as MoneyValue,
+    });
     onRefreshCustomers();
     fetchUsers();
     // 新建线索默认负责人为当前登录用户：同时写入表单字段（用于提交）与 editing（用于右上角回显）
@@ -221,6 +248,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setEditing(record);
     setLinkedPipeline(null);
     setStep(0);
+    form.resetFields();
+    // 清空联系方式组件内部的字段级校验状态
+    contactMethodRef.current?.reset();
     onRefreshCustomers();
     try {
       const res = await leadApi.get(record.id);
@@ -229,9 +259,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setEditing(item);
       form.setFieldsValue({
         customerKey: item.customer?.companyName || item.companyName || undefined,
-        // 来源渠道 / 来源平台：回填后端 channel/shop 关系（ID）
-        channelId: item.channel?.id || undefined,
-        shopId: item.shop?.id || undefined,
+        // 联系人：回填 Lead.contactName
+        contactName: item.contactName || undefined,
+        // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON
+        sourceKey: item.channel?.id
+          ? JSON.stringify({ channelId: item.channel.id, shopId: item.shop?.id || item.channel.id })
+          : undefined,
         // 采购产品：回填 LeadItem 明细（V1.0 产品关联落在 items）
         productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
         contactMethods:
@@ -239,6 +272,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             ? item.contactMethods
             : [{ tool: '', account: '' }],
         quantity: item.quantity ?? undefined,
+        // 单位：回填线索取值，缺失时回退默认 个
+        unit: item.unit ?? '个',
         // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
         ownerId: item.ownerId ?? item.owner?.id ?? undefined,
         // 详情扩展字段
@@ -246,11 +281,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         productType: item.productType || undefined,
         // 产品描述：回填 LeadItem.productDesc
         productDesc: item.items?.[0]?.productDesc || undefined,
-        targetPrice: item.targetPrice || undefined,
-        certRequire: item.certRequire || undefined,
-        packageReq: item.packageReq || undefined,
-        deliveryReq: item.deliveryReq || undefined,
-        specialReq: item.specialReq || undefined,
+        // 目标价位：金额组件值（币种 + 金额 + 汇率快照）；汇率缺失时用当前汇率补齐
+        targetPrice: {
+          currency: item.currency ?? 'CNY',
+          amount: item.targetPrice != null && item.targetPrice !== '' ? Number(item.targetPrice) || null : null,
+          exchangeRate:
+            item.targetPriceRate != null
+              ? Number(item.targetPriceRate) || currentRateOf(item.currency ?? 'CNY', rates)
+              : currentRateOf(item.currency ?? 'CNY', rates),
+        } as MoneyValue,
+        expectedDelivery: item.expectedDelivery ? dayjs(item.expectedDelivery) : undefined,
         customerType: item.customerType || undefined,
         // 参考图片：回填 Attachment(ownerType=LEAD) 记录
         images: item.attachments && item.attachments.length
@@ -273,7 +313,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   };
 
   const submit = async () => {
-    const values = await form.validateFields();
+    // 联系方式：字段级校验（工具 / 账号分开判定），不通过时回到第 1 步展示飘红
+    if (!validateContactMethods()) {
+      setStep(0);
+      return;
+    }
+    // 校验当前挂载的字段；取值必须用 getFieldsValue(true)：
+    // validateFields() 只返回当前已挂载（本步骤）字段，之前步骤的字段因条件渲染已卸载，
+    // 但 preserve 仍保留在 store 中，需全量取回，否则提交时前序步骤值为 null。
+    await form.validateFields();
+    const values = form.getFieldsValue(true) as Record<string, any>;
     // 客户：可手输新客户名，或下拉选择已有客户；手输新名仅存文本，确认后才会建档
     let customerId: string | null = null;
     let companyName: string | undefined;
@@ -304,9 +353,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       customerId,
       companyName,
       contactMethods: values.contactMethods || null,
-      // 来源渠道 / 来源平台：传 ID（与后端 channelId/shopId 对齐）
-      channelId: values.channelId ?? null,
-      shopId: values.shopId ?? null,
+      // 联系人：回填到 Lead.contactName
+      contactName: values.contactName ?? null,
+      // 来源渠道 / 来源平台：以组合 sourceKey（JSON {channelId, shopId}）原样提交，
+      // 由后端入库前拆分为独立列（F-8L-A）
+      sourceKey: values.sourceKey ?? null,
       productId,
       productName,
       quantity: values.quantity ? Number(values.quantity) || 0 : 0,
@@ -316,11 +367,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       targetMarket: values.targetMarket || null,
       productType: values.productType || null,
       productDesc: values.productDesc || null,
-      targetPrice: values.targetPrice || null,
-      certRequire: values.certRequire || null,
-      packageReq: values.packageReq || null,
-      deliveryReq: values.deliveryReq || null,
-      specialReq: values.specialReq || null,
+      // 目标价位：金额组件固定输出 { currency, amount, exchangeRate }，其中汇率随金额一起落库，
+      // 后续展示 / 币种切换都以该快照汇率计算，不再取实时汇率
+      targetPrice: values.targetPrice?.amount != null ? String(values.targetPrice.amount) : null,
+      currency: values.targetPrice?.currency ?? null,
+      targetPriceRate: values.targetPrice?.exchangeRate ?? null,
+      expectedDelivery: values.expectedDelivery
+        ? dayjs.isDayjs(values.expectedDelivery)
+          ? values.expectedDelivery.toISOString()
+          : new Date(values.expectedDelivery).toISOString()
+        : null,
       customerType: values.customerType || null,
       // 参考图片：对象数组（url + name），后端转为 Attachment(ownerType=LEAD) 记录
       images: parseImages(values.images).map((i) => ({ url: i.url, name: i.name })),
@@ -532,18 +588,28 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const isCreate = !editing?.id;
   // 公海线索（无负责人）：不支持修改，仅可认领（canonical 归属字段为 ownerId）
   const isPoolLead = !!editing?.id && !editing.ownerId;
-  // 只读：已确认（QUALIFIED）或公海线索均不可编辑（公海仅保留认领操作）
-  const readonly = editing?.status === 'QUALIFIED' || isPoolLead;
+  // 只读：已推进（已确认 / 已打样 / 已成交）或公海线索均不可编辑（公海仅保留认领操作）
+  const readonly = (!!editing?.id && editing.status !== 'NEW') || isPoolLead;
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={readonly} size="large" className="lead-form-v2">
+      <Form form={form} layout="vertical" preserve autoComplete="off" disabled={readonly} size="large" className="lead-form-v2">
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
+          onMaskClick={() => {
+            modal.confirm({
+              title: t('lead.leaveConfirmTitle'),
+              content: t('lead.leaveConfirmContent'),
+              okText: t('lead.leaveConfirmOk'),
+              cancelText: t('common.cancel'),
+              okButtonProps: { danger: true },
+              onOk: () => setDrawerOpen(false),
+            });
+          }}
           title={
             <div className="lead-wizard-header">
               <button type="button" className="lead-wizard-header__close" onClick={() => setDrawerOpen(false)}>
@@ -574,16 +640,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           }
           closable={false}
           headerBorder={false}
-          width={576}
+          headerPadding={0}
+          width={760}
           bodyPadding={24}
           style={{ borderRadius: 20 }}
           footer={
             <div className="lead-wizard-footer">
               <div className="lead-wizard-footer__side">
                 {step > 0 ? (
-                  <Button size="large" icon={<ArrowLeftOutlined />} onClick={goPrev}>{t('lead.prevStep')}</Button>
+                  <Button type="link" size="large" icon={<ArrowLeftOutlined />} onClick={goPrev}>{t('lead.prevStep')}</Button>
                 ) : (
-                  <Button size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
+                  <Button type="link" size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
                 )}
               </div>
               <div className="lead-wizard-footer__dots">
@@ -592,7 +659,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 ))}
               </div>
               <div className="lead-wizard-footer__side lead-wizard-footer__side--right">
-                {step < wizardSteps.length - 1 ? (
+                {step === 1 ? (
+                  <>
+                    <Button size="large" className="lead-ghost-btn" onClick={submit}>{t('lead.keepAsLead')}</Button>
+                    <Button size="large" type="primary" onClick={goNext}>
+                      {t('lead.nextStep')} <ArrowRightOutlined />
+                    </Button>
+                  </>
+                ) : step < wizardSteps.length - 1 ? (
                   <Button size="large" type="primary" onClick={goNext}>
                     {t('lead.nextStep')} <ArrowRightOutlined />
                   </Button>
@@ -604,13 +678,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         {t('lead.claim')}
                       </Button>
                     )}
-                    {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
-                      <Button size="large" type="primary" ghost onClick={handleConfirmLead}>
+                    {/* 已建档线索：最终步提供「确认」（转商机），样式与保存一致（primary） */}
+                    {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && (
+                      <Button size="large" type="primary" onClick={handleConfirmLead}>
                         {t('lead.confirmLead')}
                       </Button>
                     )}
-                    {(!editing?.id || !readonly) && (
-                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
+                    {/* 新建线索：最终步以「确认」提交（样式与保存一致），不再单独显示「保存」按钮 */}
+                    {!editing?.id && (
+                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('lead.confirmRequirement')}</Button>
                     )}
                   </>
                 )}
@@ -620,6 +696,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         >
           {/* 负责人：步骤三以卡片选择，此处保留隐藏字段以便提交时携带 ownerId */}
           <Form.Item name="ownerId" hidden>
+            <Input />
+          </Form.Item>
+          {/* 单位：随数量需求后缀展示，隐藏字段以便提交时携带（币种已并入目标价位金额组件） */}
+          <Form.Item name="unit" hidden>
             <Input />
           </Form.Item>
 
@@ -633,7 +713,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     (editing?.companyName && !editing.customerId) ||
                     (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
                       <Space size={4}>
-                        <span>{t('lead.customer')}</span>
+                        <span>{t('lead.customerCompany')}</span>
                         <Tag
                           color="orange"
                           style={{ cursor: 'pointer', marginInlineEnd: 0 }}
@@ -644,14 +724,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         </Tag>
                       </Space>
                     ) : (
-                      t('lead.customer')
+                      t('lead.customerCompany')
                     )
                   }
                   rules={[{ required: true, message: t('lead.customerRequired') }]}
                 >
                   <AutoComplete
                     allowClear
-                    variant="filled"
                     placeholder={t('lead.customerPlaceholder')}
                     options={customerNameOptions}
                     filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
@@ -659,48 +738,45 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
-                  <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} variant="filled" size="large" />
+                <Form.Item name="targetMarket" label={t('lead.targetMarket')} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
+                  <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} size="large" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="customerType" label={t('lead.customerType')}>
-                  <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} variant="filled" size="large" />
+                <Form.Item name="customerType" label={t('lead.customerType')} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
+                  <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} size="large" />
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="channelId" label={t('lead.channel')} rules={[{ required: true, message: t('lead.channelRequired') }]}>
-                  <Select
-                    showSearch
-                    allowClear
-                    variant="filled"
-                    placeholder={t('lead.channelPlaceholder')}
-                    optionFilterProp="label"
-                    options={channelOptions}
-                    onChange={() => form.setFieldsValue({ shopId: undefined })}
-                  />
+                <Form.Item name="contactName" label={t('lead.contactName')} rules={[{ required: true, message: t('lead.contactRequired') }]}>
+                  <Input placeholder={t('lead.contactPlaceholder')} size="large" />
                 </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="shopId" label={t('lead.platform')} rules={[{ required: true, message: t('lead.platformRequired') }]}>
-                  <Select
-                    showSearch
-                    allowClear
-                    variant="filled"
-                    placeholder={t('lead.platformPlaceholder')}
-                    optionFilterProp="label"
-                    options={formPlatformOptions}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={24}>
                 <Form.Item
                   name="contactMethods"
-                  label={t('lead.contactMethods')}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.contactMethods')}</span>
+                      <Button
+                        type="link"
+                        size="small"
+                        icon={<PlusOutlined />}
+                        onClick={() => contactMethodRef.current?.add()}
+                        style={{ padding: 0, height: 'auto' }}
+                      >
+                        {t('lead.addContactMethod')}
+                      </Button>
+                    </span>
+                  }
                   required
-                  rules={[{ validator: validateContactMethods }]}
+                  // 校验交由 ContactMethodInput 内部按字段处理（工具 / 账号分开判定，有值即清除飘红），
+                  // 此处不再挂 rules，避免与组件内提示重复飘红
                 >
-                  <ContactMethodInput options={commToolOptions} variant="filled" size="large" />
+                  <ContactMethodInput ref={contactMethodRef} options={commToolOptions} size="large" compact showAddButton={false} />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="sourceKey" label={t('lead.leadSource')} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
+                  <ChipSelect options={sourceOptions} columns={2} size="large" />
                 </Form.Item>
               </Col>
             </Row>
@@ -734,7 +810,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 >
                   <AutoComplete
                     allowClear
-                    variant="filled"
                     placeholder={t('lead.productPlaceholder')}
                     options={productNameOptions}
                     filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
@@ -742,43 +817,54 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item name="quantity" label={t('lead.quantityRequirement')} rules={[{ required: true, message: t('lead.quantityRequired') }]}>
-                  <Input autoComplete="off" variant="filled" placeholder={t('lead.quantityRequirementPlaceholder')} />
+                <Form.Item
+                  name="quantity"
+                  label={t('lead.quantityRequirement')}
+                  rules={[{ required: true, message: t('lead.quantityRequired') }]}
+                  className="lead-quantity-item"
+                >
+                  <Input
+                    style={{ width: '100%' }}
+                    inputMode="numeric"
+                    maxLength={12}
+                    placeholder={t('lead.quantityRequirementPlaceholder')}
+                    // 仅允许输入非负整数（数量需求）
+                    onChange={(e) => form.setFieldsValue({ quantity: e.target.value.replace(/[^\d]/g, '') })}
+                    addonAfter={
+                      <Select
+                        size="small"
+                        value={watchUnit}
+                        onChange={(v: string) => form.setFieldsValue({ unit: v })}
+                        options={unitOptions}
+                        style={{ width: 72 }}
+                      />
+                    }
+                  />
                 </Form.Item>
               </Col>
               <Col span={12}>
+                {/* 目标价位：统一金额组件（币种 + 金额 + 汇率快照）；币种取系统设置维护的启用币种 */}
                 <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                  <Input autoComplete="off" variant="filled" placeholder={t('lead.targetPricePlaceholder')} />
+                  <MoneyInput placeholder={t('lead.targetPricePlaceholder')} size="large" />
                 </Form.Item>
               </Col>
               <Col span={24}>
                 <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                  <Input.TextArea rows={3} autoComplete="off" variant="filled" placeholder={t('lead.productDescPlaceholder')} />
+                  <Input.TextArea rows={3} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
+                </Form.Item>
+              </Col>
+              <Col span={24}>
+                <Form.Item name="expectedDelivery" label={t('lead.expectedDelivery')}>
+                  <DatePicker
+                    style={{ width: '100%' }}
+                    placeholder={t('lead.expectedDeliveryPlaceholder')}
+                    disabledDate={(current) => !!current && current < dayjs().startOf('day')}
+                  />
                 </Form.Item>
               </Col>
               <Col span={24}>
                 <Form.Item name="images" label={t('lead.attachments')}>
                   <ProductImageList disabled={readonly} allowFiles />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="specialReq" label={t('lead.specialReq')}>
-                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.specialReqPlaceholder')} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="certRequire" label={t('lead.certRequire')}>
-                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.certRequirePlaceholder')} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="packageReq" label={t('lead.packageReq')}>
-                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.packageReqPlaceholder')} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="deliveryReq" label={t('lead.deliveryReq')}>
-                  <Input.TextArea rows={2} autoComplete="off" variant="filled" placeholder={t('lead.deliveryReqPlaceholder')} />
                 </Form.Item>
               </Col>
             </Row>
@@ -860,25 +946,29 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 )}
               </div>
 
-              {/* 确认信息摘要 */}
+              {/* 需求清单摘要：直接读取表单 store，确保前序步骤卸载但 preserve 保留的值仍正确回填 */}
               <div className="lead-wizard-summary">
                 <div className="lead-wizard-summary__title">{t('lead.confirmInfo')}</div>
-                {[
-                  { label: t('lead.customer'), value: watchCustomerKey },
-                  { label: t('lead.targetMarket'), value: watchTargetMarket },
-                  { label: t('lead.product'), value: watchProductKey },
-                  { label: t('lead.quantityRequirement'), value: watchQuantity },
-                  { label: t('lead.channel'), value: channelOptions.find((o) => o.value === selectedChannel)?.label },
-                  {
-                    label: t('lead.assignee'),
-                    value: users.find((u) => u.id === watchOwnerId)?.realName || editing?.owner?.realName || t('sales.unassigned'),
-                  },
-                ].map((row) => (
-                  <div key={row.label} className="lead-wizard-summary__row">
-                    <span className="lead-wizard-summary__label">{row.label}</span>
-                    <span className="lead-wizard-summary__value">{row.value || '—'}</span>
-                  </div>
-                ))}
+                {(() => {
+                  const v = form.getFieldsValue(true) as Record<string, any>;
+                  return [
+                    { label: t('lead.customerCompany'), value: v.customerKey },
+                    { label: t('lead.targetMarket'), value: v.targetMarket },
+                    { label: t('lead.product'), value: v.productKey },
+                    { label: t('lead.quantityRequirement'), value: v.quantity != null ? `${v.quantity}${v.unit || ''}` : undefined },
+                    { label: t('lead.targetPrice'), value: formatMoneyValue(v.targetPrice, currencies) },
+                    { label: t('lead.leadSource'), value: sourceOptions.find((o) => o.value === v.sourceKey)?.label },
+                    {
+                      label: t('lead.assignee'),
+                      value: users.find((u) => u.id === v.ownerId)?.realName || editing?.owner?.realName || t('sales.unassigned'),
+                    },
+                  ].map((row) => (
+                    <div key={row.label} className="lead-wizard-summary__row">
+                      <span className="lead-wizard-summary__label">{row.label}</span>
+                      <span className="lead-wizard-summary__value">{row.value || '—'}</span>
+                    </div>
+                  ));
+                })()}
               </div>
             </>
           )}

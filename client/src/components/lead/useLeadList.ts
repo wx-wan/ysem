@@ -23,7 +23,8 @@ export function useLeadList() {
   // 排序（后端白名单，格式 字段:方向）
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(19);
+  // 单页显示 5 条记录
+  const [pageSize, setPageSize] = useState(5);
 
   const fetchList = useCallback(async () => {
     setLoading(true);

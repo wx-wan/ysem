@@ -11,6 +11,7 @@ import { applyScope, roleScope, productVisibilityWhere, projectProductRows } fro
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { paginateList } from '../utils/query';
 import { deriveStages, PIPELINE_STAGES, type PipelineStage } from '../utils/pipelineStage';
+import { advanceLeadStatus } from '../utils/leadStatus';
 
 // ============ 校验 ============
 
@@ -413,6 +414,9 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
       summary: `创建了商机「${data.title}」`,
       customerId: data.customerId,
     });
+
+    // 线索状态自动推进：商机绑定线索（Opportunity.leadId）→ 线索置为「已确认」
+    await advanceLeadStatus(opportunity.leadId, 'CONFIRMED');
 
     // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
     created(res, withProductVisibility(req, opportunity), '创建成功');

@@ -16,6 +16,7 @@ import {
   toCny,
   toDecimal,
 } from '../utils/currency';
+import { advanceLeadStatusByOpportunity } from '../utils/leadStatus';
 
 // ============================================================
 // 销售订单领域（V1.0）
@@ -521,6 +522,9 @@ export const createSalesOrder = async (req: AuthRequest, res: Response): Promise
       ip: req.ip,
       customerId,
     });
+
+    // 线索状态自动推进：该商机下生成销售订单 → 线索（经 Opportunity.leadId 追溯）置为「已成交」
+    await advanceLeadStatusByOpportunity(item.opportunityId, 'WON');
 
     created(res, item);
   } catch (e) {

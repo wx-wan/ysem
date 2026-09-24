@@ -76,7 +76,7 @@ async function findProductByName(name: string): Promise<string | null> {
  * 1. 检测客户是否已建档（customerId 或按名称在客户列表检索）；不存在则确认后新建客户
  * 2. 检测产品是否已建档（productId 或按名称在产品列表检索）；不存在则确认后新建产品
  * 3. 新建一条商机记录，关联建档后的客户与产品
- * 4. 将线索状态标记为「已确认」（QUALIFIED）
+ * 4. 线索状态由后端在创建商机时自动推进为「已确认」（前端不写状态）
  */
 export async function convertLeadToOpportunity(leadId: string, options: ConvertOptions = {}): Promise<ConvertResult> {
   const leadRes = await leadApi.get(leadId);
@@ -168,8 +168,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   } as any);
   const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 
-  // ---- 标记线索为「已确认」 ----
-  await leadApi.update(leadId, { status: 'QUALIFIED' });
+  // 线索状态不再由前端写入：后端创建商机（Opportunity.leadId 绑定）时自动推进为「已确认」
 
   return { pipeline, customerCreated, productCreated, customerId, productId };
 }

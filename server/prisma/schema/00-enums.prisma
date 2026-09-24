@@ -143,12 +143,18 @@ enum IntentLevel {
 // ============================================================
 
 /// 线索状态（03 §1，销售漏斗前 3 段 + 2 个终态）。
+/// 线索状态（4 态，**只能由单据事件自动推进**，无人工改动入口）。
+/// 语义与推进条件：
+///   NEW       新线索（刚创建）
+///   CONFIRMED 已确认（线索已绑定商机，即 Opportunity.leadId 存在）
+///   SAMPLED   已打样（该商机下已生成打样单，SampleOrder.opportunityId）
+///   WON       已成交（该商机下已生成销售订单，SalesOrder.opportunityId）
+/// 状态单调向前推进，不因单据删除 / 编辑而回退（详见 utils/leadStatus.ts）。
 enum LeadStatus {
-  NEW // 新建
-  CONTACTED // 已联系
-  QUALIFIED // 已确认有效
-  CONVERTED // 已转商机（终态）
-  INVALID // 无效线索（终态）
+  NEW
+  CONFIRMED
+  SAMPLED
+  WON
 }
 
 /// 商机终态（03 §1 / ADR-03 / Q8 定案：显式落库）。

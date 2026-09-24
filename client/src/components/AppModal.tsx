@@ -26,6 +26,8 @@ export interface AppModalProps {
   centered?: boolean;
   /** 点击遮罩是否关闭，默认 true */
   maskClosable?: boolean;
+  /** 遮罩点击拦截：传入后点击遮罩不再直接关闭，而是调用此回调（用于防误触二次确认） */
+  onMaskClick?: () => void;
   /** 是否显示右上角关闭叉，默认 true */
   closable?: boolean;
   /** 底部内容，传 null 不渲染 */
@@ -42,6 +44,8 @@ export interface AppModalProps {
   bodyStyle?: React.CSSProperties;
   /** 标题栏底部是否显示分割线，默认 true */
   headerBorder?: boolean;
+  /** 标题栏容器内边距，默认 '16px 20px'（传 0 由其子组件自行控制） */
+  headerPadding?: number | string;
 }
 
 const AppModal: React.FC<AppModalProps> = ({
@@ -53,6 +57,7 @@ const AppModal: React.FC<AppModalProps> = ({
   width = 520,
   centered = true,
   maskClosable = true,
+  onMaskClick,
   closable = true,
   footer,
   bodyPadding = 0,
@@ -61,6 +66,7 @@ const AppModal: React.FC<AppModalProps> = ({
   style,
   bodyStyle,
   headerBorder = true,
+  headerPadding = '16px 20px',
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
   const [closing, setClosing] = React.useState(false);
@@ -105,7 +111,10 @@ const AppModal: React.FC<AppModalProps> = ({
   if (destroyOnHidden && closing) return null;
 
   const handleMaskClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget && maskClosable) requestClose();
+    if (e.target !== e.currentTarget || !maskClosable) return;
+    // 传入 onMaskClick 时改用回调（如防误触二次确认），不再直接关闭
+    if (onMaskClick) onMaskClick();
+    else requestClose();
   };
 
   const panelStyle: React.CSSProperties = {
@@ -133,8 +142,8 @@ const AppModal: React.FC<AppModalProps> = ({
     >
       <div ref={panelRef} className={`${className ?? ''} app-modal-panel${closing ? ' is-closing' : ''}`} style={panelStyle} onClick={(e) => e.stopPropagation()}>
         {showHeader && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', ...(headerBorder ? { borderBottom: '1px solid rgba(0,0,0,0.06)' } : {}), flex: '0 0 auto' }}>
-            <div style={{ fontSize: 16, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>{title}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: headerPadding, ...(headerBorder ? { borderBottom: '1px solid rgba(0,0,0,0.06)' } : {}), flex: '0 0 auto', background: '#fff' }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 600, color: 'rgba(0,0,0,0.88)' }}>{title}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {extra}
               {closable && (

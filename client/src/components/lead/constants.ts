@@ -2,11 +2,12 @@ import type { Channel } from '../../api/channel';
 import type { LeadSource, LeadStatus } from '../../api/lead';
 
 /** 线索状态元数据（label 为 i18n key） */
+/** 线索状态 4 态：新线索 → 已确认（绑定商机）→ 已打样 → 已成交 */
 export const STATUS_META: Record<LeadStatus, { color: string; label: string }> = {
   NEW: { color: 'blue', label: 'lead.statusNew' },
-  CONTACTED: { color: 'cyan', label: 'lead.statusContacted' },
-  QUALIFIED: { color: 'gold', label: 'lead.statusQualified' },
-  CONVERTED: { color: 'green', label: 'lead.statusConverted' },
+  CONFIRMED: { color: 'gold', label: 'lead.statusConfirmed' },
+  SAMPLED: { color: 'cyan', label: 'lead.statusSampled' },
+  WON: { color: 'green', label: 'lead.statusWon' },
 };
 
 /** 线索来源元数据（label 为 i18n key） */

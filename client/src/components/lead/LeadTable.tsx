@@ -95,7 +95,7 @@ export default function LeadTable({
           const ch = r?.channel?.name;
           const sh = r?.shop?.name;
           if (!ch && !sh) return '-';
-          return [ch, sh].filter(Boolean).join(' / ');
+          return [ch, sh].filter(Boolean).join(' · ');
         },
       },
       {
@@ -153,11 +153,11 @@ export default function LeadTable({
               </Space>
             );
           }
-          const isQualified = r.status === 'QUALIFIED';
-          const readonly = isQualified;
+          // 已推进（已确认 / 已打样 / 已成交）的线索只读：确认、释放、删除均禁用
+          const readonly = r.status !== 'NEW';
           return (
             <Space size={2}>
-              {/* 确认：转为商机（已确认状态禁用，与详情弹窗 readonly 逻辑一致） */}
+              {/* 确认：转为商机（已推进的线索禁用，与详情弹窗 readonly 逻辑一致） */}
               <Tooltip title={t('lead.confirmLead')}>
                 <Button
                   type="link"

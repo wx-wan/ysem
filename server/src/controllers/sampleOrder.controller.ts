@@ -9,6 +9,7 @@ import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { getNextNumber } from '../lib/numberSequence';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
+import { advanceLeadStatusByOpportunity } from '../utils/leadStatus';
 
 // ============================================================
 // 打样领域（V1.0）
@@ -384,6 +385,9 @@ export const createSampleOrder = async (req: AuthRequest, res: Response): Promis
       ip: req.ip,
       customerId,
     });
+
+    // 线索状态自动推进：该商机下生成打样单 → 线索（经 Opportunity.leadId 追溯）置为「已打样」
+    await advanceLeadStatusByOpportunity(item.opportunityId, 'SAMPLED');
 
     // 读取侧（DQ-3=C）：不可见 PRIVATE 产品的属性不得进入响应
     created(res, withProductVisibility(req, item));
