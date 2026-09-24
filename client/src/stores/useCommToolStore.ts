@@ -2,82 +2,43 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import commToolApi from '../api/commTool';
 
-// 沟通工具下拉（系统设置类低频数据）本地缓存，避免每次渲染都实时请求后端
-const CACHE_KEY = 'ysem_comm_tool_options';
-const CACHE_TTL = 10 * 60 * 1000; // 10 分钟
-
-interface CacheShape {
-  data: { name: string; id: string }[];
-  savedAt: number;
-}
-
-function loadCache(): CacheShape | null {
-  try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as CacheShape;
-    if (!parsed || !Array.isArray(parsed.data)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-function saveCache(data: CacheShape['data']) {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ data, savedAt: Date.now() }));
-  } catch {
-    /* ignore */
-  }
-}
-
-function clearCache() {
-  try {
-    localStorage.removeItem(CACHE_KEY);
-  } catch {
-    /* ignore */
-  }
+interface CommToolItem {
+  name: string;
+  id: string;
 }
 
 interface CommToolState {
-  tools: { name: string; id: string }[];
+  tools: CommToolItem[];
   loading: boolean;
-  fetchTools: () => Promise<{ name: string; id: string }[]>;
   /**
-   * 主数据被改动后调用（系统设置 → 沟通工具维护 的新增/编辑/删除/启停/排序）：
-   * 清掉本地缓存并**立即**重新拉取，令所有下拉组件即时生效。
+   * 取启用的沟通工具（下拉用）。
+   * - 内存态为会话内唯一数据源，避免 localStorage 缓存导致的陈旧下拉（曾出现过只显示旧 2 条的问题）。
+   * - 非强制时：若本次会话已加载过则直接复用（避免重复请求）；首次或强制刷新才请求后端。
    */
-  invalidate: () => Promise<{ name: string; id: string }[]>;
+  fetchTools: (force?: boolean) => Promise<CommToolItem[]>;
+  /** 系统设置 → 沟通工具维护 发生增删/启停/排序后调用，立即重新拉取令所有下拉即时生效 */
+  invalidate: () => Promise<CommToolItem[]>;
 }
 
 export const useCommToolStore = create<CommToolState>((set, get) => ({
   tools: [],
   loading: false,
 
-  fetchTools: async () => {
-    const cached = loadCache();
-    if (cached && Date.now() - cached.savedAt < CACHE_TTL) {
-      set({ tools: cached.data });
-      return cached.data;
-    }
+  fetchTools: async (force = false) => {
+    if (!force && get().tools.length > 0) return get().tools;
     set({ loading: true });
     try {
       const res = await commToolApi.getActive();
       const data = res.data.data || [];
-      saveCache(data);
       set({ tools: data, loading: false });
       return data;
     } catch {
-      if (cached) set({ tools: cached.data });
       set({ loading: false });
-      return cached?.data ?? [];
+      return get().tools;
     }
   },
 
-  invalidate: async () => {
-    clearCache();
-    return get().fetchTools();
-  },
+  invalidate: async () => get().fetchTools(true),
 }));
 
 // 方便组件直接拿 options 的 hook
@@ -85,7 +46,7 @@ export function useCommToolOptions() {
   const tools = useCommToolStore((s) => s.tools);
   const loading = useCommToolStore((s) => s.loading);
   const fetchTools = useCommToolStore((s) => s.fetchTools);
-  // 挂载即拉取（store 默认 tools 为空，否则下拉永远无值）；缓存命中时秒回，不会重复请求
+  // 挂载即拉取（内存态为空 → 请求后端拿到最新全量，避免陈旧下拉）
   useEffect(() => {
     fetchTools();
   }, [fetchTools]);
