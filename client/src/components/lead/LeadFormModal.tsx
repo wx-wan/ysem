@@ -480,10 +480,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 新建模式（无真实线索 id）下，转交/释放/确认等仅对已有线索的操作不可用
   const isCreate = !editing?.id;
-  // 已确认（QUALIFIED）为只读：禁用所有编辑/操作
-  const readonly = editing?.status === 'QUALIFIED';
-  // 公海线索（无负责人）：不支持确认，仅可认领（canonical 归属字段为 ownerId）
+  // 公海线索（无负责人）：不支持修改，仅可认领（canonical 归属字段为 ownerId）
   const isPoolLead = !!editing?.id && !editing.ownerId;
+  // 只读：已确认（QUALIFIED）或公海线索均不可编辑（公海仅保留认领操作）
+  const readonly = editing?.status === 'QUALIFIED' || isPoolLead;
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
 
