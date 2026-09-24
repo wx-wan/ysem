@@ -74,7 +74,7 @@ export default function CapsuleSwitch<T extends string = string>({
               outline: 'none',
               cursor: 'pointer',
               padding: isPrimary ? '5px 14px' : '4px 10px',
-              borderRadius: 20,
+              borderRadius: 12,
               fontSize: isPrimary ? 13 : 12,
               fontWeight: active ? 600 : 500,
               whiteSpace: 'nowrap',
