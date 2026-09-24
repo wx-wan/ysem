@@ -574,7 +574,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           }
           closable={false}
           headerBorder={false}
-          width={960}
+          width={576}
           bodyPadding={24}
           style={{ borderRadius: 20 }}
           footer={

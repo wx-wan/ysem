@@ -120,7 +120,9 @@
 /* ========== 线索新建/编辑 · 三步向导（参考询盘向导风格） ========== */
 .lead-wizard-header {
   margin: -16px -20px;
-  padding: 20px 24px 18px;
+  padding: 20px 24px 12px;
+  height: 126px;
+  box-sizing: border-box;
   background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);
   color: #fff;
   position: relative;
