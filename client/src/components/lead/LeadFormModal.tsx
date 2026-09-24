@@ -608,7 +608,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </div>
           }
           footer={
-            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
                 {/* 公海线索：仅可认领，确认（转商机）不可用 */}
@@ -618,7 +618,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Button>
                 )}
                 {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
-                  <Button type="primary" onClick={handleConfirmLead}>
+                  <Button
+                    type="primary"
+                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
+                    onClick={handleConfirmLead}
+                  >
                     {t('lead.confirmLead')}
                   </Button>
                 )}
