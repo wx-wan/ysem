@@ -553,7 +553,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 <span>{editing?.id ? editing.leadName || t('lead.editTitle') : t('lead.createTitle')}</span>
                 {editing?.id && editing.leadNo && <span className="lead-wizard-header__no">{editing.leadNo}</span>}
               </div>
-              <div className="lead-wizard-header__subtitle">{t('lead.wizardSubtitle')}</div>
+              <div className="lead-wizard-header__subtitle">
+                {t('lead.wizardProgress', { current: step + 1, total: wizardSteps.length, label: wizardSteps[step] })}
+              </div>
               <div className="lead-wizard-steps">
                 {wizardSteps.map((label, i) => (
                   <div

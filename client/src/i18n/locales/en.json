@@ -643,6 +643,7 @@
     "createTitle": "New Lead",
     "createDesc": "Create a lead and link customer & source channel",
     "wizardSubtitle": "Fill in customer enquiry info; a lead number will be generated automatically",
+    "wizardProgress": "Step {{current}} of {{total}} · {{label}}",
     "tabDetail": "Details",
     "tabFollowUps": "Follow-ups",
     "customerReq": "Customer Requirements",

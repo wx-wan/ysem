@@ -181,40 +181,57 @@
   flex: 0 0 auto;
 }
 .lead-wizard-steps__dot {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   background: rgba(255, 255, 255, 0.25);
   color: rgba(255, 255, 255, 0.85);
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
-.lead-wizard-steps__item.is-active .lead-wizard-steps__dot,
+/* 已完成步骤：白底紫字 */
 .lead-wizard-steps__item.is-done .lead-wizard-steps__dot {
+  background: rgba(255, 255, 255, 0.92);
+  color: #6d28d9;
+}
+/* 当前步骤：放大 + 白色实心 + 外圈光晕，强调当前进度 */
+.lead-wizard-steps__item.is-active .lead-wizard-steps__dot {
   background: #fff;
   color: #6d28d9;
+  transform: scale(1.18);
+  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.25), 0 4px 12px rgba(0, 0, 0, 0.18);
 }
 .lead-wizard-steps__label {
   font-size: 14px;
   font-weight: 600;
   color: rgba(255, 255, 255, 0.72);
+  transition: all 0.2s ease;
 }
 .lead-wizard-steps__item.is-active .lead-wizard-steps__label {
   color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 .lead-wizard-steps__item.is-done .lead-wizard-steps__label {
   color: rgba(255, 255, 255, 0.92);
 }
 .lead-wizard-steps__line {
   width: 56px;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.35);
-  margin: 0 6px;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.3);
+  margin: 0 8px;
+  border-radius: 2px;
+  transition: background 0.25s ease;
+}
+/* 已完成步骤后的连接线高亮为进度色 */
+.lead-wizard-steps__item.is-done .lead-wizard-steps__line {
+  background: #fff;
 }
 .lead-wizard-footer {
   display: flex;
