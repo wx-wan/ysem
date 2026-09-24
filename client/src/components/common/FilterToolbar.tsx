@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Button, Input, Select, theme } from 'antd';
-import { DownOutlined, SearchOutlined } from '@ant-design/icons';
+import { DownOutlined, UpOutlined, SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 
 /** 筛选组选项（key 为空字符串时表示「全部」） */
@@ -147,14 +147,11 @@ export default function FilterToolbar({
                   {activeCount}
                 </span>
               )}
-              <DownOutlined
-                style={{
-                  fontSize: 10,
-                  color: token.colorTextSecondary,
-                  transform: expanded ? 'rotate(180deg)' : 'none',
-                  transition: 'transform .2s ease',
-                }}
-              />
+              {expanded ? (
+                <UpOutlined style={{ fontSize: 10, color: token.colorTextSecondary }} />
+              ) : (
+                <DownOutlined style={{ fontSize: 10, color: token.colorTextSecondary }} />
+              )}
             </span>
           </Button>
           {sortOptions?.length ? (
