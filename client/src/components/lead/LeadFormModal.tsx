@@ -618,11 +618,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Button>
                 )}
                 {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
-                  <Button
-                    type="primary"
-                    style={{ background: '#52c41a', borderColor: '#52c41a' }}
-                    onClick={handleConfirmLead}
-                  >
+                  <Button type="primary" ghost onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
                 )}
