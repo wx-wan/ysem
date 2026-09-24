@@ -152,12 +152,26 @@ export default function FilterToolbar({
             </span>
           </Button>
           {sortOptions?.length ? (
-            <Select
-              style={{ width: 176 }}
-              value={sortValue}
-              onChange={onSortChange}
-              options={sortOptions}
-            />
+            sortOptions.length === 2 ? (
+              <Button
+                onClick={() => {
+                  const idx = sortOptions.findIndex((o) => o.value === sortValue);
+                  const next = sortOptions[(idx + 1) % sortOptions.length];
+                  onSortChange?.(next.value);
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {sortOptions.find((o) => o.value === sortValue)?.label ?? sortOptions[0].label}
+                  <ExpandChevron
+                    expanded={String(sortValue).includes(':asc')}
+                    size={10}
+                    color={token.colorTextSecondary}
+                  />
+                </span>
+              </Button>
+            ) : (
+              <Select style={{ width: 176 }} value={sortValue} onChange={onSortChange} options={sortOptions} />
+            )
           ) : null}
           {actions}
         </div>

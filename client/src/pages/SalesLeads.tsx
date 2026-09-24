@@ -5,7 +5,6 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import FilterToolbar, { FilterGroup } from '../components/common/FilterToolbar';
 import CapsuleSwitch from '../components/common/CapsuleSwitch';
-import ExpandChevron from '../components/common/ExpandChevron';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
 import LeadCardList from '../components/lead/LeadCardList';
 import LeadDetailPanel from '../components/lead/LeadDetailPanel';
@@ -251,24 +250,8 @@ export default function SalesLeads() {
           searchValue={list.keyword}
           onSearchChange={list.setKeyword}
           sortOptions={[
-            {
-              value: 'createdAt:desc',
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <ExpandChevron expanded={false} size={12} color={token.colorTextSecondary} />
-                  {t('lead.sortLatest')}
-                </span>
-              ),
-            },
-            {
-              value: 'createdAt:asc',
-              label: (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {t('lead.sortEarliest')}
-                  <ExpandChevron expanded size={12} color={token.colorTextSecondary} />
-                </span>
-              ),
-            },
+            { value: 'createdAt:desc', label: t('lead.sortLatest') },
+            { value: 'createdAt:asc', label: t('lead.sortEarliest') },
           ]}
           sortValue={list.sort}
           onSortChange={(v) => {
