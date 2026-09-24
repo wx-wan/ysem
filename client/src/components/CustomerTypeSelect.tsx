@@ -13,9 +13,11 @@ interface Props {
   id?: string;
   /** 透传给内部 Select 的 variant（outlined / filled / borderless），用于统一表单外观 */
   variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
+  /** 透传给内部 Select 的 size（small / middle / large） */
+  size?: 'small' | 'middle' | 'large';
 }
 
-export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id, variant }: Props) {
+export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id, variant, size }: Props) {
   const { t } = useTranslation();
   const types = useCustomerTypeStore((s) => s.types);
   const loading = useCustomerTypeStore((s) => s.loading);
@@ -31,6 +33,7 @@ export default function CustomerTypeSelect({ value, onChange, placeholder, allow
       value={value}
       onChange={onChange}
       variant={variant}
+      size={size}
       placeholder={placeholder || t('customerType.selectPlaceholder')}
       options={types.map((item) => ({ label: item.name, value: item.name }))}
       loading={loading}

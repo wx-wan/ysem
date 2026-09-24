@@ -511,7 +511,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={readonly} className="lead-form-v2">
+      <Form form={form} layout="vertical" preserve={false} autoComplete="off" disabled={readonly} size="large" className="lead-form-v2">
         <AppModal
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
@@ -632,20 +632,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
               <span style={{ fontSize: 12, color: 'var(--c-text-tertiary)' }}>{t('lead.formRequiredHint')}</span>
               <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-                <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
+                <Button size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
                 {/* 公海线索：仅可认领，确认（转商机）不可用 */}
                 {isPoolLead && (
-                  <Button type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
+                  <Button size="large" type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
                     {t('lead.claim')}
                   </Button>
                 )}
                 {editing?.id && !readonly && !isPoolLead && editing.status !== 'QUALIFIED' && (
-                  <Button type="primary" ghost onClick={handleConfirmLead}>
+                  <Button size="large" type="primary" ghost onClick={handleConfirmLead}>
                     {t('lead.confirmLead')}
                   </Button>
                 )}
                 {(!editing?.id || !readonly) && (
-                  <Button type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
+                  <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('common.save')}</Button>
                 )}
               </div>
             </div>
@@ -718,12 +718,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Col>
                 <Col span={12}>
                   <Form.Item name="targetMarket" label={t('lead.targetMarket')}>
-                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} variant="filled" />
+                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} variant="filled" size="large" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="customerType" label={t('lead.customerType')}>
-                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} variant="filled" />
+                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} variant="filled" size="large" />
                   </Form.Item>
                 </Col>
               </Row>
@@ -775,7 +775,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     required
                     rules={[{ validator: validateContactMethods }]}
                   >
-                    <ContactMethodInput options={commToolOptions} variant="filled" />
+                    <ContactMethodInput options={commToolOptions} variant="filled" size="large" />
                   </Form.Item>
                 </Col>
                 <Col span={12}>

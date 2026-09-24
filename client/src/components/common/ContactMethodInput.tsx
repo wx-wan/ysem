@@ -14,13 +14,15 @@ interface Props {
   disabled?: boolean;
   /** 透传给内部 Select / Input 的 variant（outlined / filled / borderless），统一表单外观 */
   variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
+  /** 透传给内部 Select / Input 的 size（small / middle / large） */
+  size?: 'small' | 'middle' | 'large';
 }
 
 /**
  * 联系方式录入公共组件：若干「沟通工具下拉 + 账号输入框」组合，支持新增 / 删除，默认至少一条。
  * 作为受控组件配合 antd Form.Item 使用（value / onChange）。
  */
-export default function ContactMethodInput({ value, onChange, options = [], disabled, variant }: Props) {
+export default function ContactMethodInput({ value, onChange, options = [], disabled, variant, size }: Props) {
   const { t } = useTranslation();
   const list: ContactMethodItem[] = value && value.length ? value : [{ tool: '', account: '' }];
 
@@ -49,6 +51,7 @@ export default function ContactMethodInput({ value, onChange, options = [], disa
             options={options}
             disabled={disabled}
             variant={variant}
+            size={size}
             style={{ width: 160 }}
             showSearch
             optionFilterProp="label"
@@ -60,6 +63,7 @@ export default function ContactMethodInput({ value, onChange, options = [], disa
             onChange={(e) => setRow(idx, { account: e.target.value })}
             disabled={disabled}
             variant={variant}
+            size={size}
             maxLength={300}
           />
           <Button

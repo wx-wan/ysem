@@ -17,6 +17,8 @@ interface CountrySelectProps<T = string> {
   readOnly?: boolean;
   /** 透传给内部 Select 的 variant（outlined / filled / borderless），用于统一表单外观 */
   variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
+  /** 透传给内部 Select 的 size（small / middle / large） */
+  size?: 'small' | 'middle' | 'large';
 }
 
 // 国家选择器（带搜索）
@@ -29,6 +31,7 @@ export default function CountrySelect({
   getPopupContainer,
   readOnly,
   variant,
+  size,
 }: CountrySelectProps) {
   // 只读形态：静态展示，不渲染下拉
   if (readOnly) {
@@ -63,6 +66,7 @@ export default function CountrySelect({
       placeholder={placeholder}
       getPopupContainer={getPopupContainer}
       variant={variant}
+      size={size}
       showSearch
       style={{ width: '100%', ...style }}
       styles={{ popup: { root: { minWidth: 220 } } }}
