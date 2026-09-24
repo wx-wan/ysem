@@ -170,7 +170,7 @@ function projectAttachments(rows: any[]): { id: string; url: string; name: strin
   return rows.map((a) => ({
     id: a.id,
     url: a.filePath,
-    name: a.fileName,
+    name: a.name ?? a.fileName,
     category: a.category,
     sort: a.sort,
   }));
@@ -456,6 +456,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
             ownerId: lead.id,
             category: a.category,
             fileName: a.fileName,
+            name: a.name ?? a.fileName,
             filePath: a.url,
             mimeType: a.mimeType,
             fileSize: null,
@@ -560,6 +561,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
             ownerId: existing.id,
             category: a.category,
             fileName: a.fileName,
+            name: a.name ?? a.fileName,
             filePath: a.url,
             mimeType: a.mimeType,
             fileSize: null,

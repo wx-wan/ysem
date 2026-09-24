@@ -64,6 +64,8 @@ model Attachment {
   /// 分类：IMAGE / DRAWING(设计稿) / VOUCHER(付款凭证) / CONTRACT / INSPECTION_REPORT / OTHER
   category   String              @default("OTHER")
   fileName   String
+  /// 用户可编辑的附件展示名称（附件名）；为空时回退展示 fileName
+  name       String?
   filePath   String
   fileSize   Int?
   mimeType   String?
