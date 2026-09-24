@@ -44,6 +44,8 @@ export default function CapsuleSwitch<T extends string = string>({
   const { token } = theme.useToken();
   const color = activeColor ?? token.colorPrimary;
   const isPrimary = tone === 'primary';
+  // 内外圆角一致：优先取外部传入的 borderRadius，否则用胶囊默认值
+  const outerRadius = (style && typeof style.borderRadius !== 'undefined' ? style.borderRadius : 24) as number;
 
   return (
     <div
@@ -53,7 +55,7 @@ export default function CapsuleSwitch<T extends string = string>({
         alignItems: 'center',
         gap: 2,
         background: isPrimary ? '#f1f5f9' : token.colorFillTertiary,
-        borderRadius: 24,
+        borderRadius: outerRadius,
         height: token.controlHeightLG,
         boxSizing: 'border-box',
         padding: '0 4px',
@@ -80,7 +82,7 @@ export default function CapsuleSwitch<T extends string = string>({
               justifyContent: 'center',
               height: '100%',
               padding: isPrimary ? '0 14px' : '0 10px',
-              borderRadius: 12,
+              borderRadius: outerRadius,
               fontSize: isPrimary ? 13 : 12,
               fontWeight: active ? 600 : 500,
               whiteSpace: 'nowrap',
