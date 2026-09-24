@@ -115,6 +115,8 @@ export interface LeadListParams {
   /** 按负责人筛选（V1.0 canonical；服务端只读 ownerId） */
   ownerId?: string;
   scope?: 'mine' | 'pool';
+  /** 排序（白名单，格式 字段:方向，如 createdAt:desc） */
+  sort?: string;
 }
 
 export const leadApi = {

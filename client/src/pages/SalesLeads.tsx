@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card, Pagination, Button, App, theme } from 'antd';
+import { Card, Pagination, Button, Popconfirm, App, theme } from 'antd';
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import LeadCreateCard from '../components/lead/LeadCreateCard';
-import LeadFilterBar from '../components/lead/LeadFilterBar';
+import FilterToolbar, { FilterGroup } from '../components/common/FilterToolbar';
 import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
 import LeadCardList from '../components/lead/LeadCardList';
 import LeadDetailPanel from '../components/lead/LeadDetailPanel';
 import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
-import { leadApi, type Lead } from '../api/lead';
+import { leadApi, type Lead, type LeadStatus } from '../api/lead';
+import { STATUS_META, flattenChannelOptions, flattenPlatformOptions } from '../components/lead/constants';
 import { convertLeadToOpportunity } from '../utils/convertLead';
 import { useReleaseToPool } from '../hooks/useReleaseToPool';
 import { buildTablePagination } from '../components/common/tablePagination';
@@ -243,10 +244,30 @@ export default function SalesLeads() {
           boxShadow: token.boxShadowSecondary,
         }}
       >
-        <LeadCreateCard onClick={() => formModalRef.current?.openCreate()} />
-
-        <LeadFilterBar
-          prepend={
+        {/* 交互式筛选栏（搜索 + 筛选展开面板 + 排序 + 新建线索），替代原 CTA + 筛选栏 */}
+        <FilterToolbar
+          searchPlaceholder={t('lead.searchPlaceholder')}
+          searchValue={list.keyword}
+          onSearchChange={list.setKeyword}
+          sortOptions={[
+            { value: 'createdAt:desc', label: t('lead.sortLatest') },
+            { value: 'createdAt:asc', label: t('lead.sortEarliest') },
+          ]}
+          sortValue={list.sort}
+          onSortChange={(v) => {
+            list.setSort(v);
+            list.setPage(1);
+          }}
+          activeCount={
+            (list.filterChannel ? 1 : 0) + (list.filterPlatform ? 1 : 0) + (list.filterStatus ? 1 : 0)
+          }
+          onClear={() => {
+            list.setFilterChannel(undefined);
+            list.setFilterPlatform(undefined);
+            list.setFilterStatus(undefined);
+            list.setPage(1);
+          }}
+          tabs={
             <CapsuleSwitch<'mine' | 'pool'>
               value={list.scope}
               onChange={(val) => {
@@ -258,40 +279,65 @@ export default function SalesLeads() {
                 { key: 'pool', label: t('lead.scopePool') },
               ]}
               activeColor="#1677ff"
-              style={{
-                background: '#fff',
-                borderRadius: token.borderRadius,
-                padding: 4,
-              }}
             />
           }
-          channels={channels}
-          keyword={list.keyword}
-          onKeywordChange={list.setKeyword}
-          filterChannel={list.filterChannel}
-          onChannelChange={(v) => {
-            list.setFilterChannel(v);
-            list.setFilterPlatform(undefined);
-            list.setPage(1);
-          }}
-          filterPlatform={list.filterPlatform}
-          onPlatformChange={(v) => {
-            list.setFilterPlatform(v);
-            list.setPage(1);
-          }}
-          filterStatus={list.filterStatus}
-          onStatusChange={(v) => {
-            list.setFilterStatus(v);
-            list.setPage(1);
-          }}
-          onSearch={() => {
-            list.setPage(1);
-            list.refresh();
-          }}
-          isAdmin={isAdmin}
-          selectedCount={list.selectedKeys.length}
-          onBatchDelete={() => list.batchRemove(list.selectedKeys)}
-        />
+          total={list.total}
+          actions={
+            <>
+              {isAdmin && list.selectedKeys.length > 0 && (
+                <Popconfirm
+                  title={t('lead.batchDeleteConfirm', { n: list.selectedKeys.length })}
+                  onConfirm={() => list.batchRemove(list.selectedKeys)}
+                >
+                  <Button danger icon={<DeleteOutlined />}>
+                    {t('common.batchDelete')}
+                  </Button>
+                </Popconfirm>
+              )}
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => formModalRef.current?.openCreate()}>
+                {t('lead.createTitle')}
+              </Button>
+            </>
+          }
+        >
+          <FilterGroup
+            label={t('lead.filterPlatform')}
+            value={list.filterChannel ?? ''}
+            onChange={(key) => {
+              list.setFilterChannel(key || undefined);
+              list.setFilterPlatform(undefined);
+              list.setPage(1);
+            }}
+            options={[
+              { key: '', label: t('common.all') },
+              ...flattenChannelOptions(channels).map((o) => ({ key: o.value, label: o.label })),
+            ]}
+          />
+          <FilterGroup
+            label={t('lead.filterShop')}
+            value={list.filterPlatform ?? ''}
+            onChange={(key) => {
+              list.setFilterPlatform(key || undefined);
+              list.setPage(1);
+            }}
+            options={[
+              { key: '', label: t('common.all') },
+              ...flattenPlatformOptions(channels, list.filterChannel).map((o) => ({ key: o.value, label: o.label })),
+            ]}
+          />
+          <FilterGroup
+            label={t('lead.status')}
+            value={list.filterStatus ?? ''}
+            onChange={(key) => {
+              list.setFilterStatus((key || undefined) as LeadStatus | undefined);
+              list.setPage(1);
+            }}
+            options={[
+              { key: '', label: t('common.all') },
+              ...Object.entries(STATUS_META).map(([k, m]) => ({ key: k, label: t(m.label) })),
+            ]}
+          />
+        </FilterToolbar>
 
         {/* 卡片列表 + 右侧详情面板（点击卡片联动，参考询盘列表交互） */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 16 }}>

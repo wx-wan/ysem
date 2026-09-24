@@ -20,6 +20,8 @@ export function useLeadList() {
   const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
   // 列表范围：mine=私有；pool=公海（已释放、无负责人）
   const [scope, setScope] = useState<'mine' | 'pool'>('mine');
+  // 排序（后端白名单，格式 字段:方向）
+  const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(19);
 
@@ -34,6 +36,7 @@ export function useLeadList() {
         platform: filterPlatform,
         status: filterStatus,
         scope,
+        sort,
       });
       setListData(res.data.list);
       setTotal(res.data.total);
@@ -42,7 +45,7 @@ export function useLeadList() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, scope, message, t]);
+  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, scope, sort, message, t]);
 
   useEffect(() => {
     fetchList();
@@ -95,6 +98,8 @@ export function useLeadList() {
     setFilterStatus,
     scope,
     setScope,
+    sort,
+    setSort,
     page,
     setPage,
     pageSize,

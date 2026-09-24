@@ -285,12 +285,22 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
       where = applyScope(where, await roleScope(req, { field: 'ownerId' }));
     }
 
+    // 排序（白名单，防止任意字段注入）；未传时 paginateList 默认 createdAt 倒序
+    const sort = req.query.sort as string;
+    const SORT_WHITELIST: Record<string, Record<string, 'asc' | 'desc'>> = {
+      'createdAt:desc': { createdAt: 'desc' },
+      'createdAt:asc': { createdAt: 'asc' },
+      'updatedAt:desc': { updatedAt: 'desc' },
+      'updatedAt:asc': { updatedAt: 'asc' },
+    };
+
     const { list, total, page: p, pageSize: ps } = await paginateList(
       prisma.lead,
       where,
       {
         page,
         pageSize,
+        orderBy: SORT_WHITELIST[sort],
         include: {
           customer: { select: { id: true, companyName: true, contactName: true, email: true, phone: true, country: true } },
           // V1.0：Lead 不再直挂 product，产品意向落在 Lead.items（LeadItem）上
