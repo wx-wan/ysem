@@ -15,7 +15,7 @@ import {
   SkuContextError,
   SkuConcurrencyError,
 } from '../lib/skuCode';
-import { projectProductRows } from '../utils/scope';
+import { projectProductRows, productVisibilityWhere } from '../utils/scope';
 
 /**
  * getMixedProducts「组合（GROUP）」分支中成员产品的公开字段（DQ-3=C 投影白名单）。
@@ -234,16 +234,8 @@ export const previewProductSku = async (req: AuthRequest, res: Response): Promis
 export const getProductOptions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // 可见性过滤：管理员可选全部；其余用户仅可选公开产品 + 私密下创建人或被指定的产品
-    const uid = req.userId;
-    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
-    const where: Record<string, unknown> = {};
-    if (uid && !isAdmin) {
-      where.OR = [
-        { visibility: 'PUBLIC' },
-        { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
-        { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
-      ];
-    }
+    // 可见性过滤：管理员可选全部；其余用户仅可选公开产品 + 私密下创建人或被指定的产品（复用统一 helper）
+    const where: Record<string, unknown> = productVisibilityWhere(req);
     const list = await prisma.product.findMany({
       where,
       select: { id: true, name: true, sku: true },
@@ -274,16 +266,8 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     if (categoryId) where.categoryId = categoryId;
     if (visibility) where.visibility = visibility;
 
-    // 可见性过滤：管理员可查看全部产品；其余用户仅见公开产品或自己可见的私密产品
-    const uid = req.userId;
-    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
-    if (uid && !isAdmin) {
-      where.OR = [
-        { visibility: 'PUBLIC' },
-        { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
-        { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
-      ];
-    }
+    // 可见性过滤：管理员可查看全部产品；其余用户仅见公开产品或自己可见的私密产品（复用统一 helper）
+    Object.assign(where, productVisibilityWhere(req));
 
     const [list, total] = await Promise.all([
       prisma.product.findMany({
@@ -485,20 +469,10 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
     // DQ-3=C：保留 PUBLIC / PRIVATE visibility 模型，授权门与列表（L217-223 / L262-263）及详情（L306-316）
     // 的可见性谓词**逐字一致**：PUBLIC ∨（PRIVATE ∧ 本人创建）∨（PRIVATE ∧ 在可见人名单）。
     // DQ-6=404：scope 外与不存在统一 404，不泄露 PRIVATE 产品存在性。
-    const uid = req.userId;
-    const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
     const existing = await prisma.product.findFirst({
       where: {
         id: req.params.id,
-        ...(isAdmin || !uid
-          ? {}
-          : {
-              OR: [
-                { visibility: 'PUBLIC' },
-                { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
-                { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
-              ],
-            }),
+        ...productVisibilityWhere(req),
       },
       include: {
         crafts: { select: { productCraft: { select: { id: true, name: true } } } },
@@ -628,17 +602,9 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
       if (audienceId) and.push({ audienceId });
       if (visibility) and.push({ visibility });
 
-      const uid = req.userId;
-      const isAdmin = req.roleCode === 'admin' || req.roleCode === 'ADMIN';
-      if (uid && !isAdmin) {
-        and.push({
-          OR: [
-            { visibility: 'PUBLIC' },
-            { AND: [{ visibility: 'PRIVATE' }, { createdBy: uid }] },
-            { AND: [{ visibility: 'PRIVATE' }, { visibleUsers: { some: { userId: uid } } }] },
-          ],
-        });
-      }
+      // 可见性过滤（复用统一 helper）：非管理员仅见公开产品或自己可见的私密产品，与列表/详情口径一致
+      const vis = productVisibilityWhere(req);
+      if (vis.OR) and.push(vis);
 
       const where: Record<string, unknown> = and.length ? { AND: and } : {};
       const products = await prisma.product.findMany({
