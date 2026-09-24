@@ -257,6 +257,14 @@ export default function SalesLeads() {
                 { key: 'mine', label: t('lead.scopeMine') },
                 { key: 'pool', label: t('lead.scopePool') },
               ]}
+              activeColor="#6d28d9"
+              style={{
+                background: '#fff',
+                border: `1px solid ${token.colorBorderSecondary}`,
+                borderRadius: 12,
+                padding: 4,
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+              }}
             />
           }
           channels={channels}
