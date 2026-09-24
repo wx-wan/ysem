@@ -79,6 +79,44 @@
   box-sizing: border-box;
 }
 
+/* ========== 线索表单 v2：分区卡片 + 紧凑间距 ========== */
+.lead-form-v2 .ant-form-item {
+  margin-bottom: 14px;
+}
+.lead-form-v2 .ant-form-item:last-child {
+  margin-bottom: 0;
+}
+.lead-section-card {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+.lead-section-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.lead-section-card__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--c-primary-bg);
+  color: var(--c-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.lead-section-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1;
+}
+
 html, body, #root {
   height: 100%;
 }

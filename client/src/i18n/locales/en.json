@@ -566,6 +566,10 @@
   "lead": {
     "name": "Lead Name",
     "nameAutoPlaceholder": "Auto-generated: Country-Product-Qty",
+    "sectionSource": "Source Info",
+    "sectionCustomer": "Customer & Product",
+    "sectionExtra": "Additional Info",
+    "formRequiredHint": "Fields marked with * are required",
     "nameRequired": "Lead name is required",
     "namePlaceholder": "e.g. Alibaba-Shouchun-Toy Inquiry",
     "channelRequired": "Please select a source channel",

@@ -11,9 +11,11 @@ interface Props {
   disabled?: boolean;
   /** 透传给内部 Select 的 id（供 Form.Item 关联 label 使用，a11y） */
   id?: string;
+  /** 透传给内部 Select 的 variant（outlined / filled / borderless），用于统一表单外观 */
+  variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
 }
 
-export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id }: Props) {
+export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id, variant }: Props) {
   const { t } = useTranslation();
   const types = useCustomerTypeStore((s) => s.types);
   const loading = useCustomerTypeStore((s) => s.loading);
@@ -28,6 +30,7 @@ export default function CustomerTypeSelect({ value, onChange, placeholder, allow
       id={id}
       value={value}
       onChange={onChange}
+      variant={variant}
       placeholder={placeholder || t('customerType.selectPlaceholder')}
       options={types.map((item) => ({ label: item.name, value: item.name }))}
       loading={loading}
