@@ -88,9 +88,9 @@ export default function LeadDetailPanel({
           <span>{company}</span>
         </div>
         {product && (
-          <div style={{ marginTop: 2, fontSize: 13, color: 'rgba(255,255,255,0.85)' }}>{product}</div>
+          <div style={{ marginTop: 2, fontSize: 13, color: 'var(--c-text-secondary, #64748b)' }}>{product}</div>
         )}
-        <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,0.78)', display: 'flex', gap: 12 }}>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c-text-tertiary, #94a3b8)', display: 'flex', gap: 12 }}>
           {detail.quantity ? <span>{t('lead.quantityRequirement')}：{detail.quantity}</span> : null}
           <span>{t('lead.createdAt')}：{detail.createdAt?.slice(0, 10)}</span>
         </div>

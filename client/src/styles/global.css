@@ -123,8 +123,8 @@
   padding: 20px 24px 12px;
   height: 126px;
   box-sizing: border-box;
-  background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e0efff 100%);
+  color: var(--c-text, #1e293b);
   position: relative;
 }
 .lead-wizard-header__close {
@@ -135,8 +135,8 @@
   height: 30px;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--c-text, #1e293b);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -146,7 +146,7 @@
   transition: background 0.2s ease;
 }
 .lead-wizard-header__close:hover {
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(15, 23, 42, 0.12);
 }
 .lead-wizard-header__title {
   font-size: 20px;
@@ -162,12 +162,13 @@
   font-weight: 500;
   padding: 1px 8px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(22, 119, 255, 0.12);
+  color: var(--c-primary, #1677ff);
 }
 .lead-wizard-header__subtitle {
   margin-top: 4px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--c-text-secondary, #64748b);
 }
 .lead-wizard-steps {
   display: flex;
@@ -191,49 +192,48 @@
   justify-content: center;
   font-size: 13px;
   font-weight: 700;
-  background: rgba(255, 255, 255, 0.25);
-  color: rgba(255, 255, 255, 0.85);
+  background: rgba(22, 119, 255, 0.12);
+  color: var(--c-text-secondary, #64748b);
   flex-shrink: 0;
   transition: all 0.25s ease;
 }
 /* 已完成步骤：白底紫字 */
 .lead-wizard-steps__item.is-done .lead-wizard-steps__dot {
-  background: rgba(255, 255, 255, 0.92);
-  color: #1677ff;
+  background: var(--c-primary, #1677ff);
+  color: #fff;
 }
 /* 当前步骤：放大 + 白色实心 + 外圈光晕，强调当前进度 */
 .lead-wizard-steps__item.is-active .lead-wizard-steps__dot {
-  background: #fff;
-  color: #1677ff;
-  transform: scale(1.18);
-  box-shadow: 0 0 0 5px rgba(255, 255, 255, 0.25), 0 4px 12px rgba(0, 0, 0, 0.18);
+  background: var(--c-primary, #1677ff);
+  color: #fff;
+  transform: scale(1.12);
+  box-shadow: 0 0 0 5px rgba(22, 119, 255, 0.18);
 }
 .lead-wizard-steps__label {
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--c-text-secondary, #64748b);
   transition: all 0.2s ease;
 }
 .lead-wizard-steps__item.is-active .lead-wizard-steps__label {
-  color: #fff;
+  color: var(--c-text, #1e293b);
   font-size: 15px;
   font-weight: 700;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 .lead-wizard-steps__item.is-done .lead-wizard-steps__label {
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--c-text-secondary, #64748b);
 }
 .lead-wizard-steps__line {
   width: 56px;
   height: 2px;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(22, 119, 255, 0.18);
   margin: 0 8px;
   border-radius: 2px;
   transition: background 0.25s ease;
 }
 /* 已完成步骤后的连接线高亮为进度色 */
 .lead-wizard-steps__item.is-done .lead-wizard-steps__line {
-  background: #fff;
+  background: var(--c-primary, #1677ff);
 }
 .lead-wizard-footer {
   display: flex;
@@ -494,8 +494,8 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 }
 .lead-detail-panel__header {
-  background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);
-  color: #fff;
+  background: linear-gradient(135deg, #f0f7ff 0%, #e0efff 100%);
+  color: var(--c-text, #1e293b);
   padding: 16px 18px;
   position: relative;
 }
