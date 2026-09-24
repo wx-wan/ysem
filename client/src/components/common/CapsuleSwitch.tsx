@@ -83,7 +83,7 @@ export default function CapsuleSwitch<T extends string = string>({
               height: '100%',
               padding: isPrimary ? '0 14px' : '0 10px',
               borderRadius: outerRadius,
-              fontSize: isPrimary ? 13 : 12,
+              fontSize: token.fontSizeLG,
               fontWeight: active ? 600 : 500,
               whiteSpace: 'nowrap',
               transition: 'all 0.25s ease',

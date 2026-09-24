@@ -65,6 +65,7 @@
 ### 4.2 范围切换 / 分段筛选（`CapsuleSwitch`，线索页用法）
 - 容器：白底 + 1px 描边 + 圆角 12 + 轻投影。
 - 选中项：蓝色 `#1677ff` 实心胶囊，白字 + 主色投影；未选中：灰字 `#64748b`。
+- 胶囊整体高度取 `token.controlHeightLG`（40）、字号取 `token.fontSizeLG`（14），与 large 筛选框的 `Select`/`Input`/`Button` 完全一致；内外圆角共用同一 `borderRadius`（外部传入优先，默认 24）。
 - 尺寸：padding `4px`，项 padding `5px 14px`，字号 13。
 - 用法：我的线索 / 公海 切换；参考图「全部/待处理/跟进中/已报价」同款。
 
