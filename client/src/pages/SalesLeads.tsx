@@ -9,7 +9,7 @@ import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/Lead
 import LeadTable from '../components/lead/LeadTable';
 import { useLeadList } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
-import { leadApi, type Lead, type LeadStatus } from '../api/lead';
+import { leadApi, type Lead } from '../api/lead';
 import { convertLeadToOpportunity } from '../utils/convertLead';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -60,12 +60,6 @@ export default function SalesLeads() {
   const [summaryItems, setSummaryItems] = useState<{ customerName?: string; productName?: string }>({});
   const summaryResolveRef = useRef<((v: { customerId?: string; productId?: string }) => void) | null>(null);
   const summaryRejectRef = useRef<((e: Error) => void) | null>(null);
-
-  // 列表行内状态切换（确认 / 有效 / 无效）
-  const handleChangeStatus = async (id: string, status: LeadStatus) => {
-    await leadApi.changeStatus(id, status);
-    list.refresh();
-  };
 
   // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
   const openCustomerForm = (initial?: {
@@ -230,7 +224,6 @@ export default function SalesLeads() {
           isAdmin={isAdmin}
           onEdit={(r) => formModalRef.current?.openEdit(r)}
           onRemove={list.remove}
-          onChangeStatus={handleChangeStatus}
           onConvert={handleConvert}
           onClaim={handleClaim}
         />

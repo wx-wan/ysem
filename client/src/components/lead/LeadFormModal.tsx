@@ -26,7 +26,7 @@ import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
 import TransferOwnerModal from '../common/TransferOwnerModal';
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
-import { leadApi, type Lead, type LeadPayload, type LeadStatus } from '../../api/lead';
+import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -290,20 +290,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // ============ 状态切换 ============
-  // NEW=新建 / VALID=有效 可编辑；INVALID=无效 不可编辑，但可切回有效
-  const changeLeadStatusTo = async (status: LeadStatus) => {
-    if (!editing) return;
-    try {
-      await leadApi.changeStatus(editing.id, status);
-      message.success(t('lead.statusUpdated'));
-      // 同步本地编辑状态，使表单禁用/启用即时生效（仅切换状态，不关闭弹窗）
-      setEditing((prev) => (prev ? { ...prev, status } : prev));
-    } catch (err: any) {
-      message.error(err?.response?.data?.message || t('common.saveFailed'));
-    }
-  };
-
   // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
   const openCustomerForm = (initial?: {
     companyName?: string;
@@ -418,12 +404,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 标记无效
-  const handleInvalidLead = () => changeLeadStatusTo('INVALID');
-
-  // 切回有效（从无效恢复）
-  const handleSetValid = () => changeLeadStatusTo('VALID');
-
   // ============ 确认建档 ============
   // 走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
   // 客户 / 产品「未建档」标签点击：优先用已保存记录的名称，回退到当前表单输入值
@@ -498,11 +478,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 新建模式（无真实线索 id）下，转交/释放/无效/确认等仅对已有线索的操作不可用
+  // 新建模式（无真实线索 id）下，转交/释放/确认等仅对已有线索的操作不可用
   const isCreate = !editing?.id;
-  // 已确认（QUALIFIED）与无效（INVALID）一样为只读：禁用所有编辑/操作
-  const readonly = editing?.status === 'INVALID' || editing?.status === 'QUALIFIED';
-  // 公海线索（无负责人）：不支持确认 / 无效，仅可认领（canonical 归属字段为 ownerId）
+  // 已确认（QUALIFIED）为只读：禁用所有编辑/操作
+  const readonly = editing?.status === 'QUALIFIED';
+  // 公海线索（无负责人）：不支持确认，仅可认领（canonical 归属字段为 ownerId）
   const isPoolLead = !!editing?.id && !editing.ownerId;
 
   useImperativeHandle(ref, () => ({ openCreate, openEdit }));
@@ -629,18 +609,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           }
           footer={
             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%' }}>
-              <Space>
-                {editing?.id && !readonly && !isPoolLead && (
-                  <Button danger onClick={handleInvalidLead}>
-                    {t('lead.invalid')}
-                  </Button>
-                )}
-                {editing?.id && editing.status === 'INVALID' && (
-                  <Button type="primary" disabled={false} onClick={handleSetValid}>
-                    {t('lead.valid')}
-                  </Button>
-                )}
-              </Space>
               <Space>
                 <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
                 {/* 公海线索：仅可认领，确认（转商机）不可用 */}

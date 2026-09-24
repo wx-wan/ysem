@@ -907,8 +907,13 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
 // 状态流转（如 转为已联系 / 已转化 / 无效 / 有效）
 export const changeLeadStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // V1.0：与 Prisma LeadStatus 严格一致（不含 VALID）
+    // V1.0：与 Prisma LeadStatus 严格一致；INVALID 已在下方显式禁用（标记无效功能已下线）
     const { status } = z.object({ status: z.nativeEnum(LeadStatus) }).parse(req.body);
+    // DQ：标记无效功能已下线，禁止将线索置为 INVALID
+    if (status === 'INVALID') {
+      fail(res, 400, '标记无效功能已停用');
+      return;
+    }
     // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
     // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
     const existing = await prisma.lead.findFirst({

@@ -21,7 +21,6 @@ interface Props {
   isAdmin: boolean;
   onEdit: (record: Lead) => void;
   onRemove: (id: string) => void;
-  onChangeStatus: (id: string, status: LeadStatus) => void;
   onConvert: (record: Lead) => void;
   /** 认领公海线索（无负责人线索） */
   onClaim: (record: Lead) => void;
@@ -36,7 +35,6 @@ export default function LeadTable({
   isAdmin,
   onEdit,
   onRemove,
-  onChangeStatus,
   onConvert,
   onClaim,
 }: Props) {
@@ -152,12 +150,11 @@ export default function LeadTable({
               </Space>
             );
           }
-          const isInvalid = r.status === 'INVALID';
           const isQualified = r.status === 'QUALIFIED';
-          const readonly = isInvalid || isQualified;
+          const readonly = isQualified;
           return (
             <Space size={2}>
-              {/* 确认：转为商机（无效/已确认状态禁用，与详情弹窗 readonly 逻辑一致） */}
+              {/* 确认：转为商机（已确认状态禁用，与详情弹窗 readonly 逻辑一致） */}
               <Tooltip title={t('lead.confirmLead')}>
                 <Button
                   type="link"
@@ -165,26 +162,6 @@ export default function LeadTable({
                   icon={<AuditOutlined />}
                   disabled={readonly}
                   onClick={() => onConvert(r)}
-                />
-              </Tooltip>
-              {/* 有效：无效 → 有效（二次确认防止误触） */}
-              <Popconfirm title={t('lead.confirmSetValid')} onConfirm={() => onChangeStatus(r.id, 'VALID')}>
-                <Button
-                  type="link"
-                  size="small"
-                  icon={<CheckCircleOutlined />}
-                  disabled={!isInvalid}
-                />
-              </Popconfirm>
-              {/* 无效：新建/有效 → 无效（无效/已确认状态禁用） */}
-              <Tooltip title={t('lead.invalid')}>
-                <Button
-                  type="link"
-                  size="small"
-                  danger
-                  icon={<StopOutlined />}
-                  disabled={readonly}
-                  onClick={() => onChangeStatus(r.id, 'INVALID')}
                 />
               </Tooltip>
               {isAdmin && (
@@ -197,7 +174,7 @@ export default function LeadTable({
         },
       },
     ],
-    [t, isAdmin, userNameMap, onEdit, onRemove, onChangeStatus, onClaim],
+    [t, isAdmin, userNameMap, onEdit, onRemove, onClaim],
   );
 
   return (
