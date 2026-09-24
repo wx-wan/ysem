@@ -264,8 +264,8 @@ export default function SalesLeads() {
               value: 'createdAt:asc',
               label: (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <ExpandChevron expanded size={12} color={token.colorTextSecondary} />
                   {t('lead.sortEarliest')}
+                  <ExpandChevron expanded size={12} color={token.colorTextSecondary} />
                 </span>
               ),
             },
