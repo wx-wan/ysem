@@ -25,19 +25,19 @@ export default function LeadCreateCard({ onClick }: Props) {
         marginBottom: 16,
         borderRadius: token.borderRadiusLG,
         cursor: 'pointer',
-        background: 'linear-gradient(135deg, #f0f7ff 0%, #e0efff 100%)',
-        color: 'var(--c-text, #1e293b)',
-        boxShadow: '0 6px 20px rgba(22, 119, 255, 0.12)',
+        background: 'linear-gradient(120deg, #4096ff 0%, #1677ff 100%)',
+        color: '#fff',
+        boxShadow: '0 8px 24px rgba(22, 119, 255, 0.28)',
         transition: 'transform .18s ease, box-shadow .18s ease',
         outline: 'none',
       }}
       onMouseEnter={(e) => {
         e.currentTarget.style.transform = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow = '0 10px 26px rgba(22, 119, 255, 0.18)';
+        e.currentTarget.style.boxShadow = '0 12px 30px rgba(22, 119, 255, 0.36)';
       }}
       onMouseLeave={(e) => {
         e.currentTarget.style.transform = 'translateY(0)';
-        e.currentTarget.style.boxShadow = '0 6px 20px rgba(22, 119, 255, 0.12)';
+        e.currentTarget.style.boxShadow = '0 8px 24px rgba(109, 40, 217, 0.28)';
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -54,8 +54,7 @@ export default function LeadCreateCard({ onClick }: Props) {
           width: 48,
           height: 48,
           borderRadius: 14,
-          background: 'rgba(22, 119, 255, 0.12)',
-          color: 'var(--c-primary, #1677ff)',
+          background: 'rgba(255, 255, 255, 0.22)',
           fontSize: 24,
           flexShrink: 0,
         }}
@@ -63,8 +62,8 @@ export default function LeadCreateCard({ onClick }: Props) {
         <PlusOutlined />
       </span>
       <div style={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
-        <div style={{ fontSize: 17, fontWeight: 700, color: 'var(--c-text, #1e293b)' }}>{t('lead.createTitle')}</div>
-        <div style={{ fontSize: 13, color: 'var(--c-text-secondary, #64748b)', marginTop: 2 }}>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{t('lead.createTitle')}</div>
+        <div style={{ fontSize: 13, color: 'rgba(255, 255, 255, 0.82)', marginTop: 2 }}>
           {t('lead.createDesc')}
         </div>
       </div>
@@ -76,8 +75,8 @@ export default function LeadCreateCard({ onClick }: Props) {
           width: 36,
           height: 36,
           borderRadius: '50%',
-          background: 'var(--c-primary, #1677ff)',
-          color: '#fff',
+          background: '#fff',
+          color: '#1677ff',
           fontSize: 16,
           flexShrink: 0,
         }}
