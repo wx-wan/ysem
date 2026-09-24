@@ -114,7 +114,7 @@ export default function FilterToolbar({
 
   return (
     <div>
-      <style>{`.ft-actions .ant-btn{height:40px}`}</style>
+      <style>{`.ft-actions .ant-btn{height:48px}`}</style>
       {/* 第一行：搜索 + 筛选 + 排序 + 操作 */}
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <Input
@@ -124,10 +124,10 @@ export default function FilterToolbar({
           value={searchValue}
           onChange={(e) => onSearchChange(e.target.value)}
           onPressEnter={onSearchSubmit}
-          style={{ flex: '1 1 240px', minWidth: 200, height: 40 }}
+          style={{ flex: '1 1 240px', minWidth: 200, height: 48 }}
         />
         <div style={{ display: 'inline-flex', gap: 12, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <Button style={{ height: 40 }} onClick={() => setExpanded((v) => !v)}>
+          <Button style={{ height: 48 }} onClick={() => setExpanded((v) => !v)}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {t('common.filter')}
               {activeCount > 0 && (
@@ -155,7 +155,7 @@ export default function FilterToolbar({
           {sortOptions?.length ? (
             sortOptions.length === 2 ? (
               <Button
-                style={{ height: 40 }}
+                style={{ height: 48 }}
                 onClick={() => {
                   const idx = sortOptions.findIndex((o) => o.value === sortValue);
                   const next = sortOptions[(idx + 1) % sortOptions.length];
@@ -172,7 +172,7 @@ export default function FilterToolbar({
                 </span>
               </Button>
             ) : (
-              <Select style={{ width: 176, height: 40 }} value={sortValue} onChange={onSortChange} options={sortOptions} />
+              <Select style={{ width: 176, height: 48 }} value={sortValue} onChange={onSortChange} options={sortOptions} />
             )
           ) : null}
           <span className="ft-actions">{actions}</span>
