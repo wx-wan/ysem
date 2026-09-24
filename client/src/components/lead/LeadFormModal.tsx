@@ -761,6 +761,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="contactMethods"
                     label={t('lead.contactMethods')}
+                    required
                     rules={[{ validator: validateContactMethods }]}
                   >
                     <ContactMethodInput options={commToolOptions} />
