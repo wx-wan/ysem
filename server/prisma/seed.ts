@@ -142,6 +142,8 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'system:channel:edit', name: '渠道编辑', type: 'BUTTON', sort: 1, parent: 'system:channel' },
   { code: 'system:customer-type', name: '客户类型', type: 'MENU', path: '/setting/customer-type', icon: 'TagsOutlined', sort: 6, parent: 'system' },
   { code: 'system:customer-type:edit', name: '客户类型编辑', type: 'BUTTON', sort: 1, parent: 'system:customer-type' },
+  { code: 'system:comm-tool', name: '沟通工具维护', type: 'BUTTON', sort: 2, parent: 'system:customer-type' },
+  { code: 'system:comm-tool:edit', name: '沟通工具编辑', type: 'BUTTON', sort: 1, parent: 'system:comm-tool' },
   { code: 'system:approval', name: '审批管理', type: 'MENU', path: '/setting/approval', icon: 'NodeIndexOutlined', sort: 7, parent: 'system' },
   { code: 'system:approval:edit', name: '审批编辑', type: 'BUTTON', sort: 1, parent: 'system:approval' },
   { code: 'system:logs', name: '操作日志', type: 'MENU', path: '/setting/logs', icon: 'BarChartOutlined', sort: 8, parent: 'system' },

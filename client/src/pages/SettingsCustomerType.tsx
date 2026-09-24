@@ -8,6 +8,7 @@ import {
   Form,
   Switch,
   Table,
+  Tabs,
   Space,
   Popconfirm,
   message,
@@ -24,9 +25,12 @@ import {
 import customerTypeApi, { CustomerType, CustomerTypeInput } from '../api/customerType';
 import PageSkeleton from '../components/PageSkeleton';
 import { useCustomerTypeStore } from '../stores/useCustomerTypeStore';
+import { usePermission } from '../hooks/usePermission';
+import CommToolManager from '../components/setting/CommToolManager';
 
 export default function SettingsCustomerType() {
   const { t } = useTranslation();
+  const { hasPerm } = usePermission();
   const [list, setList] = useState<CustomerType[]>([]);
   const [loading, setLoading] = useState(true);
   const [keyword, setKeyword] = useState('');
@@ -208,86 +212,97 @@ export default function SettingsCustomerType() {
 
   return (
     <div>
-      {loading && list.length === 0 ? (
-        <PageSkeleton rows={6} />
-      ) : (
-        <>
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
-            {t('customerType.settingHint')}
-          </Typography.Paragraph>
+      <Tabs
+        items={[
+          {
+            key: 'customer-type',
+            label: t('customerType.title'),
+            children: loading && list.length === 0 ? (
+              <PageSkeleton rows={6} />
+            ) : (
+              <>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 16 }}>
+                  {t('customerType.settingHint')}
+                </Typography.Paragraph>
 
-          <Card
-            title={t('customerType.title')}
-            extra={
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
-                {t('common.add')}
-              </Button>
-            }
-          >
-            <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-              <Input
-                placeholder={t('customerType.searchPlaceholder')}
-                prefix={<SearchOutlined />}
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onPressEnter={fetchList}
-                allowClear
-              />
-              <Button onClick={fetchList}>{t('common.search')}</Button>
-            </div>
+                <Card
+                  title={t('customerType.title')}
+                  extra={
+                    <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+                      {t('common.add')}
+                    </Button>
+                  }
+                >
+                  <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
+                    <Input
+                      placeholder={t('customerType.searchPlaceholder')}
+                      prefix={<SearchOutlined />}
+                      value={keyword}
+                      onChange={(e) => setKeyword(e.target.value)}
+                      onPressEnter={fetchList}
+                      allowClear
+                    />
+                    <Button onClick={fetchList}>{t('common.search')}</Button>
+                  </div>
 
-            <Table
-              rowKey="id"
-              columns={columns}
-              dataSource={list}
-              loading={loading && list.length > 0}
-              pagination={false}
-              size="middle"
-            />
-          </Card>
-        </>
-      )}
+                  <Table
+                    rowKey="id"
+                    columns={columns}
+                    dataSource={list}
+                    loading={loading && list.length > 0}
+                    pagination={false}
+                    size="middle"
+                  />
+                </Card>
 
-      <Modal
-        title={editing ? t('customerType.edit') : t('customerType.add')}
-        open={modalOpen}
-        onCancel={() => setModalOpen(false)}
-        onOk={() => form.submit()}
-        destroyOnClose
-      >
-        <Form form={form} layout="vertical" onFinish={handleSave}>
-          <Form.Item
-            name="name"
-            label={t('customerType.name')}
-            rules={[{ required: true, message: t('customerType.nameRequired') }]}
-          >
-            <Input placeholder={t('customerType.namePlaceholder')} maxLength={50} showCount />
-          </Form.Item>
-          <Form.Item name="description" label={t('customerType.description')}>
-            <Input.TextArea
-              placeholder={t('customerType.descriptionPlaceholder')}
-              rows={3}
-              maxLength={200}
-              showCount
-            />
-          </Form.Item>
-          <Form.Item
-            name="sort"
-            label={t('common.sort')}
-            initialValue={editing ? undefined : (list.length + 1) * 10}
-          >
-            <Input type="number" placeholder={t('customerType.sortPlaceholder')} />
-          </Form.Item>
-          <Form.Item
-            name="isActive"
-            label={t('common.status')}
-            valuePropName="checked"
-            initialValue={true}
-          >
-            <Switch checkedChildren={t('common.enable')} unCheckedChildren={t('common.disable')} />
-          </Form.Item>
-        </Form>
-      </Modal>
+                <Modal
+                  title={editing ? t('customerType.edit') : t('customerType.add')}
+                  open={modalOpen}
+                  onCancel={() => setModalOpen(false)}
+                  onOk={() => form.submit()}
+                  destroyOnClose
+                >
+                  <Form form={form} layout="vertical" onFinish={handleSave}>
+                    <Form.Item
+                      name="name"
+                      label={t('customerType.name')}
+                      rules={[{ required: true, message: t('customerType.nameRequired') }]}
+                    >
+                      <Input placeholder={t('customerType.namePlaceholder')} maxLength={50} showCount />
+                    </Form.Item>
+                    <Form.Item name="description" label={t('customerType.description')}>
+                      <Input.TextArea
+                        placeholder={t('customerType.descriptionPlaceholder')}
+                        rows={3}
+                        maxLength={200}
+                        showCount
+                      />
+                    </Form.Item>
+                    <Form.Item
+                      name="sort"
+                      label={t('common.sort')}
+                      initialValue={editing ? undefined : (list.length + 1) * 10}
+                    >
+                      <Input type="number" placeholder={t('customerType.sortPlaceholder')} />
+                    </Form.Item>
+                    <Form.Item
+                      name="isActive"
+                      label={t('common.status')}
+                      valuePropName="checked"
+                      initialValue={true}
+                    >
+                      <Switch checkedChildren={t('common.enable')} unCheckedChildren={t('common.disable')} />
+                    </Form.Item>
+                  </Form>
+                </Modal>
+              </>
+            ),
+          },
+          ...(hasPerm('system:comm-tool')
+            ? [{ key: 'comm-tool', label: t('commTool.title'), children: <CommToolManager /> }]
+            : []),
+        ]}
+      />
     </div>
   );
 }

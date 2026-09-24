@@ -24,7 +24,7 @@ export interface Lead {
   status: LeadStatus;
   companyName?: string | null;
   contactName?: string | null;
-  contactMethod?: string | null;
+  contactMethods?: { tool: string; account: string }[] | null;
   email?: string | null;
   phone?: string | null;
   country?: string | null;
@@ -82,7 +82,7 @@ export interface LeadPayload {
   status?: LeadStatus;
   companyName?: string | null;
   contactName?: string | null;
-  contactMethod?: string | null;
+  contactMethods?: { tool: string; account: string }[] | null;
   email?: string;
   phone?: string;
   country?: string;

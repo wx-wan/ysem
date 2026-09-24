@@ -36,6 +36,8 @@ import { flattenChannelOptions } from './constants';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
+import ContactMethodInput, { type ContactMethodItem } from '../common/ContactMethodInput';
+import { useCommToolOptions } from '../../stores/useCommToolStore';
 import { parseImages, serializeImages, type ProductImageItem } from '../../utils/productImages';
 
 export interface LeadFormModalHandle {
@@ -151,11 +153,27 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     [productOptions],
   );
 
+  // 沟通工具下拉（取自系统设置 → 沟通工具维护，带 10 分钟本地缓存）
+  const { options: commToolOptions } = useCommToolOptions();
+  // 联系方式：至少一条，且每条 tool / account 均非空（新增 / 编辑均强制）
+  const validateContactMethods = (_: unknown, val?: ContactMethodItem[]) => {
+    const arr = val || [];
+    if (arr.length === 0) return Promise.reject(new Error(t('lead.contactMethodsRequired')));
+    for (const it of arr) {
+      if (!it?.tool?.trim() || !it?.account?.trim()) {
+        return Promise.reject(new Error(t('lead.contactMethodRowRequired')));
+      }
+    }
+    return Promise.resolve();
+  };
+
   // ============ 打开 / 提交 ============
   const openCreate = () => {
     setEditing(null);
     setLinkedPipeline(null);
     form.resetFields();
+    // 默认至少一条空的联系方式记录
+    form.setFieldsValue({ contactMethods: [{ tool: '', account: '' }] });
     onRefreshCustomers();
     fetchUsers();
     // 新建线索默认负责人为当前登录用户：同时写入表单字段（用于提交）与 editing（用于右上角回显）
@@ -187,7 +205,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         shopId: item.shop?.id || undefined,
         // 采购产品：回填 LeadItem 明细（V1.0 产品关联落在 items）
         productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
-        contactMethod: item.contactMethod || undefined,
+        contactMethods:
+          Array.isArray(item.contactMethods) && item.contactMethods.length
+            ? item.contactMethods
+            : [{ tool: '', account: '' }],
         quantity: item.quantity ?? undefined,
         // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
         ownerId: item.ownerId ?? item.owner?.id ?? undefined,
@@ -253,7 +274,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       leadName: leadNamePreview || undefined,
       customerId,
       companyName,
-      contactMethod: values.contactMethod || null,
+      contactMethods: values.contactMethods || null,
       // 来源渠道 / 来源平台：传 ID（与后端 channelId/shopId 对齐）
       channelId: values.channelId ?? null,
       shopId: values.shopId ?? null,
@@ -737,8 +758,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="contactMethod" label={t('lead.contactMethod')}>
-                    <Input autoComplete="off" placeholder={t('lead.contactMethodPlaceholder')} />
+                  <Form.Item
+                    name="contactMethods"
+                    label={t('lead.contactMethods')}
+                    rules={[{ validator: validateContactMethods }]}
+                  >
+                    <ContactMethodInput options={commToolOptions} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>

@@ -178,6 +178,20 @@ model CustomerType {
   @@index([isActive])
 }
 
+// ============ 沟通工具（系统设置维护，线索/客户联系方式下拉取值）============
+model CommunicationTool {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String? // 工具说明
+  isActive    Boolean  @default(true)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sort])
+  @@index([isActive])
+}
+
 // ============ 线索（03 §3.1 · 重构）============
 model Lead {
   id       String @id @default(cuid())
@@ -196,7 +210,7 @@ model Lead {
   customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   companyName   String?
   contactName   String?
-  contactMethod String? // 沟通方式：微信号/旺旺名/邮箱/whatsapp
+  contactMethods Json? // 联系方式（沟通工具 + 账号，数组：[{tool, account}]），替代旧 contactMethod
   email         String?
   phone         String?
   country       String?

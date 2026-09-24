@@ -33,7 +33,17 @@ const leadSchema = z.object({
   status: z.nativeEnum(LeadStatus).optional(),
   companyName: z.string().trim().max(200).nullable().optional(),
   contactName: z.string().trim().max(100).nullable().optional(),
-  contactMethod: z.string().trim().max(300).nullable().optional(),
+  // 联系方式：数组 [{tool, account}]，新增时至少一条（见 createLead 校验）
+  contactMethods: z
+    .array(
+      z.object({
+        tool: z.string().trim().min(1).max(100),
+        account: z.string().trim().min(1).max(300),
+      }),
+    )
+    .max(20)
+    .nullable()
+    .optional(),
   email: z.string().trim().max(200).nullable().optional(),
   phone: z.string().trim().max(50).nullable().optional(),
   country: z.string().trim().max(100).nullable().optional(),
@@ -78,7 +88,7 @@ const LEAD_WRITABLE_FIELDS = [
   'status',
   'companyName',
   'contactName',
-  'contactMethod',
+  'contactMethods',
   'email',
   'phone',
   'country',
@@ -344,6 +354,11 @@ export const getLead = async (req: AuthRequest, res: Response): Promise<void> =>
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
+    // 联系方式：新增线索必须至少一条有效记录（{tool, account} 均非空）
+    if (!data.contactMethods || data.contactMethods.length === 0) {
+      fail(res, 400, '请至少填写一条联系方式');
+      return;
+    }
     // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
 
@@ -427,7 +442,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           status: data.status ?? 'NEW',
           companyName: data.companyName ?? null,
           contactName: data.contactName ?? null,
-          contactMethod: data.contactMethod ?? null,
+          contactMethods: data.contactMethods ?? undefined,
           email: data.email ?? null,
           phone: data.phone ?? null,
           country: data.country ?? null,

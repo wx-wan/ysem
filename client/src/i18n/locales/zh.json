@@ -612,8 +612,12 @@
     "customerContact": "联系人",
     "customerRequired": "请输入客户名称",
     "customerPlaceholder": "请输入或选择客户",
-    "contactMethod": "沟通账号",
-    "contactMethodPlaceholder": "如：微信 / 旺旺 / 邮箱 / WhatsApp 等",
+    "contactMethods": "联系方式",
+    "contactMethodsRequired": "请至少填写一条联系方式",
+    "contactMethodRowRequired": "请完整填写沟通工具与账号",
+    "contactToolPlaceholder": "请选择沟通工具",
+    "contactAccountPlaceholder": "请输入账号",
+    "addContactMethod": "添加联系方式",
     "customerPendingTip": "客户「{{name}}」尚未建档",
     "createCustomerNow": "创建客户档案",
     "pendingTag": "未建档",
@@ -716,5 +720,19 @@
     "edit": "编辑客户类型",
     "selectPlaceholder": "请选择客户类型",
     "noData": "暂无客户类型"
+  },
+  "commTool": {
+    "title": "沟通工具维护",
+    "settingHint": "此处维护的沟通工具会作为线索、客户联系方式录入时的下拉选项，启用后才会出现在下拉中。",
+    "searchPlaceholder": "搜索沟通工具",
+    "name": "沟通工具名称",
+    "namePlaceholder": "请输入沟通工具名称",
+    "nameRequired": "请输入沟通工具名称",
+    "description": "说明",
+    "descriptionPlaceholder": "请输入说明（可选）",
+    "sortPlaceholder": "数字越小越靠前",
+    "add": "新增沟通工具",
+    "edit": "编辑沟通工具",
+    "noData": "暂无沟通工具"
   }
 }

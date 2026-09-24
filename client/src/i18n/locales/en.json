@@ -584,8 +584,12 @@
     "customerContact": "Contact",
     "customerRequired": "Please enter the customer name",
     "customerPlaceholder": "Type or select a customer",
-    "contactMethod": "Contact Account",
-    "contactMethodPlaceholder": "e.g. WeChat / AliWangWang / Email / WhatsApp, etc.",
+    "contactMethods": "Contact Methods",
+    "contactMethodsRequired": "Please add at least one contact method",
+    "contactMethodRowRequired": "Please fill in both tool and account",
+    "contactToolPlaceholder": "Select a communication tool",
+    "contactAccountPlaceholder": "Enter account",
+    "addContactMethod": "Add contact method",
     "customerPendingTip": "Customer \"{{name}}\" is not filed yet",
     "createCustomerNow": "Create customer profile",
     "pendingTag": "Unfiled",
@@ -684,5 +688,19 @@
     "edit": "Edit Customer Type",
     "selectPlaceholder": "Please select a customer type",
     "noData": "No customer types"
+  },
+  "commTool": {
+    "title": "Communication Tools",
+    "settingHint": "Communication tools maintained here are used as dropdown options when entering lead/customer contact methods. Only enabled tools appear in the dropdown.",
+    "searchPlaceholder": "Search communication tool",
+    "name": "Tool Name",
+    "namePlaceholder": "Enter tool name",
+    "nameRequired": "Please enter tool name",
+    "description": "Description",
+    "descriptionPlaceholder": "Enter description (optional)",
+    "sortPlaceholder": "Smaller number comes first",
+    "add": "Add Communication Tool",
+    "edit": "Edit Communication Tool",
+    "noData": "No communication tools"
   }
 }
