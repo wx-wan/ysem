@@ -155,7 +155,7 @@ export default function CurrencyManager() {
         ),
     },
     {
-      title: t('common.actions'),
+      title: t('common.operation'),
       width: 140,
       render: (_: unknown, r: CurrencyRate) =>
         canEdit ? (

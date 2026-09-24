@@ -543,6 +543,10 @@
   flex: 0 0 380px;
   position: sticky;
   top: 16px;
+  /* 作为纵向 flex 容器承接行容器 stretch 的 used height：
+     面板的收缩基于该运行时高度计算，不依赖百分比解析 */
+  display: flex;
+  flex-direction: column;
 }
 .lead-detail-panel {
   background: #fff;
@@ -551,12 +555,41 @@
   overflow: hidden;
   /* 双层阴影加重：近层保清晰边界，远层拉开与卡片的层级差 */
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 12px 32px rgba(0, 0, 0, 0.08);
+  /* 面板作为列的 flex 子项：内容少时自然高度，内容多时被收缩到列高，
+     由 Tabs 内容区滚动（flex 收缩基于列的运行时高度，不依赖百分比解析） */
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  /* 固定最大高度 700.5px（对齐左侧 5 条卡片总高），超出在 Tab 内容区滚动 */
+  max-height: 700.5px;
+}
+/* 高度链：面板 → Spin 容器 → Tabs 逐层可收缩（不撑破 max-height） */
+.lead-detail-panel .ant-spin-nested-loading,
+.lead-detail-panel .ant-spin-container,
+.lead-detail-panel .ant-tabs {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* 滚动层：Tab 内容区自身滚动（antd 6 类名为 body-holder），Tab 导航与底部操作条固定 */
+.lead-detail-panel .ant-tabs-body-holder,
+.lead-detail-panel .ant-tabs-content-holder {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-height: 440px;
+  overflow-y: auto;
+}
+.lead-detail-panel .ant-tabs-nav {
+  flex-shrink: 0;
 }
 .lead-detail-panel__header {
   background: linear-gradient(120deg, #4096ff 0%, #1677ff 100%);
   color: #fff;
   padding: 16px 18px;
   position: relative;
+  flex-shrink: 0;
 }
 .lead-detail-panel__empty {
   background: #fff;

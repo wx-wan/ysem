@@ -126,6 +126,8 @@ export interface LeadOperationLog {
   businessId?: string | null;
   businessNo?: string | null;
   summary?: string | null;
+  /** 字段级变更明细 JSON：[{field,label,beforeText,afterText}] */
+  diff?: string | null;
   createdAt: string;
 }
 

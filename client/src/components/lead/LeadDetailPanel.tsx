@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Popconfirm, Spin, Tabs, Tag, Timeline, Tooltip } from 'antd';
-import { EllipsisOutlined, FormOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined, FormOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
@@ -18,6 +18,17 @@ const LOG_ACTION_META: Record<string, { key: string; color: string }> = {
   RELEASE: { key: 'lead.logRelease', color: 'orange' },
   TRANSFERRED: { key: 'lead.logTransferred', color: 'purple' },
   STATUS: { key: 'lead.logStatus', color: 'gold' },
+};
+
+/** 解析日志 diff JSON（[{field,label,beforeText,afterText}]） */
+const parseLogDiff = (raw?: string | null): { field: string; label: string; beforeText: string; afterText: string }[] => {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
 };
 
 interface Props {
@@ -184,7 +195,7 @@ export default function LeadDetailPanel({
                     </div>
                   }
                 >
-                  <EllipsisOutlined style={{ cursor: 'help', fontSize: 14, opacity: 0.9 }} />
+                  <ExclamationCircleOutlined style={{ cursor: 'help', fontSize: 14, opacity: 0.9 }} />
                 </Tooltip>
               )}
             </span>
@@ -234,6 +245,7 @@ export default function LeadDetailPanel({
                         <Timeline
                           items={logs.map((log) => {
                             const meta = LOG_ACTION_META[log.action];
+                            const diffItems = parseLogDiff(log.diff);
                             return {
                               key: log.id,
                               color: meta?.color ?? 'blue',
@@ -249,6 +261,30 @@ export default function LeadDetailPanel({
                                     )}
                                     <span style={{ color: 'rgba(0,0,0,0.85)' }}>{log.summary || '—'}</span>
                                   </div>
+                                  {diffItems.length > 0 && (
+                                    <div
+                                      style={{
+                                        marginTop: 4,
+                                        display: 'grid',
+                                        gap: 2,
+                                        padding: '6px 8px',
+                                        background: 'var(--c-bg, #f8fafc)',
+                                        borderRadius: 'var(--radius-pill, 6px)',
+                                        fontSize: 12,
+                                        lineHeight: 1.5,
+                                        color: 'rgba(0,0,0,0.65)',
+                                      }}
+                                    >
+                                      {diffItems.map((d) => (
+                                        <span key={d.field}>
+                                          {d.label}：
+                                          <span style={{ color: 'rgba(0,0,0,0.45)' }}>{d.beforeText}</span>
+                                          {' → '}
+                                          <span style={{ color: 'var(--c-text, #1e293b)' }}>{d.afterText}</span>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
                                   <div style={{ marginTop: 4, fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
                                     {log.realName || log.username}
                                     {log.createdAt ? ` · ${dayjs(log.createdAt).format('YYYY-MM-DD HH:mm')}` : ''}
@@ -274,7 +310,7 @@ export default function LeadDetailPanel({
 
       {/* 底部操作条与内容之间属模块间主次边界：实线 + 强分隔色（分割线规范）。
           线用 margin 收进内容宽度，两端与上方文本对齐，不做通栏 */}
-      <div style={{ margin: '0 16px', padding: '12px 0', borderTop: '1px solid var(--c-border-strong, #e2e8f0)', display: 'flex', gap: 8 }}>
+      <div style={{ flexShrink: 0, margin: '0 16px', padding: '12px 0', borderTop: '1px solid var(--c-border-strong, #e2e8f0)', display: 'flex', gap: 8 }}>
         {isPool ? (
           <Button type="primary" block onClick={() => onClaim(detail)}>
             {t('lead.claim')}

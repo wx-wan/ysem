@@ -340,7 +340,7 @@ export default function SalesLeads() {
         </FilterToolbar>
 
         {/* 卡片列表 + 右侧详情面板（点击卡片联动，参考询盘列表交互） */}
-        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 16 }}>
+        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginTop: 16 }}>
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
             <LeadCardList
               dataSource={list.listData}

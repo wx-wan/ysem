@@ -8,6 +8,32 @@ import { applyScope, roleScope, includePublicSea, productVisibilityWhere, projec
 import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
+import { computeDiff } from '../lib/operation-diff';
+
+/** 线索操作日志的字段中文名（diff 展示用） */
+const LEAD_DIFF_LABELS: Record<string, string> = {
+  leadName: '线索名称',
+  customerId: '客户',
+  channelId: '来源渠道',
+  shopId: '来源平台',
+  source: '来源',
+  companyName: '公司名称',
+  contactName: '联系人',
+  contactMethods: '联系方式',
+  email: '邮箱',
+  phone: '电话',
+  country: '国家',
+  productInterest: '产品意向',
+  remark: '备注',
+  targetMarket: '目标国家/地区',
+  currency: '币种',
+  unit: '单位',
+  targetPrice: '目标价位',
+  targetPriceRate: '目标价位汇率',
+  expectedDelivery: '期望交期',
+  customerType: '客户类型',
+  ownerId: '负责人',
+};
 
 /** 线索状态中文名（4 态；状态由单据事件自动推进，无人工改动入口） */
 const LEAD_STATUS_LABEL: Record<string, string> = {
@@ -598,9 +624,9 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     }
     // 数据范围：目标线索本身必须落在当前用户 ownerId 范围内（scope 外与不存在同响应 404）
     // 该门**先于任何写入**（lead.update / leadItem.deleteMany / leadItem.create）。
+    // 取整行作为 diff 的 before 基准（变更字段对比需要旧值）
     const existing = await prisma.lead.findFirst({
       where: await scopedWhere(req, req.params.id),
-      select: { id: true, channelId: true, shopId: true, leadNo: true, leadName: true },
     });
     if (!existing) {
       fail(res, 404, '线索不存在');
@@ -734,7 +760,12 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
-    // 线索操作记录（详情面板「操作记录」Tab 的数据源）
+    // 线索操作记录（详情面板「操作记录」Tab 的数据源）：记录字段级变更明细
+    const diff = await computeDiff(
+      existing as unknown as Record<string, any>,
+      { ...(existing as unknown as Record<string, any>), ...update } as Record<string, any>,
+      { labels: LEAD_DIFF_LABELS, fields: Object.keys(update) },
+    );
     void activityLogger.log({
       userId: req.userId ?? '',
       username: req.username ?? '',
@@ -744,7 +775,8 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
       businessType: BUSINESS_TYPE.LEAD,
       businessId: existing.id,
       businessNo: existing.leadNo,
-      summary: `更新了线索「${existing.leadName || existing.leadNo}」`,
+      summary: `更新了线索「${existing.leadName || existing.leadNo}」${diff.length ? `（${diff.length} 处变更）` : ''}`,
+      diff,
       ip: req.ip,
       customerId: typeof update.customerId === 'string' ? update.customerId : undefined,
     });

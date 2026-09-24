@@ -143,7 +143,7 @@ export default function UnitManager() {
         ),
     },
     {
-      title: t('common.actions'),
+      title: t('common.operation'),
       width: 140,
       render: (_: unknown, r: Unit) =>
         canEdit ? (
