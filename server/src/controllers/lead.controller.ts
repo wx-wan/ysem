@@ -347,8 +347,10 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
 
-    // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照
-    let leadItems: { productId: string; productName: string | null; quantity: number; productDesc: string | null }[] | undefined;
+    // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照。
+    // 只要有产品关联信息（引用 productId，或自由输入的 productName/productDesc）就持久化，
+    // 避免「手动输入产品名/描述」被静默丢弃导致无法回填（见 getLead 的 items 回填链路）。
+    let leadItems: { productId: string | null; productName: string | null; quantity: number; productDesc: string | null }[] | undefined;
     if (data.productId) {
       // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内；**先于事务与任何写入**。
       // 不可见与不存在**同结果**（400 `产品不存在`），不引入存在性 oracle。
@@ -365,6 +367,14 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         productName: product.name,
         quantity: data.quantity || 1,
         // D2：产品描述落在 LeadItem 明细行
+        productDesc: data.productDesc ?? null,
+      }];
+    } else if (data.productName || data.productDesc) {
+      // 自由输入（未在下拉匹配到产品，productId 为空）：保留手输产品名/描述以便回填
+      leadItems = [{
+        productId: null,
+        productName: data.productName ?? null,
+        quantity: data.quantity || 1,
         productDesc: data.productDesc ?? null,
       }];
     }
@@ -559,7 +569,11 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
       }
     }
 
-    // V1.0：产品关联整表重建于 LeadItem（owner 为 leadId，不能误用 opportunityId）
+    // V1.0：产品关联维护于 LeadItem（owner 为 leadId，不能误用 opportunityId）。
+    // 规则：
+    //  - 显式传 productId（含 null=清空）：整组替换旧明细（productId 置空但保留手输名/描述则补建无关联行）；
+    //  - 仅传自由输入的产品名/描述（productId 未传）：在已有明细行增量更新，无行则补建。
+    // 目标：手动输入的产品名/描述也能持久化，避免重开线索时无法回填。
     if (productId !== undefined) {
       await prisma.leadItem.deleteMany({ where: { leadId: existing.id } });
       if (productId) {
@@ -573,15 +587,33 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
             quantity: data.quantity || 1,
           },
         });
+      } else if (data.productName || data.productDesc) {
+        // productId 显式置空但保留了手输产品名/描述 → 落为无关联产品的明细行
+        await prisma.leadItem.create({
+          data: {
+            leadId: existing.id,
+            productId: null,
+            productName: data.productName ?? null,
+            productDesc: data.productDesc ?? null,
+            quantity: data.quantity || 1,
+          },
+        });
       }
-    }
-
-    // D2：仅修改产品描述（未改产品）时，更新现有 LeadItem 的 productDesc
-    if (productDesc !== undefined && productId === undefined) {
-      await prisma.leadItem.updateMany({
-        where: { leadId: existing.id },
-        data: { productDesc: productDesc ?? null },
-      });
+    } else {
+      // 未传 productId：增量更新已有明细行的手输产品名/描述（productId 引用不动）
+      const patch: Record<string, unknown> = {};
+      if (productName !== undefined) patch.productName = productName ?? null;
+      if (productDesc !== undefined) patch.productDesc = productDesc ?? null;
+      if (Object.keys(patch).length) {
+        const existingItem = await prisma.leadItem.findFirst({ where: { leadId: existing.id }, select: { id: true } });
+        if (existingItem) {
+          await prisma.leadItem.update({ where: { id: existingItem.id }, data: patch });
+        } else {
+          await prisma.leadItem.create({
+            data: { leadId: existing.id, productId: null, productName: data.productName ?? null, productDesc: data.productDesc ?? null, quantity: data.quantity || 1 },
+          });
+        }
+      }
     }
     success(res, null, '更新成功');
   } catch (err) {
