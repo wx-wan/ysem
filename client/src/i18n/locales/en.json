@@ -602,6 +602,8 @@
     "customerPendingTip": "Customer \"{{name}}\" is not filed yet",
     "createCustomerNow": "Create customer profile",
     "pendingTag": "Unfiled",
+    "filedTag": "Filed",
+    "unfiledTip": "Not filed yet. Click to create the record",
     "pendingLabel": "Not filed yet — click to create",
     "targetMarket": "Target Country/Region",
     "targetMarketRequired": "Please select target country/region",

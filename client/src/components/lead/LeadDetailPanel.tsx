@@ -119,7 +119,7 @@ export default function LeadDetailPanel({
     { label: t('lead.fieldLeadNo'), value: detail.leadNo || '—' },
     { label: t('lead.companyName'), value: company },
     { label: t('lead.product'), value: product || '—' },
-    { label: t('lead.quantityRequirement'), value: detail.quantity ?? '—' },
+    { label: t('lead.quantityRequirement'), value: detail.quantity != null ? `${detail.quantity}${detail.unit || '个'}` : '—' },
     {
       label: t('lead.targetPrice'),
       // 目标价位：展示录入时的币种 + 金额（换算统一用落库的汇率快照，见 MoneyInput）
@@ -173,14 +173,17 @@ export default function LeadDetailPanel({
                 <Tooltip
                   color="white"
                   // 白底浮层：8/12 内边距（4 刻度）、细边框 + 两级阴影定边界，圆角走 --radius-sm
-                  overlayInnerStyle={{
-                    padding: '8px 12px',
-                    borderRadius: 'var(--radius-sm, 8px)',
-                    border: '1px solid var(--c-border-strong, #e2e8f0)',
-                    boxShadow: 'var(--shadow-hover, 0 8px 24px rgba(0, 0, 0, 0.08))',
-                    color: 'var(--c-text, #1e293b)',
-                    fontSize: 13,
-                    lineHeight: 1.5,
+                  // antd 6：overlayInnerStyle 已弃用，改用语义化 styles.container
+                  styles={{
+                    container: {
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-sm, 8px)',
+                      border: '1px solid var(--c-border-strong, #e2e8f0)',
+                      boxShadow: 'var(--shadow-hover, 0 8px 24px rgba(0, 0, 0, 0.08))',
+                      color: 'var(--c-text, #1e293b)',
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                    },
                   }}
                   title={
                     <div style={{ display: 'grid', gap: 6, minWidth: 140 }}>
@@ -249,7 +252,8 @@ export default function LeadDetailPanel({
                             return {
                               key: log.id,
                               color: meta?.color ?? 'blue',
-                              children: (
+                              // antd 6：items.children 已弃用，改用 items.content
+                              content: (
                                 <div style={{ fontSize: 13 }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                                     {meta ? (

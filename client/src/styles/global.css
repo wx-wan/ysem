@@ -86,14 +86,6 @@
 .lead-form-v2 .ant-form-item:last-child {
   margin-bottom: 0;
 }
-/* 数量需求后缀（单位下拉）：addon 与下拉背景透明，与输入框视觉连成一体。
-   选择器带 .ant-form-item 提高特异性，避免被 antd 运行时注入的样式覆盖。 */
-.lead-quantity-item.ant-form-item .ant-input-group-addon,
-.lead-quantity-item.ant-form-item .ant-input-addon,
-.lead-quantity-item.ant-form-item .ant-input-group-addon *,
-.lead-quantity-item.ant-form-item .ant-input-addon * {
-  background: transparent;
-}
 
 /* 金额组件的币种下拉（目标价位前缀）：只显示 ¥ / $ 符号，选中值与下拉项均居中 */
 .money-currency-symbol {
@@ -369,6 +361,7 @@
   border: 1px solid var(--c-border, #eef0f3);
   border-radius: 12px;
   padding: 12px 16px;
+  min-height: 120px;
 }
 .lead-wizard-summary__title {
   font-size: 13px;

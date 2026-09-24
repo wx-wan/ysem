@@ -13,10 +13,11 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, SwapOutlined, RollbackOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -24,7 +25,6 @@ import CustomerTypeSelect from '../CustomerTypeSelect';
 import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
-import TransferOwnerModal from '../common/TransferOwnerModal';
 import { type Channel } from '../../api/channel';
 import { type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
@@ -32,7 +32,6 @@ import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
-import { useReleaseToPool } from '../../hooks/useReleaseToPool';
 import ChipSelect from '../common/ChipSelect';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
@@ -50,10 +49,11 @@ export interface LeadFormModalHandle {
 }
 
 // 三步向导各步骤包含的表单字段（「下一步」仅校验当前步骤字段）
+// 第三步为「确认商机」：不展示/校验表单字段，客户与产品建档校验由确认动作（convertLead 链路）完成
 const STEP_FIELDS: string[][] = [
   ['customerKey', 'targetMarket', 'customerType', 'sourceKey', 'contactName', 'contactMethods'],
   ['productKey', 'quantity', 'targetPrice', 'productDesc', 'images', 'expectedDelivery'],
-  ['ownerId'],
+  [],
 ];
 
 // 负责人头像底色（按列表顺序循环取色）
@@ -90,7 +90,6 @@ interface Props {
 const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
   const { message, modal } = App.useApp();
-  const releaseToPool = useReleaseToPool();
   const [form] = Form.useForm();
 
   const {
@@ -106,11 +105,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editing, setEditing] = useState<Lead | null>(null);
-  // 三步向导当前步骤（0 客户信息 / 1 需求详情 / 2 分配跟进）
+  // 三步向导当前步骤（0 客户信息 / 1 需求详情 / 2 确认商机：仅展示需求清单 + 客户/产品建档校验）
   const [step, setStep] = useState(0);
   const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
   const navigate = useNavigate();
-  const [transferOpen, setTransferOpen] = useState(false);
   // 确认建档：新建客户弹窗（带入待确认客户名到公司名称）
   const [custModalOpen, setCustModalOpen] = useState(false);
   const [initialCustName, setInitialCustName] = useState('');
@@ -142,7 +140,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
   const watchCustomerKey = Form.useWatch('customerKey', form);
-  const watchOwnerId = Form.useWatch('ownerId', form);
   const watchUnit = Form.useWatch('unit', form);
 
   // 线索来源选项：来源渠道 + 来源平台由前端拼接为一个 JSON（{ channelId, shopId }）作为选项值；
@@ -361,6 +358,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       productId,
       productName,
       quantity: values.quantity ? Number(values.quantity) || 0 : 0,
+      // 数量单位：隐藏字段（数量输入框后缀可选），随提交落库
+      unit: values.unit || null,
       // 负责人在弹窗标题栏（Form.Item 注册字段），随 validateFields 一并取回
       ownerId: values.ownerId || null,
       // 详情扩展字段
@@ -480,24 +479,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
   };
 
-  // 释放线索（私海 → 公海）：弹窗二次确认后执行（与客户释放同一套确认逻辑）
-  const handleReleaseLead = () => {
-    if (!editing) return;
-    releaseToPool({
-      name: editing.leadName || editing.companyName || '',
-      action: () => leadApi.release(editing.id),
-      onSuccess: () => onSaved?.(),
-    });
-  };
-
-  // 转交线索（联动客户/产品负责人）：提交逻辑由公共转交组件驱动
-  const handleTransferLead = async (newOwnerId: string) => {
-    if (!editing) return;
-    await leadApi.transfer(editing.id, newOwnerId);
-    setTransferOpen(false);
-    onSaved?.();
-  };
-
   // 认领线索（公海 → 私海）
   const handleClaimLead = async () => {
     if (!editing) return;
@@ -584,8 +565,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 新建模式（无真实线索 id）下，转交/释放/确认等仅对已有线索的操作不可用
-  const isCreate = !editing?.id;
   // 公海线索（无负责人）：不支持修改，仅可认领（canonical 归属字段为 ownerId）
   const isPoolLead = !!editing?.id && !editing.ownerId;
   // 只读：已推进（已确认 / 已打样 / 已成交）或公海线索均不可编辑（公海仅保留认领操作）
@@ -694,7 +673,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </div>
           }
         >
-          {/* 负责人：步骤三以卡片选择，此处保留隐藏字段以便提交时携带 ownerId */}
+          {/* 负责人：界面不选择（新建默认当前登录用户、编辑沿用原负责人），隐藏字段保证提交携带 */}
           <Form.Item name="ownerId" hidden>
             <Input />
           </Form.Item>
@@ -817,29 +796,31 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Form.Item>
               </Col>
               <Col span={12}>
-                <Form.Item
-                  name="quantity"
-                  label={t('lead.quantityRequirement')}
-                  rules={[{ required: true, message: t('lead.quantityRequired') }]}
-                  className="lead-quantity-item"
-                >
-                  <Input
-                    style={{ width: '100%' }}
-                    inputMode="numeric"
-                    maxLength={12}
-                    placeholder={t('lead.quantityRequirementPlaceholder')}
-                    // 仅允许输入非负整数（数量需求）
-                    onChange={(e) => form.setFieldsValue({ quantity: e.target.value.replace(/[^\d]/g, '') })}
-                    addonAfter={
-                      <Select
-                        size="small"
-                        value={watchUnit}
-                        onChange={(v: string) => form.setFieldsValue({ unit: v })}
-                        options={unitOptions}
-                        style={{ width: 72 }}
+                {/* 数量需求：Input + 单位 Select 用 Space.Compact 组合（antd 6 弃用 addonAfter）。
+                    校验规则挂在 noStyle 的内层 Form.Item 上，外层仅负责 label 与布局 */}
+                <Form.Item label={t('lead.quantityRequirement')} required className="lead-quantity-item">
+                  <Space.Compact style={{ width: '100%' }}>
+                    <Form.Item
+                      name="quantity"
+                      noStyle
+                      rules={[{ required: true, message: t('lead.quantityRequired') }]}
+                    >
+                      <Input
+                        style={{ flex: 1, minWidth: 0 }}
+                        inputMode="numeric"
+                        maxLength={12}
+                        placeholder={t('lead.quantityRequirementPlaceholder')}
+                        // 仅允许输入非负整数（数量需求）
+                        onChange={(e) => form.setFieldsValue({ quantity: e.target.value.replace(/[^\d]/g, '') })}
                       />
-                    }
-                  />
+                    </Form.Item>
+                    <Select
+                      value={watchUnit}
+                      onChange={(v: string) => form.setFieldsValue({ unit: v })}
+                      options={unitOptions}
+                      style={{ width: 88 }}
+                    />
+                  </Space.Compact>
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -870,7 +851,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
             </Row>
           )}
 
-          {/* 步骤三：分配跟进 */}
+          {/* 步骤三：确认商机（仅展示需求清单 + 客户/产品建档校验） */}
           {step === 2 && (
             <>
               {/* 溯源：已关联商机 */}
@@ -901,71 +882,75 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 />
               )}
 
-              {/* 分配给：负责人头像卡片（点击回写 ownerId 隐藏字段） */}
-              <div className="lead-wizard-block">
-                <div className="lead-wizard-block__title">{t('lead.assignTo')}</div>
-                {!isPoolLead && (
-                  <div className="lead-wizard-owner-grid">
-                    {users.map((u, idx) => {
-                      const active = watchOwnerId === u.id;
-                      return (
-                        <button
-                          type="button"
-                          key={u.id}
-                          className={`lead-wizard-owner-card${active ? ' is-active' : ''}`}
-                          disabled={readonly}
-                          onClick={() => form.setFieldsValue({ ownerId: u.id })}
-                        >
-                          <span
-                            className="lead-wizard-owner-card__avatar"
-                            style={{ background: OWNER_COLORS[idx % OWNER_COLORS.length] }}
-                          >
-                            {(u.realName || u.username || '?')[0]}
-                          </span>
-                          <span className="lead-wizard-owner-card__meta">
-                            <span className="lead-wizard-owner-card__name">{u.realName || u.username}</span>
-                            <span className="lead-wizard-owner-card__desc">{u.username}</span>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {/* 转交 / 释放（仅已有线索展示，新建时隐藏） */}
-                {!isCreate && (
-                  <Space size={8} style={{ marginTop: 10 }}>
-                    <Button size="small" icon={<SwapOutlined />} disabled={readonly} onClick={() => setTransferOpen(true)}>
-                      {t('lead.transfer')}
-                    </Button>
-                    {editing?.ownerId && (
-                      <Button size="small" icon={<RollbackOutlined />} disabled={readonly} onClick={handleReleaseLead}>
-                        {t('lead.release')}
-                      </Button>
-                    )}
-                  </Space>
-                )}
-              </div>
-
-              {/* 需求清单摘要：直接读取表单 store，确保前序步骤卸载但 preserve 保留的值仍正确回填 */}
+              {/* 确认商机阶段内容与详情「详细信息」一致：上=客户需求（本阶段标题为「需求清单」），下=基本信息。
+                  客户 / 产品未建档时展示可点击的「未建档」标签，弹窗建档后方可确认转商机 */}
               <div className="lead-wizard-summary">
+                <div className="lead-wizard-summary__title">{t('lead.customerReq')}</div>
+                {(() => {
+                  const v = form.getFieldsValue(true) as Record<string, any>;
+                  return (
+                    <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.75)', whiteSpace: 'pre-wrap' }}>
+                      {v.productDesc || editing?.items?.[0]?.productDesc || editing?.productDesc || '—'}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="lead-wizard-summary" style={{ marginTop: 12 }}>
                 <div className="lead-wizard-summary__title">{t('lead.confirmInfo')}</div>
                 {(() => {
                   const v = form.getFieldsValue(true) as Record<string, any>;
+                  // 客户建档判定：线索已关联客户，或输入的客户在客户列表中存在
+                  const customerFiled =
+                    !!editing?.customerId ||
+                    (!!v.customerKey && customerOptions.some((c) => c.label === v.customerKey));
+                  // 产品建档判定：明细行已关联产品，或输入的产品在产品列表中存在
+                  const productFiled =
+                    !!editing?.items?.[0]?.productId ||
+                    (!!v.productKey && productNameOptions.some((p) => p.label === v.productKey));
                   return [
-                    { label: t('lead.customerCompany'), value: v.customerKey },
-                    { label: t('lead.targetMarket'), value: v.targetMarket },
-                    { label: t('lead.product'), value: v.productKey },
-                    { label: t('lead.quantityRequirement'), value: v.quantity != null ? `${v.quantity}${v.unit || ''}` : undefined },
+                    { label: t('lead.fieldLeadNo'), value: editing?.leadNo },
+                    {
+                      label: t('lead.customerCompany'),
+                      value: v.customerKey,
+                      filed: v.customerKey ? customerFiled : undefined,
+                      onFile: () => confirmCreateCustomer(),
+                    },
+                    {
+                      label: t('lead.product'),
+                      value: v.productKey,
+                      filed: v.productKey ? productFiled : undefined,
+                      onFile: () => confirmCreateProduct(),
+                    },
+                    { label: t('lead.quantityRequirement'), value: v.quantity != null ? `${v.quantity}${v.unit || '个'}` : undefined },
                     { label: t('lead.targetPrice'), value: formatMoneyValue(v.targetPrice, currencies) },
+                    {
+                      label: t('lead.expectedDelivery'),
+                      value: v.expectedDelivery ? dayjs(v.expectedDelivery).format('YYYY-MM-DD') : undefined,
+                    },
                     { label: t('lead.leadSource'), value: sourceOptions.find((o) => o.value === v.sourceKey)?.label },
                     {
                       label: t('lead.assignee'),
                       value: users.find((u) => u.id === v.ownerId)?.realName || editing?.owner?.realName || t('sales.unassigned'),
                     },
+                    { label: t('lead.createdAt'), value: editing?.createdAt?.slice(0, 10) },
                   ].map((row) => (
                     <div key={row.label} className="lead-wizard-summary__row">
                       <span className="lead-wizard-summary__label">{row.label}</span>
-                      <span className="lead-wizard-summary__value">{row.value || '—'}</span>
+                      <span className="lead-wizard-summary__value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {row.filed === true && <Tag color="success" style={{ marginInlineEnd: 0 }}>{t('lead.filedTag')}</Tag>}
+                        {row.filed === false && (
+                          <Tooltip title={t('lead.unfiledTip')}>
+                            <Tag
+                              color="orange"
+                              style={{ marginInlineEnd: 0, cursor: 'pointer' }}
+                              onClick={row.onFile}
+                            >
+                              {t('lead.pendingTag')}
+                            </Tag>
+                          </Tooltip>
+                        )}
+                        <span>{row.value || '—'}</span>
+                      </span>
                     </div>
                   ));
                 })()}
@@ -1013,18 +998,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           summaryRejectRef.current = null;
           resolve?.(ids);
         }}
-      />
-
-      {/* 转交线索：选择新负责人（与客户共用同一组件 / 逻辑） */}
-      <TransferOwnerModal
-        open={transferOpen}
-        targetName={editing?.leadName || editing?.companyName}
-        currentOwnerId={editing?.ownerId ?? undefined}
-        title={t('lead.transfer')}
-        placeholder={t('lead.selectTransferTarget')}
-        successMessage={t('lead.transferSuccess')}
-        onTransfer={handleTransferLead}
-        onClose={() => setTransferOpen(false)}
       />
     </>
   );

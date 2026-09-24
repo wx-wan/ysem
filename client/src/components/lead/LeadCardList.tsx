@@ -64,7 +64,7 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
                 {product && <div className="lead-card__prod">{product}</div>}
                 {(r.quantity || desc) && (
                   <div className="lead-card__meta">
-                    {r.quantity ? <span>{t('lead.quantityRequirement')}：{r.quantity}</span> : null}
+                    {r.quantity ? <span>{t('lead.quantityRequirement')}：{r.quantity}{r.unit || '个'}</span> : null}
                     {desc && <span className="lead-card__desc">{desc}</span>}
                   </div>
                 )}

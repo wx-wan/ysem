@@ -630,6 +630,8 @@
     "customerPendingTip": "客户「{{name}}」尚未建档",
     "createCustomerNow": "创建客户档案",
     "pendingTag": "未建档",
+    "filedTag": "已建档",
+    "unfiledTip": "尚未建档，点击补全建档信息",
     "targetMarket": "目标国家/地区",
     "targetMarketRequired": "请选择目标国家/地区",
     "targetMarketPlaceholder": "选择国家",
