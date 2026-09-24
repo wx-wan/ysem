@@ -21,7 +21,7 @@ interface Props {
   isAdmin: boolean;
   selectedCount: number;
   onBatchDelete: () => void;
-  /** 筛选栏左侧前置内容（如「我的线索 / 公海」切换胶囊） */
+  /** 筛选栏左侧前置内容（如「私有 / 公海」切换胶囊） */
   prepend?: ReactNode;
 }
 

@@ -688,7 +688,7 @@
     "selectTransferTarget": "Select the new assignee to transfer to",
     "releaseSuccess": "Lead released to public pool",
     "transferSuccess": "Lead transferred; the linked customer and product owners were also updated",
-    "scopeMine": "My leads",
+    "scopeMine": "Private",
     "scopePool": "Public pool",
     "claim": "Claim",
     "claimTip": "Claim this lead to take ownership before confirming or invalidating it",

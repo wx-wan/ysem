@@ -18,7 +18,7 @@ export function useLeadList() {
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
   const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
-  // 列表范围：mine=我的线索；pool=公海（已释放、无负责人）
+  // 列表范围：mine=私有；pool=公海（已释放、无负责人）
   const [scope, setScope] = useState<'mine' | 'pool'>('mine');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(19);
