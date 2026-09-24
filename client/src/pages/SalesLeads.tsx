@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Card, Pagination, Button, App, theme } from 'antd';
+import { Card, Pagination, Button, App, ConfigProvider, theme } from 'antd';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import LeadCreateCard from '../components/lead/LeadCreateCard';
@@ -234,7 +234,8 @@ export default function SalesLeads() {
   };
 
   return (
-    <div>
+    <ConfigProvider componentSize="large">
+      <div>
       <Card
         variant="borderless"
         style={{
@@ -403,6 +404,7 @@ export default function SalesLeads() {
           resolve?.(ids);
         }}
       />
-    </div>
+      </div>
+    </ConfigProvider>
   );
 }

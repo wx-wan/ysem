@@ -69,7 +69,7 @@ const Row: React.FC<{
         已建档
       </Tag>
     ) : (
-      <Button type="primary" ghost size="small" icon={<PlusOutlined />} loading={loading} onClick={onBuild}>
+      <Button type="primary" ghost size="large" icon={<PlusOutlined />} loading={loading} onClick={onBuild}>
         新建
       </Button>
     )}

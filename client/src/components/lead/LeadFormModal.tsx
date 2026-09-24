@@ -800,7 +800,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       </span>
                       <Button
                         type="link"
-                        size="small"
+                        size="large"
                         disabled={!editing?.pipelineId && !linkedPipeline?.id}
                         onClick={() => {
                           const id = editing?.pipelineId || linkedPipeline?.id;
@@ -848,11 +848,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 {/* 转交 / 释放（仅已有线索展示，新建时隐藏） */}
                 {!isCreate && (
                   <Space size={8} style={{ marginTop: 10 }}>
-                    <Button size="small" icon={<SwapOutlined />} disabled={readonly} onClick={() => setTransferOpen(true)}>
+                    <Button size="large" icon={<SwapOutlined />} disabled={readonly} onClick={() => setTransferOpen(true)}>
                       {t('lead.transfer')}
                     </Button>
                     {editing?.ownerId && (
-                      <Button size="small" icon={<RollbackOutlined />} disabled={readonly} onClick={handleReleaseLead}>
+                      <Button size="large" icon={<RollbackOutlined />} disabled={readonly} onClick={handleReleaseLead}>
                         {t('lead.release')}
                       </Button>
                     )}

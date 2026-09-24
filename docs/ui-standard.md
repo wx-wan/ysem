@@ -123,6 +123,6 @@
 1. 页面外层 `Card` 圆角 16、描边、轻阴影统一。
 2. 分段/筛选用 `CapsuleSwitch`（白底描边 + 蓝实心）。
 3. 主按钮/链接/激活态统一蓝；状态用语义色。
-4. 表单 `size="large"` + `variant="filled"`。
+4. 表单 `size="large"` + `variant="filled"`；页面根节点包 `ConfigProvider componentSize="large"`，使按钮/输入框/下拉默认 large（弹窗经 React portal 仍继承该 context）。
 5. 复用 `.lead-wizard-summary`、`.lead-card*` 等已验证样式类，避免重造。
 6. 全站主色已是蓝，无需改 token；仅需对齐组件风格。
