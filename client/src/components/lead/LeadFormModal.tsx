@@ -199,11 +199,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepConfirm')];
 
   const goNext = async () => {
-    // 联系方式是自定义组件，字段级校验单独触发（沟通工具 / 账号分开判定）
-    if (step === 0 && !validateContactMethods()) return;
     try {
+      // 联系方式为自定义组件，与表单字段校验并行触发：
+      // 所有必填字段一起飘红，不因联系方式先失败而阻断其它字段校验
+      const contactOk = step === 0 ? validateContactMethods() : true;
       // 仅校验当前步骤字段，通过后进入下一步
       await form.validateFields(STEP_FIELDS[step]);
+      // 联系方式校验不通过时停留在当前步（飘红已与其它字段一并展示）
+      if (!contactOk) return;
       setStep((s) => Math.min(s + 1, wizardSteps.length - 1));
     } catch {
       /* 校验失败停留在当前步，错误提示由 Form.Item 展示 */

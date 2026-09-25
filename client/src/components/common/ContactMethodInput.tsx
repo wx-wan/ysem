@@ -1,7 +1,7 @@
 import { Button, Input, Select, theme } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { forwardRef, useImperativeHandle, useState } from 'react';
+import { forwardRef, useImperativeHandle, useState, type CSSProperties } from 'react';
 
 export interface ContactMethodItem {
   tool: string;
@@ -111,40 +111,52 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
     },
   }));
 
+  // 与 antd Form.Item 校验飘红文案保持一致：使用 token 字号与错误色，避免自定义 12px 偏小
+  const errStyle: CSSProperties = {
+    color: token.colorError,
+    fontSize: token.fontSize,
+    lineHeight: token.lineHeight,
+    marginTop: 4,
+  };
+
   return (
     <div>
       {list.map((it, idx) => {
         const toolError = errors[fieldKey(idx, 'tool')];
         const accountError = errors[fieldKey(idx, 'account')];
-        const rowError = [toolError, accountError].filter(Boolean).join('；');
         return (
-          <div key={idx}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: compact ? 4 : 8 }}>
-              <Select
-                placeholder={t('lead.contactToolPlaceholder')}
-                value={it.tool || undefined}
-                onChange={(v) => setRow(idx, { tool: v })}
-                options={options}
-                disabled={disabled}
-                variant={variant}
-                size={size}
-                style={{ width: compact ? 104 : 160 }}
-                status={toolError ? 'error' : undefined}
-                showSearch
-                optionFilterProp="label"
-                allowClear
-              />
-              <Input
-                placeholder={t('lead.contactAccountPlaceholder')}
-                value={it.account}
-                onChange={(e) => setRow(idx, { account: e.target.value })}
-                disabled={disabled}
-                variant={variant}
-                size={size}
-                maxLength={300}
-                style={compact ? { flex: 1, minWidth: 0 } : undefined}
-                status={accountError ? 'error' : undefined}
-              />
+          <div key={idx} style={{ marginBottom: compact ? 4 : 8 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', width: compact ? 104 : 160 }}>
+                <Select
+                  placeholder={t('lead.contactToolPlaceholder')}
+                  value={it.tool || undefined}
+                  onChange={(v) => setRow(idx, { tool: v })}
+                  options={options}
+                  disabled={disabled}
+                  variant={variant}
+                  size={size}
+                  style={{ width: '100%' }}
+                  status={toolError ? 'error' : undefined}
+                  showSearch
+                  optionFilterProp="label"
+                  allowClear
+                />
+                {toolError && <div style={errStyle}>{toolError}</div>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                <Input
+                  placeholder={t('lead.contactAccountPlaceholder')}
+                  value={it.account}
+                  onChange={(e) => setRow(idx, { account: e.target.value })}
+                  disabled={disabled}
+                  variant={variant}
+                  size={size}
+                  maxLength={300}
+                  status={accountError ? 'error' : undefined}
+                />
+                {accountError && <div style={errStyle}>{accountError}</div>}
+              </div>
               {list.length > 1 && (
                 <span style={{ display: 'inline-flex', alignItems: 'center', height: size === 'large' ? 40 : 32 }}>
                   <Button
@@ -158,18 +170,6 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
                 </span>
               )}
             </div>
-            {rowError && (
-              <div
-                style={{
-                  color: token.colorError,
-                  fontSize: 12,
-                  lineHeight: '20px',
-                  marginBottom: compact ? 4 : 8,
-                }}
-              >
-                {rowError}
-              </div>
-            )}
           </div>
         );
       })}
