@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { Layout, Menu, Spin, theme, Skeleton } from 'antd';
+import { Layout, Menu, theme, Skeleton } from 'antd';
 import { Z_INDEX } from '../zIndex';
 import type { MenuProps } from 'antd';
 import {
@@ -78,7 +78,7 @@ export default function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout, ready } = useAuthStore();
-  const { fetchRates, loading: ratesLoading } = useCurrencyStore();
+  const { fetchRates } = useCurrencyStore();
   const { token } = theme.useToken();
   // 连接 SSE 通知流：权限变更等实时推送给当前用户
   useNotificationStream();
@@ -374,28 +374,6 @@ export default function MainLayout() {
           <Outlet />
         </Content>
       </Layout>
-
-      {ratesLoading && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: Z_INDEX.top,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 16,
-            background: 'rgba(255, 255, 255, 0.65)',
-            backdropFilter: 'blur(2px)',
-          }}
-        >
-          <Spin size="large" />
-          <span style={{ color: 'rgba(0,0,0,0.65)', fontSize: 14 }}>
-            {t('common.loadingRates')}
-          </span>
-        </div>
-      )}
 
       {/* 权限/数据范围变更确认刷新弹窗（自定义 AppModal，禁止关闭，仅可立即刷新） */}
       <PermChangedModal />

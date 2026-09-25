@@ -115,8 +115,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const productEditRef = useRef<ProductEditModalHandle>(null);
   // 联系方式「新增」按钮放在 Form.Item label 旁时，用 ref 触发组件内部 add()
   const contactMethodRef = useRef<ContactMethodHandle>(null);
-  // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
+  // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id；用户取消关闭时 reject）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
+  const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
   // 新建客户弹窗是否处于强制建档模式（隐藏取消按钮）
   const [custForceMode, setCustForceMode] = useState(false);
   // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
@@ -395,7 +396,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
+  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
   const openCustomerForm = (initial?: {
     companyName?: string;
     contactName?: string;
@@ -403,21 +404,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     phone?: string;
     country?: string;
   }) =>
-    new Promise<{ id: string }>((resolve) => {
+    new Promise<{ id: string }>((resolve, reject) => {
       pendingResolveRef.current = resolve;
-      setCustForceMode(true);
+      pendingRejectRef.current = reject;
       const { companyName } = initial || {};
       setInitialCustName(companyName ?? '');
       setCustModalOpen(true);
     });
 
-  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
+  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
   // 线索参考图（即产品图）一并带入新建产品弹窗，仅写入产品表
   const openProductForm = (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) =>
-    new Promise<{ id: string }>((resolve) => {
+    new Promise<{ id: string }>((resolve, reject) => {
       pendingResolveRef.current = resolve;
+      pendingRejectRef.current = reject;
       const { name, description, images } = initial || {};
-      productEditRef.current?.open(undefined, { name, description, images }, true);
+      productEditRef.current?.open(undefined, { name, description, images }, false);
     });
 
   // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
@@ -515,6 +517,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     if (pendingResolveRef.current) {
       const resolve = pendingResolveRef.current;
       pendingResolveRef.current = null;
+      pendingRejectRef.current = null;
       setCustForceMode(false);
       setCustModalOpen(false);
       resolve({ id: customer.id });
@@ -544,6 +547,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     if (pendingResolveRef.current) {
       const resolve = pendingResolveRef.current;
       pendingResolveRef.current = null;
+      pendingRejectRef.current = null;
       resolve({ id: saved.id });
       refreshEditing();
       return;
@@ -960,22 +964,34 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         </AppModal>
       </Form>
 
-      {/* 确认建档：新建客户弹窗（带入待确认客户名到公司名称） */}
+      {/* 确认建档：新建客户弹窗（带入待确认客户名到公司名称），允许关闭（取消则回到汇总页 / 线索编辑页） */}
       <CustomerFormModal
         open={custModalOpen}
         editingCustomer={null}
         initialCompanyName={initialCustName}
         initialCountry={editing?.country ? findCountry(editing.country)?.zh : undefined}
         force={custForceMode}
-        onClose={() => setCustModalOpen(false)}
+        onClose={() => {
+          setCustModalOpen(false);
+          const reject = pendingRejectRef.current;
+          pendingRejectRef.current = null;
+          pendingResolveRef.current = null;
+          reject?.(new Error('cancelled'));
+        }}
         onSuccess={handleCustomerFiled}
       />
 
-      {/* 确认建档：新建产品弹窗（带入待确认产品名到产品名称） */}
+      {/* 确认建档：新建产品弹窗（带入待确认产品名到产品名称），允许关闭（取消则回到汇总页 / 线索编辑页） */}
       <ProductEditModal
         ref={productEditRef}
         crafts={crafts}
         audiences={audiences}
+        onClose={() => {
+          const reject = pendingRejectRef.current;
+          pendingRejectRef.current = null;
+          pendingResolveRef.current = null;
+          reject?.(new Error('cancelled'));
+        }}
         onSuccess={handleProductFiled}
       />
 

@@ -33,6 +33,8 @@ interface ProductEditModalProps {
   onSuccess?: (saved?: Product) => void;
   /** 强制模式：隐藏取消/上一步按钮，禁用 ESC，必须填完保存（用于转商机时强制建档） */
   force?: boolean;
+  /** 用户取消关闭（点取消 / 关闭叉 / ESC，非保存成功）时回调，便于父级清理挂起的状态（如转商机建档 Promise） */
+  onClose?: () => void;
 }
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' ');
@@ -82,7 +84,7 @@ const FloatInput = (props: React.ComponentProps<typeof InputNumber> & { allowCle
 };
 
 export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditModalProps>(
-  ({ crafts, audiences, nested, onCreated, onSuccess, force }, ref) => {
+  ({ crafts, audiences, nested, onCreated, onSuccess, force, onClose }, ref) => {
     const { t } = useTranslation();
     const { message } = App.useApp();
     const { user: currentUser } = useAuthStore();
@@ -124,6 +126,12 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     const [initialImages, setInitialImages] = useState<ProductImageItem[] | undefined>();
     // 强制建档模式（转商机时）：禁止取消/ESC，必须保存
     const [forceOpen, setForceOpen] = useState(false);
+    // 标记本次关闭是否由「保存成功」触发，避免成功关闭时误调用 onClose（取消回调）
+    const successCloseRef = useRef(false);
+    // 用户取消关闭（非保存成功）时通知父级；保存成功路径已置位 successCloseRef 跳过
+    const notifyCancel = useCallback(() => {
+      if (!successCloseRef.current) onClose?.();
+    }, [onClose]);
 
     const isEdit = !!editing;
 
@@ -167,6 +175,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     useImperativeHandle(ref, () => ({
       open: (record?: Product | null, initial?: { name?: string; description?: string; images?: ProductImageItem[] }, forceMode?: boolean) => {
         setForceOpen(!!forceMode);
+        successCloseRef.current = false;
         setInitialDescription(initial?.description ?? '');
         setInitialImages(initial?.images);
         if (record) {
@@ -309,6 +318,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         if (!nested && newId) setCreatedSingleIds((p) => [...p, newId as string]);
         if (nested && newId) onCreated?.(newId);
         if (nested) {
+          successCloseRef.current = true;
           setOpen(false);
           return;
         }
@@ -320,6 +330,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           form.resetFields();
           setStepOpen(true);
         } else {
+          successCloseRef.current = true;
           setOpen(false);
         }
       } catch (err) {
@@ -348,7 +359,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         <Button key="prev" icon={<ArrowLeftOutlined />} onClick={openReselectCategory} disabled={submitting}>
           上一步
         </Button>,
-        !forceOpen && <Button key="cancel" onClick={() => setOpen(false)}>取消</Button>,
+        !forceOpen && <Button key="cancel" onClick={() => { setOpen(false); notifyCancel(); }}>取消</Button>,
         <Button key="save" type="primary" loading={submitting} onClick={() => handleSubmit()}>
           保存
         </Button>,
@@ -360,7 +371,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         {/* 第一步：选择分类（工艺 / 受众 / 品类） */}
         <AppModal
           open={stepOpen}
-          onClose={() => { if (!forceOpen) setStepOpen(false); }}
+          onClose={() => { if (!forceOpen) { setStepOpen(false); notifyCancel(); } }}
           title={isEdit ? '重选分类' : '新建产品 · 选择分类'}
           width={680}
           maskClosable={false}
@@ -368,7 +379,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           bodyPadding={24}
           footer={(
             <>
-              {!forceOpen && <Button onClick={() => setStepOpen(false)}>取消</Button>}
+              {!forceOpen && <Button onClick={() => { setStepOpen(false); notifyCancel(); }}>取消</Button>}
               <Button type="primary" onClick={handleStepNext}>下一步</Button>
             </>
           )}
@@ -470,7 +481,7 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
         {/* 主弹窗：单品卡片 */}
         <AppModal
           open={open}
-          onClose={() => { if (!forceOpen) setOpen(false); }}
+          onClose={() => { if (!forceOpen) { setOpen(false); notifyCancel(); } }}
           closable={!forceOpen}
           title={
             <div className="pm-modal-title">

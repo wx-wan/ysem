@@ -108,15 +108,16 @@ export default function SalesLeads() {
     images?: ProductImageItem[];
   }>({});
   const productEditRef = useRef<ProductEditModalHandle>(null);
-  // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id）
+  // 保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id；用户取消关闭时 reject）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
+  const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
   // 待建档清单汇总弹窗（方案A）
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summaryItems, setSummaryItems] = useState<{ customerName?: string; productName?: string }>({});
   const summaryResolveRef = useRef<((v: { customerId?: string; productId?: string }) => void) | null>(null);
   const summaryRejectRef = useRef<((e: Error) => void) | null>(null);
 
-  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id
+  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
   const openCustomerForm = (initial?: {
     companyName?: string;
     contactName?: string;
@@ -125,8 +126,9 @@ export default function SalesLeads() {
     country?: string;
     images?: ProductImageItem[];
   }) =>
-    new Promise<{ id: string }>((resolve) => {
+    new Promise<{ id: string }>((resolve, reject) => {
       pendingResolveRef.current = resolve;
+      pendingRejectRef.current = reject;
       const { companyName, contactName, email, phone, country, images } = initial || {};
       // 线索国家可能是代码/英文名，统一转成中文名以便 CountrySelect 正确选中
       const countryZh = country ? findCountry(country)?.zh : undefined;
@@ -134,12 +136,13 @@ export default function SalesLeads() {
       setCustomerFormOpen(true);
     });
 
-  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id
+  // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
   const openProductForm = (initial?: { name?: string; description?: string; images?: import('../utils/productImages').ProductImageItem[] }) =>
-    new Promise<{ id: string }>((resolve) => {
+    new Promise<{ id: string }>((resolve, reject) => {
       pendingResolveRef.current = resolve;
+      pendingRejectRef.current = reject;
       const { name, description, images } = initial || {};
-      productEditRef.current?.open(undefined, { name, description, images }, true);
+      productEditRef.current?.open(undefined, { name, description, images }, false);
     });
 
   // 待建档清单汇总弹窗（方案A）：客户/产品均缺失时，先弹出汇总页，逐项打开真实弹窗建档
@@ -231,6 +234,7 @@ export default function SalesLeads() {
     setCustomerFormOpen(false);
     const resolve = pendingResolveRef.current;
     pendingResolveRef.current = null;
+    pendingRejectRef.current = null;
     if (resolve && customer?.id) resolve({ id: customer.id });
   };
 
@@ -400,7 +404,7 @@ export default function SalesLeads() {
         }}
       />
 
-      {/* 转商机时未检测到客户：弹出「新建客户」弹窗（与客户页一致），强制建档 */}
+      {/* 转商机时未检测到客户：弹出「新建客户」弹窗（与客户页一致），允许关闭（取消则回到汇总页） */}
       <CustomerFormModal
         open={customerFormOpen}
         editingCustomer={null}
@@ -410,19 +414,31 @@ export default function SalesLeads() {
         initialPhone={customerInitial.phone}
         initialCountry={customerInitial.country}
         initialImages={customerInitial.images}
-        force
-        onClose={() => setCustomerFormOpen(false)}
+        onClose={() => {
+          setCustomerFormOpen(false);
+          const reject = pendingRejectRef.current;
+          pendingRejectRef.current = null;
+          pendingResolveRef.current = null;
+          reject?.(new Error('cancelled'));
+        }}
         onSuccess={handleCustomerFormSuccess}
       />
 
-      {/* 转商机时未检测到产品：弹出「新建产品」弹窗（与产品页一致），强制建档 */}
+      {/* 转商机时未检测到产品：弹出「新建产品」弹窗（与产品页一致），允许关闭（取消则回到汇总页） */}
       <ProductEditModal
         ref={productEditRef}
         crafts={crafts}
         audiences={audiences}
+        onClose={() => {
+          const reject = pendingRejectRef.current;
+          pendingRejectRef.current = null;
+          pendingResolveRef.current = null;
+          reject?.(new Error('cancelled'));
+        }}
         onSuccess={(saved) => {
           const resolve = pendingResolveRef.current;
           pendingResolveRef.current = null;
+          pendingRejectRef.current = null;
           if (resolve && saved?.id) resolve({ id: saved.id });
         }}
       />

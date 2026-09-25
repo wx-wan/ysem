@@ -111,6 +111,8 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
     try {
       const r = await onOpenCustomer({ companyName: items.customerName, images: items.images });
       if (r?.id) setBuiltCustomerId(r.id);
+    } catch {
+      // 用户关闭「新建客户」弹窗取消建档：回到汇总页，不处理
     } finally {
       setLoadingCustomer(false);
     }
@@ -121,6 +123,8 @@ const ConvertCreateSummaryModal: React.FC<Props> = ({
     try {
       const r = await onOpenProduct({ name: items.productName, images: items.images });
       if (r?.id) setBuiltProductId(r.id);
+    } catch {
+      // 用户关闭「新建产品」弹窗取消建档：回到汇总页，不处理
     } finally {
       setLoadingProduct(false);
     }
