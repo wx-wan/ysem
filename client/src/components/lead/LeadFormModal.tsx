@@ -17,11 +17,10 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
-import CustomerTypeSelect from '../CustomerTypeSelect';
 import CustomerFormModal from '../customer/modals/CustomerFormModal';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
@@ -32,11 +31,11 @@ import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
-import ChipSelect from '../common/ChipSelect';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
-import ContactMethodInput, { type ContactMethodHandle } from '../common/ContactMethodInput';
+import CustomerInfoFields from '../common/CustomerInfoFields';
+import type { ContactMethodHandle } from '../common/ContactMethodInput';
 import MoneyInput, { formatMoneyValue, currentRateOf, type MoneyValue } from '../common/MoneyInput';
 import { useCommToolOptions } from '../../stores/useCommToolStore';
 import { useUnitOptions } from '../../stores/useUnitStore';
@@ -45,7 +44,8 @@ import { parseImages, serializeImages, type ProductImageItem } from '../../utils
 
 export interface LeadFormModalHandle {
   openCreate: () => void;
-  openEdit: (record: Lead) => void;
+  /** 打开编辑；initialStep 可指定初始步骤（如 2 直接进入「确认商机」阶段） */
+  openEdit: (record: Lead, initialStep?: number) => void;
 }
 
 // 三步向导各步骤包含的表单字段（「下一步」仅校验当前步骤字段）
@@ -79,8 +79,8 @@ interface Props {
   /** 新建客户 / 产品建档成功后刷新对应选项 */
   onRefreshCustomers: () => void;
   onRefreshProducts: () => void;
-  /** 保存 / 关联成功后刷新列表 */
-  onSaved: () => void;
+  /** 保存 / 关联成功后刷新列表与详情；传入 savedId 时父级会自动选中并打开该线索详情 */
+  onSaved: (savedId?: string) => void;
 }
 
 /**
@@ -245,10 +245,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setDrawerOpen(true);
   };
 
-  const openEdit = async (record: Lead) => {
+  const openEdit = async (record: Lead, initialStep = 0) => {
     setEditing(record);
     setLinkedPipeline(null);
-    setStep(0);
+    setStep(initialStep);
     form.resetFields();
     // 清空联系方式组件内部的字段级校验状态
     contactMethodRef.current?.reset();
@@ -282,14 +282,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         productType: item.productType || undefined,
         // 产品描述：回填 LeadItem.productDesc
         productDesc: item.items?.[0]?.productDesc || undefined,
-        // 目标价位：金额组件值（币种 + 金额 + 汇率快照）；汇率缺失时用当前汇率补齐
+        // 目标价位：金额组件值（币种 + 金额 + 实时汇率，仅用于展示换算，不再随金额落库汇率快照）
         targetPrice: {
           currency: item.currency ?? 'CNY',
           amount: item.targetPrice != null && item.targetPrice !== '' ? Number(item.targetPrice) || null : null,
-          exchangeRate:
-            item.targetPriceRate != null
-              ? Number(item.targetPriceRate) || currentRateOf(item.currency ?? 'CNY', rates)
-              : currentRateOf(item.currency ?? 'CNY', rates),
+          exchangeRate: currentRateOf(item.currency ?? 'CNY', rates),
         } as MoneyValue,
         expectedDelivery: item.expectedDelivery ? dayjs(item.expectedDelivery) : undefined,
         customerType: item.customerType || undefined,
@@ -313,17 +310,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setDrawerOpen(true);
   };
 
-  const submit = async () => {
-    // 联系方式：字段级校验（工具 / 账号分开判定），不通过时回到第 1 步展示飘红
-    if (!validateContactMethods()) {
-      setStep(0);
-      return;
-    }
-    // 校验当前挂载的字段；取值必须用 getFieldsValue(true)：
-    // validateFields() 只返回当前已挂载（本步骤）字段，之前步骤的字段因条件渲染已卸载，
-    // 但 preserve 仍保留在 store 中，需全量取回，否则提交时前序步骤值为 null。
-    await form.validateFields();
-    const values = form.getFieldsValue(true) as Record<string, any>;
+  // 由表单全量取值构建 LeadPayload：客户/产品按「手输新名 vs 命中下拉」决定存 companyName/productName 还是 customerId/productId
+  const buildLeadPayload = (values: Record<string, any>): LeadPayload => {
     // 客户：可手输新客户名，或下拉选择已有客户；手输新名仅存文本，确认后才会建档
     let customerId: string | null = null;
     let companyName: string | undefined;
@@ -348,7 +336,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         productName = productNameInput;
       }
     }
-    const payload: LeadPayload = {
+    return {
       // 名称由前端按「目标国家+产品名称+数量」规则生成后直接保存
       leadName: leadNamePreview || undefined,
       customerId,
@@ -364,17 +352,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       quantity: values.quantity ? Number(values.quantity) || 0 : 0,
       // 数量单位：隐藏字段（数量输入框后缀可选），随提交落库
       unit: values.unit || null,
-      // 负责人在弹窗标题栏（Form.Item 注册字段），随 validateFields 一并取回
+      // 负责人在弹窗标题栏（Form.Item 注册字段），随校验一并取回
       ownerId: values.ownerId || null,
       // 详情扩展字段
       targetMarket: values.targetMarket || null,
       productType: values.productType || null,
       productDesc: values.productDesc || null,
-      // 目标价位：金额组件固定输出 { currency, amount, exchangeRate }，其中汇率随金额一起落库，
-      // 后续展示 / 币种切换都以该快照汇率计算，不再取实时汇率
+      // 目标价位：仅币种 + 金额落库；汇率快照改为建档美元汇率（后端建档时自动抓取，不随金额传入）
       targetPrice: values.targetPrice?.amount != null ? String(values.targetPrice.amount) : null,
       currency: values.targetPrice?.currency ?? null,
-      targetPriceRate: values.targetPrice?.exchangeRate ?? null,
       expectedDelivery: values.expectedDelivery
         ? dayjs.isDayjs(values.expectedDelivery)
           ? values.expectedDelivery.toISOString()
@@ -384,16 +370,65 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 参考图片：对象数组（url + name），后端转为 Attachment(ownerType=LEAD) 记录
       images: parseImages(values.images).map((i) => ({ url: i.url, name: i.name })),
     };
+  };
+
+  // 暂存：跳过必填校验，直接保存（新建则创建草稿线索，编辑则更新）；空联系方式行不提交
+  const saveDraft = async () => {
+    // 第一阶段（客户信息）暂存：客户公司名称必填，仍须校验
+    if (step === 0) {
+      try {
+        await form.validateFields(['customerKey']);
+      } catch {
+        return; // 字段飘红，停留在当前步
+      }
+    }
+    const values = form.getFieldsValue(true) as Record<string, any>;
+    const validContacts = Array.isArray(values.contactMethods)
+      ? values.contactMethods.filter((m: any) => m && m.tool?.trim() && m.account?.trim())
+      : [];
+    const payload = buildLeadPayload(values);
+    payload.contactMethods = validContacts.length ? validContacts : null;
+    payload.draft = true;
     try {
+      let savedId: string | undefined;
       if (editing?.id) {
         await leadApi.update(editing.id, payload);
+        savedId = editing.id;
+      } else {
+        const created = await leadApi.create(payload);
+        savedId = created.data?.id;
+      }
+      message.success(t('lead.draftSaved'));
+      setDrawerOpen(false);
+      onSaved(savedId);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
+  const submit = async () => {
+    // 联系方式：字段级校验（工具 / 账号分开判定），不通过时回到第 1 步展示飘红
+    if (!validateContactMethods()) {
+      setStep(0);
+      return;
+    }
+    // 校验当前挂载的字段；取值必须用 getFieldsValue(true)（preserve 保留前序步骤值）
+    await form.validateFields();
+    const values = form.getFieldsValue(true) as Record<string, any>;
+    const payload = buildLeadPayload(values);
+    try {
+      let savedId: string | undefined;
+      if (editing?.id) {
+        await leadApi.update(editing.id, payload);
+        savedId = editing.id;
         message.success(t('common.updateSuccess'));
       } else {
-        await leadApi.create(payload);
+        const created = await leadApi.create(payload);
+        savedId = created.data?.id;
         message.success(t('common.createSuccess'));
       }
       setDrawerOpen(false);
-      onSaved();
+      onSaved(savedId);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
     }
@@ -645,14 +680,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 ))}
               </div>
               <div className="lead-wizard-footer__side lead-wizard-footer__side--right">
-                {step === 1 ? (
-                  <>
-                    <Button size="large" className="lead-ghost-btn" onClick={submit}>{t('lead.keepAsLead')}</Button>
-                    <Button size="large" type="primary" onClick={goNext}>
-                      {t('lead.nextStep')} <ArrowRightOutlined />
-                    </Button>
-                  </>
-                ) : step < wizardSteps.length - 1 ? (
+                {/* 暂存：每个步骤均可，跳过必填校验直接保存，置于「下一步/确认」之前 */}
+                <Button size="large" className="lead-ghost-btn" onClick={saveDraft}>{t('lead.keepAsLead')}</Button>
+                {step < wizardSteps.length - 1 ? (
                   <Button size="large" type="primary" onClick={goNext}>
                     {t('lead.nextStep')} <ArrowRightOutlined />
                   </Button>
@@ -691,81 +721,52 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
           {/* 步骤一：客户信息 */}
           {step === 0 && (
-            <Row gutter={[16, 0]}>
-              <Col span={24}>
-                <Form.Item
-                  name="customerKey"
-                  label={
-                    (editing?.companyName && !editing.customerId) ||
-                    (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
-                      <Space size={4}>
-                        <span>{t('lead.customerCompany')}</span>
-                        <Tag
-                          color="orange"
-                          style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                          onClick={confirmCreateCustomer}
-                          title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
-                        >
-                          {t('lead.pendingTag')}
-                        </Tag>
-                      </Space>
-                    ) : (
-                      t('lead.customerCompany')
-                    )
-                  }
-                  rules={[{ required: true, message: t('lead.customerRequired') }]}
-                >
-                  <AutoComplete
-                    allowClear
-                    placeholder={t('lead.customerPlaceholder')}
-                    options={customerNameOptions}
-                    filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
-                  />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="targetMarket" label={t('lead.targetMarket')} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
-                  <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} size="large" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="customerType" label={t('lead.customerType')} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
-                  <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} size="large" />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="contactName" label={t('lead.contactName')} rules={[{ required: true, message: t('lead.contactRequired') }]}>
-                  <Input placeholder={t('lead.contactPlaceholder')} size="large" />
-                </Form.Item>
-                <Form.Item
-                  name="contactMethods"
-                  label={
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <span>{t('lead.contactMethods')}</span>
-                      <Button
-                        type="link"
-                        size="small"
-                        icon={<PlusOutlined />}
-                        onClick={() => contactMethodRef.current?.add()}
-                        style={{ padding: 0, height: 'auto' }}
-                      >
-                        {t('lead.addContactMethod')}
-                      </Button>
-                    </span>
-                  }
-                  required
-                  // 校验交由 ContactMethodInput 内部按字段处理（工具 / 账号分开判定，有值即清除飘红），
-                  // 此处不再挂 rules，避免与组件内提示重复飘红
-                >
-                  <ContactMethodInput ref={contactMethodRef} options={commToolOptions} size="large" compact showAddButton={false} />
-                </Form.Item>
-              </Col>
-              <Col span={12}>
-                <Form.Item name="sourceKey" label={t('lead.leadSource')} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
-                  <ChipSelect options={sourceOptions} columns={2} size="large" />
-                </Form.Item>
-              </Col>
-            </Row>
+            <>
+              <Row gutter={[16, 0]}>
+                <Col span={24}>
+                  <Form.Item
+                    name="customerKey"
+                    label={
+                      (editing?.companyName && !editing.customerId) ||
+                      (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
+                        <Space size={4}>
+                          <span>{t('lead.customerCompany')}</span>
+                          <Tag
+                            color="orange"
+                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
+                            onClick={confirmCreateCustomer}
+                            title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
+                          >
+                            {t('lead.pendingTag')}
+                          </Tag>
+                        </Space>
+                      ) : (
+                        t('lead.customerCompany')
+                      )
+                    }
+                    rules={[{ required: true, message: t('lead.customerRequired') }]}
+                  >
+                    <AutoComplete
+                      allowClear
+                      placeholder={t('lead.customerPlaceholder')}
+                      options={customerNameOptions}
+                      filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                    />
+                  </Form.Item>
+                </Col>
+              </Row>
+              {/* 客户基础信息（国家/地区 · 客户类型 · 联系人 · 联系方式 · 来源）复用公共字段组件 */}
+              <CustomerInfoFields
+                countryField="targetMarket"
+                countryLabel={t('lead.targetMarket')}
+                sourceLabel={t('lead.leadSource')}
+                sourceOptions={sourceOptions}
+                sourceFullRow
+                sourceAutoWidth
+                commToolOptions={commToolOptions}
+                contactMethodRef={contactMethodRef}
+              />
+            </>
           )}
 
           {/* 步骤二：需求详情 */}
@@ -903,7 +904,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 })()}
               </div>
               <div className="lead-wizard-summary" style={{ marginTop: 12 }}>
-                <div className="lead-wizard-summary__title">{t('lead.confirmInfo')}</div>
                 {(() => {
                   const v = form.getFieldsValue(true) as Record<string, any>;
                   // 客户建档判定：线索已关联客户，或输入的客户在客户列表中存在
@@ -914,52 +914,84 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   const productFiled =
                     !!editing?.items?.[0]?.productId ||
                     (!!v.productKey && productNameOptions.some((p) => p.label === v.productKey));
-                  return [
-                    { label: t('lead.fieldLeadNo'), value: editing?.leadNo },
+                  const rows = [
+                    { label: t('lead.fieldLeadNo'), value: editing?.leadNo, required: false },
                     {
                       label: t('lead.customerCompany'),
                       value: v.customerKey,
+                      required: true,
                       filed: v.customerKey ? customerFiled : undefined,
                       onFile: () => confirmCreateCustomer(),
                     },
                     {
                       label: t('lead.product'),
                       value: v.productKey,
+                      required: true,
                       filed: v.productKey ? productFiled : undefined,
                       onFile: () => confirmCreateProduct(),
                     },
-                    { label: t('lead.quantityRequirement'), value: v.quantity != null ? `${v.quantity}${v.unit || '个'}` : undefined },
-                    { label: t('lead.targetPrice'), value: formatMoneyValue(v.targetPrice, currencies) },
+                    { label: t('lead.quantityRequirement'), value: v.quantity != null && v.quantity !== '' && Number(v.quantity) !== 0 ? `${v.quantity}${v.unit || '个'}` : undefined, required: true },
+                    { label: t('lead.targetPrice'), value: formatMoneyValue(v.targetPrice, currencies), required: false },
                     {
                       label: t('lead.expectedDelivery'),
                       value: v.expectedDelivery ? dayjs(v.expectedDelivery).format('YYYY-MM-DD') : undefined,
+                      required: false,
                     },
-                    { label: t('lead.leadSource'), value: sourceOptions.find((o) => o.value === v.sourceKey)?.label },
+                    { label: t('lead.leadSource'), value: sourceOptions.find((o) => o.value === v.sourceKey)?.label, required: true },
                     {
                       label: t('lead.assignee'),
-                      value: users.find((u) => u.id === v.ownerId)?.realName || editing?.owner?.realName || t('sales.unassigned'),
+                      value: users.find((u) => u.id === v.ownerId)?.realName || editing?.owner?.realName,
+                      required: true,
+                      emptyText: t('sales.unassigned'),
                     },
-                    { label: t('lead.createdAt'), value: editing?.createdAt?.slice(0, 10) },
-                  ].map((row) => (
-                    <div key={row.label} className="lead-wizard-summary__row">
-                      <span className="lead-wizard-summary__label">{row.label}</span>
-                      <span className="lead-wizard-summary__value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                        {row.filed === true && <Tag color="success" style={{ marginInlineEnd: 0 }}>{t('lead.filedTag')}</Tag>}
-                        {row.filed === false && (
-                          <Tooltip title={t('lead.unfiledTip')}>
-                            <Tag
-                              color="orange"
-                              style={{ marginInlineEnd: 0, cursor: 'pointer' }}
-                              onClick={row.onFile}
-                            >
-                              {t('lead.pendingTag')}
-                            </Tag>
-                          </Tooltip>
-                        )}
-                        <span>{row.value || '—'}</span>
-                      </span>
-                    </div>
-                  ));
+                    { label: t('lead.createdAt'), value: editing?.createdAt?.slice(0, 10), required: false },
+                  ];
+                  // 逐字段校验状态：pass 通过 / empty 无数据（未明确）/ unfiled 已填但未建档 / info 非必填
+                  const rowsWithStatus = rows.map((r) => {
+                    if (!r.required) return { ...r, status: 'info' as const };
+                    const hasValue = !!(r.value || r.emptyText);
+                    if (!hasValue) return { ...r, status: 'empty' as const };
+                    if (r.filed === false) return { ...r, status: 'unfiled' as const };
+                    return { ...r, status: 'pass' as const };
+                  });
+                  return (
+                    <>
+                      <div className="lead-wizard-summary__title">{t('lead.confirmInfo')}</div>
+                      {rowsWithStatus.map((row) => (
+                        <div key={row.label} className="lead-wizard-summary__row">
+                          <span className="lead-wizard-summary__label">{row.label}</span>
+                          <span className="lead-wizard-summary__value" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {row.filed === true && <Tag color="success" style={{ marginInlineEnd: 0 }}>{t('lead.filedTag')}</Tag>}
+                            {row.filed === false && (
+                              <Tooltip title={t('lead.unfiledTip')}>
+                                <Tag
+                                  color="orange"
+                                  style={{ marginInlineEnd: 0, cursor: 'pointer' }}
+                                  onClick={row.onFile}
+                                >
+                                  {t('lead.pendingTag')}
+                                </Tag>
+                              </Tooltip>
+                            )}
+                            {row.status === 'empty' ? (
+                              <Tag color="red" style={{ marginInlineEnd: 0 }}>{t('lead.unspecified')}</Tag>
+                            ) : (
+                              <span>{row.value || row.emptyText || '—'}</span>
+                            )}
+                            {row.status === 'pass' && (
+                              <CheckCircleOutlined style={{ color: '#52c41a' }} title={t('lead.checkPass')} />
+                            )}
+                            {row.status === 'empty' && (
+                              <CloseCircleOutlined style={{ color: '#ff4d4f' }} title={t('lead.unspecified')} />
+                            )}
+                            {row.status === 'unfiled' && (
+                              <ExclamationCircleOutlined style={{ color: '#faad14' }} title={t('lead.unfiledTip')} />
+                            )}
+                          </span>
+                        </div>
+                      ))}
+                    </>
+                  );
                 })()}
               </div>
             </>
@@ -967,12 +999,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         </AppModal>
       </Form>
 
-      {/* 确认建档：新建客户弹窗（带入待确认客户名到公司名称），允许关闭（取消则回到汇总页 / 线索编辑页） */}
+      {/* 确认建档：新建客户弹窗（带入待确认客户名 / 国家 / 来源 / 联系方式），允许关闭（取消则回到汇总页 / 线索编辑页） */}
       <CustomerFormModal
         open={custModalOpen}
         editingCustomer={null}
         initialCompanyName={initialCustName}
-        initialCountry={editing?.country ? findCountry(editing.country)?.zh : undefined}
+        initialContactName={editing?.contactName ?? undefined}
+        initialCountry={editing?.targetMarket ? findCountry(editing.targetMarket)?.zh : undefined}
+        initialSourceKey={
+          editing?.channelId
+            ? JSON.stringify({ channelId: editing.channelId, shopId: editing.shopId || editing.channelId })
+            : undefined
+        }
+        initialContactMethods={editing?.contactMethods ?? undefined}
         force={custForceMode}
         onClose={() => {
           setCustModalOpen(false);

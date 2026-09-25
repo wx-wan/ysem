@@ -117,6 +117,11 @@ router.put('/:id', updateOpportunity);
  * /api/sales/{id}/stage:
  *   patch:
  *     tags: [销售管理]
+ *     summary: 更新销售阶段
+ *     responses:
+ *       200:
+ *         description: 更新成功
+ */
 /**
  * @swagger
  * /api/sales/batch:

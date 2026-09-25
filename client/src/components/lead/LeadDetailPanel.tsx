@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
 import { leadApi, type Lead, type LeadOperationLog } from '../../api/lead';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
-import { formatMoneyValue } from '../common/MoneyInput';
+import { formatMoneyValue, currentRateOf } from '../common/MoneyInput';
 import { STATUS_META } from './constants';
 
 /** 操作记录动作 → i18n key + 时间线颜色 */
@@ -62,7 +62,7 @@ export default function LeadDetailPanel({
   onRemove,
 }: Props) {
   const { t } = useTranslation();
-  const { currencies } = useCurrencyStore();
+  const { currencies, rates } = useCurrencyStore();
   // 操作记录（操作日志）：随选中线索变化重新拉取
   const [logs, setLogs] = useState<LeadOperationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -122,13 +122,13 @@ export default function LeadDetailPanel({
     { label: t('lead.quantityRequirement'), value: detail.quantity != null ? `${detail.quantity}${detail.unit || '个'}` : '—' },
     {
       label: t('lead.targetPrice'),
-      // 目标价位：展示录入时的币种 + 金额（换算统一用落库的汇率快照，见 MoneyInput）
+      // 目标价位：展示录入时的币种 + 金额（换算用当前实时汇率，不再依赖落库汇率快照）
       value:
         formatMoneyValue(
           {
             currency: detail.currency ?? 'CNY',
             amount: detail.targetPrice != null && detail.targetPrice !== '' ? Number(detail.targetPrice) || null : null,
-            exchangeRate: Number(detail.targetPriceRate ?? 1) || 1,
+            exchangeRate: currentRateOf(detail.currency ?? 'CNY', rates),
           },
           currencies,
         ) || '—',

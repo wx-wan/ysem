@@ -1,7 +1,6 @@
-import { Input, Button, Select } from 'antd';
+import { Input, Select } from 'antd';
 import {
   SearchOutlined,
-  UploadOutlined, PlusOutlined,
 } from '@ant-design/icons';
 import TagSelector from '../../TagSelector';
 import { INTENT_LABEL } from '../shared/intentLevel';
@@ -49,8 +48,6 @@ interface CustomerToolbarProps {
   setFilterType: (v: FilterType) => void;
   subFilterType: string;
   setSubFilterType: (v: string) => void;
-  setImportOpen: (v: boolean) => void;
-  openCreate: () => void;
   isAdmin: boolean;
   filterTypePublic: boolean;
   selectedOwnerId: string;
@@ -64,7 +61,6 @@ export default function CustomerToolbar({
   token, keyword, setKeyword, fetchData, setPage,
   viewMode, setViewMode, filterTags, setFilterTags,
   filterType, setFilterType, subFilterType, setSubFilterType,
-  setImportOpen, openCreate,
   isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
   noOrderBreakdown, doneBreakdown,
 }: CustomerToolbarProps) {
@@ -87,12 +83,6 @@ export default function CustomerToolbar({
       actions={
         <>
           <ViewModeSwitch value={viewMode} onChange={setViewMode} />
-          <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)} style={{ borderRadius: 8 }}>
-            导入
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ borderRadius: 8 }}>
-            新增客户
-          </Button>
         </>
       }
       extra={

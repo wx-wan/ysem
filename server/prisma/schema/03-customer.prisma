@@ -12,6 +12,8 @@ model Customer {
   // ---- 基本信息 ----
   companyName String
   englishName String?
+  industry    String? // 所属行业（非必填）
+  website     String? // 公司官网（非必填）
   contactName String?
   position    String?
   email       String?
@@ -19,6 +21,16 @@ model Customer {
   wechat      String?
   country     String?
   region      String?
+
+  // ---- 获客来源（照搬线索渠道·平台组合，F-CRM-CHANNEL）----
+  // 与 Lead.channelId / Lead.shopId 同义；线索转客户时原样带入，不另设 source 枚举语义。
+  channelId String? // 来源渠道
+  channel   Channel? @relation("CustomerChannel", fields: [channelId], references: [id], onDelete: SetNull)
+  shopId    String? // 来源平台
+  shop      Channel? @relation("CustomerShop", fields: [shopId], references: [id], onDelete: SetNull)
+
+  // ---- 联系方式（与 Lead.contactMethods 一致：[{tool, account}] 数组，替代单字段 phone/email/wechat 的扁平录入）----
+  contactMethods Json? // 沟通工具 + 账号（数组：[{tool, account}]）
 
   // ---- 分类与标记 ----
   customerLevel CustomerLevel @default(NORMAL)
@@ -66,6 +78,8 @@ model Customer {
   @@index([ownerId])
   @@index([companyName])
   @@index([country])
+  @@index([channelId])
+  @@index([shopId])
   @@index([status])
   @@index([customerLevel])
 }
@@ -159,6 +173,8 @@ model Channel {
 
   leads     Lead[] @relation("LeadChannel")
   leadShops Lead[] @relation("LeadShop")
+  customers     Customer[] @relation("CustomerChannel")
+  customerShops Customer[] @relation("CustomerShop")
 
   @@unique([parentId, name]) // 同名平台不得重复创建
   @@index([category])
@@ -220,9 +236,10 @@ model Lead {
   productInterest String?
   quantity        Int     @default(1) // 采购数量
   targetPrice     String?
-  /// 目标价位汇率快照：**1 单位 currency = targetPriceRate CNY**（与 ADR-18 `exchangeRate` 同义，CNY 恒为 1）。
-  /// 金额必带：录入时随金额一起落库，后续展示 / 币种切换都用该快照计算，不取实时汇率。
-  targetPriceRate Decimal? @db.Decimal(18, 8)
+  /// 建档美元汇率快照：**1 USD = usdRate CNY**，于线索建档（createLead）时抓取当日
+  /// DailyExchangeRate 中 USD 的 rateToCny 并落库，与线索自身币种无关，固定为美元汇率。
+  /// 仅建档时写入一次，后续编辑（updateLead）不再变更，用于记录建档时点美元汇率。
+  usdRate         Decimal? @db.Decimal(18, 8)
   targetMarket    String?
   currency        String? // 币种（Currency.code），目标价位前缀，默认 CNY
   unit            String? // 单位（Unit.name），数量需求后缀，默认 个

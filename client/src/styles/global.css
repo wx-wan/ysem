@@ -83,8 +83,20 @@
 .lead-form-v2 .ant-form-item {
   margin-bottom: 14px;
 }
-.lead-form-v2 .ant-form-item:last-child {
+/* 仅当 Form.Item 直接挂在表单容器下（未包进 Col 栅格）时才清零末位留白；
+   栅格场景下每个 Form.Item 都会命中 :last-child 而被误清零，导致行距塌缩为 0，
+   故改为直接子选择器，使 Col 内的字段恢复 14px 行距（与 Row 垂直 gutter 互补）。 */
+.lead-form-v2 > .ant-form-item:last-child {
   margin-bottom: 0;
+}
+
+/* ========== 客户表单：label 高度对齐线索弹窗 ========== */
+/* 线索弹窗字段经 AppModal portal 到 body 后，antd `.ant-form-large ... > label { height: 40px }`
+   后代选择器失效，label 回退 auto（22px 行高 + 8px 底距 = 30px）——这是 vertical 布局的标准观感。
+   客户弹窗 Form 在 AppModal 内（字段留在 form DOM 中）会命中 40px 规则导致 label 偏高（48px），
+   此处显式回退为 auto，使两弹窗 label 完全一致。 */
+.customer-form-v2.ant-form-vertical .ant-form-item-label > label {
+  height: auto;
 }
 
 /* 金额组件的币种下拉（目标价位前缀）：只显示 ¥ / $ 符号，选中值与下拉项均居中 */

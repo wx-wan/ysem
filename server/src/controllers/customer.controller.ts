@@ -411,6 +411,10 @@ export const listOptions = async (req: AuthRequest, res: Response, next: NextFun
         email: true,
         phone: true,
         country: true,
+        customerType: true,
+        channelId: true,
+        shopId: true,
+        contactMethods: true,
         ownerId: true,
       },
       orderBy: { companyName: "asc" },
@@ -777,13 +781,63 @@ function sameTags(a: string[], b: string[] | null | undefined): boolean {
   return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
+// F-CRM-CHANNEL：拆分组合来源值（与 lead.controller.splitSourceKey 同语义）
+// sourceKey = JSON `{channelId, shopId}`，入库前拆为独立列；解析失败回退显式 channelId/shopId。
+function splitSourceKey(raw?: string | null): { channelId?: string | null; shopId?: string | null } {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as { channelId?: string; shopId?: string };
+    if (parsed && typeof parsed === 'object') {
+      return { channelId: parsed.channelId ?? null, shopId: parsed.shopId ?? null };
+    }
+  } catch {
+    /* 非 JSON 则忽略，回退到显式 channelId/shopId */
+  }
+  return {};
+}
+
+// 校验渠道/平台引用合法性（存在 + ACTIVE + 父子一致性），失败写 400 并返回 false
+async function validateChannelShopCustomer(
+  res: Response,
+  channelId: string | null | undefined,
+  shopId: string | null | undefined,
+): Promise<boolean> {
+  if (channelId) {
+    const ch = await prisma.channel.findUnique({ where: { id: channelId }, select: { id: true, status: true } });
+    if (!ch || ch.status !== 'ACTIVE') {
+      error(res, '来源渠道不存在', 400);
+      return false;
+    }
+  }
+  if (shopId) {
+    const shop = await prisma.channel.findUnique({ where: { id: shopId }, select: { id: true, parentId: true, status: true } });
+    if (!shop || shop.status !== 'ACTIVE') {
+      error(res, '来源平台不存在', 400);
+      return false;
+    }
+    if (channelId && shop.parentId !== channelId) {
+      error(res, '来源平台不属于所选来源渠道', 400);
+      return false;
+    }
+  }
+  return true;
+}
+
 const customerCreateSchema = z.object({
   companyName: z.string().trim().min(1, '公司名称不能为空').max(200),
   contactName: z.string().trim().max(100).nullish(),
   email: z.string().trim().max(200).nullish(),
   phone: z.string().trim().max(50).nullish(),
   country: z.string().trim().max(100).nullish(),
+  industry: z.string().trim().max(100).nullish(), // 所属行业（非必填）
+  website: z.string().trim().max(500).nullish(), // 公司官网（非必填）
   customerType: z.string().trim().max(100).nullish(),
+  // F-CRM-CHANNEL：承接线索转客户带入的渠道·平台组合来源（与 Lead.channelId/shopId 同义）
+  sourceKey: z.string().trim().max(500).nullish(),
+  channelId: z.string().trim().max(50).nullish(),
+  shopId: z.string().trim().max(50).nullish(),
+  // 联系方式（与 Lead.contactMethods 一致：[{tool, account}] 数组）
+  contactMethods: z.any().nullish(),
   // D-SOURCE-2：Customer.source 由 API 业务语义固定为 MANUAL ⇒ create 不接受 source 入参
   notes: z.string().trim().max(2000).nullish(),
   ownerId: z.string().nullish(),
@@ -797,6 +851,8 @@ const customerCreateSchema = z.object({
 const customerUpdateSchema = z.object({
   companyName: z.string().trim().min(1, '公司名称不能为空').max(200).optional(),
   englishName: z.string().trim().max(200).nullish(),
+  industry: z.string().trim().max(100).nullish(), // 所属行业（非必填）
+  website: z.string().trim().max(500).nullish(), // 公司官网（非必填）
   contactName: z.string().trim().max(100).nullish(),
   position: z.string().trim().max(100).nullish(),
   email: z.string().trim().max(200).nullish(),
@@ -806,6 +862,11 @@ const customerUpdateSchema = z.object({
   region: z.string().trim().max(100).nullish(),
   customerLevel: z.nativeEnum(CustomerLevel).optional(),
   customerType: z.string().trim().max(100).nullish(),
+  // F-CRM-CHANNEL：编辑时也允许改写渠道·平台组合来源
+  sourceKey: z.string().trim().max(500).nullish(),
+  channelId: z.string().trim().max(50).nullish(),
+  shopId: z.string().trim().max(50).nullish(),
+  contactMethods: z.any().nullish(),
   // D-SOURCE-4：普通 update 不得修改 Customer.source ⇒ 不接受 source 入参
   notes: z.string().trim().max(2000).nullish(),
   ownerId: z.string().nullish(),
@@ -841,6 +902,12 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
     // V1.0 入参校验：非法 enum / 类型 / tags → 400；未知字段（含 legacy estimatedAmount）被忽略
     const body = customerCreateSchema.parse(req.body);
 
+    // F-CRM-CHANNEL：来源拆分（sourceKey 优先于显式 channelId/shopId），并校验引用合法性
+    const fromSourceKey = splitSourceKey(body.sourceKey);
+    const channelId = fromSourceKey.channelId !== undefined ? fromSourceKey.channelId : (body.channelId ?? null);
+    const shopId = fromSourceKey.shopId !== undefined ? fromSourceKey.shopId : (body.shopId ?? null);
+    if (!(await validateChannelShopCustomer(res, channelId, shopId))) return;
+
     // 如果 ownerId 传入 null 则放入公海；未传入则归当前用户
     const finalOwnerId: string | null = body.ownerId !== undefined ? body.ownerId : userId;
 
@@ -869,10 +936,15 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
           customerNo,
           companyName: body.companyName,
           contactName: body.contactName ?? null,
+          industry: body.industry ?? null,
+          website: body.website ?? null,
           email: body.email ?? null,
           phone: body.phone ?? null,
           country: body.country ?? null,
           customerType: body.customerType ?? null,
+          channelId: channelId ?? null,
+          shopId: shopId ?? null,
+          contactMethods: body.contactMethods ?? null,
           coverImage: normalizeCoverImage(body) ?? null,
           // D-SOURCE-2：手工创建由 API 业务语义固定为 MANUAL（显式赋值，不依赖 DB default）
           source: "MANUAL",
@@ -922,6 +994,8 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
       companyName,
       contactName,
       englishName,
+      industry,
+      website,
       position,
       email,
       phone,
@@ -983,6 +1057,17 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
     // （Opportunity.intentLevel 的维护与留痕不受本规则影响）
     if (tags !== undefined && !sameTags(tags, existing.tags)) changes.push(`标签已更新`);
 
+    // F-CRM-CHANNEL：编辑时来源组合（sourceKey 优先；否则显式 channelId/shopId；否则保留原值），
+    // 先与持久值补齐构成有效组合再校验父子一致性，最后整体落库。
+    const fromSourceKey = splitSourceKey(body.sourceKey);
+    let effChannelId = existing.channelId;
+    let effShopId = existing.shopId;
+    if (fromSourceKey.channelId !== undefined) effChannelId = fromSourceKey.channelId;
+    else if (body.channelId !== undefined) effChannelId = body.channelId;
+    if (fromSourceKey.shopId !== undefined) effShopId = fromSourceKey.shopId;
+    else if (body.shopId !== undefined) effShopId = body.shopId;
+    if (!(await validateChannelShopCustomer(res, effChannelId, effShopId))) return;
+
     const customer = await prisma.customer.update({
       where: { id },
       data: {
@@ -990,6 +1075,8 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         ...(companyName !== undefined ? { companyName } : {}),
         ...(contactName !== undefined ? { contactName } : {}),
         ...(englishName !== undefined ? { englishName } : {}),
+        ...(industry !== undefined ? { industry } : {}),
+        ...(website !== undefined ? { website } : {}),
         ...(position !== undefined ? { position } : {}),
         ...(email !== undefined ? { email } : {}),
         ...(phone !== undefined ? { phone } : {}),
@@ -999,6 +1086,9 @@ export const update = async (req: AuthRequest, res: Response, next: NextFunction
         ...(coverImage !== undefined ? { coverImage } : {}),
         ...(customerLevel !== undefined ? { customerLevel } : {}),
         ...(customerType !== undefined ? { customerType } : {}),
+        channelId: effChannelId ?? null,
+        shopId: effShopId ?? null,
+        ...(body.contactMethods !== undefined ? { contactMethods: body.contactMethods ?? null } : {}),
         // D-SOURCE-4：普通 update 不写 source（该字段不可由普通 Customer API 修改）
         ...(notes !== undefined ? { notes } : {}),
         ...(ownerId !== undefined ? { ownerId } : {}),

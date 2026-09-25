@@ -18,6 +18,10 @@ export interface Customer {
   customerLevel?: string; // 客户等级
   customerType?: string; // 客户类型
   source?: string;
+  channelId?: string | null; // 获客渠道（与 Lead.channelId 同义）
+  shopId?: string | null; // 获客平台（与 Lead.shopId 同义）
+  contactMethods?: { tool: string; account: string }[] | null; // 联系方式（与 Lead.contactMethods 一致：[{tool, account}]）
+  sourceKey?: string; // 来源组合值（JSON {channelId, shopId}），建档时拆分落库
   notes?: string;
   ownerId?: string;
   isKeyAccount: boolean;

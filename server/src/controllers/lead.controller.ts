@@ -8,7 +8,7 @@ import { applyScope, roleScope, includePublicSea, productVisibilityWhere, projec
 import { paginateList } from '../utils/query';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
-import { computeDiff } from '../lib/operation-diff';
+import { computeDiff, type FieldFormatter } from '../lib/operation-diff';
 
 /** 线索操作日志的字段中文名（diff 展示用） */
 const LEAD_DIFF_LABELS: Record<string, string> = {
@@ -24,15 +24,36 @@ const LEAD_DIFF_LABELS: Record<string, string> = {
   phone: '电话',
   country: '国家',
   productInterest: '产品意向',
+  quantity: '数量',
   remark: '备注',
   targetMarket: '目标国家/地区',
   currency: '币种',
   unit: '单位',
   targetPrice: '目标价位',
-  targetPriceRate: '目标价位汇率',
+  usdRate: '建档美元汇率',
   expectedDelivery: '期望交期',
   customerType: '客户类型',
   ownerId: '负责人',
+};
+
+/** 操作日志字段值格式化：来源渠道/平台按 ID 解析为名称，联系方式解析为「工具：账号」形式 */
+const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
+  channelId: async (v) => {
+    if (!v) return '空';
+    const ch = await prisma.channel.findUnique({ where: { id: v as string }, select: { name: true } });
+    return ch?.name ?? String(v);
+  },
+  shopId: async (v) => {
+    if (!v) return '空';
+    const ch = await prisma.channel.findUnique({ where: { id: v as string }, select: { name: true } });
+    return ch?.name ?? String(v);
+  },
+  contactMethods: (v) => {
+    if (!Array.isArray(v) || v.length === 0) return '空';
+    return (v as { tool?: string; account?: string }[])
+      .map((m) => `${m?.tool || '—'}：${m?.account || '—'}`)
+      .join('、');
+  },
 };
 
 /** 线索状态中文名（4 态；状态由单据事件自动推进，无人工改动入口） */
@@ -57,6 +78,8 @@ const leadSchema = z.object({
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
+  // 草稿标记（不落库）：暂存场景传 true，放宽「至少一条有效联系方式」等必填约束，允许空必填创建草稿线索
+  draft: z.boolean().optional(),
   // 线索状态不接受外部入参：只由单据事件自动推进（转商机 / 建打样单 / 建销售订单），
   // 见 utils/leadStatus.ts。此处不声明 status（即使前端误传也会被 zod 剥离，不落库）。
   companyName: z.string().trim().max(200).nullable().optional(),
@@ -94,17 +117,6 @@ const leadSchema = z.object({
     .nullable()
     .optional()
     .transform((v) => (v === null || v === undefined || v === '' ? null : String(v))),
-  // 目标价位汇率快照：1 单位该币种 = X CNY（与 ADR-18 exchangeRate 同义，CNY 恒为 1）。
-  // 金额必带：录入时随金额一起落库，后续展示 / 币种切换固定用该汇率计算，不取实时汇率。
-  targetPriceRate: z
-    .union([z.string(), z.number()])
-    .nullable()
-    .optional()
-    .transform((v) => {
-      if (v === null || v === undefined || v === '') return null;
-      const n = Number(v);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    }),
   expectedDelivery: z.string().trim().max(50).nullable().optional(),
   customerType: z.string().trim().max(100).nullable().optional(),
   ownerId: z.string().optional().nullable(),
@@ -138,7 +150,6 @@ const LEAD_WRITABLE_FIELDS = [
   'productInterest',
   'quantity',
   'targetPrice',
-  'targetPriceRate',
   'targetMarket',
   'currency',
   'unit',
@@ -449,6 +460,29 @@ export const getLeadLogs = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
+/**
+ * 抓取「建档美元汇率」：当日 DailyExchangeRate 中 USD 的 rateToCny（1 USD = X CNY）。
+ * 优先取当日记录；缺当日则取最近历史；都无则回退内置参考值（与 exchange.controller FALLBACK_RATES 一致）。
+ * 该值于线索建档时落库一次（Lead.usdRate），与线索自身币种无关。
+ */
+async function getTodayUsdRate(): Promise<number> {
+  const today = new Date().toISOString().slice(0, 10);
+  const toDbDate = (d: string) => new Date(`${d}T00:00:00.000Z`);
+  let row = await prisma.dailyExchangeRate.findFirst({
+    where: { date: toDbDate(today), currencyCode: 'USD' },
+    select: { rateToCny: true },
+  });
+  if (!row) {
+    row = await prisma.dailyExchangeRate.findFirst({
+      where: { currencyCode: 'USD' },
+      orderBy: { date: 'desc' },
+      select: { rateToCny: true },
+    });
+  }
+  if (row) return Number(row.rateToCny);
+  return 7.14285714; // 内置参考：1 USD ≈ 7.14285714 CNY
+}
+
 export const createLead = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const data = leadSchema.parse(req.body);
@@ -456,10 +490,12 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     const fromSourceKey = splitSourceKey(data.sourceKey);
     const channelId = fromSourceKey.channelId !== undefined ? fromSourceKey.channelId : (data.channelId ?? null);
     const shopId = fromSourceKey.shopId !== undefined ? fromSourceKey.shopId : (data.shopId ?? null);
-    // 联系方式：新增线索必须至少一条有效记录（{tool, account} 均非空）
-    if (!data.contactMethods || data.contactMethods.length === 0) {
-      fail(res, 400, '请至少填写一条联系方式');
-      return;
+    // 联系方式：新增线索必须至少一条有效记录（{tool, account} 均非空）；草稿（draft）模式允许为空
+    if (!data.draft) {
+      if (!data.contactMethods || data.contactMethods.length === 0) {
+        fail(res, 400, '请至少填写一条联系方式');
+        return;
+      }
     }
     // 名称可选：未传时按「目标国家-产品名称」规则自动生成（修复 leadName 未定义导致创建必 500 的问题）
     const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
@@ -555,7 +591,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           currency: data.currency ?? null,
           unit: data.unit ?? null,
           targetPrice: data.targetPrice ?? null,
-          targetPriceRate: data.targetPriceRate ?? null,
+          // 建档美元汇率：抓取建档当日 1 USD = X CNY 快照（与线索币种无关，建档后不随编辑变更）
+          usdRate: await getTodayUsdRate(),
           expectedDelivery: data.expectedDelivery ?? null,
           customerType: data.customerType ?? null,
           ownerId: data.ownerId ?? null,
@@ -764,7 +801,7 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     const diff = await computeDiff(
       existing as unknown as Record<string, any>,
       { ...(existing as unknown as Record<string, any>), ...update } as Record<string, any>,
-      { labels: LEAD_DIFF_LABELS, fields: Object.keys(update) },
+      { labels: LEAD_DIFF_LABELS, formatters: LEAD_DIFF_FORMATTERS, fields: Object.keys(update) },
     );
     void activityLogger.log({
       userId: req.userId ?? '',

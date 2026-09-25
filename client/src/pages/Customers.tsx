@@ -16,9 +16,7 @@ import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
 import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
-import CustomerFormModal from '../components/customer/modals/CustomerFormModal';
 import TransferOwnerModal from '../components/common/TransferOwnerModal';
-import ImportModal from '../components/customer/modals/ImportModal';
 import OrderFormModal from '../components/customer/modals/OrderFormModal';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import type { SalesStage } from '../components/sales/stages';
@@ -48,10 +46,6 @@ export default function CustomersPage() {
   const [filterType, setFilterType] = useState<'all' | 'noOrder' | 'done' | 'key' | 'public'>('all');
   const [subFilterType, setSubFilterType] = useState<string>(''); // 未成交: 'A'|'B'|'C'|'D'，已成交: 'new'|'old'
 
-  // 弹窗
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
-
   // 详情弹窗（居中大弹窗，替代抽屉）
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [detailCustomer, setDetailCustomer] = useState<Customer | null>(null);
@@ -60,9 +54,6 @@ export default function CustomersPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
   const [userList, setUserList] = useState<UserSelectItem[]>([]);
-
-  // 导入
-  const [importOpen, setImportOpen] = useState(false);
 
   // 订单弹窗
   const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -439,12 +430,6 @@ export default function CustomersPage() {
     setDetailModalOpen(true);
   }, []);
 
-  // ========== 创建/编辑弹窗 ==========
-  const openCreate = useCallback(() => {
-    setEditingCustomer(null);
-    setModalOpen(true);
-  }, []);
-
   const handleOrderSuccess = useCallback(async () => {
     setOrderModalOpen(false);
     // 订单数据已通过 orderApi 持久化；保持前端详情缓存，不额外回源
@@ -520,8 +505,6 @@ export default function CustomersPage() {
         setFilterType={setFilterType}
         subFilterType={subFilterType}
         setSubFilterType={setSubFilterType}
-        setImportOpen={setImportOpen}
-        openCreate={openCreate}
         isAdmin={isAdmin}
         filterTypePublic={filterType === 'public'}
         selectedOwnerId={selectedOwnerId}
@@ -543,14 +526,6 @@ export default function CustomersPage() {
 
       {/* 分页 */}
       {renderPagination}
-
-      {/* ===== 创建/编辑弹窗 ===== */}
-      <CustomerFormModal
-        open={modalOpen}
-        editingCustomer={editingCustomer}
-        onClose={() => { setModalOpen(false); setEditingCustomer(null); }}
-        onSuccess={() => { invalidateAll(); fetchData(); }}
-      />
 
       {/* ===== 转交弹窗（与线索共用同一组件 / 逻辑） ===== */}
       <TransferOwnerModal
@@ -606,13 +581,6 @@ export default function CustomersPage() {
             message.error('重点客户状态更新失败');
           }
         }}
-      />
-
-      {/* ===== 导入弹窗 ===== */}
-      <ImportModal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        onSuccess={() => { setImportOpen(false); invalidateAll(); fetchData(); }}
       />
 
       {/* ===== 订单弹窗 ===== */}

@@ -37,6 +37,9 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
     if (currency.code === 'JPY' || currency.code === 'KRW') {
       return `1 ${currency.code} ≈ ${rateToCny.toFixed(4)} CNY`;
     }
+    if (currency.code === 'USD') {
+      return `1 ${currency.code} ≈ ${rateToCny.toFixed(2)} CNY`;
+    }
     return `1 ${currency.code} ≈ ${rateToCny.toFixed(3)} CNY`;
   }, [currency, rates]);
   const currentLang = i18n.language;

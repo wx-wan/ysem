@@ -61,10 +61,12 @@ export interface Lead {
   // D1：参考图片附件（Attachment ownerType=LEAD）
   attachments?: Array<{ id: string; url: string; name?: string | null; category?: string; sort?: number }>;
   targetPrice?: string | null;
-  /** 目标价位汇率快照：1 单位该币种 = X CNY（与金额一同落库，后续换算固定用它） */
-  targetPriceRate?: number | null;
+  /** 建档美元汇率快照：1 USD = X CNY（建档时由后端抓取当日汇率落库，与线索币种无关，只读） */
+  usdRate?: number | null;
   expectedDelivery?: string | null;
   customerType?: string | null;
+  /** 公司官网（非必填，随线索保存，转商机建档时带入客户） */
+  website?: string | null;
   currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
   unit?: string | null; // 单位（Unit.name），数量需求后缀，默认 个
   /** 负责人 ID（V1.0 canonical 归属/请求字段） */
@@ -103,14 +105,16 @@ export interface LeadPayload {
   productDesc?: string | null;
   images?: { url: string; name?: string }[] | null;
   targetPrice?: string | null;
-  /** 目标价位汇率快照：1 单位该币种 = X CNY（金额必带，CNY 恒为 1） */
-  targetPriceRate?: number | null;
   expectedDelivery?: string | null;
   customerType?: string | null;
+  /** 公司官网（非必填，随线索保存，转商机建档时带入客户） */
+  website?: string | null;
   currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
   unit?: string | null; // 单位（Unit.name），数量需求后缀，默认 个
   /** 负责人 ID（V1.0 canonical 请求字段） */
   ownerId?: string | null;
+  /** 草稿标记：暂存场景为 true，后端放宽联系方式等必填约束，允许空必填创建草稿线索（不落库） */
+  draft?: boolean;
 }
 
 /** 线索操作日志条目（OperationLog 投影） */
