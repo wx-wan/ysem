@@ -17,15 +17,15 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
-import CustomerFormModal from '../customer/modals/CustomerFormModal';
+
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
 import { type Channel } from '../../api/channel';
-import { type Customer } from '../../api/customers';
+import { customerApi, type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { salesApi, type SalesItem } from '../../api/sales';
 import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
@@ -34,7 +34,9 @@ import { useUserStore } from '../../stores/useUserStore';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
-import CustomerInfoFields from '../common/CustomerInfoFields';
+import CustomerTypeSelect from '../CustomerTypeSelect';
+import ChipSelect from '../common/ChipSelect';
+import ContactMethodInput from '../common/ContactMethodInput';
 import type { ContactMethodHandle } from '../common/ContactMethodInput';
 import MoneyInput, { formatMoneyValue, currentRateOf, type MoneyValue } from '../common/MoneyInput';
 import { useCommToolOptions } from '../../stores/useCommToolStore';
@@ -109,17 +111,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [step, setStep] = useState(0);
   const [linkedPipeline, setLinkedPipeline] = useState<SalesItem | null>(null);
   const navigate = useNavigate();
-  // 确认建档：新建客户弹窗（带入待确认客户名到公司名称）
-  const [custModalOpen, setCustModalOpen] = useState(false);
-  const [initialCustName, setInitialCustName] = useState('');
   const productEditRef = useRef<ProductEditModalHandle>(null);
   // 联系方式「新增」按钮放在 Form.Item label 旁时，用 ref 触发组件内部 add()
   const contactMethodRef = useRef<ContactMethodHandle>(null);
   // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id；用户取消关闭时 reject）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
-  // 新建客户弹窗是否处于强制建档模式（隐藏取消按钮）
-  const [custForceMode, setCustForceMode] = useState(false);
+
   // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
   const refreshEditing = async () => {
     if (!editing?.id) return;
@@ -434,7 +432,31 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  // 未建档客户：弹出「新建客户」弹窗（与客户页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
+  // 确认建档：直接用线索信息静默创建客户（不再弹窗）；来源由编辑中线索的 channelId/shopId 带入
+  const createCustomerSilently = async (initial?: {
+    companyName?: string;
+    contactName?: string;
+    email?: string;
+    phone?: string;
+    country?: string;
+  }): Promise<{ id: string }> => {
+    const res: any = await customerApi.create({
+      companyName: initial?.companyName ?? editing?.companyName ?? '',
+      contactName: initial?.contactName ?? editing?.contactName ?? undefined,
+      email: initial?.email ?? editing?.email ?? undefined,
+      phone: initial?.phone ?? editing?.phone ?? undefined,
+      country:
+        initial?.country ??
+        (editing?.targetMarket ? findCountry(editing.targetMarket)?.zh : undefined),
+      contactMethods: editing?.contactMethods ?? undefined,
+      channelId: editing?.channelId ?? undefined,
+      shopId: editing?.shopId ?? undefined,
+    } as any);
+    const cust = (res?.data ?? res) as { id: string };
+    return { id: cust.id };
+  };
+
+  // 转商机流程：未建档客户 → 静默创建并 resolve 出新 id（Promise 兼容 convertLead 调用约定）
   const openCustomerForm = (initial?: {
     companyName?: string;
     contactName?: string;
@@ -443,11 +465,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     country?: string;
   }) =>
     new Promise<{ id: string }>((resolve, reject) => {
-      pendingResolveRef.current = resolve;
-      pendingRejectRef.current = reject;
-      const { companyName } = initial || {};
-      setInitialCustName(companyName ?? '');
-      setCustModalOpen(true);
+      createCustomerSilently(initial)
+        .then((r) => resolve(r))
+        .catch((e) => reject(e));
     });
 
   // 未建档产品：弹出「新建产品」弹窗（与产品页一致），保存后 resolve 新 id；用户取消关闭则 reject（回到汇总页）
@@ -532,14 +552,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   };
 
   // ============ 确认建档 ============
-  // 走「新建客户 / 新建产品」弹窗，带入待确认的名称，由用户在弹窗中补全并确认后创建
-  // 客户 / 产品「未建档」标签点击：优先用已保存记录的名称，回退到当前表单输入值
-  const confirmCreateCustomer = () => {
+  // 客户「未建档」标签点击：直接用线索信息静默创建客户并关联（不再弹窗）
+  const confirmCreateCustomer = async () => {
     if (readonly) return;
     const name = editing?.companyName || watchCustomerKey;
     if (!name) return;
-    setInitialCustName(name);
-    setCustModalOpen(true);
+    try {
+      const { id } = await createCustomerSilently({ companyName: name });
+      await handleCustomerFiled({ id } as Customer);
+    } catch {
+      message.error(t('common.saveFailed'));
+    }
   };
 
   const confirmCreateProduct = () => {
@@ -549,19 +572,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     productEditRef.current?.open(null, { name });
   };
 
-  // 新建客户弹窗保存成功后：转商机流程则解锁 Promise；否则关联到当前线索
+  // 静默创建客户成功后：关联客户到当前线索（转商机流程由 convertLead 内部直接 resolve，不走此回调）
   const handleCustomerFiled = async (customer?: Customer) => {
     if (!customer?.id) return;
-    if (pendingResolveRef.current) {
-      const resolve = pendingResolveRef.current;
-      pendingResolveRef.current = null;
-      pendingRejectRef.current = null;
-      setCustForceMode(false);
-      setCustModalOpen(false);
-      resolve({ id: customer.id });
-      refreshEditing();
-      return;
-    }
     // 新建线索（尚无 id）：客户已建档，刷新下拉后标签自动消失，后续保存线索时即可匹配到 customerId
     if (!editing?.id) {
       message.success(t('common.createSuccess'));
@@ -755,17 +768,47 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   </Form.Item>
                 </Col>
               </Row>
-              {/* 客户基础信息（国家/地区 · 客户类型 · 联系人 · 联系方式 · 来源）复用公共字段组件 */}
-              <CustomerInfoFields
-                countryField="targetMarket"
-                countryLabel={t('lead.targetMarket')}
-                sourceLabel={t('lead.leadSource')}
-                sourceOptions={sourceOptions}
-                sourceFullRow
-                sourceAutoWidth
-                commToolOptions={commToolOptions}
-                contactMethodRef={contactMethodRef}
-              />
+              {/* 客户基础信息（国家/地区 · 客户类型 · 联系人 · 联系方式 · 来源）原公共组件已内联 */}
+              <Row gutter={[16, 0]}>
+                <Col span={12}>
+                  <Form.Item name="targetMarket" label={t('lead.targetMarket')} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
+                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item name="customerType" label={t('lead.customerType')} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
+                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} />
+                  </Form.Item>
+                </Col>
+              </Row>
+              <Row gutter={[16, 0]}>
+                {/* 左：联系人 + 联系方式 */}
+                <Col span={12}>
+                  <Form.Item name="contactName" label={t('customer.contactName')} rules={[{ required: true, message: t('customer.contactNameRequired') }]}>
+                    <Input placeholder={t('customer.contactNamePlaceholder')} />
+                  </Form.Item>
+                  <Form.Item
+                    name="contactMethods"
+                    rules={[{ required: true, message: t('customer.contactMethodsRequired') }]}
+                    label={
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                        <span>{t('customer.contactMethods')}</span>
+                        <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => contactMethodRef.current?.add()}>
+                          {t('lead.addContactMethod')}
+                        </Button>
+                      </div>
+                    }
+                  >
+                    <ContactMethodInput showAddButton={false} ref={contactMethodRef} options={commToolOptions} />
+                  </Form.Item>
+                </Col>
+                {/* 右：来源渠道 */}
+                <Col span={12}>
+                  <Form.Item name="sourceKey" label={t('lead.leadSource')} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
+                    <ChipSelect options={sourceOptions} size="large" />
+                  </Form.Item>
+                </Col>
+              </Row>
             </>
           )}
 
@@ -999,29 +1042,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         </AppModal>
       </Form>
 
-      {/* 确认建档：新建客户弹窗（带入待确认客户名 / 国家 / 来源 / 联系方式），允许关闭（取消则回到汇总页 / 线索编辑页） */}
-      <CustomerFormModal
-        open={custModalOpen}
-        editingCustomer={null}
-        initialCompanyName={initialCustName}
-        initialContactName={editing?.contactName ?? undefined}
-        initialCountry={editing?.targetMarket ? findCountry(editing.targetMarket)?.zh : undefined}
-        initialSourceKey={
-          editing?.channelId
-            ? JSON.stringify({ channelId: editing.channelId, shopId: editing.shopId || editing.channelId })
-            : undefined
-        }
-        initialContactMethods={editing?.contactMethods ?? undefined}
-        force={custForceMode}
-        onClose={() => {
-          setCustModalOpen(false);
-          const reject = pendingRejectRef.current;
-          pendingRejectRef.current = null;
-          pendingResolveRef.current = null;
-          reject?.(new Error('cancelled'));
-        }}
-        onSuccess={handleCustomerFiled}
-      />
 
       {/* 确认建档：新建产品弹窗（带入待确认产品名到产品名称），允许关闭（取消则回到汇总页 / 线索编辑页） */}
       <ProductEditModal
