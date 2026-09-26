@@ -17,7 +17,7 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, PlusOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -28,7 +28,7 @@ import { type Channel } from '../../api/channel';
 import { customerApi, type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { salesApi, type SalesItem } from '../../api/sales';
-import { type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
+import { productApi, type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
@@ -38,6 +38,8 @@ import CustomerTypeSelect from '../CustomerTypeSelect';
 import ChipSelect from '../common/ChipSelect';
 import ContactMethodInput from '../common/ContactMethodInput';
 import type { ContactMethodHandle } from '../common/ContactMethodInput';
+import CompanyNameInput from '../common/CompanyNameInput';
+import type { CompanyStatus } from '../common/CompanyNameInput';
 import MoneyInput, { formatMoneyValue, currentRateOf, type MoneyValue } from '../common/MoneyInput';
 import { useCommToolOptions } from '../../stores/useCommToolStore';
 import { useUnitOptions } from '../../stores/useUnitStore';
@@ -118,6 +120,34 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
 
+  // 公司名称 onBlur 归属查询后的状态（后端 /ownership 接口返回，仅 code + 主键 + 负责人姓名）
+  const [companyStatus, setCompanyStatus] = useState<CompanyStatus>('idle');
+  // 命中客户的归属信息：主键用于关联 Lead.customerId，公司名用于与当前输入比对（覆盖本人 / 他人 / 公海）
+  const [matchedCustomerId, setMatchedCustomerId] = useState<string | null>(null);
+  const [matchedCompanyName, setMatchedCompanyName] = useState<string | null>(null);
+  // mine（本人已建档）时拉取完整客户对象，用于转商机时比对信息变更并同步更新
+  const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  const handleCompanyResolved = (info: {
+    status: CompanyStatus;
+    companyName?: string;
+    customerId?: string;
+    ownerName?: string;
+    publicSea?: boolean;
+  }) => {
+    setCompanyStatus(info.status);
+    setMatchedCustomerId(info.customerId ?? null);
+    setMatchedCompanyName(info.companyName ?? null);
+    // 仅本人已建档需要完整档案做信息变更比对；其余情况清空，避免旧基线残留
+    if (info.status === 'mine' && info.customerId) {
+      customerApi
+        .getById(info.customerId)
+        .then((r) => setMatchedCustomer((r?.data?.data as Customer) ?? null))
+        .catch(() => setMatchedCustomer(null));
+    } else {
+      setMatchedCustomer(null);
+    }
+  };
+
   // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
   const refreshEditing = async () => {
     if (!editing?.id) return;
@@ -167,15 +197,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     return parts.join('-');
   }, [watchTargetMarket, watchProductKey, watchQuantity]);
 
-  const customerNameOptions = useMemo(
-    () =>
-      customerOptions.map((c) => ({
-        value: c.label,
-        label: [c.label, c.contactName].filter(Boolean).join(' · '),
-      })),
-    [customerOptions],
-  );
-
   const productNameOptions = useMemo(
     () => productOptions.map((p) => ({ label: p.name, value: p.name })),
     [productOptions],
@@ -218,6 +239,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setEditing(null);
     setLinkedPipeline(null);
     setStep(0);
+    setMatchedCustomer(null);
+    setMatchedCustomerId(null);
+    setMatchedCompanyName(null);
+    setCompanyStatus('idle');
     form.resetFields();
     // 清空联系方式组件内部的字段级校验状态（避免上一次的飘红残留）
     contactMethodRef.current?.reset();
@@ -247,6 +272,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setEditing(record);
     setLinkedPipeline(null);
     setStep(initialStep);
+    setMatchedCustomer(null);
+    setMatchedCustomerId(null);
+    setMatchedCompanyName(null);
+    setCompanyStatus('idle');
     form.resetFields();
     // 清空联系方式组件内部的字段级校验状态
     contactMethodRef.current?.reset();
@@ -293,6 +322,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
           : '',
       });
+      // 还原归属状态：「未建档」在落库时即持久化为 customerId 缺失（已建档会关联客户主键）。
+      // 重开草稿时据此还原「未建档」标签与 matched 状态，确保首次暂存判定的未建档状态被保留、不丢失。
+      const reopenCompany = item.customer?.companyName || item.companyName || undefined;
+      if (!item.customerId && reopenCompany) {
+        setCompanyStatus('none');
+        setMatchedCompanyName(reopenCompany);
+        setMatchedCustomerId(null);
+      } else {
+        setCompanyStatus('idle');
+        setMatchedCompanyName(null);
+        setMatchedCustomerId(null);
+      }
       // 溯源：若已关联商机，加载商机信息用于展示
       if (item.pipelineId) {
         try {
@@ -315,11 +356,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     let companyName: string | undefined;
     const customerName = values.customerKey?.trim();
     if (customerName) {
-      const matched = customerOptions.find((c) => c.label === customerName);
-      if (matched) {
-        customerId = matched.value;
+      // 优先用 onBlur 归属查询命中的客户（覆盖本人 / 他人 / 公海，归属判断最准）
+      if (matchedCustomerId && matchedCompanyName && matchedCompanyName.toLowerCase() === customerName.toLowerCase()) {
+        customerId = matchedCustomerId;
       } else {
-        companyName = customerName;
+        const matched = customerOptions.find((c) => c.label === customerName);
+        if (matched) {
+          customerId = matched.value;
+        } else {
+          companyName = customerName;
+        }
       }
     }
     // 采购产品：可手输新产品名，或下拉选择已有产品；手输新名仅存文本，确认后才会建档
@@ -387,6 +433,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const payload = buildLeadPayload(values);
     payload.contactMethods = validContacts.length ? validContacts : null;
     payload.draft = true;
+    // 暂存：记录当前向导阶段（0 客户信息 / 1 需求详情 / 2 确认商机），供详情面板据此展示「编辑」或「确认」
+    payload.stage = step;
     try {
       let savedId: string | undefined;
       if (editing?.id) {
@@ -414,6 +462,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     await form.validateFields();
     const values = form.getFieldsValue(true) as Record<string, any>;
     const payload = buildLeadPayload(values);
+    // 完整提交：记录当前阶段（确认动作仅在最后一步触发，stage 记为 2）
+    payload.stage = step;
     try {
       let savedId: string | undefined;
       if (editing?.id) {
@@ -454,6 +504,54 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     } as any);
     const cust = (res?.data ?? res) as { id: string };
     return { id: cust.id };
+  };
+
+  // 确认建档：直接用线索信息静默创建产品（不再弹窗）；描述取线索产品需求
+  const createProductSilently = async (initial?: {
+    name?: string;
+    description?: string;
+  }): Promise<{ id: string }> => {
+    const res: any = await productApi.create({
+      name: initial?.name ?? editing?.items?.[0]?.productName ?? '',
+      description: initial?.description ?? editing?.items?.[0]?.productDesc ?? undefined,
+    } as any);
+    const p = (res?.data ?? res) as { id: string };
+    return { id: p.id };
+  };
+
+  // 需求清单校验：客户/产品是否建档、必填项是否齐全；全部通过才允许确认转商机
+  const computeRequirement = () => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const nameMatchesMatched =
+      !!matchedCustomerId && !!matchedCompanyName && !!v.customerKey && matchedCompanyName.toLowerCase() === v.customerKey.trim().toLowerCase();
+    const customerFiled =
+      !!editing?.customerId || nameMatchesMatched || (!!v.customerKey && customerOptions.some((c) => c.label === v.customerKey));
+    const productFiled =
+      !!editing?.items?.[0]?.productId || (!!v.productKey && productNameOptions.some((p) => p.label === v.productKey));
+    const customerReady = !!v.customerKey && customerFiled;
+    const productReady = !!v.productKey && productFiled;
+    const quantityReady = v.quantity != null && v.quantity !== '' && Number(v.quantity) !== 0;
+    const sourceReady = !!v.sourceKey;
+    const assigneeReady = !!v.ownerId || !!editing?.ownerId;
+    const allReady = customerReady && productReady && quantityReady && sourceReady && assigneeReady;
+    return { v, customerFiled, productFiled, allReady };
+  };
+
+  // 命中本人已建档客户时：对比线索表单字段与该客户建档时的值，返回发生变化的字段（转商机时同步更新客户档案）
+  const buildCustomerUpdate = (c: Customer): Record<string, any> | null => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const norm = (x: any) => (x === undefined || x === null || x === '' ? null : x);
+    const patch: Record<string, any> = {};
+    if (norm(v.contactName) !== norm(c.contactName)) patch.contactName = norm(v.contactName);
+    const formMethods = Array.isArray(v.contactMethods) ? v.contactMethods.filter(Boolean) : [];
+    const custMethods = Array.isArray(c.contactMethods) ? c.contactMethods : [];
+    if (JSON.stringify(formMethods) !== JSON.stringify(custMethods)) patch.contactMethods = formMethods;
+    if (norm(v.targetMarket) !== norm(c.country)) patch.country = norm(v.targetMarket);
+    if (norm(v.customerType) !== norm(c.customerType)) patch.customerType = norm(v.customerType);
+    const src = safeParseSource(v.sourceKey);
+    if (norm(src?.channelId) !== norm(c.channelId)) patch.channelId = norm(src?.channelId);
+    if (norm(src?.shopId) !== norm(c.shopId)) patch.shopId = norm(src?.shopId);
+    return Object.keys(patch).length ? patch : null;
   };
 
   // 转商机流程：未建档客户 → 静默创建并 resolve 出新 id（Promise 兼容 convertLead 调用约定）
@@ -505,6 +603,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       onOk: () => {
         (async () => {
           try {
+            // 命中本人已建档客户且线索信息较建档时发生变化：转商机前先同步更新客户档案
+            if (matchedCustomer && companyStatus === 'mine') {
+              const upd = buildCustomerUpdate(matchedCustomer);
+              if (upd) {
+                await customerApi.update(matchedCustomer.id, upd);
+                await leadApi.update(editing.id, { customerId: matchedCustomer.id, companyName: null });
+                onRefreshCustomers();
+              }
+            }
             const res = await convertLeadToOpportunity(editing.id, { openCustomerForm, openProductForm, showCreateSummary });
             const successModal = modal.success({
               title: t('lead.convertSuccessTitle'),
@@ -565,11 +672,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
-  const confirmCreateProduct = () => {
+  // 确认建档：直接用线索信息静默创建产品（不再弹窗）
+  const confirmCreateProduct = async () => {
     if (readonly) return;
     const name = editing?.items?.[0]?.productName || watchProductKey;
     if (!name) return;
-    productEditRef.current?.open(null, { name });
+    try {
+      const { id } = await createProductSilently({ name });
+      await handleProductFiled({ id } as Product);
+    } catch {
+      message.error(t('common.saveFailed'));
+    }
   };
 
   // 静默创建客户成功后：关联客户到当前线索（转商机流程由 convertLead 内部直接 resolve，不走此回调）
@@ -708,7 +821,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       </Button>
                     )}
                     {/* 已建档线索：最终步提供「确认」（转商机），样式与保存一致（primary） */}
-                    {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && (
+                    {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && computeRequirement().allReady && (
                       <Button size="large" type="primary" onClick={handleConfirmLead}>
                         {t('lead.confirmLead')}
                       </Button>
@@ -740,30 +853,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="customerKey"
                     label={
-                      (editing?.companyName && !editing.customerId) ||
-                      (watchCustomerKey && !customerOptions.some((c) => c.label === watchCustomerKey)) ? (
-                        <Space size={4}>
-                          <span>{t('lead.customerCompany')}</span>
-                          <Tag
-                            color="orange"
-                            style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                            onClick={confirmCreateCustomer}
-                            title={t('lead.customerPendingTip', { name: editing?.companyName || watchCustomerKey })}
-                          >
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span>{t('lead.customerCompany')}</span>
+                        {companyStatus === 'none' && (
+                          <Tag color="orange" style={{ marginInlineEnd: 0 }}>
                             {t('lead.pendingTag')}
                           </Tag>
-                        </Space>
-                      ) : (
-                        t('lead.customerCompany')
-                      )
+                        )}
+                      </span>
                     }
                     rules={[{ required: true, message: t('lead.customerRequired') }]}
                   >
-                    <AutoComplete
-                      allowClear
+                    <CompanyNameInput
+                      onResolved={handleCompanyResolved}
                       placeholder={t('lead.customerPlaceholder')}
-                      options={customerNameOptions}
-                      filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
                     />
                   </Form.Item>
                 </Col>
@@ -793,13 +896,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     label={
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <span>{t('customer.contactMethods')}</span>
-                        <Button type="link" size="small" icon={<PlusOutlined />} onClick={() => contactMethodRef.current?.add()}>
-                          {t('lead.addContactMethod')}
+                        <Button type="link" size="small" onClick={() => contactMethodRef.current?.add()}>
+                          + {t('lead.addContactMethod')}
                         </Button>
                       </div>
                     }
                   >
-                    <ContactMethodInput showAddButton={false} ref={contactMethodRef} options={commToolOptions} />
+                    <ContactMethodInput showAddButton={false} toolWidth={120} ref={contactMethodRef} options={commToolOptions} />
                   </Form.Item>
                 </Col>
                 {/* 右：来源渠道 */}
@@ -935,6 +1038,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
               {/* 确认商机阶段内容与详情「详细信息」一致：上=客户需求（本阶段标题为「需求清单」），下=基本信息。
                   客户 / 产品未建档时展示可点击的「未建档」标签，弹窗建档后方可确认转商机 */}
+              {!computeRequirement().allReady && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message={t('lead.requirementPendingTip')}
+                />
+              )}
               <div className="lead-wizard-summary">
                 <div className="lead-wizard-summary__title">{t('lead.customerReq')}</div>
                 {(() => {
@@ -948,15 +1059,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </div>
               <div className="lead-wizard-summary" style={{ marginTop: 12 }}>
                 {(() => {
-                  const v = form.getFieldsValue(true) as Record<string, any>;
+                  const req = computeRequirement();
+                  const v = req.v;
                   // 客户建档判定：线索已关联客户，或输入的客户在客户列表中存在
-                  const customerFiled =
-                    !!editing?.customerId ||
-                    (!!v.customerKey && customerOptions.some((c) => c.label === v.customerKey));
+                  const customerFiled = req.customerFiled;
                   // 产品建档判定：明细行已关联产品，或输入的产品在产品列表中存在
-                  const productFiled =
-                    !!editing?.items?.[0]?.productId ||
-                    (!!v.productKey && productNameOptions.some((p) => p.label === v.productKey));
+                  const productFiled = req.productFiled;
                   const rows = [
                     { label: t('lead.fieldLeadNo'), value: editing?.leadNo, required: false },
                     {

@@ -152,8 +152,7 @@
   color: #fff;
   position: relative;
 }
-.lead-wizard-header__close,
-.lead-detail-panel__edit {
+.lead-wizard-header__close {
   position: absolute;
   top: 16px;
   right: 16px;
@@ -171,8 +170,7 @@
   padding: 0;
   transition: background 0.2s ease;
 }
-.lead-wizard-header__close:hover,
-.lead-detail-panel__edit:hover {
+.lead-wizard-header__close:hover {
   background: rgba(255, 255, 255, 0.35);
 }
 .lead-wizard-header__title {

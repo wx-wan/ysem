@@ -1,5 +1,5 @@
 import { Button, Input, Select, theme } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { MinusCircleFilled } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { forwardRef, useImperativeHandle, useState, type CSSProperties } from 'react';
 
@@ -30,6 +30,8 @@ interface Props {
   size?: 'small' | 'middle' | 'large';
   /** 轻量模式：行距更紧、账号输入框自适应宽度、新增按钮改为内联 link 样式 */
   compact?: boolean;
+  /** 沟通工具下拉框宽度（默认 160）；窄区域可缩小以让账号输入框显示更多内容 */
+  toolWidth?: number;
   /** 是否内部渲染「新增」按钮（默认 true）；若把按钮放到 label 旁可设为 false，再用 ref.add() 触发 */
   showAddButton?: boolean;
 }
@@ -44,7 +46,7 @@ interface Props {
  * - 未触发过校验（`validate()` 之前）不会主动飘红，避免边填边报错。
  */
 const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function ContactMethodInput(
-  { value, onChange, options = [], disabled, variant, size, compact, showAddButton = true },
+  { value, onChange, options = [], disabled, variant, size, compact, toolWidth, showAddButton = true },
   ref,
 ) {
   const { t } = useTranslation();
@@ -120,14 +122,37 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
   };
 
   return (
-    <div>
+    <div style={{ marginTop: list.length > 1 ? 6 : 0 }}>
       {list.map((it, idx) => {
         const toolError = errors[fieldKey(idx, 'tool')];
         const accountError = errors[fieldKey(idx, 'account')];
         return (
-          <div key={idx} style={{ marginBottom: compact ? 4 : 8 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', width: compact ? 104 : 160 }}>
+          <div key={idx} style={{ position: 'relative', marginBottom: compact ? 4 : 8 }}>
+            {/* 删除角标：固定在输入框右上角、始终可见（取消 hover 才出现的交互）；仅多行且非禁用时展示 */}
+            {list.length > 1 && !disabled && (
+              <span
+                role="button"
+                title={t('common.delete')}
+                onClick={() => removeRow(idx)}
+                style={{
+                  position: 'absolute',
+                  top: 12,
+                  right: 8,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 14,
+                  lineHeight: 1,
+                  color: '#8c8c8c',
+                  cursor: 'pointer',
+                  zIndex: 2,
+                }}
+              >
+                <MinusCircleFilled />
+              </span>
+            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', width: compact ? 104 : toolWidth ?? 160 }}>
                 <Select
                   placeholder={t('lead.contactToolPlaceholder')}
                   value={it.tool || undefined}
@@ -157,30 +182,18 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
                 />
                 {accountError && <div style={errStyle}>{accountError}</div>}
               </div>
-              {list.length > 1 && (
-                <span style={{ display: 'inline-flex', alignItems: 'center', height: size === 'large' ? 40 : 32 }}>
-                  <Button
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    disabled={disabled}
-                    onClick={() => removeRow(idx)}
-                    size={compact ? 'small' : undefined}
-                  />
-                </span>
-              )}
             </div>
           </div>
         );
       })}
       {showAddButton &&
         (compact ? (
-          <Button type="link" size="small" icon={<PlusOutlined />} onClick={addRow} disabled={disabled} style={{ paddingLeft: 0 }}>
-            {t('lead.addContactMethod')}
+          <Button type="link" size="small" onClick={addRow} disabled={disabled} style={{ paddingLeft: 0 }}>
+            + {t('lead.addContactMethod')}
           </Button>
         ) : (
-          <Button type="dashed" icon={<PlusOutlined />} onClick={addRow} disabled={disabled} block>
-            {t('lead.addContactMethod')}
+          <Button type="dashed" onClick={addRow} disabled={disabled} block>
+            + {t('lead.addContactMethod')}
           </Button>
         ))}
     </div>

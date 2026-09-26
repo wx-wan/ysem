@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Popconfirm, Spin, Tabs, Tag, Timeline, Tooltip } from 'antd';
-import { ExclamationCircleOutlined, FormOutlined } from '@ant-design/icons';
+import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
@@ -37,7 +37,7 @@ interface Props {
   loading: boolean;
   isAdmin: boolean;
   onClose: () => void;
-  onEdit: (record: Lead) => void;
+  onEdit: (record: Lead, initialStep?: number) => void;
   onConvert: (record: Lead) => void;
   onClaim: (record: Lead) => void;
   onRelease: (record: Lead) => void;
@@ -107,6 +107,9 @@ export default function LeadDetailPanel({
   const isPool = !detail.ownerId;
   // 已推进（已确认 / 已打样 / 已成交）的线索只读
   const readonly = detail.status !== 'NEW';
+  // 是否已到达「确认商机」阶段（stage>=2）：旧数据（无 stage）默认视为可确认；
+  // 据此决定底部主按钮显示「编辑」（回到暂存阶段继续）还是「确认」（转商机）
+  const reachedConfirm = detail.stage == null ? true : detail.stage >= 2;
   // 头部联系方式：行内展示首条「沟通工具：账号」，多条时以 icon 悬停查看全部
   const contactList = Array.isArray(detail.contactMethods) ? detail.contactMethods : [];
   const primaryContact = contactList[0];
@@ -145,13 +148,7 @@ export default function LeadDetailPanel({
   return (
     <div className="lead-detail-panel">
       <div className="lead-detail-panel__header">
-        {/* 卡片「收起」承担关闭面板职责，右上角改为编辑入口 */}
-        <Tooltip title={t('common.edit')}>
-          <button type="button" className="lead-detail-panel__edit" onClick={() => onEdit(detail)}>
-            <FormOutlined />
-          </button>
-        </Tooltip>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 40 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ fontWeight: 600, fontSize: 13 }}>{detail.leadNo || detail.leadName}</span>
           {statusMeta && (
             <Tag color={statusMeta.color} style={{ marginInlineEnd: 0 }}>
@@ -321,14 +318,25 @@ export default function LeadDetailPanel({
           </Button>
         ) : (
           <>
-            <Button
-              type="primary"
-              style={{ flex: 1 }}
-              disabled={readonly}
-              onClick={() => onConvert(detail)}
-            >
-              {t('lead.confirmLead')}
-            </Button>
+            {reachedConfirm ? (
+              <Button
+                type="primary"
+                style={{ flex: 1 }}
+                disabled={readonly}
+                onClick={() => onConvert(detail)}
+              >
+                {t('lead.confirmLead')}
+              </Button>
+            ) : (
+              <Button
+                type="primary"
+                style={{ flex: 1 }}
+                disabled={readonly}
+                onClick={() => onEdit(detail, detail.stage ?? 0)}
+              >
+                {t('common.edit')}
+              </Button>
+            )}
             <Button disabled={readonly} onClick={() => onRelease(detail)}>
               {t('lead.release')}
             </Button>

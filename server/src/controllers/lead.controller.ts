@@ -80,6 +80,9 @@ const leadSchema = z.object({
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
   // 草稿标记（不落库）：暂存场景传 true，放宽「至少一条有效联系方式」等必填约束，允许空必填创建草稿线索
   draft: z.boolean().optional(),
+  // 三步向导当前阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存/保存时由前端写入并落库，
+  // 详情接口原样返回，详情面板据此决定底部按钮展示「编辑」或「确认」
+  stage: z.number().int().min(0).max(2).nullable().optional(),
   // 线索状态不接受外部入参：只由单据事件自动推进（转商机 / 建打样单 / 建销售订单），
   // 见 utils/leadStatus.ts。此处不声明 status（即使前端误传也会被 zod 剥离，不落库）。
   companyName: z.string().trim().max(200).nullable().optional(),
@@ -156,6 +159,7 @@ const LEAD_WRITABLE_FIELDS = [
   'expectedDelivery',
   'remark',
   'ownerId',
+  'stage',
 ] as const;
 
 /**
@@ -595,6 +599,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           usdRate: await getTodayUsdRate(),
           expectedDelivery: data.expectedDelivery ?? null,
           customerType: data.customerType ?? null,
+          // 向导阶段：暂存/保存时由前端写入（0/1/2），详情据此展示「编辑」或「确认」
+          stage: data.stage ?? null,
           ownerId: data.ownerId ?? null,
           createdBy: req.userId ?? null,
           leadNo,

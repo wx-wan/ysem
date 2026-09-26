@@ -397,6 +397,55 @@ export const listPublic = async (req: AuthRequest, res: Response, next: NextFunc
   }
 };
 
+// ========== 轻量归属查询（线索表单 onBlur 去重 / 归属判定专用） ==========
+/**
+ * GET /customers/ownership?companyName=xxx
+ *
+ * 跨全员检索（刻意**不套数据权限 scope**），按公司名称精确匹配，
+ * 仅返回归属状态码 + 命中客户主键 + 负责人姓名，**绝不返回任何具体客户资料**。
+ *
+ * 设计要点（与 listAll / listPublic 的本质区别）：
+ *  - 不套 `roleScope / includePublicSea` ⇒ 普通用户也能检测到「某公司已被他人建档」，
+ *    否则会误判为未建档进而导致重复建档（违背去重初衷）；
+ *  - 只 `select` 主键 + 负责人，避免拉取全量客户列表（原前端每次 onBlur 拉取最多 400 条完整记录）；
+ *  - 返回 `code` 枚举：NOT_FOUND（未建档）/ OWNED_BY_ME（本人已建档）/
+ *    OWNED_BY_OTHER（他人负责，附 ownerName）/ IN_PUBLIC_SEA（公海）。
+ */
+export const checkOwnership = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const name = (req.query.companyName as string | undefined)?.trim();
+    if (!name) return error(res, "companyName required", 400);
+
+    // 注意：**不套用 roleScope**，跨全员检索；companyName 已有索引，精确匹配高效。
+    const hit = await prisma.customer.findFirst({
+      where: { companyName: name },
+      select: {
+        id: true,
+        ownerId: true,
+        owner: { select: { realName: true, username: true } },
+      },
+    });
+
+    if (!hit) {
+      return success(res, { code: "NOT_FOUND" });
+    }
+
+    let code: "OWNED_BY_ME" | "OWNED_BY_OTHER" | "IN_PUBLIC_SEA";
+    let ownerName: string | undefined;
+    if (!hit.ownerId) {
+      code = "IN_PUBLIC_SEA";
+    } else if (hit.ownerId === req.userId) {
+      code = "OWNED_BY_ME";
+    } else {
+      code = "OWNED_BY_OTHER";
+      ownerName = hit.owner?.realName || hit.owner?.username;
+    }
+    return success(res, { code, customerId: hit.id, ownerName });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ========== 客户下拉选项：我的私海 + 公海；管理员为全部 ==========
 export const listOptions = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {

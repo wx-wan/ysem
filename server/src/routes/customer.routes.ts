@@ -220,6 +220,8 @@ router.patch("/:id/tags", ctrl.updateTags);
  *       200:
  *         description: 客户详情
  */
+router.get("/ownership", ctrl.checkOwnership);
+
 router.get("/:id", ctrl.getById);
 
 /**

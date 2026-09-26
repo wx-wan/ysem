@@ -249,7 +249,7 @@ export default function SalesLeads() {
                 setSelectedId(null);
                 setDetail(null);
               }}
-              onEdit={(r) => formModalRef.current?.openEdit(r)}
+              onEdit={(r, s) => formModalRef.current?.openEdit(r, s)}
               onConvert={handleConvert}
               onClaim={handleClaim}
               onRelease={handleRelease}

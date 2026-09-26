@@ -170,6 +170,14 @@ export interface AllCustomersRes extends CustomerListRes {
 }
 
 
+// 归属查询返回结果（仅 code + 命中客户主键 + 负责人姓名，无具体客户资料）
+export type OwnershipCode = 'NOT_FOUND' | 'OWNED_BY_ME' | 'OWNED_BY_OTHER' | 'IN_PUBLIC_SEA';
+export interface OwnershipResult {
+  code: OwnershipCode;
+  customerId?: string;
+  ownerName?: string;
+}
+
 // ========== 客户 API ==========
 export const customerApi = {
   listMy: (params?: Record<string, any>) =>
@@ -187,6 +195,14 @@ export const customerApi = {
 
   getCountries: () =>
     request.get<ApiResponse<string[]>>('/customers/countries'),
+
+  /**
+   * 轻量归属查询：给定公司名称，跨全员检索（后端不套数据权限），
+   * 仅返回归属状态码 + 命中客户主键 + 负责人姓名，不返回具体客户资料。
+   * 用于线索表单 onBlur 时判定「未建档 / 本人已建档 / 他人负责 / 公海」。
+   */
+  checkOwnership: (companyName: string) =>
+    request.get<ApiResponse<OwnershipResult>>('/customers/ownership', { params: { companyName } }),
 
   getById: (id: string) =>
     request.get<ApiResponse<Customer>>(`/customers/${id}`),

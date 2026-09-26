@@ -65,6 +65,8 @@ export interface Lead {
   usdRate?: number | null;
   expectedDelivery?: string | null;
   customerType?: string | null;
+  /** 当前进行到的向导阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存时记录，详情据此决定展示「编辑」或「确认」 */
+  stage?: number | null;
   /** 公司官网（非必填，随线索保存，转商机建档时带入客户） */
   website?: string | null;
   currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
@@ -107,6 +109,8 @@ export interface LeadPayload {
   targetPrice?: string | null;
   expectedDelivery?: string | null;
   customerType?: string | null;
+  /** 当前进行到的向导阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存时记录，详情据此决定展示「编辑」或「确认」 */
+  stage?: number | null;
   /** 公司官网（非必填，随线索保存，转商机建档时带入客户） */
   website?: string | null;
   currency?: string | null; // 币种（CurrencyRate.code），目标价位前缀
