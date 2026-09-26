@@ -11,9 +11,6 @@ import {
   SwapOutlined,
   RollbackOutlined,
   CloseOutlined,
-  MailOutlined,
-  PhoneOutlined,
-  WechatOutlined,
   UserOutlined,
   IdcardOutlined,
   NumberOutlined,
@@ -27,7 +24,8 @@ import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/sal
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import Price from '../../common/Price';
-import { getCustomerLogicLabel } from '../shared/utils';
+import { getCustomerLogicLabel, getDisplayContactMethods } from '../shared/utils';
+import { CommToolIcon } from '../../common/CommToolIcon';
 import { intentLevelToPipelineLevel } from '../shared/intentLevel';
 import PurchaseIntentTag from '../shared/PurchaseIntentTag';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
@@ -576,9 +574,14 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.16)', display: 'flex', flexDirection: 'column', gap: 9 }}>
                   <InfoRow icon={<UserOutlined style={{ fontSize: 14 }} />} value={customer.contactName} />
                   <InfoRow icon={<IdcardOutlined style={{ fontSize: 14 }} />} value={customer.position} />
-                  <InfoRow icon={<MailOutlined style={{ fontSize: 14 }} />} value={customer.email} />
-                  <InfoRow icon={<PhoneOutlined style={{ fontSize: 14 }} />} value={customer.phone} />
-                  <InfoRow icon={<WechatOutlined style={{ fontSize: 14 }} />} value={customer.wechat} />
+                  {/* 联系方式：逐条平铺，每条用各自工具 icon 作行首（与联系人同级），不再套额外的 MessageOutlined */}
+                  {getDisplayContactMethods(customer).map((m, i) => (
+                    <InfoRow
+                      key={i}
+                      icon={<CommToolIcon name={m.tool} style={{ fontSize: 14, color: 'inherit' }} />}
+                      value={m.account || undefined}
+                    />
+                  ))}
                   <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderAt ? dayjs(customer.firstOrderAt).format('YYYY-MM-DD') : undefined} />
                   <InfoRow icon={<FileTextOutlined style={{ fontSize: 14 }} />} value={customer.notes} />
                 </div>

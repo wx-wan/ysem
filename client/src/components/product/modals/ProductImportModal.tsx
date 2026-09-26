@@ -58,7 +58,7 @@ const ProductImportModal: React.FC<Props> = React.memo(({ open, onClose, onSucce
       zIndex={Z_INDEX.overlay}
     >
       <Alert
-        message="请下载模板，按模板格式填写产品数据后上传。工艺/受众/品类/认证资质/可见人员填写名称（多个用「、」分隔），系统自动按名称匹配。"
+        title="请下载模板，按模板格式填写产品数据后上传。工艺/受众/品类/认证资质/可见人员填写名称（多个用「、」分隔），系统自动按名称匹配。"
         type="info"
         showIcon
         style={{ marginBottom: 16, marginTop: 12 }}

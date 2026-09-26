@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, DatePicker, App, theme, Form } from 'antd';
-import { CloseOutlined, SaveOutlined, MailOutlined } from '@ant-design/icons';
+import { CloseOutlined, SaveOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
 import ProductImageList from '../../common/ProductImageList';
+import ContactMethodInput from '../../common/ContactMethodInput';
+import { useCommToolOptions } from '../../../stores/useCommToolStore';
 import { Z_INDEX, createPopupContainer } from '../../../zIndex';
 import { useDs } from '../shared/ds';
 
@@ -27,6 +29,9 @@ interface CustomerEditablePayload {
   position: string;
   country: string;
   images: string;
+  /** 沟通方式（与线索一致：[{tool, account}]）；删除旧的邮箱/电话/微信独立字段，统一用该组件录入 */
+  contactMethods?: { tool: string; account: string }[] | null;
+  /** 旧字段保留项（仅用于回填、不再编辑，避免 PUT 全量替换导致历史数据丢失） */
   email: string;
   phone: string;
   wechat: string;
@@ -59,6 +64,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
   const { message: msg } = App.useApp();
   const [antForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  // 沟通工具下拉（取自系统设置 → 沟通工具维护，与线索录入一致）
+  const { options: commToolOptions } = useCommToolOptions();
 
   // 内容容器 ref，用于让 antd 浮层挂载在抽屉内、避免被层级遮挡
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -71,9 +78,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         contactName: customer.contactName,
         englishName: customer.englishName,
         position: customer.position,
-        email: customer.email,
-        phone: customer.phone,
-        wechat: customer.wechat,
+        // 沟通方式：优先用 contactMethods；旧数据无该字段时回退空（组件内默认一条空行）
+        contactMethods: customer.contactMethods ?? undefined,
         country: customer.country,
         region: customer.region,
         notes: customer.notes,
@@ -97,9 +103,17 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         position: values.position ?? '',
         country: values.country ?? '',
         images: values.images ?? '',
-        email: values.email ?? '',
-        phone: values.phone ?? '',
-        wechat: values.wechat ?? '',
+        // 沟通方式：过滤掉「工具/账号均为空」的占位行，避免写入空数据；无有效项则置 null
+        contactMethods: (() => {
+          const cms = Array.isArray(values.contactMethods)
+            ? values.contactMethods.filter((m: any) => m && (m.tool || m.account))
+            : [];
+          return cms.length ? cms : null;
+        })(),
+        // 旧字段保留回填（不再编辑），避免 PUT 全量替换导致历史 email/phone/wechat 丢失
+        email: customer.email ?? '',
+        phone: customer.phone ?? '',
+        wechat: customer.wechat ?? '',
         // 显式取值：DatePicker 清空 → null（服务端 dateField 接受 null），
         // 不再被 spread 出的旧 firstOrderAt 覆盖
         firstOrderAt: values.firstOrderAt
@@ -216,30 +230,20 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
             </FormRow>
 
             <Form.Item name="country" label="所在地区">
-              <CountrySelect placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
+              <CountrySelect size="large" placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
             </Form.Item>
 
-            <Form.Item name="images" label="参考图片" valuePropName="value">
+            <Form.Item name="images" label="名片" valuePropName="value">
               <ProductImageList uploadUrl="/upload" />
             </Form.Item>
 
-            <Form.Item name="email" label="邮箱">
-              <Input
-                size="large"
-                placeholder="请输入邮箱地址"
-                prefix={<MailOutlined style={{ color: token.colorTextTertiary }} />}
-                style={{ borderRadius: ds.radius }}
-              />
+            <Form.Item
+              name="contactMethods"
+              label="联系方式"
+              rules={[{ required: true, message: '请至少填写一条联系方式' }]}
+            >
+              <ContactMethodInput options={commToolOptions} size="large" />
             </Form.Item>
-
-            <FormRow>
-              <Form.Item key="phone" name="phone" label="电话">
-                <Input size="large" placeholder="请输入联系电话" style={{ borderRadius: ds.radius }} />
-              </Form.Item>
-              <Form.Item key="wechat" name="wechat" label="微信">
-                <Input size="large" placeholder="请输入微信号" style={{ borderRadius: ds.radius }} />
-              </Form.Item>
-            </FormRow>
 
             <Form.Item name="firstOrderAt" label="首次合作日期">
               <DatePicker

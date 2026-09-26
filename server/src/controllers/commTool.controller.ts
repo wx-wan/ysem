@@ -6,9 +6,15 @@ import { success, created, fail } from '../utils/response';
 
 const commToolSchema = z.object({
   name: z.string().min(1, '名称不能为空').max(50, '名称最多 50 字符'),
-  description: z.string().max(200, '说明最多 200 字符').optional(),
+  // 允许 null：编辑回填时 description 可能为 null，z.string().optional() 不接受 null
+  description: z.string().max(200, '说明最多 200 字符').optional().nullable(),
+  icon: z.string().max(50, '图标名称最多 50 字符').optional().nullable(),
   isActive: z.boolean().optional(),
-  sort: z.number().int().optional(),
+  // 数字输入框可能提交字符串；空串/置空视为未填（交由默认值逻辑处理）
+  sort: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
+    z.number().int('排序必须为整数').optional(),
+  ),
 });
 
 const sortSchema = z.array(
@@ -73,6 +79,7 @@ export const createCommTool = async (req: AuthRequest, res: Response): Promise<v
       data: {
         name: data.name,
         description: data.description ?? null,
+        icon: data.icon ?? null,
         isActive: data.isActive ?? true,
         sort: data.sort ?? (maxSort._max.sort ?? 0) + 1,
       },

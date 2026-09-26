@@ -144,6 +144,14 @@ model LeadItem {
   /// D2（F-8L）：采购产品的描述（材质 / 规格 / 工艺 / 用途等），落在明细行而非 Lead 标量
   productDesc String?
   quantity    Int      @default(1) // 意向数量，保留 Int（04 §12#7）
+  // 需求详情扩展（与产品主数据字段对齐，建档时带入产品）：产品分类与规格
+  craftIds    String[] @default([]) // 工艺 id 数组（多对多，落数组避免引入关联表）
+  audienceId  String? // 受众（二级分类）
+  categoryId  String? // 品类（三级分类）
+  sizeL       Float? // 长 cm
+  sizeW       Float? // 宽 cm
+  sizeH       Float? // 高 cm
+  weight      Float? // 克重 g
   sort        Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -199,6 +207,7 @@ model CommunicationTool {
   id          String   @id @default(cuid())
   name        String   @unique
   description String? // 工具说明
+  icon        String? // 工具图标（antd 图标组件名，如 MailOutlined；详情/列表联系方式用 icon+值 展示）
   isActive    Boolean  @default(true)
   sort        Int      @default(0)
   createdAt   DateTime @default(now())
@@ -252,6 +261,9 @@ model Lead {
   /// 暂存/保存时由前端写入，详情面板据此决定底部按钮展示「编辑」或「确认」。
   /// 旧数据为 null（视为已到确认阶段）；转商机后该字段不再有意义。
   stage Int?
+  /// 草稿标记：暂存=1（仅落线索表，未建档）；建档/锁定/正式提交=0。
+  /// 详情接口返回，前端据此区分「草稿（可编辑、显示暂存）」与「已正式建档（锁定）」。
+  draft Boolean @default(false)
 
   // ---------- 转化（转商机后回填）----------
   convertedAt   DateTime?

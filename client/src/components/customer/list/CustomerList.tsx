@@ -4,7 +4,8 @@ import { GlobalOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../../KeyAccountStar';
 import FlagIcon from '../../FlagIcon';
 import type { Customer } from '../../../api/customers';
-import { getGrade, tagColorToHex } from '../shared/utils';
+import { getGrade, tagColorToHex, getDisplayContactMethods } from '../shared/utils';
+import ContactMethodsView from '../../common/ContactMethodsView';
 import CustomerTags, { filterCustomTags } from '../cards/CustomerTags';
 import { findCountry } from '../../../data/countries';
 import Price from '../../common/Price';
@@ -63,10 +64,12 @@ const CustomerList = memo(function CustomerList({
       key: 'contact',
       width: 180,
       render: (_: string, record: Customer) => (
-        <div style={{ fontSize: 13 }}>
-          <div>{record.email || '-'}</div>
-          <div style={{ color: token.colorTextSecondary }}>{record.phone || '-'}</div>
-        </div>
+        <ContactMethodsView
+          methods={getDisplayContactMethods(record)}
+          empty={<span style={{ fontSize: 13, color: token.colorTextSecondary }}>-</span>}
+          iconStyle={{ color: token.colorTextSecondary }}
+          textStyle={{ fontSize: 13, color: token.colorTextSecondary }}
+        />
       ),
     },
     {

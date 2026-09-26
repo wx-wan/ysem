@@ -4,6 +4,7 @@ export interface CommunicationTool {
   id: string;
   name: string;
   description: string | null;
+  icon: string | null;
   isActive: boolean;
   sort: number;
   createdAt: string;
@@ -13,6 +14,7 @@ export interface CommunicationTool {
 export interface CommunicationToolInput {
   name?: string;
   description?: string;
+  icon?: string | null;
   isActive?: boolean;
   sort?: number;
 }

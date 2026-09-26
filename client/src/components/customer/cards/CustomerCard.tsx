@@ -1,10 +1,11 @@
 import { useMemo, memo, useState, useEffect, useCallback } from 'react';
 import dayjs from 'dayjs';
 import { Card, Popconfirm, Avatar, Row, Col } from 'antd';
-import { EditOutlined, MailOutlined, PhoneOutlined, UserOutlined, IdcardOutlined, WechatOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
+import { EditOutlined, UserOutlined, IdcardOutlined, SwapOutlined, RollbackOutlined, DeleteOutlined, MoneyCollectOutlined } from '@ant-design/icons';
 import KeyAccountStar from '../../KeyAccountStar';
 import type { Customer } from '../../../api/customers';
-import { getGrade, getCustomerLogicLabel } from '../shared/utils';
+import { getGrade, getCustomerLogicLabel, getDisplayContactMethods } from '../shared/utils';
+import ContactMethodsView from '../../common/ContactMethodsView';
 import PurchaseIntentTag from '../shared/PurchaseIntentTag';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
 import { useDs } from '../shared/ds';
@@ -193,24 +194,15 @@ const CustomerCard = memo(function CustomerCard({
               </span>
             )}
           </div>
-          {/* 下方：联系方式（微信 / 电话 / 邮箱） */}
+          {/* 下方：联系方式（统一展示 contactMethods：icon + 值，旧数据自动回退 email/phone/wechat） */}
           <div style={{ marginTop: 4, position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px 16px' }}>
-            {customer.wechat && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
-                <WechatOutlined style={{ fontSize: 11, flexShrink: 0 }} />
-                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.wechat}</span>
-              </span>
-            )}
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
-              <PhoneOutlined style={{ fontSize: 11, flexShrink: 0 }} />
-              <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.phone || '-'}</span>
-            </span>
-            {customer.email && (
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>
-                <MailOutlined style={{ fontSize: 11, flexShrink: 0 }} />
-                <span style={{ minWidth: 0, wordBreak: 'break-word' }}>{customer.email}</span>
-              </span>
-            )}
+            <ContactMethodsView
+              methods={getDisplayContactMethods(customer)}
+              size="small"
+              empty={<span style={{ fontSize: 11, color: 'rgba(255,255,255,0.72)', lineHeight: 1.4 }}>-</span>}
+              iconStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.9)' }}
+              textStyle={{ fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}
+            />
           </div>
           {/* 首次合作日期（V1.0 canonical：firstOrderAt，ISO 串须格式化后展示） */}
           {customer.firstOrderAt && (

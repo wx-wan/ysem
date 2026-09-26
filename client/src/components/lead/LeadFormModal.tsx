@@ -5,9 +5,11 @@ import {
   Alert,
   AutoComplete,
   Button,
+  Cascader,
   DatePicker,
   Form,
   Input,
+  InputNumber,
   Row,
   Col,
   Select,
@@ -113,8 +115,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
 
-  // 公司名称 onBlur 归属查询后的状态（后端 /ownership 接口返回，仅 code + 主键 + 负责人姓名）
-  const [companyStatus, setCompanyStatus] = useState<CompanyStatus>('idle');
+  // 步骤状态：每个步骤独立维护自己的 { status, locked, editing }，避免跨步骤共用变量导致状态纠缠
+  // 步骤0（客户信息）：status=归属/建档状态(mine/other/publicSea/none/idle)；locked=建档后锁定全部必填项；editing=点击「编辑」解锁态
+  const [step0, setStep0] = useState<{ status: CompanyStatus; locked: boolean; editing: boolean }>({
+    status: 'idle',
+    locked: false,
+    editing: false,
+  });
   // 命中客户的归属信息：主键用于关联 Lead.customerId，公司名用于与当前输入比对（覆盖本人 / 他人 / 公海）
   const [matchedCustomerId, setMatchedCustomerId] = useState<string | null>(null);
   const [matchedCompanyName, setMatchedCompanyName] = useState<string | null>(null);
@@ -122,10 +129,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
   // 公司名称归属「实时查询」信号：每次打开弹窗自增，驱动 CompanyNameInput 用 /ownership 重新查询（而非派生）
   const [companyQuerySeq, setCompanyQuerySeq] = useState(0);
-  // 客户信息是否已建档并锁定：建档 / 更新后锁定客户信息步骤全部必填项，防止改后与客户档案脱节
-  const [customerLocked, setCustomerLocked] = useState(false);
-  // 是否处于「编辑已建档客户」状态（用户点击「编辑」解锁后）：此状态下主按钮展示「更新」而非「下一步」
-  const [editingUnlocked, setEditingUnlocked] = useState(false);
+  // 步骤1（需求详情）：status=产品归属/建档状态(idle/exist/none)；locked=建档后锁定产品级字段；editing=点击「编辑」解锁态
+  const [step1, setStep1] = useState<{ status: 'idle' | 'exist' | 'none'; locked: boolean; editing: boolean }>({
+    status: 'idle',
+    locked: false,
+    editing: false,
+  });
+  // 命中产品的主键：建档/更新用于同步产品档案
+  const [matchedProductId, setMatchedProductId] = useState<string | null>(null);
+  // exist（已建档）时拉取完整产品对象，作为需求详情「产品级字段」变更比对基线
+  const [matchedProduct, setMatchedProduct] = useState<Product | null>(null);
   const handleCompanyResolved = (info: {
     status: CompanyStatus;
     companyName?: string;
@@ -133,11 +146,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     ownerName?: string;
     publicSea?: boolean;
   }) => {
-    setCompanyStatus(info.status);
+    setStep0((s) => ({ ...s, status: info.status }));
     setMatchedCustomerId(info.customerId ?? null);
     setMatchedCompanyName(info.companyName ?? null);
     // 归属不再是「本人已建档」时，退出「编辑已建档客户」状态
-    if (info.status !== 'mine') setEditingUnlocked(false);
+    if (info.status !== 'mine') setStep0((s) => ({ ...s, editing: false }));
     // 客户已存在（本人 / 他人 / 公海）：拉取完整档案并自动带入线索表单客户信息（与下拉选中保持一致）；
     // 仅本人已建档（mine）额外留存 matchedCustomer 作为信息变更比对基线，其余情况仅带入不留存基线
     if (info.customerId) {
@@ -145,7 +158,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         .getById(info.customerId)
         .then((r) => {
           const c = (r?.data?.data as Customer) ?? null;
-          if (c) applyCustomerFieldValues(c);
+          // 仅「新建线索」自动带入命中客户的默认值（国家/类型/来源/联系人等）；
+          // 编辑既有线索（含暂存草稿）时，线索自带的联系人/联系方式才是权威数据，
+          // 不能用客户档案覆盖（否则暂存的联系人回显会被客户旧数据顶掉）。
+          if (c && !editing?.id) applyCustomerFieldValues(c);
           setMatchedCustomer(info.status === 'mine' ? c : null);
         })
         .catch(() => setMatchedCustomer(null));
@@ -194,8 +210,139 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     // 选中既有客户：立即关联 customerId（归属查询随后校正 mine/other 状态；避免「未建档」误闪）
     setMatchedCustomerId(opt.id ?? null);
     setMatchedCompanyName(opt.label);
-    setCompanyStatus('idle');
-    setEditingUnlocked(false);
+    setStep0((s) => ({ ...s, status: 'idle' }));
+    setStep0((s) => ({ ...s, editing: false }));
+  };
+
+  // 选中/解析到既有产品时，把其名称、描述、参考图自动带入线索需求详情（产品级字段）
+  const applyProductFieldValues = (p: {
+    name?: string;
+    description?: string | null;
+    images?: string | null;
+  }) => {
+    const patch: Record<string, any> = {};
+    if (p.name) patch.productKey = p.name;
+    if (p.description) patch.productDesc = p.description;
+    if (p.images) patch.images = p.images;
+    if (Object.keys(patch).length) form.setFieldsValue(patch);
+  };
+
+  // 产品名解析（失焦/下拉选中）：命中既有产品则拉取全量档案并带入（镜像 handleCompanyResolved），否则标记为待新建
+  const handleProductResolved = (name?: string) => {
+    const nm = (name ?? '').trim();
+    if (!nm) {
+      setStep1((s) => ({ ...s, status: 'idle' }));
+      setMatchedProductId(null);
+      setMatchedProduct(null);
+      return;
+    }
+    const opt = productOptions.find((p) => p.name === nm);
+    if (opt) {
+      setMatchedProductId(opt.id);
+      productApi
+        .getById(opt.id)
+        .then((r: any) => {
+          const p = (r?.data?.data ?? r?.data ?? r) as Product | null;
+          if (p) applyProductFieldValues(p);
+          setMatchedProduct(p);
+          setStep1((s) => ({ ...s, status: 'exist' }));
+        })
+        .catch(() => setMatchedProduct(null));
+    } else {
+      setStep1((s) => ({ ...s, status: 'none' }));
+      setMatchedProductId(null);
+      setMatchedProduct(null);
+    }
+  };
+
+  // 建档 / 更新产品：操作前校验需求详情必填项；建档 = 从表单创建产品，更新 = 同步变化的「产品级字段」；
+  // 二者均同时关联线索（一步完成）、随后锁定产品级字段
+  const handleFileOrUpdateProduct = async () => {
+    try {
+      await form.validateFields(['productKey', 'quantity', 'craftIds', 'categoryCascade', 'sizeL', 'sizeW', 'sizeH', 'weight']);
+    } catch {
+      return; // 字段飘红，停留在当前步
+    }
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const name = (v.productKey || '').trim();
+    if (!name) return;
+    try {
+      let pid: string;
+      const existingPid = (matchedProduct?.id ?? matchedProductId) as string | null;
+      if (step1.status === 'exist' && existingPid && matchedProduct) {
+        // 比对基线取解析时已带回的 matchedProduct，仅同步表单中发生变化的「产品级字段」
+        const upd = buildProductUpdate(matchedProduct);
+        if (upd) await productApi.update(existingPid, upd);
+        pid = existingPid;
+        message.success(t('common.updateSuccess'));
+      } else {
+        pid = await createProductFromForm();
+        message.success(t('common.createSuccess'));
+      }
+      // 关联命中产品 + 锁定需求详情的产品级字段
+      setMatchedProductId(pid);
+      setStep1((s) => ({ ...s, status: 'exist' }));
+      setStep1((s) => ({ ...s, locked: true }));
+      setStep1((s) => ({ ...s, editing: false }));
+      setMatchedProduct({
+        ...(matchedProduct ?? {}),
+        id: pid,
+        name: v.productKey,
+        description: v.productDesc || null,
+        images: v.images || null,
+      } as Product);
+      // 关联线索产品主键（已建档线索立即写回；新建线索待保存时按名匹配 productId）
+      if (editing?.id) {
+        await leadApi.update(editing.id, { productId: pid, productName: null });
+        setEditing({ ...editing, productId: pid, productName: null });
+      }
+      onRefreshProducts();
+      onSaved(editing?.id);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
+  // 从表单全量值创建产品（区别于 createProductSilently：后者读 editing 快照，新建线索时 editing 无产品字段，会建出空产品）
+  const createProductFromForm = async (): Promise<string> => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const res: any = await productApi.create({
+      name: (v.productKey || '').trim(),
+      description: v.productDesc || undefined,
+      images: serializeImages(parseImages(v.images)),
+      // 需求详情分类与规格带入产品主数据
+      craftIds: Array.isArray(v.craftIds) ? v.craftIds : [],
+      audienceId: v.categoryCascade?.[0] ?? null,
+      categoryId: v.categoryCascade?.[1] ?? null,
+      sizeL: v.sizeL != null ? Number(v.sizeL) : null,
+      sizeW: v.sizeW != null ? Number(v.sizeW) : null,
+      sizeH: v.sizeH != null ? Number(v.sizeH) : null,
+      weight: v.weight != null ? Number(v.weight) : null,
+    } as any);
+    return (res?.data?.id ?? res?.data?.data?.id ?? res?.id) as string;
+  };
+
+  // 命中已建档产品时：对比需求详情「产品级字段」与该产品建档时的值，返回发生变化的字段（建档/转商机时同步更新产品档案）
+  const buildProductUpdate = (p: Product): Record<string, any> | null => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const norm = (x: any) => (x === undefined || x === null || x === '' ? null : x);
+    const patch: Record<string, any> = {};
+    if (norm(v.productKey) !== norm(p.name)) patch.name = norm(v.productKey);
+    if (norm(v.productDesc) !== norm(p.description)) patch.description = norm(v.productDesc);
+    const formImgs = serializeImages(parseImages(v.images));
+    const baseImgs = serializeImages(parseImages(p.images));
+    if (formImgs !== baseImgs) patch.images = formImgs;
+    // 分类与规格：工艺（数组排序后比对）/ 受众品类 / 长宽高克重
+    const formCraftIds = Array.isArray(v.craftIds) ? [...v.craftIds].sort() : [];
+    const baseCraftIds = Array.isArray(p.crafts) ? p.crafts.map((c: any) => c.id).sort() : [];
+    if (JSON.stringify(formCraftIds) !== JSON.stringify(baseCraftIds)) patch.craftIds = Array.isArray(v.craftIds) ? v.craftIds : [];
+    if (norm(v.categoryCascade?.[0]) !== norm(p.audienceId)) patch.audienceId = norm(v.categoryCascade?.[0]);
+    if (norm(v.categoryCascade?.[1]) !== norm(p.categoryId)) patch.categoryId = norm(v.categoryCascade?.[1]);
+    if (Number(v.sizeL ?? null) !== Number(p.sizeL ?? null)) patch.sizeL = v.sizeL != null ? Number(v.sizeL) : null;
+    if (Number(v.sizeW ?? null) !== Number(p.sizeW ?? null)) patch.sizeW = v.sizeW != null ? Number(v.sizeW) : null;
+    if (Number(v.sizeH ?? null) !== Number(p.sizeH ?? null)) patch.sizeH = v.sizeH != null ? Number(v.sizeH) : null;
+    if (Number(v.weight ?? null) !== Number(p.weight ?? null)) patch.weight = v.weight != null ? Number(v.weight) : null;
+    return Object.keys(patch).length ? patch : null;
   };
 
   // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
@@ -252,6 +399,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     [productOptions],
   );
 
+  // 工艺下拉（多选）：来自 productOptions 同级的 crafts 主数据
+  const craftOptions = useMemo(
+    () => crafts.map((c) => ({ label: c.name, value: c.id })),
+    [crafts],
+  );
+  // 受众 → 品类 级联选项（受众为一级，品类为二级 children）
+  const cascadeOptions = useMemo(
+    () =>
+      audiences.map((a) => ({
+        value: a.id,
+        label: a.name,
+        children: (a.categories || []).map((c) => ({ value: c.id, label: c.name })),
+      })),
+    [audiences],
+  );
+
   // 沟通工具下拉（取自系统设置 → 沟通工具维护，带 10 分钟本地缓存）
   const { options: commToolOptions } = useCommToolOptions();
   // 单位下拉（取自系统设置 → 数据管理 → 单位维护）
@@ -264,15 +427,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 这里只负责在「下一步 / 提交」时触发它，不再用 Form.Item rules 做整体校验。
   const validateContactMethods = () => contactMethodRef.current?.validate() ?? true;
 
+
   // 实时比对：当前客户信息表单字段相对「本人已建档」基线 matchedCustomer 是否发生变更
-  // （用于决定主按钮展示「更新」还是「下一步」）
+  // （编辑态主按钮：无修改展示「锁定」，有修改展示「更新」）
   const customerChanged = Form.useWatch((values: Record<string, any>) => {
-    if (companyStatus !== 'mine' || !matchedCustomer) return false;
+    if (step0.status !== 'mine' || !matchedCustomer) return false;
     if ((values.targetMarket ?? '') !== (matchedCustomer.country ?? '')) return true;
     if ((values.customerType ?? '') !== (matchedCustomer.customerType ?? '')) return true;
     if ((values.contactName ?? '') !== (matchedCustomer.contactName ?? '')) return true;
-    const baseCm = matchedCustomer.contactMethods || [];
-    const formCm = Array.isArray(values.contactMethods) ? values.contactMethods.filter(Boolean) : [];
+    // 比对联系方式时忽略「tool/account 均为空」的占位空行，否则与客户的空联系方式误判为差异
+    const isRealCm = (r: any) => r && (r.tool || r.account);
+    const baseCm = (matchedCustomer.contactMethods || []).filter(isRealCm);
+    const formCm = Array.isArray(values.contactMethods) ? values.contactMethods.filter(isRealCm) : [];
     if (baseCm.length !== formCm.length) return true;
     for (let i = 0; i < baseCm.length; i++) {
       if (baseCm[i]?.tool !== formCm[i]?.tool || baseCm[i]?.account !== formCm[i]?.account) return true;
@@ -284,21 +450,85 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     return false;
   }, form);
 
+  // 实时比对：客户信息「各字段」相对「本人已建档」基线 matchedCustomer 是否变更（用于对应 label 右侧显示「有更新」）
+  const allFormValues = Form.useWatch([], form) as Record<string, any> | undefined;
+  const customerFieldDiff = (() => {
+    if (step0.status !== 'mine' || !matchedCustomer) return null;
+    const v = allFormValues ?? (form.getFieldsValue(true) as Record<string, any>);
+    const baseCm = matchedCustomer.contactMethods || [];
+    const formCm = Array.isArray(v.contactMethods) ? v.contactMethods.filter(Boolean) : [];
+    const cmChanged =
+      baseCm.length !== formCm.length ||
+      baseCm.some((b: any, i: number) => b?.tool !== formCm[i]?.tool || b?.account !== formCm[i]?.account);
+    const baseSrc = `${matchedCustomer.channelId ?? ''}|${matchedCustomer.shopId ?? ''}`;
+    const formSrc = safeParseSource(v.sourceKey);
+    const srcChanged = baseSrc !== `${formSrc?.channelId ?? ''}|${formSrc?.shopId ?? ''}`;
+    return {
+      targetMarket: (v.targetMarket ?? '') !== (matchedCustomer.country ?? ''),
+      customerType: (v.customerType ?? '') !== (matchedCustomer.customerType ?? ''),
+      contactName: (v.contactName ?? '') !== (matchedCustomer.contactName ?? ''),
+      contactMethods: cmChanged,
+      sourceKey: srcChanged,
+    };
+  })();
+  // 对应字段 label 右侧的「有更新」标记（仅该字段相对客户表基线有改动时显示）
+  const UpdatedTag = ({ show }: { show?: boolean }) =>
+    show ? (
+      <Tag color="blue" style={{ marginInlineEnd: 0, lineHeight: '18px' }}>
+        {t('lead.updatedTag')}
+      </Tag>
+    ) : null;
+
+  // 实时比对：当前需求详情「产品级字段」相对「已建档」基线 matchedProduct 是否发生变更
+  const productChanged = Form.useWatch((values: Record<string, any>) => {
+    if (step1.status !== 'exist' || !matchedProduct) return false;
+    if ((values.productKey ?? '') !== (matchedProduct.name ?? '')) return true;
+    if ((values.productDesc ?? '') !== (matchedProduct.description ?? '')) return true;
+    const baseImgs = serializeImages(parseImages(matchedProduct.images));
+    const formImgs = serializeImages(parseImages(values.images));
+    if (baseImgs !== formImgs) return true;
+    // 分类与规格：工艺（数组排序后比对）/ 受众品类（级联值）/ 长宽高克重
+    const formCraftIds = Array.isArray(values.craftIds) ? [...values.craftIds].sort() : [];
+    const baseCraftIds = Array.isArray(matchedProduct.crafts) ? matchedProduct.crafts.map((c: any) => c.id).sort() : [];
+    if (JSON.stringify(formCraftIds) !== JSON.stringify(baseCraftIds)) return true;
+    const formAud = values.categoryCascade?.[0] ?? null;
+    const formCat = values.categoryCascade?.[1] ?? null;
+    if ((formAud ?? '') !== (matchedProduct.audienceId ?? '')) return true;
+    if ((formCat ?? '') !== (matchedProduct.categoryId ?? '')) return true;
+    if (Number(values.sizeL ?? null) !== Number(matchedProduct.sizeL ?? null)) return true;
+    if (Number(values.sizeW ?? null) !== Number(matchedProduct.sizeW ?? null)) return true;
+    if (Number(values.sizeH ?? null) !== Number(matchedProduct.sizeH ?? null)) return true;
+    if (Number(values.weight ?? null) !== Number(matchedProduct.weight ?? null)) return true;
+    return false;
+  }, form);
+
   // ============ 三步向导 ============
   const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepConfirm')];
 
   const goPrev = () => setStep((s) => Math.max(s - 1, 0));
 
-  // 下一步：校验客户信息步骤必填项后前进；选中本人已建档客户且未改动时无需建档/更新，直接前进
+
+  // 下一步：按当前步骤校验必填项后前进；选中本人已建档客户/产品且未改动时无需建档/更新，直接前进
   const goNext = async () => {
-    if (!validateContactMethods()) {
-      setStep(0);
-      return;
-    }
-    try {
-      await form.validateFields();
-    } catch {
-      return; // 字段飘红，停留在当前步
+    if (step === 0) {
+      // 联系方式（逐字段）+ 客户必填项 一并校验，所有错误同时飘红
+      const contactOk = validateContactMethods();
+      let fieldsOk = true;
+      try {
+        await form.validateFields(['customerKey', 'targetMarket', 'customerType', 'contactName', 'contactMethods', 'sourceKey']);
+      } catch {
+        fieldsOk = false;
+      }
+      if (!contactOk || !fieldsOk) {
+        setStep(0);
+        return;
+      }
+    } else if (step === 1) {
+      try {
+        await form.validateFields(['productKey', 'quantity', 'craftIds', 'categoryCascade', 'sizeL', 'sizeW', 'sizeH', 'weight']);
+      } catch {
+        return; // 字段飘红，停留在当前步
+      }
     }
     setStep((s) => Math.min(s + 1, wizardSteps.length - 1));
   };
@@ -311,7 +541,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setMatchedCustomer(null);
     setMatchedCustomerId(null);
     setMatchedCompanyName(null);
-    setCompanyStatus('idle');
+    setStep0((s) => ({ ...s, status: 'idle' }));
     form.resetFields();
     // 清空联系方式组件内部的字段级校验状态（避免上一次的飘红残留）
     contactMethodRef.current?.reset();
@@ -335,8 +565,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       form.setFieldsValue({ ownerId: currentUser.id });
     }
     setDrawerOpen(true);
-    setCustomerLocked(false);
-    setEditingUnlocked(false);
+    setStep0((s) => ({ ...s, locked: false }));
+    setStep0((s) => ({ ...s, editing: false }));
+    setStep1((s) => ({ ...s, locked: false }));
+    setStep1((s) => ({ ...s, editing: false }));
+    setStep1((s) => ({ ...s, status: 'idle' }));
+    setMatchedProductId(null);
+    setMatchedProduct(null);
     // 新建：无公司名，querySignal 自增仅作一致性（空名查询无操作）
     setCompanyQuerySeq((n) => n + 1);
   };
@@ -348,7 +583,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setMatchedCustomer(null);
     setMatchedCustomerId(null);
     setMatchedCompanyName(null);
-    setCompanyStatus('idle');
+    setStep0((s) => ({ ...s, status: 'idle' }));
+    setMatchedProduct(null);
+    setMatchedProductId(null);
+    setStep1((s) => ({ ...s, status: 'idle' }));
+    setStep1((s) => ({ ...s, locked: false }));
+    setStep1((s) => ({ ...s, editing: false }));
     form.resetFields();
     // 清空联系方式组件内部的字段级校验状态
     contactMethodRef.current?.reset();
@@ -387,6 +627,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         productType: item.productType || undefined,
         // 产品描述：回填 LeadItem.productDesc
         productDesc: item.items?.[0]?.productDesc || undefined,
+        // 需求详情扩展：产品分类与规格（落 LeadItem）
+        craftIds: item.items?.[0]?.craftIds || [],
+        categoryCascade:
+          item.items?.[0]?.audienceId && item.items?.[0]?.categoryId
+            ? [item.items?.[0].audienceId, item.items?.[0].categoryId]
+            : undefined,
+        sizeL: item.items?.[0]?.sizeL ?? undefined,
+        sizeW: item.items?.[0]?.sizeW ?? undefined,
+        sizeH: item.items?.[0]?.sizeH ?? undefined,
+        weight: item.items?.[0]?.weight ?? undefined,
         // 目标价位：金额组件值（币种 + 金额 + 实时汇率，仅用于展示换算，不再随金额落库汇率快照）
         targetPrice: {
           currency: item.currency ?? 'CNY',
@@ -403,9 +653,28 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 归属状态不再由线索冗余字段（customerId 缺失）派生，而是在打开弹窗时由 CompanyNameInput
       // 通过 /ownership 实时查询决定（querySignal 触发）。此处仅递增信号，组件挂载/打开即查询。
       setCompanyQuerySeq((n) => n + 1);
-      // 已关联客户的线索（已建档）打开即锁定客户信息，防止改后与客户档案脱节
-      setCustomerLocked(!!item.customerId);
-      setEditingUnlocked(false);
+      // 已关联客户且非草稿（已正式建档）的线索打开即锁定客户信息，防止改后与客户档案脱节；
+      // 草稿态（draft=true，即便历史数据误带 customerId）一律不锁定，仍可编辑、可暂存
+      setStep0((s) => ({ ...s, locked: !!item.customerId && !item.draft }));
+      setStep0((s) => ({ ...s, editing: false }));
+      // 已关联产品且非草稿（已正式建档）的线索打开即锁定需求详情的产品级字段
+      const reopenProductName = item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined;
+      const pid = (item.items?.[0]?.productId ?? item.productId ?? null) as string | null;
+      setStep1((s) => ({ ...s, locked: !!pid && !item.draft }));
+      setStep1((s) => ({ ...s, editing: false }));
+      // 重开（含暂存草稿）：产品名已填但无 productId → 视为「待建档(none)」，展示「未建档」标签与「建档」按钮；
+      // 有 productId 视为已建档(exist)；名、id 皆无则回到 idle（避免草稿重开后标签与主按钮错位）
+      setStep1((s) => ({ ...s, status: pid ? 'exist' : (reopenProductName ? 'none' : 'idle') }));
+      setMatchedProductId(pid);
+      if (pid) {
+        productApi
+          .getById(pid)
+          .then((r: any) => {
+            const p = (r?.data?.data ?? r?.data ?? r) as Product | null;
+            if (p) setMatchedProduct(p);
+          })
+          .catch(() => setMatchedProduct(null));
+      }
       // 溯源：若已关联商机，加载商机信息用于展示
       if (item.pipelineId) {
         try {
@@ -491,10 +760,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       customerType: values.customerType || null,
       // 参考图片：对象数组（url + name），后端转为 Attachment(ownerType=LEAD) 记录
       images: parseImages(values.images).map((i) => ({ url: i.url, name: i.name })),
+      // 需求详情扩展：产品分类与规格（落 LeadItem，建档时带入产品）
+      craftIds: Array.isArray(values.craftIds) ? values.craftIds : [],
+      audienceId: values.categoryCascade?.[0] ?? null,
+      categoryId: values.categoryCascade?.[1] ?? null,
+      sizeL: values.sizeL != null ? Number(values.sizeL) : null,
+      sizeW: values.sizeW != null ? Number(values.sizeW) : null,
+      sizeH: values.sizeH != null ? Number(values.sizeH) : null,
+      weight: values.weight != null ? Number(values.weight) : null,
     };
   };
 
-  // 暂存：跳过必填校验，直接保存（新建则创建草稿线索，编辑则更新）；空联系方式行不提交
+  // 暂存：跳过必填校验，直接保存（新建则创建草稿线索，编辑则更新）；空联系方式行不提交。
+  // 暂存数据仅落「线索表」（buildLeadPayload 已把公司名 / 联系人 / 来源 / 需求等写入 Lead 字段），
+  // 不创建 / 写入客户表、产品表（客户 / 产品主数据的增改仅在「建档 / 锁定 / 提交」时执行）。
   const saveDraft = async () => {
     // 第一阶段（客户信息）暂存：客户公司名称必填，仍须校验
     if (step === 0) {
@@ -542,6 +821,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const payload = buildLeadPayload(values);
     // 完整提交：记录当前阶段（确认动作仅在最后一步触发，stage 记为 2）
     payload.stage = step;
+    // 正式提交 = 非草稿
+    payload.draft = false;
     try {
       let savedId: string | undefined;
       if (editing?.id) {
@@ -579,15 +860,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 建档 / 更新客户：操作前校验全部必填项；建档 = 从表单创建客户，更新 = 同步变化字段；
   // 二者均同时保存并关联线索（一步完成）、随后锁定客户信息步骤全部必填项
   const handleFileOrUpdateCustomer = async () => {
-    // 全部必填项校验（含联系方式逐字段校验），不通过时回到第 1 步展示飘红
-    if (!validateContactMethods()) {
+    // 联系方式（逐字段）+ 客户必填项 一并校验，所有错误同时飘红，避免只卡在联系方式而漏掉其它必填
+    const contactOk = validateContactMethods();
+    let fieldsOk = true;
+    try {
+      await form.validateFields(['customerKey', 'targetMarket', 'customerType', 'contactName', 'contactMethods', 'sourceKey']);
+    } catch {
+      fieldsOk = false; // 字段飘红，停留在当前步
+    }
+    if (!contactOk || !fieldsOk) {
       setStep(0);
       return;
-    }
-    try {
-      await form.validateFields();
-    } catch {
-      return; // 字段飘红，停留在当前步
     }
     const v = form.getFieldsValue(true) as Record<string, any>;
     const name = (v.customerKey || '').trim();
@@ -596,13 +879,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       let custId: string;
       // 更新：本人已建档且已关联客户主键时，严格走「客户更新」逻辑（绝不变为创建）
       const existingCustId = (matchedCustomer?.id ?? matchedCustomerId) as string | null;
-      if (companyStatus === 'mine' && existingCustId) {
+      if (step0.status === 'mine' && existingCustId) {
         // 比对基线取归属查询（handleCompanyResolved）时已带回的 matchedCustomer，避免重复调用接口；
-        // 仅同步表单中发生变化的字段
+        // 仅当表单相对客户表基线确实存在变化字段时才调用客户更新，否则仅锁定、不重复更新客户
         const upd = matchedCustomer ? buildCustomerUpdate(matchedCustomer) : null;
-        if (upd) await customerApi.update(existingCustId, upd);
+        if (upd) {
+          await customerApi.update(existingCustId, upd);
+          message.success(t('common.updateSuccess'));
+        } else {
+          message.success(t('common.lockSuccess'));
+        }
         custId = existingCustId;
-        message.success(t('common.updateSuccess'));
       } else {
         // 建档：从表单值创建全新客户
         custId = await createCustomerFromForm();
@@ -611,12 +898,31 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 关联命中客户 + 锁定客户信息步骤全部必填项
       setMatchedCustomerId(custId);
       setMatchedCompanyName(name);
-      setCompanyStatus('mine');
-      setCustomerLocked(true);
-      setEditingUnlocked(false);
+      setStep0((s) => ({ ...s, status: 'mine' }));
+      setStep0((s) => ({ ...s, locked: true }));
+      setStep0((s) => ({ ...s, editing: false }));
+      // 用表单当前值刷新客户基线 matchedCustomer：更新/建档后，表单内容已与客户表一致，
+      // 基线对齐即「有更新」Tag 全部清空、主按钮切回「锁定」
+      const src = safeParseSource(v.sourceKey);
+      const realCm = Array.isArray(v.contactMethods)
+        ? v.contactMethods.filter((r: any) => r && (r.tool || r.account))
+        : [];
+      setMatchedCustomer({
+        ...(matchedCustomer ?? {}),
+        id: custId,
+        companyName: name,
+        country: v.targetMarket || null,
+        customerType: v.customerType || null,
+        contactName: v.contactName || null,
+        contactMethods: realCm as any,
+        channelId: src?.channelId ?? null,
+        shopId: src?.shopId ?? null,
+      } as Customer);
       // 建档 + 保存线索（一步）：注入命中客户确保关联 customerId，但不关闭弹窗，便于继续填需求
       const payload = buildLeadPayload(v, { id: custId, name });
       payload.stage = step;
+      // 建档 / 锁定 = 正式落库客户主数据，线索不再处于草稿态
+      payload.draft = false;
       let savedId: string | undefined;
       if (editing?.id) {
         await leadApi.update(editing.id, payload);
@@ -626,7 +932,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         savedId = created.data?.id;
       }
       if (savedId) {
-        setEditing((prev) => ({ ...(prev as Lead), id: savedId as string, customerId: custId, status: 'NEW' }));
+        setEditing((prev) => ({ ...(prev as Lead), id: savedId as string, customerId: custId, draft: false, status: 'NEW' }));
       }
       onRefreshCustomers();
       onSaved(savedId);
@@ -696,8 +1002,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const norm = (x: any) => (x === undefined || x === null || x === '' ? null : x);
     const patch: Record<string, any> = {};
     if (norm(v.contactName) !== norm(c.contactName)) patch.contactName = norm(v.contactName);
-    const formMethods = Array.isArray(v.contactMethods) ? v.contactMethods.filter(Boolean) : [];
-    const custMethods = Array.isArray(c.contactMethods) ? c.contactMethods : [];
+    // 忽略「tool/account 均为空」的占位空行，避免与客户的空联系方式误判为差异而触发多余更新
+    const isRealCm = (r: any) => r && (r.tool || r.account);
+    const formMethods = Array.isArray(v.contactMethods) ? v.contactMethods.filter(isRealCm) : [];
+    const custMethods = Array.isArray(c.contactMethods) ? c.contactMethods.filter(isRealCm) : [];
     if (JSON.stringify(formMethods) !== JSON.stringify(custMethods)) patch.contactMethods = formMethods;
     if (norm(v.targetMarket) !== norm(c.country)) patch.country = norm(v.targetMarket);
     if (norm(v.customerType) !== norm(c.customerType)) patch.customerType = norm(v.customerType);
@@ -757,7 +1065,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         (async () => {
           try {
             // 命中本人已建档客户且线索信息较建档时发生变化：转商机前先同步更新客户档案
-            if (matchedCustomer && companyStatus === 'mine') {
+            if (matchedCustomer && step0.status === 'mine') {
               const upd = buildCustomerUpdate(matchedCustomer);
               if (upd) {
                 await customerApi.update(matchedCustomer.id, upd);
@@ -975,45 +1283,66 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 ))}
               </div>
               <div className="lead-wizard-footer__side lead-wizard-footer__side--right">
-                {/* 暂存：客户信息未锁定（未 disable）时每个步骤均可，跳过必填校验直接保存；已锁定则隐藏 */}
-                {!customerLocked && (
+                {/* 暂存：非只读（可编辑）且当前步骤未锁定建档时显示，跳过必填校验直接保存；
+                   已锁定 / 已建档客户（step0 或 step1 处于锁定）不显示暂存；只读（公海 / 已转商机等）隐藏 */}
+                {!readonly && !(step === 0 && step0.locked) && !(step === 1 && step1.locked) && (
                   <Button size="large" className="lead-ghost-btn" onClick={throttledSaveDraft}>{t('lead.keepAsLead')}</Button>
                 )}
-                {step < wizardSteps.length - 1 ? (
-                  // 主操作按钮：编辑 / 更新 / 建档 与 下一步 相互独立分开展示
+                {step === 0 ? (
+                  // 主操作按钮（客户信息步骤）按四态展示：
+                  // 已锁定/已建档 → 编辑 + 下一步；未锁定+未建档(none) → 建档；未锁定+已建档(mine) → 锁定；其余（idle/other/publicSea）→ 仅暂存
                   <>
-                    {/* 已锁定（disable）：提供「编辑」解锁修正，进入编辑态 */}
-                    {customerLocked && (
-                      <Button size="large" onClick={() => { setCustomerLocked(false); setEditingUnlocked(true); }}>{t('common.edit')}</Button>
-                    )}
-                    {/* 已锁定（disable）：允许「下一步」前进 */}
-                    {customerLocked && (
-                      <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
-                    )}
-                    {/* 未锁定：未建档 → 建档；本人已建档 → 编辑态（点击过「编辑」）展示「更新」，
-                        否则有改动展示「更新」、无改动展示「下一步」 */}
-                    {!customerLocked && companyStatus === 'none' && (
+                    {step0.locked ? (
+                      <>
+                        {/* 已锁定（已建档）客户：提供「编辑」解锁修正，并提供「下一步」前进 */}
+                        <Button size="large" onClick={() => setStep0((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
+                        <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
+                      </>
+                    ) : step0.status === 'none' ? (
+                      // 未建档客户（已输入公司名并解析为不存在）：建档
                       <Button size="large" type="primary" icon={<CheckOutlined />} onClick={handleFileOrUpdateCustomer}>
                         {t('lead.fileLead')}
                       </Button>
-                    )}
-                    {!customerLocked && companyStatus === 'mine' && (
-                      // 编辑态且有改动：展示「锁定」（提交改动并重新锁定，复用建档/更新逻辑）；
-                      // 编辑态无改动 或 未编辑但有改动：展示「更新」；其余展示「下一步」
-                      editingUnlocked && customerChanged ? (
-                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
-                          {t('lead.lock')}
-                        </Button>
-                      ) : editingUnlocked || customerChanged ? (
+                    ) : step0.status === 'mine' ? (
+                      // 编辑态（未锁定/已建档）：无修改展示「锁定」，有修改展示「更新」
+                      customerChanged ? (
                         <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
                           {t('lead.updateCustomer')}
                         </Button>
                       ) : (
-                        <Button size="large" type="primary" onClick={goNext}>
-                          {t('lead.nextStep')}
+                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
+                          {t('lead.lock')}
                         </Button>
                       )
-                    )}
+                    ) : null}
+                  </>
+                ) : step === 1 ? (
+                  // 主操作按钮（需求详情步骤）按四态展示（镜像客户信息）：
+                  // 已锁定/已建档 → 编辑 + 下一步；未锁定+未建档(none) → 建档；未锁定+已建档(exist) → 锁定；其余（idle）→ 仅暂存
+                  <>
+                    {step1.locked ? (
+                      <>
+                        {/* 已锁定（已建档）产品：提供「编辑」解锁修正，并提供「下一步」前进 */}
+                        <Button size="large" onClick={() => setStep1((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
+                        <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
+                      </>
+                    ) : step1.status === 'none' ? (
+                      // 未建档产品（已输入产品名并解析为不存在）：建档
+                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={handleFileOrUpdateProduct}>
+                        {t('lead.fileLead')}
+                      </Button>
+                    ) : step1.status === 'exist' ? (
+                      // 编辑态（未锁定/已建档）：无修改展示「锁定」，有修改展示「更新」
+                      productChanged ? (
+                        <Button size="large" type="primary" onClick={handleFileOrUpdateProduct}>
+                          {t('lead.updateProduct')}
+                        </Button>
+                      ) : (
+                        <Button size="large" type="primary" onClick={handleFileOrUpdateProduct}>
+                          {t('lead.lock')}
+                        </Button>
+                      )
+                    ) : null}
                   </>
                 ) : (
                   <>
@@ -1058,12 +1387,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     label={
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                         <span>{t('lead.customerCompany')}</span>
-                        {companyStatus === 'none' && !customerLocked && (
+                        {step0.status === 'none' && !step0.locked && (
                           <Tag color="orange" style={{ marginInlineEnd: 0 }}>
                             {t('lead.pendingTag')}
                           </Tag>
                         )}
-                        {customerLocked && (
+                        {step0.locked && (
                           <Tag color="green" style={{ marginInlineEnd: 0 }}>
                             {t('lead.filedTag')}
                           </Tag>
@@ -1077,7 +1406,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       onPick={handleCustomerPick}
                       options={customerOptions}
                       querySignal={companyQuerySeq}
-                      disabled={customerLocked}
+                      disabled={step0.locked}
                       placeholder={t('lead.customerPlaceholder')}
                     />
                   </Form.Item>
@@ -1086,41 +1415,44 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               {/* 客户基础信息（国家/地区 · 客户类型 · 联系人 · 联系方式 · 来源）原公共组件已内联 */}
               <Row gutter={[16, 0]}>
                 <Col span={12}>
-                  <Form.Item name="targetMarket" label={t('lead.targetMarket')} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
-                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} disabled={customerLocked} />
+                  <Form.Item name="targetMarket" label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span>{t('lead.targetMarket')}</span><UpdatedTag show={customerFieldDiff?.targetMarket} /></span>} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
+                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} disabled={step0.locked} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name="customerType" label={t('lead.customerType')} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
-                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} disabled={customerLocked} />
+                  <Form.Item name="customerType" label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span>{t('lead.customerType')}</span><UpdatedTag show={customerFieldDiff?.customerType} /></span>} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
+                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} disabled={step0.locked} />
                   </Form.Item>
                 </Col>
               </Row>
               <Row gutter={[16, 0]}>
                 {/* 左：联系人 + 联系方式 */}
                 <Col span={12}>
-                  <Form.Item name="contactName" label={t('customer.contactName')} rules={[{ required: true, message: t('customer.contactNameRequired') }]}>
-                    <Input placeholder={t('customer.contactNamePlaceholder')} disabled={customerLocked} />
+                  <Form.Item name="contactName" label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span>{t('customer.contactName')}</span><UpdatedTag show={customerFieldDiff?.contactName} /></span>} rules={[{ required: true, message: t('customer.contactNameRequired') }]}>
+                    <Input placeholder={t('customer.contactNamePlaceholder')} disabled={step0.locked} />
                   </Form.Item>
                   <Form.Item
                     name="contactMethods"
                     rules={[{ required: true, message: t('customer.contactMethodsRequired') }]}
                     label={
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                        <span>{t('customer.contactMethods')}</span>
-                        <Button type="link" size="small" onClick={() => contactMethodRef.current?.add()} disabled={customerLocked}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                          <span>{t('customer.contactMethods')}</span>
+                          <UpdatedTag show={customerFieldDiff?.contactMethods} />
+                        </span>
+                        <Button type="link" size="small" onClick={() => contactMethodRef.current?.add()} disabled={step0.locked}>
                           + {t('lead.addContactMethod')}
                         </Button>
                       </div>
                     }
                   >
-                    <ContactMethodInput showAddButton={false} toolWidth={120} ref={contactMethodRef} options={commToolOptions} disabled={customerLocked} />
+                    <ContactMethodInput showAddButton={false} toolWidth={120} ref={contactMethodRef} options={commToolOptions} disabled={step0.locked} />
                   </Form.Item>
                 </Col>
                 {/* 右：来源渠道 */}
                 <Col span={12}>
-                  <Form.Item name="sourceKey" label={t('lead.leadSource')} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
-                    <ChipSelect options={sourceOptions} size="large" disabled={customerLocked} />
+                  <Form.Item name="sourceKey" label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span>{t('lead.leadSource')}</span><UpdatedTag show={customerFieldDiff?.sourceKey} /></span>} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
+                    <ChipSelect options={sourceOptions} size="large" disabled={step0.locked} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -1134,31 +1466,103 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 <Form.Item
                   name="productKey"
                   label={
-                    (editing?.items?.[0]?.productName && !editing?.items?.[0]?.productId) ||
-                    (watchProductKey && !productNameOptions.some((p) => p.label === watchProductKey)) ? (
-                      <Space size={4}>
-                        <span>{t('lead.product')}</span>
-                        <Tag
-                          color="orange"
-                          style={{ cursor: 'pointer', marginInlineEnd: 0 }}
-                          onClick={confirmCreateProduct}
-                          title={t('lead.productPendingTip', { name: editing?.items?.[0]?.productName || watchProductKey })}
-                        >
-                          {t('lead.pendingTag')}
-                        </Tag>
-                      </Space>
-                    ) : (
-                      t('lead.product')
-                    )
+                    <>
+                      <span>{t('lead.product')}</span>
+                      {step1.status === 'none' && !step1.locked && (
+                        <Tag color="orange" style={{ marginInlineEnd: 0 }}>{t('lead.pendingTag')}</Tag>
+                      )}
+                      {step1.locked && (
+                        <Tag color="green" style={{ marginInlineEnd: 0 }}>{t('lead.filedTag')}</Tag>
+                      )}
+                    </>
                   }
                   rules={[{ required: true, message: t('lead.productRequired') }]}
                 >
                   <AutoComplete
                     allowClear
+                    disabled={step1.locked}
                     placeholder={t('lead.productPlaceholder')}
                     options={productNameOptions}
                     filterOption={(input, option) => String(option?.value ?? '').toLowerCase().includes(String(input ?? '').toLowerCase())}
+                    onSelect={(value) => handleProductResolved(String(value))}
+                    onBlur={() => handleProductResolved(form.getFieldValue('productKey'))}
                   />
+                </Form.Item>
+              </Col>
+              {/* 产品分类：工艺（多选）+ 受众→品类（级联），必填；位置在采购产品下一行 */}
+              <Col span={12}>
+                <Form.Item
+                  name="craftIds"
+                  label={t('lead.craft')}
+                  rules={[{ required: !step1.locked, message: t('lead.craftRequired') }]}
+                >
+                  <Select
+                    mode="multiple"
+                    allowClear
+                    disabled={step1.locked}
+                    placeholder={t('lead.craftPlaceholder')}
+                    options={craftOptions}
+                    maxTagCount="responsive"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="categoryCascade"
+                  label={t('lead.audienceCategory')}
+                  rules={[
+                    { required: !step1.locked, message: t('lead.audienceCategoryRequired') },
+                    {
+                      validator: (_, value) =>
+                        !value || value.length >= 2
+                          ? Promise.resolve()
+                          : Promise.reject(new Error(t('lead.categoryRequired'))),
+                    },
+                  ]}
+                >
+                  <Cascader
+                    options={cascadeOptions}
+                    disabled={step1.locked}
+                    placeholder={t('lead.audienceCategoryPlaceholder')}
+                    expandTrigger="hover"
+                  />
+                </Form.Item>
+              </Col>
+              {/* 规格：长 / 宽 / 高 / 克重，必填，占一行（级联组件下方） */}
+              <Col span={6}>
+                <Form.Item
+                  name="sizeL"
+                  label={t('lead.sizeL')}
+                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                >
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item
+                  name="sizeW"
+                  label={t('lead.sizeW')}
+                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                >
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item
+                  name="sizeH"
+                  label={t('lead.sizeH')}
+                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                >
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                </Form.Item>
+              </Col>
+              <Col span={6}>
+                <Form.Item
+                  name="weight"
+                  label={t('lead.weight')}
+                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                >
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="g" placeholder="0" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -1197,7 +1601,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Col>
               <Col span={24}>
                 <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                  <Input.TextArea rows={3} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} />
+                  <Input.TextArea rows={3} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={24}>
@@ -1211,7 +1615,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               </Col>
               <Col span={24}>
                 <Form.Item name="images" label={t('lead.attachments')}>
-                  <ProductImageList disabled={readonly} allowFiles />
+                  <ProductImageList disabled={readonly || step1.locked} allowFiles />
                 </Form.Item>
               </Col>
             </Row>
@@ -1255,7 +1659,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   type="warning"
                   showIcon
                   style={{ marginBottom: 16 }}
-                  message={t('lead.requirementPendingTip')}
+                  title={t('lead.requirementPendingTip')}
                 />
               )}
               <div className="lead-wizard-summary">

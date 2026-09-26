@@ -134,3 +134,22 @@ export function avatarColor(name: string): string {
   for (let i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return colors[Math.abs(hash) % colors.length];
 }
+
+// ========== 联系方式统一展示（与线索 contactMethods 一致） ==========
+/**
+ * 取客户联系方式用于展示：
+ * - 优先用 `contactMethods`（与线索建档同步过来的数据结构 [{tool, account}]）；
+ * - 无则兼容旧数据 email / phone / wechat，退化成「工具:账号」列表。
+ * 保证线索建档写入的联系方式可在客户资料 / 详情 / 列表中正确展示，同时不丢失历史数据。
+ */
+export function getDisplayContactMethods(customer: Customer): { tool: string; account: string }[] {
+  const cm = customer.contactMethods;
+  if (Array.isArray(cm) && cm.length) {
+    return cm.filter((m) => m && (m.tool || m.account));
+  }
+  const legacy: { tool: string; account: string }[] = [];
+  if (customer.email) legacy.push({ tool: '邮箱', account: customer.email });
+  if (customer.phone) legacy.push({ tool: '电话', account: customer.phone });
+  if (customer.wechat) legacy.push({ tool: '微信', account: customer.wechat });
+  return legacy;
+}

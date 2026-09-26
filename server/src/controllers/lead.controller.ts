@@ -78,7 +78,8 @@ const leadSchema = z.object({
   productId: z.string().optional().nullable(),
   quantity: z.number().int().min(0).optional(),
   source: z.enum(['MANUAL', 'EXCEL', 'RPA', 'SYNC']).optional(),
-  // 草稿标记（不落库）：暂存场景传 true，放宽「至少一条有效联系方式」等必填约束，允许空必填创建草稿线索
+  // 草稿标记：暂存场景传 true，放宽「至少一条有效联系方式」等必填约束，允许空必填创建草稿线索；
+  // 同时持久化落库（Lead.draft），详情接口返回，前端据此复现弹窗草稿/锁定状态
   draft: z.boolean().optional(),
   // 三步向导当前阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存/保存时由前端写入并落库，
   // 详情接口原样返回，详情面板据此决定底部按钮展示「编辑」或「确认」
@@ -109,6 +110,14 @@ const leadSchema = z.object({
   unit: z.string().trim().max(20).nullable().optional(),
   productType: z.string().trim().max(200).nullable().optional(),
   productDesc: z.string().trim().max(2000).nullable().optional(),
+  // 需求详情扩展：产品分类与规格（落 LeadItem，建档时带入产品）
+  craftIds: z.array(z.string()).optional().nullable(),
+  audienceId: z.string().optional().nullable(),
+  categoryId: z.string().optional().nullable(),
+  sizeL: z.number().optional().nullable(),
+  sizeW: z.number().optional().nullable(),
+  sizeH: z.number().optional().nullable(),
+  weight: z.number().optional().nullable(),
   // D1：参考图片接受「URL 字符串」或「{url,name}」对象数组；后端转为 Attachment(ownerType=LEAD) 记录
   images: z
     .array(z.object({ url: z.string().trim().min(1).max(500), name: z.string().trim().max(200).optional() }).or(z.string().trim().min(1).max(500)))
@@ -160,6 +169,9 @@ const LEAD_WRITABLE_FIELDS = [
   'remark',
   'ownerId',
   'stage',
+  // 草稿标记（暂存=1 / 建档·锁定·正式提交=0）：持久化落库，详情接口返回，
+  // 前端据此区分「草稿（可编辑、显示暂存）」与「已正式建档（锁定）」
+  'draft',
 ] as const;
 
 /**
@@ -507,7 +519,19 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
     // V1.0：Lead 的产品关联落在 LeadItem 上（Lead 1:N LeadItem），写入时带产品名快照。
     // 只要有产品关联信息（引用 productId，或自由输入的 productName/productDesc）就持久化，
     // 避免「手动输入产品名/描述」被静默丢弃导致无法回填（见 getLead 的 items 回填链路）。
-    let leadItems: { productId: string | null; productName: string | null; quantity: number; productDesc: string | null }[] | undefined;
+    let leadItems: {
+      productId: string | null;
+      productName: string | null;
+      quantity: number;
+      productDesc: string | null;
+      craftIds: string[];
+      audienceId: string | null;
+      categoryId: string | null;
+      sizeL: number | null;
+      sizeW: number | null;
+      sizeH: number | null;
+      weight: number | null;
+    }[] | undefined;
     if (data.productId) {
       // 引用侧（DQ-3=C）：产品引用必须落在 caller 可见范围内；**先于事务与任何写入**。
       // 不可见与不存在**同结果**（400 `产品不存在`），不引入存在性 oracle。
@@ -525,6 +549,14 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         quantity: data.quantity || 1,
         // D2：产品描述落在 LeadItem 明细行
         productDesc: data.productDesc ?? null,
+        // 需求详情扩展：产品分类与规格
+        craftIds: Array.isArray(data.craftIds) ? data.craftIds : [],
+        audienceId: data.audienceId ?? null,
+        categoryId: data.categoryId ?? null,
+        sizeL: data.sizeL ?? null,
+        sizeW: data.sizeW ?? null,
+        sizeH: data.sizeH ?? null,
+        weight: data.weight ?? null,
       }];
     } else if (data.productName || data.productDesc) {
       // 自由输入（未在下拉匹配到产品，productId 为空）：保留手输产品名/描述以便回填
@@ -533,6 +565,14 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
         productName: data.productName ?? null,
         quantity: data.quantity || 1,
         productDesc: data.productDesc ?? null,
+        // 需求详情扩展：产品分类与规格
+        craftIds: Array.isArray(data.craftIds) ? data.craftIds : [],
+        audienceId: data.audienceId ?? null,
+        categoryId: data.categoryId ?? null,
+        sizeL: data.sizeL ?? null,
+        sizeW: data.sizeW ?? null,
+        sizeH: data.sizeH ?? null,
+        weight: data.weight ?? null,
       }];
     }
 
@@ -601,6 +641,8 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           customerType: data.customerType ?? null,
           // 向导阶段：暂存/保存时由前端写入（0/1/2），详情据此展示「编辑」或「确认」
           stage: data.stage ?? null,
+          // 草稿标记：暂存=1（仅落线索表），建档/正式提交=0；持久化落库供详情复现弹窗状态
+          draft: data.draft ?? false,
           ownerId: data.ownerId ?? null,
           createdBy: req.userId ?? null,
           leadNo,
@@ -761,6 +803,15 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
     //  - 显式传 productId（含 null=清空）：整组替换旧明细（productId 置空但保留手输名/描述则补建无关联行）；
     //  - 仅传自由输入的产品名/描述（productId 未传）：在已有明细行增量更新，无行则补建。
     // 目标：手动输入的产品名/描述也能持久化，避免重开线索时无法回填。
+    // 需求详情扩展字段（工艺/受众/品类/长宽高克重）：仅当显式传入（!= undefined）才写，缺失则不覆盖既有值。
+    const itemExtra: Record<string, unknown> = {};
+    if (data.craftIds !== undefined) itemExtra.craftIds = Array.isArray(data.craftIds) ? data.craftIds : [];
+    if (data.audienceId !== undefined) itemExtra.audienceId = data.audienceId;
+    if (data.categoryId !== undefined) itemExtra.categoryId = data.categoryId;
+    if (data.sizeL !== undefined) itemExtra.sizeL = data.sizeL;
+    if (data.sizeW !== undefined) itemExtra.sizeW = data.sizeW;
+    if (data.sizeH !== undefined) itemExtra.sizeH = data.sizeH;
+    if (data.weight !== undefined) itemExtra.weight = data.weight;
     if (productId !== undefined) {
       await prisma.leadItem.deleteMany({ where: { leadId: existing.id } });
       if (productId) {
@@ -772,10 +823,11 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
             // D2：产品描述落在 LeadItem 明细行
             productDesc: productDesc ?? null,
             quantity: data.quantity || 1,
+            ...itemExtra,
           },
         });
-      } else if (data.productName || data.productDesc) {
-        // productId 显式置空但保留了手输产品名/描述 → 落为无关联产品的明细行
+      } else if (data.productName || data.productDesc || Object.keys(itemExtra).length) {
+        // productId 显式置空但保留了手输产品名/描述（或扩展字段）→ 落为无关联产品的明细行
         await prisma.leadItem.create({
           data: {
             leadId: existing.id,
@@ -783,21 +835,23 @@ export const updateLead = async (req: AuthRequest, res: Response): Promise<void>
             productName: data.productName ?? null,
             productDesc: data.productDesc ?? null,
             quantity: data.quantity || 1,
+            ...itemExtra,
           },
         });
       }
     } else {
-      // 未传 productId：增量更新已有明细行的手输产品名/描述（productId 引用不动）
+      // 未传 productId：增量更新已有明细行的手输产品名/描述与扩展字段（productId 引用不动）
       const patch: Record<string, unknown> = {};
       if (productName !== undefined) patch.productName = productName ?? null;
       if (productDesc !== undefined) patch.productDesc = productDesc ?? null;
+      Object.assign(patch, itemExtra);
       if (Object.keys(patch).length) {
         const existingItem = await prisma.leadItem.findFirst({ where: { leadId: existing.id }, select: { id: true } });
         if (existingItem) {
           await prisma.leadItem.update({ where: { id: existingItem.id }, data: patch });
         } else {
           await prisma.leadItem.create({
-            data: { leadId: existing.id, productId: null, productName: data.productName ?? null, productDesc: data.productDesc ?? null, quantity: data.quantity || 1 },
+            data: { leadId: existing.id, productId: null, productName: data.productName ?? null, productDesc: data.productDesc ?? null, quantity: data.quantity || 1, ...itemExtra },
           });
         }
       }

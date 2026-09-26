@@ -4,6 +4,7 @@ import { EllipsisOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
+import { CommToolIcon } from '../common/CommToolIcon';
 import { leadApi, type Lead, type LeadOperationLog } from '../../api/lead';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { formatMoneyValue, currentRateOf } from '../common/MoneyInput';
@@ -110,12 +111,9 @@ export default function LeadDetailPanel({
   // 是否已到达「确认商机」阶段（stage>=2）：旧数据（无 stage）默认视为可确认；
   // 据此决定底部主按钮显示「编辑」（回到暂存阶段继续）还是「确认」（转商机）
   const reachedConfirm = detail.stage == null ? true : detail.stage >= 2;
-  // 头部联系方式：行内展示首条「沟通工具：账号」，多条时以 icon 悬停查看全部
+  // 头部联系方式：行内展示首条「icon + 账号」，多条时以 icon 悬停查看全部
   const contactList = Array.isArray(detail.contactMethods) ? detail.contactMethods : [];
   const primaryContact = contactList[0];
-  const contactText = primaryContact
-    ? `${primaryContact.tool || '—'}：${primaryContact.account || '—'}`
-    : '';
   const hasMoreContacts = contactList.length > 1;
 
   const summaryRows = [
@@ -163,9 +161,10 @@ export default function LeadDetailPanel({
         {/* 联系人 + 首条联系方式（沟通工具：账号）；多条时 icon 悬停查看全部 */}
         <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           {detail.contactName ? <span>{detail.contactName}</span> : null}
-          {contactText && (
+          {primaryContact && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-              <span>{contactText}</span>
+              <CommToolIcon name={primaryContact.tool} style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)' }} />
+              <span>{primaryContact.account || '—'}</span>
               {hasMoreContacts && (
                 <Tooltip
                   color="white"
@@ -185,10 +184,8 @@ export default function LeadDetailPanel({
                   title={
                     <div style={{ display: 'grid', gap: 6, minWidth: 140 }}>
                       {contactList.map((c, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                          <span style={{ color: 'var(--c-text-tertiary, #94a3b8)', flexShrink: 0 }}>
-                            {c.tool || '—'}
-                          </span>
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <CommToolIcon name={c.tool} style={{ color: 'var(--c-text-tertiary, #94a3b8)', flexShrink: 0, fontSize: 14 }} />
                           <span style={{ wordBreak: 'break-all' }}>{c.account || '—'}</span>
                         </div>
                       ))}

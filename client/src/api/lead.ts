@@ -57,6 +57,14 @@ export interface Lead {
     productName?: string | null;
     quantity?: number;
     productDesc?: string | null;
+    // 需求详情扩展：产品分类与规格（建档时带入产品）
+    craftIds?: string[] | null;
+    audienceId?: string | null;
+    categoryId?: string | null;
+    sizeL?: number | null;
+    sizeW?: number | null;
+    sizeH?: number | null;
+    weight?: number | null;
   }>;
   // D1：参考图片附件（Attachment ownerType=LEAD）
   attachments?: Array<{ id: string; url: string; name?: string | null; category?: string; sort?: number }>;
@@ -75,6 +83,8 @@ export interface Lead {
   ownerId?: string | null;
   /** 负责人（后端 owner relation；显示优先使用） */
   owner?: { id: string; username: string; realName: string | null } | null;
+  /** 草稿标记：暂存场景为 true，已建档 / 正式提交为 false（用于区分「草稿态关联了客户」与「已正式建档锁定」） */
+  draft?: boolean | null;
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -109,6 +119,14 @@ export interface LeadPayload {
   targetPrice?: string | null;
   expectedDelivery?: string | null;
   customerType?: string | null;
+  /** 需求详情扩展：产品分类与规格（落 LeadItem，建档时带入产品） */
+  craftIds?: string[];
+  audienceId?: string | null;
+  categoryId?: string | null;
+  sizeL?: number | null;
+  sizeW?: number | null;
+  sizeH?: number | null;
+  weight?: number | null;
   /** 当前进行到的向导阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存时记录，详情据此决定展示「编辑」或「确认」 */
   stage?: number | null;
   /** 公司官网（非必填，随线索保存，转商机建档时带入客户） */

@@ -52,7 +52,7 @@ const ImportModal: React.FC<Props> = React.memo(({ open, onClose, onSuccess }) =
       zIndex={Z_INDEX.overlay}
     >
       <Alert
-        message="请下载模板，按照模板格式填写客户数据后上传"
+        title="请下载模板，按照模板格式填写客户数据后上传"
         type="info"
         showIcon
         style={{ marginBottom: 16, marginTop: 12 }}

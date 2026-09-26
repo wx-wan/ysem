@@ -237,7 +237,7 @@ export default function CreateOrderFromProductModal({
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message="组合产品暂不支持直接申请打样"
+          title="组合产品暂不支持直接申请打样"
           description="V1.0 打样单只能归属单个产品（单产品 + 打样轮次），无法安全表达组合内容。请在产品详情中针对具体产品申请打样。"
         />
       )}
@@ -246,7 +246,7 @@ export default function CreateOrderFromProductModal({
           type="success"
           showIcon
           style={{ marginBottom: 12 }}
-          message={`${TYPE_LABEL[type]}已创建`}
+          title={`${TYPE_LABEL[type]}已创建`}
           description={
             <div>
               <div>单据号：<Tag color="blue">{created.businessNo}</Tag></div>

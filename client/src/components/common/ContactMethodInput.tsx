@@ -1,7 +1,7 @@
 import { Button, Input, Select, theme } from 'antd';
 import { MinusCircleFilled } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { forwardRef, useImperativeHandle, useState, type CSSProperties } from 'react';
+import { forwardRef, useImperativeHandle, useEffect, useState, type CSSProperties } from 'react';
 
 export interface ContactMethodItem {
   tool: string;
@@ -60,6 +60,25 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
   const fieldKey = (idx: number, field: FieldName) => `${idx}:${field}`;
   const messageOf = (field: FieldName) =>
     field === 'tool' ? t('lead.contactToolRequired') : t('lead.contactAccountRequired');
+
+  // 外部替换 value（如切换公司名称触发归属查询自动带入联系方式）时同步重算飘红：
+  // 已验证过的前提下按当前行数据全量重判——新值已填 → 清除残留错误；新值缺失 → 补上提示。
+  // 未触发过 validate() 前仍不主动飘红，保持「边填边报错」关闭的原策略。
+  useEffect(() => {
+    if (!validated) return;
+    setErrors((prev) => {
+      const next: Record<string, string> = {};
+      list.forEach((it, idx) => {
+        if (!(it?.tool ?? '').trim()) next[fieldKey(idx, 'tool')] = messageOf('tool');
+        if (!(it?.account ?? '').trim()) next[fieldKey(idx, 'account')] = messageOf('account');
+      });
+      const prevKeys = Object.keys(prev);
+      const nextKeys = Object.keys(next);
+      const same = prevKeys.length === nextKeys.length && prevKeys.every((k) => prev[k] === next[k]);
+      return same ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, validated]);
 
   const update = (next: ContactMethodItem[]) => onChange?.(next);
 

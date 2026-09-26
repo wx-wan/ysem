@@ -299,11 +299,11 @@ const CUSTOMER_TYPES_DEPRECATED = ['意向客户', '成交客户', '战略客户
 
 /** 沟通工具基线数据（系统设置 → 沟通工具维护，用作线索/客户联系方式下拉选项） */
 const COMMUNICATION_TOOLS = [
-  { name: '旺旺号', sort: 0 },
-  { name: '邮箱', sort: 1 },
-  { name: '手机', sort: 2 },
-  { name: 'WhatsApp', sort: 3 },
-  { name: '微信', sort: 4 },
+  { name: '旺旺号', sort: 0, icon: 'CustomerServiceOutlined' },
+  { name: '邮箱', sort: 1, icon: 'MailOutlined' },
+  { name: '手机', sort: 2, icon: 'PhoneOutlined' },
+  { name: 'WhatsApp', sort: 3, icon: 'WhatsAppOutlined' },
+  { name: '微信', sort: 4, icon: 'WechatOutlined' },
 ];
 
 /** 币种基线数据（系统设置 → 数据管理，用作顶部币种切换 + 线索目标价位前缀；汇率取每日汇率，不在此写死） */
@@ -555,8 +555,8 @@ async function seedCommunicationTools(tx: Prisma.TransactionClient): Promise<voi
     // isActive 显式置 true：可重复执行的 seed 在被人工停用后能恢复为启用基线
     await tx.communicationTool.upsert({
       where: { name: tool.name },
-      update: { sort: tool.sort, isActive: true },
-      create: { name: tool.name, sort: tool.sort, isActive: true },
+      update: { sort: tool.sort, isActive: true, icon: tool.icon ?? null },
+      create: { name: tool.name, sort: tool.sort, isActive: true, icon: tool.icon ?? null },
     });
   }
 }

@@ -5,6 +5,7 @@ import commToolApi from '../api/commTool';
 interface CommToolItem {
   name: string;
   id: string;
+  icon?: string | null;
 }
 
 interface CommToolState {

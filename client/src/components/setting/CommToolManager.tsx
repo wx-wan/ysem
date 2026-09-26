@@ -9,6 +9,7 @@ import {
   Switch,
   Table,
   Space,
+  Select,
   Popconfirm,
   message,
   Typography,
@@ -23,6 +24,7 @@ import {
 } from '@ant-design/icons';
 import commToolApi, { CommunicationTool, CommunicationToolInput } from '../../api/commTool';
 import { useCommToolStore } from '../../stores/useCommToolStore';
+import { COMM_TOOL_ICON_OPTIONS, getCommToolIconComponent } from '../common/CommToolIcon';
 
 export default function CommToolManager() {
   const { t } = useTranslation();
@@ -63,6 +65,7 @@ export default function CommToolManager() {
     form.setFieldsValue({
       name: record.name,
       description: record.description,
+      icon: record.icon,
       isActive: record.isActive,
       sort: record.sort,
     });
@@ -131,6 +134,16 @@ export default function CommToolManager() {
       title: t('commTool.name'),
       dataIndex: 'name',
       key: 'name',
+    },
+    {
+      title: t('commTool.icon'),
+      dataIndex: 'icon',
+      key: 'icon',
+      width: 80,
+      render: (_: string | null, record: CommunicationTool) => {
+        const Cmp = getCommToolIconComponent(record.icon);
+        return <Cmp style={{ fontSize: 18 }} />;
+      },
     },
     {
       title: t('commTool.description'),
@@ -233,6 +246,24 @@ export default function CommToolManager() {
           </Form.Item>
           <Form.Item name="description" label={t('commTool.description')}>
             <Input.TextArea placeholder={t('commTool.descriptionPlaceholder')} rows={3} maxLength={200} showCount />
+          </Form.Item>
+          <Form.Item name="icon" label={t('commTool.icon')}>
+            <Select
+              allowClear
+              placeholder={t('commTool.iconPlaceholder')}
+              options={COMM_TOOL_ICON_OPTIONS.map((o) => {
+                const Cmp = getCommToolIconComponent(o.value);
+                return {
+                  value: o.value,
+                  label: (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <Cmp style={{ fontSize: 16 }} />
+                      <span>{o.label}</span>
+                    </span>
+                  ),
+                };
+              })}
+            />
           </Form.Item>
           <Form.Item name="sort" label={t('common.sort')} initialValue={editing ? undefined : (list.length + 1) * 10}>
             <Input type="number" placeholder={t('commTool.sortPlaceholder')} />

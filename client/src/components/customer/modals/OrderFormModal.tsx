@@ -112,7 +112,7 @@ const OrderFormModal: React.FC<Props> = React.memo(({ open, customer, onClose, o
           type="warning"
           showIcon
           style={{ marginBottom: 12 }}
-          message="该客户暂无商机，请先创建商机"
+          title="该客户暂无商机，请先创建商机"
           description="V1.0 销售订单必须归属一个商机，无法在没有商机的情况下创建。"
         />
       )}
