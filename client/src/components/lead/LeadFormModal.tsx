@@ -17,7 +17,7 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, ArrowRightOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry } from '../CountrySelect';
@@ -32,6 +32,7 @@ import { productApi, type Product, type ProductAudience, type ProductCraft, type
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useUserStore } from '../../stores/useUserStore';
 import { convertLeadToOpportunity } from '../../utils/convertLead';
+import { throttle } from '../../utils/rateLimit';
 import type { CustomerOption } from './useLeadOptions';
 import ProductImageList from '../common/ProductImageList';
 import CustomerTypeSelect from '../CustomerTypeSelect';
@@ -51,14 +52,6 @@ export interface LeadFormModalHandle {
   /** 打开编辑；initialStep 可指定初始步骤（如 2 直接进入「确认商机」阶段） */
   openEdit: (record: Lead, initialStep?: number) => void;
 }
-
-// 三步向导各步骤包含的表单字段（「下一步」仅校验当前步骤字段）
-// 第三步为「确认商机」：不展示/校验表单字段，客户与产品建档校验由确认动作（convertLead 链路）完成
-const STEP_FIELDS: string[][] = [
-  ['customerKey', 'targetMarket', 'customerType', 'sourceKey', 'contactName', 'contactMethods'],
-  ['productKey', 'quantity', 'targetPrice', 'productDesc', 'images', 'expectedDelivery'],
-  [],
-];
 
 // 负责人头像底色（按列表顺序循环取色）
 const OWNER_COLORS = ['#1677ff', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#6366f1'];
@@ -127,6 +120,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [matchedCompanyName, setMatchedCompanyName] = useState<string | null>(null);
   // mine（本人已建档）时拉取完整客户对象，用于转商机时比对信息变更并同步更新
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  // 公司名称归属「实时查询」信号：每次打开弹窗自增，驱动 CompanyNameInput 用 /ownership 重新查询（而非派生）
+  const [companyQuerySeq, setCompanyQuerySeq] = useState(0);
+  // 客户信息是否已建档并锁定：建档 / 更新后锁定客户信息步骤全部必填项，防止改后与客户档案脱节
+  const [customerLocked, setCustomerLocked] = useState(false);
+  // 是否处于「编辑已建档客户」状态（用户点击「编辑」解锁后）：此状态下主按钮展示「更新」而非「下一步」
+  const [editingUnlocked, setEditingUnlocked] = useState(false);
   const handleCompanyResolved = (info: {
     status: CompanyStatus;
     companyName?: string;
@@ -137,15 +136,66 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setCompanyStatus(info.status);
     setMatchedCustomerId(info.customerId ?? null);
     setMatchedCompanyName(info.companyName ?? null);
-    // 仅本人已建档需要完整档案做信息变更比对；其余情况清空，避免旧基线残留
-    if (info.status === 'mine' && info.customerId) {
+    // 归属不再是「本人已建档」时，退出「编辑已建档客户」状态
+    if (info.status !== 'mine') setEditingUnlocked(false);
+    // 客户已存在（本人 / 他人 / 公海）：拉取完整档案并自动带入线索表单客户信息（与下拉选中保持一致）；
+    // 仅本人已建档（mine）额外留存 matchedCustomer 作为信息变更比对基线，其余情况仅带入不留存基线
+    if (info.customerId) {
       customerApi
         .getById(info.customerId)
-        .then((r) => setMatchedCustomer((r?.data?.data as Customer) ?? null))
+        .then((r) => {
+          const c = (r?.data?.data as Customer) ?? null;
+          if (c) applyCustomerFieldValues(c);
+          setMatchedCustomer(info.status === 'mine' ? c : null);
+        })
         .catch(() => setMatchedCustomer(null));
     } else {
       setMatchedCustomer(null);
     }
+  };
+
+  // 选中/解析到既有客户时，把其国家/地区、客户类型、来源渠道、联系人、联系方式自动带入线索表单
+  const applyCustomerFieldValues = (c: {
+    country?: string;
+    customerType?: string;
+    channelId?: string | null;
+    shopId?: string | null;
+    contactName?: string;
+    contactMethods?: { tool: string; account: string }[] | null;
+  }) => {
+    const patch: Record<string, any> = {};
+    if (c.country) patch.targetMarket = c.country;
+    if (c.customerType) patch.customerType = c.customerType;
+    if (c.channelId) {
+      // 历史数据 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
+      patch.sourceKey =
+        c.shopId && c.shopId !== c.channelId
+          ? JSON.stringify({ channelId: c.channelId, shopId: c.shopId })
+          : JSON.stringify({ channelId: c.channelId });
+    }
+    if (c.contactName) patch.contactName = c.contactName;
+    if (c.contactMethods && c.contactMethods.length) patch.contactMethods = c.contactMethods;
+    if (Object.keys(patch).length) form.setFieldsValue(patch);
+  };
+
+  // 选中下拉既有客户：自动带入其国家/地区、客户类型、来源渠道、联系人、联系方式（来源组合为 sourceKey JSON），并立即关联客户主键
+  const handleCustomerPick = (opt: {
+    label: string;
+    id?: string;
+    country?: string;
+    customerType?: string;
+    channelId?: string | null;
+    shopId?: string | null;
+    contactName?: string;
+    contactMethods?: { tool: string; account: string }[] | null;
+    [k: string]: any;
+  }) => {
+    applyCustomerFieldValues(opt);
+    // 选中既有客户：立即关联 customerId（归属查询随后校正 mine/other 状态；避免「未建档」误闪）
+    setMatchedCustomerId(opt.id ?? null);
+    setMatchedCompanyName(opt.label);
+    setCompanyStatus('idle');
+    setEditingUnlocked(false);
   };
 
   // 建档后重新拉取线索最新详情，刷新 editing，避免快照不一致导致「待建档」标签残留
@@ -172,13 +222,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const watchUnit = Form.useWatch('unit', form);
 
   // 线索来源选项：来源渠道 + 来源平台由前端拼接为一个 JSON（{ channelId, shopId }）作为选项值；
-  // 无子平台的渠道兜底 shopId = 渠道自身 ID（与原「平台下拉兜底渠道本身」逻辑一致）
+  // 无子平台的渠道仅传 channelId（不兜底 shopId = 渠道自身），否则后端父子一致性校验必然 400
   const sourceOptions = useMemo(() => {
     const list: { label: string; value: string }[] = [];
     channels.forEach((c) => {
       const children = c.children || [];
       if (!children.length) {
-        list.push({ label: c.name, value: JSON.stringify({ channelId: c.id, shopId: c.id }) });
+        list.push({ label: c.name, value: JSON.stringify({ channelId: c.id }) });
       } else {
         children.forEach((child) => {
           list.push({ label: `${c.name} · ${child.name}`, value: JSON.stringify({ channelId: c.id, shopId: child.id }) });
@@ -214,25 +264,44 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 这里只负责在「下一步 / 提交」时触发它，不再用 Form.Item rules 做整体校验。
   const validateContactMethods = () => contactMethodRef.current?.validate() ?? true;
 
+  // 实时比对：当前客户信息表单字段相对「本人已建档」基线 matchedCustomer 是否发生变更
+  // （用于决定主按钮展示「更新」还是「下一步」）
+  const customerChanged = Form.useWatch((values: Record<string, any>) => {
+    if (companyStatus !== 'mine' || !matchedCustomer) return false;
+    if ((values.targetMarket ?? '') !== (matchedCustomer.country ?? '')) return true;
+    if ((values.customerType ?? '') !== (matchedCustomer.customerType ?? '')) return true;
+    if ((values.contactName ?? '') !== (matchedCustomer.contactName ?? '')) return true;
+    const baseCm = matchedCustomer.contactMethods || [];
+    const formCm = Array.isArray(values.contactMethods) ? values.contactMethods.filter(Boolean) : [];
+    if (baseCm.length !== formCm.length) return true;
+    for (let i = 0; i < baseCm.length; i++) {
+      if (baseCm[i]?.tool !== formCm[i]?.tool || baseCm[i]?.account !== formCm[i]?.account) return true;
+    }
+    const baseSrc = `${matchedCustomer.channelId ?? ''}|${matchedCustomer.shopId ?? ''}`;
+    const formSrc = safeParseSource(values.sourceKey);
+    const formSrcStr = `${formSrc?.channelId ?? ''}|${formSrc?.shopId ?? ''}`;
+    if (baseSrc !== formSrcStr) return true;
+    return false;
+  }, form);
+
   // ============ 三步向导 ============
   const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepConfirm')];
 
-  const goNext = async () => {
-    try {
-      // 联系方式为自定义组件，与表单字段校验并行触发：
-      // 所有必填字段一起飘红，不因联系方式先失败而阻断其它字段校验
-      const contactOk = step === 0 ? validateContactMethods() : true;
-      // 仅校验当前步骤字段，通过后进入下一步
-      await form.validateFields(STEP_FIELDS[step]);
-      // 联系方式校验不通过时停留在当前步（飘红已与其它字段一并展示）
-      if (!contactOk) return;
-      setStep((s) => Math.min(s + 1, wizardSteps.length - 1));
-    } catch {
-      /* 校验失败停留在当前步，错误提示由 Form.Item 展示 */
-    }
-  };
-
   const goPrev = () => setStep((s) => Math.max(s - 1, 0));
+
+  // 下一步：校验客户信息步骤必填项后前进；选中本人已建档客户且未改动时无需建档/更新，直接前进
+  const goNext = async () => {
+    if (!validateContactMethods()) {
+      setStep(0);
+      return;
+    }
+    try {
+      await form.validateFields();
+    } catch {
+      return; // 字段飘红，停留在当前步
+    }
+    setStep((s) => Math.min(s + 1, wizardSteps.length - 1));
+  };
 
   // ============ 打开 / 提交 ============
   const openCreate = () => {
@@ -266,6 +335,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       form.setFieldsValue({ ownerId: currentUser.id });
     }
     setDrawerOpen(true);
+    setCustomerLocked(false);
+    setEditingUnlocked(false);
+    // 新建：无公司名，querySignal 自增仅作一致性（空名查询无操作）
+    setCompanyQuerySeq((n) => n + 1);
   };
 
   const openEdit = async (record: Lead, initialStep = 0) => {
@@ -289,9 +362,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         customerKey: item.customer?.companyName || item.companyName || undefined,
         // 联系人：回填 Lead.contactName
         contactName: item.contactName || undefined,
-        // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON
+        // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON；
+        // 历史数据的 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
         sourceKey: item.channel?.id
-          ? JSON.stringify({ channelId: item.channel.id, shopId: item.shop?.id || item.channel.id })
+          ? JSON.stringify(
+              item.shop?.id && item.shop.id !== item.channel.id
+                ? { channelId: item.channel.id, shopId: item.shop.id }
+                : { channelId: item.channel.id },
+            )
           : undefined,
         // 采购产品：回填 LeadItem 明细（V1.0 产品关联落在 items）
         productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
@@ -322,18 +400,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
           : '',
       });
-      // 还原归属状态：「未建档」在落库时即持久化为 customerId 缺失（已建档会关联客户主键）。
-      // 重开草稿时据此还原「未建档」标签与 matched 状态，确保首次暂存判定的未建档状态被保留、不丢失。
-      const reopenCompany = item.customer?.companyName || item.companyName || undefined;
-      if (!item.customerId && reopenCompany) {
-        setCompanyStatus('none');
-        setMatchedCompanyName(reopenCompany);
-        setMatchedCustomerId(null);
-      } else {
-        setCompanyStatus('idle');
-        setMatchedCompanyName(null);
-        setMatchedCustomerId(null);
-      }
+      // 归属状态不再由线索冗余字段（customerId 缺失）派生，而是在打开弹窗时由 CompanyNameInput
+      // 通过 /ownership 实时查询决定（querySignal 触发）。此处仅递增信号，组件挂载/打开即查询。
+      setCompanyQuerySeq((n) => n + 1);
+      // 已关联客户的线索（已建档）打开即锁定客户信息，防止改后与客户档案脱节
+      setCustomerLocked(!!item.customerId);
+      setEditingUnlocked(false);
       // 溯源：若已关联商机，加载商机信息用于展示
       if (item.pipelineId) {
         try {
@@ -350,15 +422,21 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   };
 
   // 由表单全量取值构建 LeadPayload：客户/产品按「手输新名 vs 命中下拉」决定存 companyName/productName 还是 customerId/productId
-  const buildLeadPayload = (values: Record<string, any>): LeadPayload => {
+  const buildLeadPayload = (
+    values: Record<string, any>,
+    matched?: { id: string | null; name: string | null },
+  ): LeadPayload => {
+    // 建档后手动注入命中客户（避免依赖异步 setState 的闭包旧值）；缺省回退到归属查询结果
+    const mId = matched?.id ?? matchedCustomerId;
+    const mName = matched?.name ?? matchedCompanyName;
     // 客户：可手输新客户名，或下拉选择已有客户；手输新名仅存文本，确认后才会建档
     let customerId: string | null = null;
     let companyName: string | undefined;
     const customerName = values.customerKey?.trim();
     if (customerName) {
-      // 优先用 onBlur 归属查询命中的客户（覆盖本人 / 他人 / 公海，归属判断最准）
-      if (matchedCustomerId && matchedCompanyName && matchedCompanyName.toLowerCase() === customerName.toLowerCase()) {
-        customerId = matchedCustomerId;
+      // 优先用归属查询命中的客户（覆盖本人 / 他人 / 公海，归属判断最准）
+      if (mId && mName && mName.toLowerCase() === customerName.toLowerCase()) {
+        customerId = mId;
       } else {
         const matched = customerOptions.find((c) => c.label === customerName);
         if (matched) {
@@ -476,6 +554,81 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         message.success(t('common.createSuccess'));
       }
       setDrawerOpen(false);
+      onSaved(savedId);
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || t('common.saveFailed'));
+    }
+  };
+
+  // 从表单全量值创建客户（区别于 createCustomerSilently：后者读 editing 快照，新建线索时 editing 无客户字段，会建出空客户）
+  const createCustomerFromForm = async (): Promise<string> => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const src = safeParseSource(v.sourceKey);
+    const res: any = await customerApi.create({
+      companyName: (v.customerKey || '').trim(),
+      contactName: v.contactName || undefined,
+      country: v.targetMarket ? findCountry(v.targetMarket)?.zh : undefined,
+      customerType: v.customerType || undefined,
+      contactMethods: Array.isArray(v.contactMethods) ? v.contactMethods.filter(Boolean) : undefined,
+      channelId: src?.channelId ?? undefined,
+      shopId: src?.shopId ?? undefined,
+    } as any);
+    return (res?.data?.id ?? res?.data?.data?.id ?? res?.id) as string;
+  };
+
+  // 建档 / 更新客户：操作前校验全部必填项；建档 = 从表单创建客户，更新 = 同步变化字段；
+  // 二者均同时保存并关联线索（一步完成）、随后锁定客户信息步骤全部必填项
+  const handleFileOrUpdateCustomer = async () => {
+    // 全部必填项校验（含联系方式逐字段校验），不通过时回到第 1 步展示飘红
+    if (!validateContactMethods()) {
+      setStep(0);
+      return;
+    }
+    try {
+      await form.validateFields();
+    } catch {
+      return; // 字段飘红，停留在当前步
+    }
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    const name = (v.customerKey || '').trim();
+    if (!name) return;
+    try {
+      let custId: string;
+      // 更新：本人已建档且已关联客户主键时，严格走「客户更新」逻辑（绝不变为创建）
+      const existingCustId = (matchedCustomer?.id ?? matchedCustomerId) as string | null;
+      if (companyStatus === 'mine' && existingCustId) {
+        // 比对基线取归属查询（handleCompanyResolved）时已带回的 matchedCustomer，避免重复调用接口；
+        // 仅同步表单中发生变化的字段
+        const upd = matchedCustomer ? buildCustomerUpdate(matchedCustomer) : null;
+        if (upd) await customerApi.update(existingCustId, upd);
+        custId = existingCustId;
+        message.success(t('common.updateSuccess'));
+      } else {
+        // 建档：从表单值创建全新客户
+        custId = await createCustomerFromForm();
+        message.success(t('common.createSuccess'));
+      }
+      // 关联命中客户 + 锁定客户信息步骤全部必填项
+      setMatchedCustomerId(custId);
+      setMatchedCompanyName(name);
+      setCompanyStatus('mine');
+      setCustomerLocked(true);
+      setEditingUnlocked(false);
+      // 建档 + 保存线索（一步）：注入命中客户确保关联 customerId，但不关闭弹窗，便于继续填需求
+      const payload = buildLeadPayload(v, { id: custId, name });
+      payload.stage = step;
+      let savedId: string | undefined;
+      if (editing?.id) {
+        await leadApi.update(editing.id, payload);
+        savedId = editing.id;
+      } else {
+        const created = await leadApi.create(payload);
+        savedId = created.data?.id;
+      }
+      if (savedId) {
+        setEditing((prev) => ({ ...(prev as Lead), id: savedId as string, customerId: custId, status: 'NEW' }));
+      }
+      onRefreshCustomers();
       onSaved(savedId);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
@@ -658,6 +811,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     }
   };
 
+  // ============ 提交 / 暂存 / 转商机 / 认领 防连点（节流）============
+  // 用 ref 持有最新函数实现，配合一次性创建的 throttle 包裹，避免每次渲染重建导致节流失效；
+  // leading 立即执行首点，800ms 内重复点击丢弃，防止重复提交 / 重复转商机（如重复报错）。
+  const saveDraftRef = useRef(saveDraft);
+  saveDraftRef.current = saveDraft;
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  const handleConfirmLeadRef = useRef(handleConfirmLead);
+  handleConfirmLeadRef.current = handleConfirmLead;
+  const handleClaimLeadRef = useRef(handleClaimLead);
+  handleClaimLeadRef.current = handleClaimLead;
+  const throttledSaveDraft = useMemo(() => throttle(() => void saveDraftRef.current(), 800), []);
+  const throttledSubmit = useMemo(() => throttle(() => void submitRef.current(), 800), []);
+  const throttledConfirmLead = useMemo(() => throttle(() => handleConfirmLeadRef.current(), 800), []);
+  const throttledClaimLead = useMemo(() => throttle(() => void handleClaimLeadRef.current(), 800), []);
+
   // ============ 确认建档 ============
   // 客户「未建档」标签点击：直接用线索信息静默创建客户并关联（不再弹窗）
   const confirmCreateCustomer = async () => {
@@ -774,8 +943,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <div
                     key={label}
                     className={`lead-wizard-steps__item${i === step ? ' is-active' : ''}${i < step ? ' is-done' : ''}`}
-                    onClick={i < step ? () => setStep(i) : undefined}
-                    style={i < step ? { cursor: 'pointer' } : undefined}
+                    onClick={() => setStep(i)}
+                    style={{ cursor: 'pointer' }}
                   >
                     <span className="lead-wizard-steps__dot">{i < step ? <CheckOutlined /> : i + 1}</span>
                     <span className="lead-wizard-steps__label">{label}</span>
@@ -806,29 +975,63 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 ))}
               </div>
               <div className="lead-wizard-footer__side lead-wizard-footer__side--right">
-                {/* 暂存：每个步骤均可，跳过必填校验直接保存，置于「下一步/确认」之前 */}
-                <Button size="large" className="lead-ghost-btn" onClick={saveDraft}>{t('lead.keepAsLead')}</Button>
+                {/* 暂存：客户信息未锁定（未 disable）时每个步骤均可，跳过必填校验直接保存；已锁定则隐藏 */}
+                {!customerLocked && (
+                  <Button size="large" className="lead-ghost-btn" onClick={throttledSaveDraft}>{t('lead.keepAsLead')}</Button>
+                )}
                 {step < wizardSteps.length - 1 ? (
-                  <Button size="large" type="primary" onClick={goNext}>
-                    {t('lead.nextStep')} <ArrowRightOutlined />
-                  </Button>
+                  // 主操作按钮：编辑 / 更新 / 建档 与 下一步 相互独立分开展示
+                  <>
+                    {/* 已锁定（disable）：提供「编辑」解锁修正，进入编辑态 */}
+                    {customerLocked && (
+                      <Button size="large" onClick={() => { setCustomerLocked(false); setEditingUnlocked(true); }}>{t('common.edit')}</Button>
+                    )}
+                    {/* 已锁定（disable）：允许「下一步」前进 */}
+                    {customerLocked && (
+                      <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
+                    )}
+                    {/* 未锁定：未建档 → 建档；本人已建档 → 编辑态（点击过「编辑」）展示「更新」，
+                        否则有改动展示「更新」、无改动展示「下一步」 */}
+                    {!customerLocked && companyStatus === 'none' && (
+                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={handleFileOrUpdateCustomer}>
+                        {t('lead.fileLead')}
+                      </Button>
+                    )}
+                    {!customerLocked && companyStatus === 'mine' && (
+                      // 编辑态且有改动：展示「锁定」（提交改动并重新锁定，复用建档/更新逻辑）；
+                      // 编辑态无改动 或 未编辑但有改动：展示「更新」；其余展示「下一步」
+                      editingUnlocked && customerChanged ? (
+                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
+                          {t('lead.lock')}
+                        </Button>
+                      ) : editingUnlocked || customerChanged ? (
+                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
+                          {t('lead.updateCustomer')}
+                        </Button>
+                      ) : (
+                        <Button size="large" type="primary" onClick={goNext}>
+                          {t('lead.nextStep')}
+                        </Button>
+                      )
+                    )}
+                  </>
                 ) : (
                   <>
                     {/* 公海线索：仅可认领，确认（转商机）不可用 */}
                     {isPoolLead && (
-                      <Button size="large" type="primary" icon={<UserAddOutlined />} onClick={handleClaimLead}>
+                      <Button size="large" type="primary" icon={<UserAddOutlined />} onClick={throttledClaimLead}>
                         {t('lead.claim')}
                       </Button>
                     )}
                     {/* 已建档线索：最终步提供「确认」（转商机），样式与保存一致（primary） */}
                     {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && computeRequirement().allReady && (
-                      <Button size="large" type="primary" onClick={handleConfirmLead}>
+                      <Button size="large" type="primary" onClick={throttledConfirmLead}>
                         {t('lead.confirmLead')}
                       </Button>
                     )}
                     {/* 新建线索：最终步以「确认」提交（样式与保存一致），不再单独显示「保存」按钮 */}
                     {!editing?.id && (
-                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={submit}>{t('lead.confirmRequirement')}</Button>
+                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={throttledSubmit}>{t('lead.confirmRequirement')}</Button>
                     )}
                   </>
                 )}
@@ -855,9 +1058,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     label={
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                         <span>{t('lead.customerCompany')}</span>
-                        {companyStatus === 'none' && (
+                        {companyStatus === 'none' && !customerLocked && (
                           <Tag color="orange" style={{ marginInlineEnd: 0 }}>
                             {t('lead.pendingTag')}
+                          </Tag>
+                        )}
+                        {customerLocked && (
+                          <Tag color="green" style={{ marginInlineEnd: 0 }}>
+                            {t('lead.filedTag')}
                           </Tag>
                         )}
                       </span>
@@ -866,6 +1074,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   >
                     <CompanyNameInput
                       onResolved={handleCompanyResolved}
+                      onPick={handleCustomerPick}
+                      options={customerOptions}
+                      querySignal={companyQuerySeq}
+                      disabled={customerLocked}
                       placeholder={t('lead.customerPlaceholder')}
                     />
                   </Form.Item>
@@ -875,12 +1087,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Row gutter={[16, 0]}>
                 <Col span={12}>
                   <Form.Item name="targetMarket" label={t('lead.targetMarket')} rules={[{ required: true, message: t('lead.targetMarketRequired') }]}>
-                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} />
+                    <CountrySelect placeholder={t('lead.targetMarketPlaceholder')} disabled={customerLocked} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name="customerType" label={t('lead.customerType')} rules={[{ required: true, message: t('lead.customerTypeRequired') }]}>
-                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} />
+                    <CustomerTypeSelect placeholder={t('lead.customerTypePlaceholder')} disabled={customerLocked} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -888,7 +1100,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 {/* 左：联系人 + 联系方式 */}
                 <Col span={12}>
                   <Form.Item name="contactName" label={t('customer.contactName')} rules={[{ required: true, message: t('customer.contactNameRequired') }]}>
-                    <Input placeholder={t('customer.contactNamePlaceholder')} />
+                    <Input placeholder={t('customer.contactNamePlaceholder')} disabled={customerLocked} />
                   </Form.Item>
                   <Form.Item
                     name="contactMethods"
@@ -896,19 +1108,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     label={
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                         <span>{t('customer.contactMethods')}</span>
-                        <Button type="link" size="small" onClick={() => contactMethodRef.current?.add()}>
+                        <Button type="link" size="small" onClick={() => contactMethodRef.current?.add()} disabled={customerLocked}>
                           + {t('lead.addContactMethod')}
                         </Button>
                       </div>
                     }
                   >
-                    <ContactMethodInput showAddButton={false} toolWidth={120} ref={contactMethodRef} options={commToolOptions} />
+                    <ContactMethodInput showAddButton={false} toolWidth={120} ref={contactMethodRef} options={commToolOptions} disabled={customerLocked} />
                   </Form.Item>
                 </Col>
                 {/* 右：来源渠道 */}
                 <Col span={12}>
                   <Form.Item name="sourceKey" label={t('lead.leadSource')} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
-                    <ChipSelect options={sourceOptions} size="large" />
+                    <ChipSelect options={sourceOptions} size="large" disabled={customerLocked} />
                   </Form.Item>
                 </Col>
               </Row>

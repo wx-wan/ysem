@@ -976,6 +976,15 @@ export const create = async (req: AuthRequest, res: Response, next: NextFunction
       }
     }
 
+    // 客户唯一性检测（去重）：与 /ownership 一致做全库精确匹配，已在任意归属（本人/他人/公海）建档的同名客户不应重复创建
+    const existed = await prisma.customer.findFirst({
+      where: { companyName: body.companyName },
+      select: { id: true, customerNo: true, companyName: true },
+    });
+    if (existed) {
+      return error(res, `客户已存在（公司名称重复）：${existed.companyName}`, 409);
+    }
+
     // 编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞
     const customer = await prisma.$transaction(async (tx) => {
       const customerNo = await getNextNumber(tx, "CUS");

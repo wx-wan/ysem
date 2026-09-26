@@ -15,6 +15,8 @@ interface CountrySelectProps<T = string> {
   getPopupContainer?: (triggerNode: HTMLElement) => HTMLElement;
   /** 只读形态：渲染静态「国旗 + 文字」，无下拉、不可交互（用于卡片/详情展示） */
   readOnly?: boolean;
+  /** 禁用形态：透传 Ant Design Select 的 disabled，UI 与表单其他禁用字段一致（灰显、不可交互） */
+  disabled?: boolean;
   /** 透传给内部 Select 的 variant（outlined / filled / borderless），用于统一表单外观 */
   variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
   /** 透传给内部 Select 的 size（small / middle / large） */
@@ -32,6 +34,7 @@ export default function CountrySelect({
   readOnly,
   variant,
   size,
+  disabled,
 }: CountrySelectProps) {
   // 只读形态：静态展示，不渲染下拉
   if (readOnly) {
@@ -82,6 +85,7 @@ export default function CountrySelect({
       getPopupContainer={getPopupContainer}
       variant={variant}
       size={size}
+      disabled={disabled}
       showSearch
       style={{ width: '100%', ...style }}
       styles={{ popup: { root: { minWidth: 220 } } }}

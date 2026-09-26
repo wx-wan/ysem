@@ -371,7 +371,6 @@
   border: 1px solid var(--c-border, #eef0f3);
   border-radius: 12px;
   padding: 12px 16px;
-  min-height: 120px;
 }
 .lead-wizard-summary__title {
   font-size: 13px;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Card, Pagination, Button, Popconfirm, App, theme } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import { useReleaseToPool } from '../hooks/useReleaseToPool';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
+import { debounce } from '../utils/rateLimit';
 
 export default function SalesLeads() {
   const { token } = theme.useToken();
@@ -31,6 +32,18 @@ export default function SalesLeads() {
 
   // 列表数据 + 筛选 + 分页
   const list = useLeadList();
+  // 关键词搜索：本地输入态即时回显，防抖提交到列表 hook，避免逐字触发列表请求
+  const [kw, setKw] = useState(list.keyword ?? '');
+  const setKeywordRef = useRef(list.setKeyword);
+  setKeywordRef.current = list.setKeyword;
+  const commitKeyword = useMemo(() => debounce((v: string) => setKeywordRef.current(v), 400), []);
+  useEffect(() => {
+    setKw(list.keyword ?? '');
+  }, [list.keyword]);
+  const onSearchChange = (v: string) => {
+    setKw(v);
+    commitKeyword(v);
+  };
   // 统一「释放到公海」确认弹窗（客户 / 线索共用）
   const releaseToPool = useReleaseToPool();
   // 表单选项数据（渠道 / 产品 / 分类 / 客户）
@@ -138,8 +151,8 @@ export default function SalesLeads() {
         {/* 交互式筛选栏（搜索 + 筛选展开面板 + 排序 + 新建线索），替代原 CTA + 筛选栏 */}
         <FilterToolbar
           searchPlaceholder={t('lead.searchPlaceholder')}
-          searchValue={list.keyword}
-          onSearchChange={list.setKeyword}
+          searchValue={kw}
+          onSearchChange={onSearchChange}
           sortOptions={[
             { value: 'createdAt:desc', label: t('lead.sortLatest') },
             { value: 'createdAt:asc', label: t('lead.sortEarliest') },

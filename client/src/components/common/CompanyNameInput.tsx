@@ -1,4 +1,4 @@
-import { Input, theme } from 'antd';
+import { AutoComplete, theme } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { useEffect, useState, type CSSProperties } from 'react';
 import { customerApi, type OwnershipResult } from '../../api/customers';
@@ -12,6 +12,15 @@ interface Props {
   onChange?: (v: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /**
+   * 实时查询信号（每次打开弹窗自增）。打开弹窗（含编辑回填 / 重开草稿）时已带公司名时，
+   * 组件据此立即查询归属接口，确保标签反映最新状态，而非依赖线索冗余字段（customerId 缺失）派生。
+   */
+  querySignal?: number | string;
+  /** 既有客户下拉选项（用于快速选择已建档客户）。选中即通过 onPick 回传完整选项，供父级带入国家/地区·客户类型·来源渠道 */
+  options?: Array<{ label: string; value: string; [key: string]: any }>;
+  /** 选中下拉客户回调：回传完整选项对象（value=公司名、id=客户主键、以及 country / customerType / channelId / shopId 等） */
+  onPick?: (opt: { label: string; value: string; id?: string; [key: string]: any }) => void;
   /**
    * 查询完成回调：返回归属状态、命中客户主键、负责人姓名（他人时）与是否公海、
    * 以及被查询的公司名称（供父级匹配 / 关联客户、判断是否信息变更）。
@@ -35,7 +44,7 @@ interface Props {
  *   3) IN_PUBLIC_SEA（other）→ 显示「已在公海」；
  *   4) OWNED_BY_ME（mine）→ 不显示内容，由父级比对信息变更。
  */
-export default function CompanyNameInput({ value, onChange, disabled, placeholder, onResolved }: Props) {
+export default function CompanyNameInput({ value, onChange, disabled, placeholder, querySignal, options, onPick, onResolved }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const [status, setStatus] = useState<CompanyStatus>('idle');
@@ -49,14 +58,23 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
+  // 打开弹窗信号（querySignal 变化 / 首次挂载）：若已带公司名则实时查询归属接口，
+  // 确保标签反映最新状态，而非依赖线索冗余字段（customerId 缺失）派生
+  useEffect(() => {
+    const name = (value ?? '').trim();
+    if (name) void runQuery(name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [querySignal]);
+
   const resolve = (name: string, next: CompanyStatus, extra: { customerId?: string; ownerName?: string; publicSea?: boolean } = {}) => {
     setInfo(extra);
     setStatus(next);
     onResolved?.({ status: next, companyName: name, ...extra });
   };
 
-  const handleBlur = async () => {
-    const name = (value ?? '').trim();
+  // 实时归属查询：打开弹窗（querySignal）或失焦（onBlur）均走这里；失败退化为 idle 不阻断输入
+  const runQuery = async (raw: string) => {
+    const name = raw.trim();
     if (!name) {
       resolve('', 'idle');
       return;
@@ -92,21 +110,31 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
     }
   };
 
+  const handleBlur = () => {
+    void runQuery(value ?? '');
+  };
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <Input
+      <AutoComplete
         value={value}
+        options={options?.map((o) => ({ ...o, value: o.label, id: o.value })) as any}
         disabled={disabled}
         placeholder={placeholder}
         allowClear
         style={{ flex: 1, minWidth: 0 }}
-        onChange={(e) => {
-          // 输入变化即清空上一次的归属判定，待下次 blur 重新查询
+        onChange={(v) => {
+          // 输入变化（含清空）即清空上一次的归属判定，待下次 blur / 选中重新查询
           if (status !== 'idle') {
             setStatus('idle');
             setInfo(null);
           }
-          onChange?.(e.target.value);
+          onChange?.(v);
+        }}
+        onSelect={(v, option) => {
+          // 选中既有客户：通知父级带入国家/地区·客户类型·来源渠道，并触发归属查询（校正 mine/other 状态）
+          onPick?.(option as any);
+          void runQuery(v);
         }}
         onBlur={handleBlur}
       />

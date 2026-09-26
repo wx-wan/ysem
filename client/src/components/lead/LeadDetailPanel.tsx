@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Popconfirm, Spin, Tabs, Tag, Timeline, Tooltip } from 'antd';
-import { ExclamationCircleOutlined } from '@ant-design/icons';
+import { EllipsisOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
@@ -122,7 +122,7 @@ export default function LeadDetailPanel({
     { label: t('lead.fieldLeadNo'), value: detail.leadNo || '—' },
     { label: t('lead.companyName'), value: company },
     { label: t('lead.product'), value: product || '—' },
-    { label: t('lead.quantityRequirement'), value: detail.quantity != null ? `${detail.quantity}${detail.unit || '个'}` : '—' },
+    { label: t('lead.quantityRequirement'), value: detail.quantity != null && Number(detail.quantity) !== 0 ? `${detail.quantity}${detail.unit || '个'}` : '—' },
     {
       label: t('lead.targetPrice'),
       // 目标价位：展示录入时的币种 + 金额（换算用当前实时汇率，不再依赖落库汇率快照）
@@ -195,7 +195,22 @@ export default function LeadDetailPanel({
                     </div>
                   }
                 >
-                  <ExclamationCircleOutlined style={{ cursor: 'help', fontSize: 14, opacity: 0.9 }} />
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      border: '1px solid rgba(255,255,255,0.9)',
+                      cursor: 'help',
+                      fontSize: 9,
+                      lineHeight: 1,
+                    }}
+                  >
+                    <EllipsisOutlined />
+                  </span>
                 </Tooltip>
               )}
             </span>

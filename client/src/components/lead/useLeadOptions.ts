@@ -8,6 +8,13 @@ export interface CustomerOption {
   value: string;
   contactName?: string;
   customerNo?: string;
+  /** 选中客户后自动带入线索表单的字段 */
+  country?: string; // 国家/地区 → targetMarket
+  customerType?: string; // 客户类型 → customerType
+  channelId?: string | null; // 来源渠道 → sourceKey.channelId
+  shopId?: string | null; // 来源平台 → sourceKey.shopId
+  contactName?: string; // 联系人 → contactName
+  contactMethods?: { tool: string; account: string }[] | null; // 联系方式 → contactMethods
 }
 
 /** 线索表单依赖的选项数据：渠道树 / 产品 / 工艺与受众分类 / 客户 */
@@ -55,6 +62,12 @@ export function useLeadOptions() {
           value: c.id,
           contactName: c.contactName || undefined,
           customerNo: c.customerNo || undefined,
+          country: c.country || undefined,
+          customerType: c.customerType || undefined,
+          channelId: c.channelId ?? undefined,
+          shopId: c.shopId ?? undefined,
+          contactName: c.contactName || undefined,
+          contactMethods: c.contactMethods || undefined,
         })),
       );
     } catch {
