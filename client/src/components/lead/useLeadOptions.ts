@@ -13,7 +13,6 @@ export interface CustomerOption {
   customerType?: string; // 客户类型 → customerType
   channelId?: string | null; // 来源渠道 → sourceKey.channelId
   shopId?: string | null; // 来源平台 → sourceKey.shopId
-  contactName?: string; // 联系人 → contactName
   contactMethods?: { tool: string; account: string }[] | null; // 联系方式 → contactMethods
 }
 
@@ -66,7 +65,6 @@ export function useLeadOptions() {
           customerType: c.customerType || undefined,
           channelId: c.channelId ?? undefined,
           shopId: c.shopId ?? undefined,
-          contactName: c.contactName || undefined,
           contactMethods: c.contactMethods || undefined,
         })),
       );

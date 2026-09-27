@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -14,7 +14,6 @@ import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
   MixedItem, taxonomyApi, productGroupApi,
 } from '../api/products';
-import { userApi } from '../api/users';
 import { salesApi, SalesItem } from '../api/sales';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useCardGutter } from '../components/common/tokens';
@@ -54,12 +53,6 @@ export default function Products() {
   const [filterCraftId, setFilterCraftId] = useState<string | undefined>();
   const [filterAudienceId, setFilterAudienceId] = useState<string | undefined>();
   const [filterVisibility, setFilterVisibility] = useState<string | undefined>();
-  // 用户列表（用于「不公开」产品指定可见人）
-  const [users, setUsers] = useState<{ id: string; username: string; realName?: string }[]>([]);
-  const userMap = useMemo(
-    () => Object.fromEntries(users.map((u) => [u.id, u])),
-    [users],
-  );
 
   // 分类下拉数据
   const [crafts, setCrafts] = useState<ProductCraft[]>([]);
@@ -359,8 +352,6 @@ export default function Products() {
         canDelete={canDelete}
         salesList={salesList}
         salesLoading={salesLoading}
-        activities={viewing?.activities || []}
-        userMap={userMap}
         onSalesRefresh={() => viewing && loadSalesList(viewing.id)}
       />
 

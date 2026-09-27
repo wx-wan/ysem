@@ -156,9 +156,13 @@ model OperationLog {
   summary      String? // 人类可读摘要（如「创建了产品」）
   diff         String? // 结构化变更 JSON：[{field,label,beforeText,afterText}]
   ip           String?
+  /// 业务对象归属客户（可选）。提供时写入，使客户时间线可直接按 customerId 捞出
+  /// 跨实体事件（如「创建/更新了关联该客户的线索、商机」），无需再依赖 CustomerActivity 副表。
+  customerId   String?
   createdAt    DateTime @default(now())
 
   @@index([businessType, businessId])
+  @@index([customerId])
   @@index([module, createdAt])
   @@index([userId, createdAt])
 }

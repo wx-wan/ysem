@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import {
   getProductOptions, getProducts, getProductById, createProduct, updateProduct, deleteProduct,
-  previewProductSku, getMixedProducts, importExcel, downloadTemplate,
+  previewProductSku, getMixedProducts, importExcel, downloadTemplate, getProductLogs,
 } from '../controllers/product.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -15,6 +15,8 @@ router.get('/options', getProductOptions);
 router.get('/sku-preview', previewProductSku);
 router.get('/mixed', getMixedProducts);
 router.get('/', getProducts);
+router.get('/:id/logs', getProductLogs);
+
 router.get('/:id', getProductById);
 router.post('/', createProduct);
 router.put('/:id', updateProduct);

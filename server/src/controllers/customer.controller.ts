@@ -751,10 +751,6 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
           orderBy: { createdAt: "desc" },
           include: { owner: { select: { id: true, username: true, realName: true } } },
         },
-        activities: {
-          orderBy: { createdAt: "asc" },
-          take: 50,
-        },
         // 关联线索：建档后 Lead.customerId 关联；确认转商机后由 Opportunity.leadId 承接，
         // 故详情「销售记录」可展示「尚未转化的线索」，转商机后由商机承接显示。
         leads: {
@@ -1631,6 +1627,32 @@ export const getReportStats = async (req: AuthRequest, res: Response, next: Next
       sampleToOrder,
       leadToOrder,
     });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/customers/:id/logs —— 客户操作记录（详情「跟进动态」Tab 数据源）。
+ *
+ * 按 `OperationLog.customerId = 客户 id` 捞取，完整保留含跨实体事件的时间线
+ * （如「创建/更新了关联该客户的线索、商机」均通过 customerId 落库，一并展示）。
+ * 与全局日志页（`/api/operations`）解耦：业务用户查看自己可见客户的操作记录无需审计权限。
+ */
+export const getCustomerLogs = async (req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const customer = await prisma.customer.findFirst({
+      where: applyScope({ id: req.params.id }, includePublicSea(await roleScope(req))),
+      select: { id: true },
+    });
+    if (!customer) { return success(res, { code: "NOT_FOUND" }); }
+
+    const list = await prisma.operationLog.findMany({
+      where: { customerId: customer.id },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    success(res, { list });
   } catch (err) {
     next(err);
   }

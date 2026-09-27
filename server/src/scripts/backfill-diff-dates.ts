@@ -13,7 +13,7 @@ const prisma = new PrismaClient();
  *   2. 新值为前端提交的 ISO 字符串，落入 afterText → 形如 `2026-09-28T16:00:00.000Z`（不带引号）
  * 二者本是同一时刻，却显示成两种样子，且未格式化为日期。
  *
- * 本脚本扫描 OperationLog / CustomerActivity 的全部 diff，对其中的 ISO 时间戳
+ * 本脚本扫描 OperationLog 的全部 diff（含客户相关记录，已整合进 OperationLog），对其中的 ISO 时间戳
  * （含两端多余的引号）按业务时区 Asia/Shanghai 重排为 `YYYY-MM-DD`，使其与新版日志一致。
  * 非时间戳字符串（如「空」、名称、价格）不受影响；已格式化的 `YYYY-MM-DD` 不会被二次处理（幂等）。
  */
@@ -87,10 +87,9 @@ function fixDiffJson(raw: string | null | undefined): string | null | undefined 
   return JSON.stringify(fixed);
 }
 
-async function backfill(model: "operationLog" | "customerActivity") {
-  const table =
-    model === "operationLog" ? prisma.operationLog : prisma.customerActivity;
-  const rows = await (table as any).findMany({
+async function backfill(model: "operationLog") {
+  const table = prisma.operationLog;
+  const rows = await table.findMany({
     where: { diff: { not: null } },
     select: { id: true, diff: true },
   });
@@ -100,7 +99,7 @@ async function backfill(model: "operationLog" | "customerActivity") {
   for (const row of rows) {
     const newDiff = fixDiffJson(row.diff as string | null);
     if (newDiff === undefined) continue;
-    await (table as any).update({ where: { id: row.id }, data: { diff: newDiff } });
+    await table.update({ where: { id: row.id }, data: { diff: newDiff } });
     if (newDiff === null) cleared++;
     updated++;
   }
@@ -110,7 +109,6 @@ async function backfill(model: "operationLog" | "customerActivity") {
 
 async function main() {
   await backfill("operationLog");
-  await backfill("customerActivity");
   console.log("diff 日期回刷完成");
 }
 

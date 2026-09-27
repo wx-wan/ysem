@@ -56,7 +56,6 @@ model Customer {
   // ---- 关联 ----
   customerProducts CustomerProduct[]
   prices           ProductPrice[]
-  activities       CustomerActivity[]
 
   // ---- 销售 / 履约反向关系（Batch 3）----
   // 注意：不声明 profits Profit[]（Profit 不持有 customerId，客户维度利润经 salesOrder.customerId 派生，避免冗余不一致）。
@@ -82,21 +81,6 @@ model Customer {
   @@index([shopId])
   @@index([status])
   @@index([customerLevel])
-}
-
-// ========== 客户活动日志 ==========
-model CustomerActivity {
-  id         String   @id @default(uuid())
-  customerId String
-  action     String // CLAIM / RELEASE / CREATED / UPDATED / KEY_TOGGLE / INTENT_CHANGE
-  detail     String?
-  summary    String?
-  diff       String?
-  realName   String?
-  createdBy  String
-  createdAt  DateTime @default(now())
-
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 }
 
 // ========== 供应商（02 §7 · 主数据扩展） ==========
@@ -276,7 +260,6 @@ model Lead {
   owner   User?   @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: SetNull)
 
   items      LeadItem[]
-  activities OpportunityActivity[] // 线索期的跟进记录（复用销售活动表）
 
   createdBy String?
   createdAt DateTime @default(now())

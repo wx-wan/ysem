@@ -48,6 +48,9 @@ import { useCommToolOptions } from '../../stores/useCommToolStore';
 import { useUnitOptions } from '../../stores/useUnitStore';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { parseImages, serializeImages, type ProductImageItem } from '../../utils/productImages';
+// 客户建档/创建后使客户页全局列表缓存失效（与客户页内增删改后 invalidateAll + fetchData 同口径），
+// 保证从线索创建客户后切到客户页能看到最新数据
+import { invalidateAll as invalidateCustomerCache } from '../../utils/customerCache';
 
 export interface LeadFormModalHandle {
   openCreate: () => void;
@@ -127,10 +130,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     expectedDelivery: undefined,
     targetPrice: undefined,
   });
-  // 仅比对目标价位中用户可编辑部分（币种 + 金额）；汇率快照为建档时后端抓取，不可编辑，不参与比对
+  // 仅比对目标价位中用户可编辑部分（币种 + 金额）；汇率快照为建档时后端抓取，不可编辑，不参与比对。
+  // 「没有建档等于没有记录」：金额为空（null/空串/0）视为无记录，两边皆空不标记有更新
   const normMoney = (m: any) =>
-    m && (m.currency || m.amount != null)
-      ? { currency: m.currency ?? 'CNY', amount: m.amount == null ? null : Number(m.amount) }
+    m && m.amount != null && m.amount !== '' && Number(m.amount) !== 0
+      ? { currency: m.currency ?? 'CNY', amount: Number(m.amount) }
       : null;
   const captureStep1Baseline = () => {
     const v = form.getFieldsValue(true) as Record<string, any>;
@@ -176,7 +180,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const applyStep1Values = (item: Lead) => {
     form.setFieldsValue({
       productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
-      quantity: item.quantity ?? undefined,
+      // 数量需求：0 为落库默认值，回填视为空（占位符展示），与其他数值字段口径一致
+      quantity: Number(item.quantity) || undefined,
       unit: item.unit ?? '个',
       targetMarket: item.targetMarket || undefined,
       productType: item.productType || undefined,
@@ -209,7 +214,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 进入「需求详情」步（字段已挂载）时，保证 step1 字段从详情数据回填一次；
   // 每个被编辑线索仅回填一次（appliedStep1Ref 守卫），回退步骤不会覆盖用户已改内容。
   useEffect(() => {
-    if (step === 1 && editing && appliedStep1Ref.current !== editing.id) {
+    if (step === 1 && editing?.id && appliedStep1Ref.current !== editing.id) {
       applyStep1Values(editing);
       appliedStep1Ref.current = editing.id;
     }
@@ -662,24 +667,30 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     };
   })();
 
-  // 实时比对：需求详情「线索级字段」（客户具体要求 productDesc / 客户期望交期 expectedDelivery）
-  // 相对「线索表」存储值是否变更（用于对应 label 右侧显示「有更新」）；
-  // 这些字段不写产品表，故基线来自线索存储（step1BaselineRef），仅在编辑既有线索时生效
+  // 需求详情「线索级字段」变更比对（客户具体要求 productDesc / 客户期望交期 expectedDelivery / 目标价位 targetPrice），
+  // 相对「线索表」存储值是否变更（用于对应 label 右侧显示「有更新」）；仅在编辑既有线索时生效。
+  // 统一口径：空值（null/undefined/纯空白）一律视为「无记录」，两边皆空不标记有更新；
+  // 与目标价位 normMoney 同一思路，避免基线/实时值格式（字符串 vs 对象）不一致误判。
+  const normText = (v: unknown): string | null =>
+    typeof v === 'string' ? (v.trim() || null) : null;
+  const normExpected = (v: unknown): string | null =>
+    v
+      ? dayjs.isDayjs(v)
+        ? (v as any).toISOString()
+        : new Date(v as any).toISOString()
+      : null;
   const leadFieldDiff = (() => {
-    if (!editing) return null;
+    // 新建线索（无存储记录，editing 仅为带 ownerId 的占位对象、无 id）不参与「有更新」比对，
+    // 否则会与空基线比对误判：一填入产品要求/期望交期/目标价位就显示「有更新」
+    if (!editing?.id) return null;
     // 基线尚未建立（applyStep1Values 尚未对当前线索执行）时，不计算差异，
     // 避免进入 step1 首帧里表单已是存储值、但基线仍为初始 undefined 而误判「有更新」闪一下
     if (appliedStep1Ref.current !== editing.id) return null;
     const v = liveFormValues();
     const base = step1BaselineRef.current;
-    const formExpected = v.expectedDelivery
-      ? dayjs.isDayjs(v.expectedDelivery)
-        ? v.expectedDelivery.toISOString()
-        : new Date(v.expectedDelivery).toISOString()
-      : null;
     return {
-      productDesc: (v.productDesc ?? '') !== (base.productDesc ?? ''),
-      expectedDelivery: (formExpected ?? null) !== (base.expectedDelivery ?? null),
+      productDesc: normText(v.productDesc) !== normText(base.productDesc),
+      expectedDelivery: normExpected(v.expectedDelivery) !== normExpected(base.expectedDelivery),
       targetPrice:
         JSON.stringify(normMoney(v.targetPrice)) !== JSON.stringify(normMoney(base.targetPrice)),
     };
@@ -833,7 +844,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           Array.isArray(item.contactMethods) && item.contactMethods.length
             ? item.contactMethods
             : [{ tool: '', account: '' }],
-        quantity: item.quantity ?? undefined,
+        // 数量需求：0 为落库默认值，回填视为空（占位符展示），与其他数值字段口径一致
+        quantity: Number(item.quantity) || undefined,
         // 单位：回填线索取值，缺失时回退默认 个
         unit: item.unit ?? '个',
         // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
@@ -1155,6 +1167,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         setEditing((prev) => ({ ...(prev as Lead), id: savedId as string, customerId: custId, draft: false, status: 'NEW' }));
       }
       onRefreshCustomers();
+      // 客户建档/更新后使客户页全局列表缓存失效，切到客户页即拉取最新数据
+      invalidateCustomerCache();
       onSaved(savedId);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
@@ -1182,6 +1196,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       shopId: editing?.shopId ?? undefined,
     } as any);
     const cust = (res?.data ?? res) as { id: string };
+    // 静默创建客户后使客户页全局列表缓存失效
+    invalidateCustomerCache();
     return { id: cust.id };
   };
 
@@ -1832,7 +1848,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         style={{ flex: 1, minWidth: 0 }}
                         inputMode="numeric"
                         maxLength={12}
-                        placeholder={t('lead.quantityRequirementPlaceholder')}
+                        placeholder="0"
                         disabled={step1.locked}
                         // 仅允许输入非负整数（数量需求）
                         onChange={(e) => form.setFieldsValue({ quantity: e.target.value.replace(/[^\d]/g, '') })}

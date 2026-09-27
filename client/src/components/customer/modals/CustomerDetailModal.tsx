@@ -18,7 +18,8 @@ import {
   FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer, CustomerActivity, customerApi, type SalesOrderSummary, type OpportunitySummary, type CustomerLeadSummary } from '../../../api/customers';
+import { Customer, customerApi, type SalesOrderSummary, type OpportunitySummary, type CustomerLeadSummary } from '../../../api/customers';
+import { getCustomerLogs, LOG_ACTION_LABELS, type OperationLogItem } from '../../../api/operationLog';
 import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/salesOrders';
 import { useNavigate } from 'react-router-dom';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
@@ -129,6 +130,23 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   useEffect(() => {
     setLocalTags(customer?.tags ?? []);
   }, [customer?.id, customer?.tags]);
+
+  // 跟进动态：从 OperationLog 按 customerId 捞取（单一日志库，含关联线索/商机的跨实体事件），不读已删除的 CustomerActivity 副表
+  const [logs, setLogs] = useState<OperationLogItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  useEffect(() => {
+    if (!open || !customer?.id) {
+      setLogs([]);
+      return;
+    }
+    let cancelled = false;
+    setLogsLoading(true);
+    getCustomerLogs(customer.id)
+      .then((list) => { if (!cancelled) setLogs(list); })
+      .catch(() => { if (!cancelled) setLogs([]); })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, customer?.id, detailVersion]);
 
   // 客户编码：CUS-{创建日期 YYMMDD}-{当天序号}
   const customerNo = customer?.customerNo || '-';
@@ -246,19 +264,19 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         );
       } break;
       case 'activities':
-        data = (customer?.activities || []).slice().sort(
+        data = (logs || []).slice().sort(
           (a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime()
         );
         break;
     }
     const start = (currentPage - 1) * pageSize;
     return data.slice(start, start + pageSize);
-  }, [activeTab, currentPage, opportunityRows, customer?.salesOrders, customer?.activities]);
+  }, [activeTab, currentPage, opportunityRows, customer?.salesOrders, logs]);
 
   const totalCount =
     activeTab === 'pipeline' ? opportunityRows.length :
     activeTab === 'orders' ? ((customer?.salesOrders?.length ?? 0) + opportunityRows.length + linkedLeads.length) :
-    activeTab === 'activities' ? (customer?.activities?.length ?? 0) : 0;
+    activeTab === 'activities' ? (logs.length ?? 0) : 0;
 
   // ---- 圆形操作按钮样式工厂 ----
   const circleBtnStyle = (bg: string): React.CSSProperties => ({
@@ -273,7 +291,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const tabOptions = [
     { key: 'pipeline' as const, label: '概览', count: opportunityRows.length },
     { key: 'orders' as const, label: '销售记录', count: (customer?.salesOrders?.length ?? 0) + opportunityRows.length + linkedLeads.length },
-    { key: 'activities' as const, label: '跟进动态', count: customer?.activities?.length ?? 0 },
+    { key: 'activities' as const, label: '跟进动态', count: logs.length ?? 0 },
   ];
 
   // ---- 类型标签文字 ----
@@ -503,23 +521,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     </div>
   );
 
-  // ---- 活动记录项渲染（真实数据） ----
-  const ACTIVITY_ACTION: Record<string, string> = {
-    CREATE: '创建',
-    UPDATE: '更新',
-    DELETE: '删除',
-    CLAIM: '认领',
-    RELEASE: '释放到公海',
-    TRANSFER: '转移',
-    KEY_TOGGLE: '重点客户切换',
-    INTENT_CHANGE: '意向变更',
-    STATUS: '状态变更',
-    // 兼容旧数据
-    CREATED: '创建',
-    UPDATED: '更新',
-    TRANSFERRED: '转移',
-  };
-  const renderActivityItem = (item: CustomerActivity) => (
+  // ---- 活动记录项渲染（来自 OperationLog，单一日志库） ----
+  const renderActivityItem = (item: OperationLogItem) => (
     <div
       key={item.id}
       style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 12 }}
@@ -527,13 +530,13 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       onMouseLeave={listCardLeave}
     >
       <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-        {ACTIVITY_ACTION[item.action] || item.action}
+        {LOG_ACTION_LABELS[item.action] || item.action}
       </Tag>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Text style={{ fontSize: 13, color: token.colorTextHeading }}>{item.detail || '-'}</Text>
+        <Text style={{ fontSize: 13, color: token.colorTextHeading }}>{item.summary || '-'}</Text>
       </div>
       <Text style={{ fontSize: 11, color: token.colorTextTertiary, flexShrink: 0 }}>
-        {item.createdAt ? dayjs(item.createdAt).format('YYYY-MM-DD HH:mm') : ''} · {item.createdBy}
+        {item.createdAt ? dayjs(item.createdAt).format('YYYY-MM-DD HH:mm') : ''} · {item.realName || item.username}
       </Text>
     </div>
   );
@@ -788,7 +791,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                             : renderPipelineItem(it.data as OpportunityRow)}
                       </React.Fragment>
                     ))}
-                    {activeTab === 'activities' && paginatedData.map((it, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
+                    {activeTab === 'activities' && paginatedData.map((it: any, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as OperationLogItem)}</React.Fragment>)}
                   </div>
                 ) : (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={

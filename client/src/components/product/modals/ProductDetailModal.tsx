@@ -8,8 +8,10 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../../../stores/useAuthStore';
-import { Product, ProductActivity } from '../../../api/products';
+import { Product } from '../../../api/products';
 import { SalesItem } from '../../../api/sales';
+import { getProductLogs, type OperationLogItem } from '../../../api/operationLog';
+import OperationLogTimeline from '../../common/OperationLogTimeline';
 import { getStageMeta, getStageI18nKey } from '../../sales/stages';
 import { quotationApi, QUOTATION_STATUS_TEXT, QUOTATION_STATUS_COLOR } from '../../../api/quotations';
 import { sampleOrderApi, SAMPLE_STATUS_TEXT, SAMPLE_STATUS_COLOR } from '../../../api/sampleOrders';
@@ -18,7 +20,6 @@ import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import ProductImagesStack from '../../common/ProductImagesStack';
-import DiffTags from '../../common/DiffTags';
 import CreateOrderFromProductModal from './CreateOrderFromProductModal';
 import dayjs from 'dayjs';
 import './ProductDetailModal.css';
@@ -72,16 +73,30 @@ interface ProductDetailModalProps {
   canDelete?: boolean;
   salesList: SalesItem[];
   salesLoading: boolean;
-  activities: ProductActivity[];
-  userMap?: Record<string, { id: string; username: string; realName?: string }>;
   onSalesRefresh?: () => void;
 }
 
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product, open, onClose, onEdit,
-  salesList, salesLoading, activities, userMap,
+  salesList, salesLoading,
   onSalesRefresh,
 }) => {
+  // 操作记录：从 OperationLog 按 businessType=PRODUCT 捞取（单一日志库，不重复建记录）
+  const [logs, setLogs] = useState<OperationLogItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  useEffect(() => {
+    if (!open || !product?.id) {
+      setLogs([]);
+      return;
+    }
+    let cancelled = false;
+    setLogsLoading(true);
+    getProductLogs(product.id)
+      .then((list) => { if (!cancelled) setLogs(list); })
+      .catch(() => { if (!cancelled) setLogs([]); })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, product?.id]);
   const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
   const { t } = useTranslation();
   const { token } = theme.useToken();
@@ -184,25 +199,20 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   };
 
   const creator = useMemo(() => {
-    const createAct = activities
-      .filter((a) => a.action === 'CREATE' && (a.operator || a.createdBy))
+    const createAct = logs
+      .filter((a) => a.action === 'CREATE' || a.action === 'CREATED')
       .sort((a, b) => +new Date(a.createdAt) - +new Date(b.createdAt))[0];
     if (createAct) {
-      const createdById = createAct.createdBy || '';
-      // 优先使用活动冗余存储的昵称/用户名，其次 userMap / 当前登录用户解析
-      const resolved =
-        userMap?.[createdById] ||
-        (user?.id === createdById ? { id: user.id, username: user.username, realName: user.realName } : undefined);
       return {
-        name: createAct.realName || resolved?.realName || createAct.operator || createdById || '系统管理员',
-        account: createAct.operator || resolved?.username || createdById || 'admin',
+        name: createAct.realName || createAct.username || '系统管理员',
+        account: createAct.username || 'admin',
       };
     }
     return {
       name: user?.realName || user?.username || '系统管理员',
-      account: user?.username || user?.role?.code || 'admin',
+      account: user?.username || 'admin',
     };
-  }, [activities, user, userMap]);
+  }, [logs, user]);
 
   if (!product) return null;
 
@@ -315,44 +325,9 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     );
   };
 
-  const renderActivity = () => {
-    if (!activities.length) {
-      return <Empty description="暂无操作记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-    }
-    return (
-      <div className="pm-activity">
-        {activities.map((act) => {
-          const meta = ACTIVITY_META[act.action] || { label: act.action, color: token.colorPrimary };
-          // 优先使用记录中冗余存储的姓名，其次 userMap 反查，最后回退到 operator/未知
-          const resolvedUser =
-            (act.createdBy && userMap?.[act.createdBy]) || null;
-          const operatorName =
-            act.realName || resolvedUser?.realName || act.operator || resolvedUser?.username || '未知用户';
-          const operatorAccount = act.operator || resolvedUser?.username || (act.createdBy ? '' : '');
-          return (
-            <div className="pm-activity-item" key={act.id}>
-              <div className="pm-activity-dot" style={{ background: meta.color }} />
-              <div className="pm-activity-content">
-                <div className="pm-activity-title">
-                  <span className="pm-activity-name">{operatorName}</span>
-                  {operatorAccount && (
-                    <span className="pm-activity-account">@{operatorAccount}</span>
-                  )}
-                  <span className="pm-activity-verb">于</span>
-                  <span className="pm-activity-time-inline">
-                    {dayjs(act.createdAt).format('YYYY-MM-DD HH:mm:ss')}
-                  </span>
-                  <span className="pm-activity-verb">{meta.label}</span>
-                </div>
-                {act.summary && <div className="pm-activity-desc">{act.summary}</div>}
-                {act.action === 'UPDATE' && <DiffTags diff={act.diff} />}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  };
+  const renderActivity = () => (
+    <OperationLogTimeline logs={logs} loading={logsLoading} />
+  );
 
   return (
     <AppModal
@@ -525,7 +500,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               options={[
                 { key: 'overview', label: '概览' },
                 { key: 'sales', label: '销售记录', count: salesList.length },
-                { key: 'activity', label: '操作记录', count: activities.length },
+                { key: 'activity', label: '操作记录', count: logs.length },
               ]}
             />
 
@@ -537,8 +512,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                         const ids: string[] = (product.visibleUsers ?? product.visibleUserIds ?? []).map((u) =>
                           typeof u === 'string' ? u : u.userId,
                         );
-                        const names = ids.map((id) => userMap?.[id]?.realName || userMap?.[id]?.username || id);
-                        return names.length ? `指定人：${names.join('、')}` : '指定人：未设置';
+                        return ids.length ? `指定人：${ids.join('、')}` : '指定人：未设置';
                       })()
                     : undefined
                 }
@@ -565,10 +539,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     {creator.name || '系统管理员'}
                   </div>
                   <div style={{ fontSize: 11, color: token.colorTextTertiary }}>
-                    {userMap?.[creator.account]?.username
-                      || (user?.id === creator.account ? user.username : undefined)
-                      || creator.account
-                      || 'admin'}
+                    {creator.account || 'admin'}
                   </div>
                 </div>
               </div>
@@ -633,18 +604,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       />
     </AppModal>
   );
-};
-
-// 活动元信息（产品）
-const ACTIVITY_META: Record<string, { label: string; color: string }> = {
-  CREATE: { label: '创建产品', color: '#1677ff' },
-  UPDATE: { label: '更新资料', color: '#16a34a' },
-  PRICE: { label: '价格变动', color: '#d97706' },
-  IMAGE: { label: '更新图片', color: '#0891b2' },
-  CATEGORY: { label: '调整分类', color: '#7c3aed' },
-  VISIBILITY: { label: '调整可见范围', color: '#db2777' },
-  DELETE: { label: '删除产品', color: '#dc2626' },
-  ASSIGN: { label: '分配负责人', color: '#0d9488' },
 };
 
 export default ProductDetailModal;

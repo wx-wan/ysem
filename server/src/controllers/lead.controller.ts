@@ -34,6 +34,8 @@ const LEAD_DIFF_LABELS: Record<string, string> = {
   expectedDelivery: '期望交期',
   customerType: '客户类型',
   ownerId: '负责人',
+  // 步骤：线索向导三步（0 客户信息 / 1 需求详情 / 2 确认商机）
+  stage: '步骤',
 };
 
 /** 操作日志字段值格式化：来源渠道/平台按 ID 解析为名称，联系方式解析为「工具：账号」形式 */
@@ -65,6 +67,17 @@ const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
       month: '2-digit',
       day: '2-digit',
     }).format(d);
+  },
+  // 数量需求：空 / 0 视为「无记录」（与「目标价位」空值口径一致），不展示「0」或「null」
+  quantity: (v) => {
+    if (v == null || v === '' || Number(v) === 0) return '空';
+    return String(Number(v));
+  },
+  // 步骤：线索向导三步，数值 → 步骤名
+  stage: (v) => {
+    if (v == null || v === '') return '空';
+    const map: Record<string, string> = { '0': '客户信息', '1': '需求详情', '2': '确认商机' };
+    return map[String(v)] ?? String(v);
   },
 };
 

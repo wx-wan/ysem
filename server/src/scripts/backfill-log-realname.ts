@@ -41,24 +41,9 @@ async function main() {
     }
   }
 
-  // 2. 客户活动日志：createdBy 为用户名
-  const custActs = await prisma.customerActivity.findMany({
-    where: { realName: null },
-    select: { id: true, createdBy: true },
-  });
-  let custUpdated = 0;
-  for (const a of custActs) {
-    const rn = pickRealName(null, a.createdBy);
-    if (rn) {
-      await prisma.customerActivity.update({ where: { id: a.id }, data: { realName: rn } });
-      custUpdated++;
-    }
-  }
-
-  // 说明：旧 ProductActivity 已在 V1.0 删除，产品/组合操作统一落 OperationLog，
-  // 因此本脚本不再处理产品操作记录（上方 OperationLog 段落已覆盖该场景）。
+  // 说明：客户活动日志（CustomerActivity）已从 V1.0 整合进 OperationLog（按 customerId 捞出），
+  // 故上方 OperationLog 段落已覆盖客户相关记录的姓名回填；旧 ProductActivity 亦已删除。
   console.log(`操作日志：回填 ${opUpdated} / ${opLogs.length}`);
-  console.log(`客户活动：回填 ${custUpdated} / ${custActs.length}`);
 }
 
 main()

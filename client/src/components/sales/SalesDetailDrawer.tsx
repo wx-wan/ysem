@@ -1,6 +1,6 @@
 import React from 'react';
 import { Drawer, Descriptions, Tag, Space, Button, Popconfirm, Card, Alert } from 'antd';
-import { EditOutlined, DeleteOutlined, RightOutlined, AppstoreOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, AppstoreOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { SalesItem } from '../../api/sales';
@@ -9,18 +9,9 @@ import { getIntentLabel } from './SalesFormModal';
 import { getStageMeta, getStageI18nKey, type SalesStage } from './stages';
 import Price from '../common/Price';
 import QuotationSection from './QuotationSection';
-
-/** 活动动作 → i18n key 后缀 */
-const SALES_ACTIVITY_ACTION: Record<string, string> = {
-  CREATE: 'created',
-  CREATED: 'created',
-  UPDATE: 'updated',
-  UPDATED: 'updated',
-  DELETE: 'deleted',
-  PIPELINE_CREATED: 'pipelineCreated',
-  PIPELINE_UPDATED: 'pipelineUpdated',
-  PIPELINE_DELETED: 'pipelineDeleted',
-};
+import { getSalesLogs, type OperationLogItem } from '../../api/operationLog';
+import OperationLogTimeline from '../common/OperationLogTimeline';
+import { useEffect, useState } from 'react';
 
 interface Props {
   open: boolean;
@@ -37,6 +28,23 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
   const meta = getStageMeta(detailItem.stage);
 
   const products = detailItem.leadProducts ?? [];
+
+  // 活动记录：从 OperationLog 按 businessType=OPPORTUNITY 捞取（单一日志库，不读已删除的 OpportunityActivity 副表）
+  const [logs, setLogs] = useState<OperationLogItem[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  useEffect(() => {
+    if (!open || !detailItem?.id) {
+      setLogs([]);
+      return;
+    }
+    let cancelled = false;
+    setLogsLoading(true);
+    getSalesLogs(detailItem.id)
+      .then((list) => { if (!cancelled) setLogs(list); })
+      .catch(() => { if (!cancelled) setLogs([]); })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, detailItem?.id]);
 
   return (
     <Drawer
@@ -144,23 +152,9 @@ const SalesDetailDrawer: React.FC<Props> = React.memo(({ open, detailItem, onClo
         </Descriptions>
       )}
 
-      {detailItem.activities && detailItem.activities.length > 0 && (
-        <Card title={t('sales.activities')} size="small" style={{ marginTop: 16 }}>
-          {detailItem.activities.map((a) => (
-            <div key={a.id} style={{ padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-              <Tag color="blue" style={{ marginRight: 8 }}>
-                {SALES_ACTIVITY_ACTION[a.action] ? t(`sales.activity.${SALES_ACTIVITY_ACTION[a.action]}`) : a.action}
-              </Tag>
-              {a.fromStage && (
-                <span>
-                  {t(`sales.stage.${getStageI18nKey(a.fromStage)}`)} <RightOutlined /> {t(`sales.stage.${getStageI18nKey(a.toStage ?? '')}`)}
-                </span>
-              )}
-              <span style={{ marginLeft: 12, color: '#94a3b8', fontSize: 11 }}>{new Date(a.createdAt).toLocaleString('zh-CN')}</span>
-            </div>
-          ))}
-        </Card>
-      )}
+      <Card title={t('sales.activities')} size="small" style={{ marginTop: 16 }}>
+        <OperationLogTimeline logs={logs} loading={logsLoading} />
+      </Card>
 
       {/* 报价段：仅当关联了产品时显示，支持多产品 */}
       {products.length > 0 && (

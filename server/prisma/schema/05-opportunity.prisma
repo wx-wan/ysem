@@ -43,7 +43,6 @@ model Opportunity {
   quotations   Quotation[]
   sampleOrders SampleOrder[]
   salesOrders  SalesOrder[]
-  activities   OpportunityActivity[]
 
   createdBy String?
   createdAt DateTime @default(now())
@@ -75,24 +74,4 @@ model OpportunityItem {
 
   @@index([opportunityId])
   @@index([productId])
-}
-
-/// 销售活动记录（替代 SalesActivity；05 §13.6 表改名）。
-/// `fromStage` / `toStage` **保留**（不删除）：仅在 `action = STAGE_CHANGE` 时写入；
-/// 废弃的是旧系统「无条件填充这两个字段」的逻辑，字段本身保留用于阶段流转审计。
-model OpportunityActivity {
-  id            String       @id @default(cuid())
-  opportunityId String?
-  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  leadId        String? // 线索期跟进记录挂此处
-  lead          Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  action        String // CREATED / STAGE_CHANGE / NOTE_ADDED / QUOTATION_SENT / WON / LOST
-  fromStage     String? // 仅 STAGE_CHANGE 时有值
-  toStage       String?
-  comment       String?
-  createdBy     String
-  createdAt     DateTime     @default(now())
-
-  @@index([opportunityId])
-  @@index([leadId])
 }

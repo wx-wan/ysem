@@ -222,6 +222,8 @@ router.patch("/:id/tags", ctrl.updateTags);
  */
 router.get("/ownership", ctrl.checkOwnership);
 
+router.get("/:id/logs", ctrl.getCustomerLogs);
+
 router.get("/:id", ctrl.getById);
 
 /**

@@ -3,7 +3,7 @@ import multer from 'multer';
 import {
   getOpportunities, getKanban, getOpportunity, createOpportunity,
   updateOpportunity, deleteOpportunity, batchDelete,
-  importExcel, getAssignUsers, getByCustomer, getByProduct,
+  importExcel, getAssignUsers, getByCustomer, getByProduct, getSalesLogs,
 } from '../controllers/sales.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -80,6 +80,8 @@ router.get('/', getOpportunities);
 router.get('/by-customer/:customerId', getByCustomer);
 
 router.get('/by-product/:productId', getByProduct);
+
+router.get('/:id/logs', getSalesLogs);
 
 router.get('/:id', getOpportunity);
 

@@ -273,10 +273,7 @@ export const getOpportunity = async (req: AuthRequest, res: Response): Promise<v
     // scope 条件会注入非唯一条件，故 `findUnique` → `findFirst`。
     const opportunity = await prisma.opportunity.findFirst({
       where: await scopedWhere(req, req.params.id),
-      include: {
-        ...OPPORTUNITY_INCLUDE,
-        activities: { orderBy: { createdAt: 'desc' }, take: 30 },
-      },
+      include: OPPORTUNITY_INCLUDE,
     });
     if (!opportunity) { fail(res, 404, '记录不存在'); return; }
 
@@ -286,6 +283,31 @@ export const getOpportunity = async (req: AuthRequest, res: Response): Promise<v
     success(res, { ...withProductVisibility(req, opportunity), stage: stageMap.get(opportunity.id) });
   } catch {
     fail(res, 500, '服务器错误');
+  }
+};
+
+/**
+ * GET /api/sales/:id/logs —— 商机操作记录（详情「活动记录」Tab 数据源）。
+ *
+ * 只读 OperationLog 中 `businessType = OPPORTUNITY` 且 `businessId = 商机 id` 的记录，按时间倒序返回。
+ * 与全局日志页（`/api/operations`）解耦：业务用户查看自己可见商机的操作记录无需审计权限，仍受数据范围约束。
+ */
+export const getSalesLogs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const opportunity = await prisma.opportunity.findFirst({
+      where: await scopedWhere(req, req.params.id),
+      select: { id: true },
+    });
+    if (!opportunity) { fail(res, 404, '记录不存在'); return; }
+
+    const list = await prisma.operationLog.findMany({
+      where: { businessType: BUSINESS_TYPE.OPPORTUNITY, businessId: opportunity.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    success(res, { list });
+  } catch {
+    fail(res, 500, '查询商机操作记录失败');
   }
 };
 
@@ -393,16 +415,9 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
       });
     });
 
-    // 记录商机活动（阶段为派生值，不再记录初始阶段）
-    await prisma.opportunityActivity.create({
-      data: {
-        opportunityId: opportunity.id,
-        action: 'CREATED',
-        createdBy: req.userId!,
-      },
-    });
-
-    // 同步记录到客户活动记录（V1.0 customerId 必填，故必定记录）
+    // 商机创建事件统一落 OperationLog（action=OPPORTUNITY_CREATED，businessType=OPPORTUNITY），
+    // 不再单独写 OpportunityActivity 副表（已删除）。
+    // 同步记入客户时间线（customerId 必填，故必定记录）
     await activityLogger.log({
       userId: req.userId!,
       username: req.username!,

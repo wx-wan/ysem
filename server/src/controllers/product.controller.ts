@@ -332,6 +332,25 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
   } catch { fail(res, 500, '服务器错误'); }
 };
 
+/**
+ * GET /api/products/:id/logs —— 产品操作记录（详情「操作记录」Tab 数据源）。
+ *
+ * 只读 OperationLog 中 `businessType = PRODUCT` 且 `businessId = 产品 id` 的记录，按时间倒序返回。
+ * 产品/组合操作只落 OperationLog（ProductActivity 副表已在 V1.0 删除），故此端点补齐产品时间线。
+ */
+export const getProductLogs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const product = await prisma.product.findUnique({ where: { id: req.params.id }, select: { id: true } });
+    if (!product) { fail(res, 404, '产品不存在'); return; }
+    const list = await prisma.operationLog.findMany({
+      where: { businessType: BUSINESS_TYPE.PRODUCT, businessId: product.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    success(res, { list });
+  } catch { fail(res, 500, '查询产品操作记录失败'); }
+};
+
 // 供货方式由角色决定（前端不手动选择）：admin/purchaser 默认可多选，单品创建取默认首项；其他角色默认深度定制
 const defaultSupplyModeByRole = (roleCode?: string): $Enums.SupplyMode => {
   if (roleCode === 'admin' || roleCode === 'purchaser') return 'DEEP_CUSTOM';
