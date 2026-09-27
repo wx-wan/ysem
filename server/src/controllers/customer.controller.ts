@@ -755,6 +755,19 @@ export const getById = async (req: AuthRequest, res: Response, next: NextFunctio
           orderBy: { createdAt: "asc" },
           take: 50,
         },
+        // 关联线索：建档后 Lead.customerId 关联；确认转商机后由 Opportunity.leadId 承接，
+        // 故详情「销售记录」可展示「尚未转化的线索」，转商机后由商机承接显示。
+        leads: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            leadNo: true,
+            leadName: true,
+            status: true,
+            source: true,
+            createdAt: true,
+          },
+        },
       },
     });
     if (!customer) return error(res, "客户不存在", 404);

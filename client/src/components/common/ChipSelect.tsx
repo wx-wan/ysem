@@ -12,6 +12,8 @@ interface ChipSelectProps {
   onChange?: (value: string) => void;
   options: ChipOption[];
   disabled?: boolean;
+  /** Form.Item 关联 label 的 id：落到视觉隐藏 input 上（chip 按钮组无输入元素，a11y） */
+  id?: string;
   /** 选中底色，默认主题色 */
   activeColor?: string;
   /** 每行等分数量；不传则按内容自然换行（每个 chip 宽度随文案） */
@@ -25,7 +27,7 @@ interface ChipSelectProps {
  * ChipSelect：chip 标签式单选（替代下拉）。
  * 未选中：白底 + 浅描边 + 圆角 8；选中：主题色实心 + 白字 + 加粗。
  */
-const ChipSelect: React.FC<ChipSelectProps> = ({ value, onChange, options, disabled, activeColor, columns, size = 'large', style }) => {
+const ChipSelect: React.FC<ChipSelectProps> = ({ value, onChange, options, disabled, activeColor, columns, size = 'large', style, id }) => {
   const { token } = theme.useToken();
   const active = activeColor || token.colorPrimary;
   const gap = 12;
@@ -42,7 +44,18 @@ const ChipSelect: React.FC<ChipSelectProps> = ({ value, onChange, options, disab
   const itemFlex = columns && columns > 0 ? `0 0 calc((100% - ${(columns - 1) * gap}px) / ${columns})` : undefined;
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap, width: '100%', ...style }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap, width: '100%', position: 'relative', ...style }}>
+      {/* 视觉隐藏 input：承接 Form.Item label 的 htmlFor，避免 <label for> 指向不存在的元素 */}
+      {id && (
+        <input
+          id={id}
+          type="text"
+          readOnly
+          tabIndex={-1}
+          aria-hidden="true"
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', border: 0, padding: 0 }}
+        />
+      )}
       {options.map((opt) => {
         const isActive = opt.value === value;
         const isDisabled = disabled || opt.disabled;

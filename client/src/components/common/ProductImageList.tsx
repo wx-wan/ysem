@@ -267,7 +267,7 @@ export default function ProductImageList({
   const currentIsImg = !!currentItem && (isImageUrl(currentItem.url) || isImageUrl(currentItem.name || ''));
 
   return (
-    <div className={`pil ${items.length ? 'pil-has-images' : 'pil-empty'}`}>
+    <div className={`pil ${disabled ? 'pil-disabled' : ''} ${items.length ? 'pil-has-images' : 'pil-empty'}`}>
       {/* 主图展示区：显示当前选中图片的缩略图（完整 contain），点击展开原始大小 */}
       <div className="pil-hero" style={{ height }}>
         {items.length ? (

@@ -49,6 +49,11 @@ export function defaultFormat(value: unknown): string {
   return String(value);
 }
 
+/** Date 实例 → ISO 字符串（其余原样返回）：Prisma 实体是 Date 对象、请求体是 ISO 字符串，比较/格式化前需归一化 */
+function normalizeDate(value: unknown): unknown {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 /**
  * 计算两个对象的差异（支持异步格式化器，如 id→名称 查询）。
  * @param before 变更前记录（通常是数据库查出的实体）
@@ -66,13 +71,16 @@ export async function computeDiff(
 
   for (const field of keys) {
     if (ignore.includes(field)) continue;
-    const b = before?.[field];
-    const a = after?.[field];
+    const b = normalizeDate(before?.[field]);
+    const a = normalizeDate(after?.[field]);
     if (isEqual(b, a)) continue;
 
     const fmt = formatters[field] ?? defaultFormat;
     const beforeText = await fmt(b);
     const afterText = await fmt(a);
+    // 用户体感无变化（格式化后展示文本一致）不记录：
+    // 避免「同值 → 同值」噪音条目（如日期字段仅时间分量不同、id 不同但解析出的名称相同）
+    if (beforeText === afterText) continue;
     items.push({
       field,
       label: labels[field] ?? field,

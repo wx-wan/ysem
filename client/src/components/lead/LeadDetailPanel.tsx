@@ -64,7 +64,8 @@ export default function LeadDetailPanel({
 }: Props) {
   const { t } = useTranslation();
   const { currencies, rates } = useCurrencyStore();
-  // 操作记录（操作日志）：随选中线索变化重新拉取
+  // 操作记录（操作日志）：随选中线索变化、以及线索被重新拉取（如保存后 refetchDetail）后重新拉取，
+  // 保证「在线索中更新关联客户 / 产品」后，对应操作记录能即时出现在 Tab 中
   const [logs, setLogs] = useState<LeadOperationLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const leadId = detail?.id;
@@ -89,7 +90,7 @@ export default function LeadDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [leadId]);
+  }, [leadId, detail]);
 
   if (!detail) {
     return (
@@ -300,7 +301,7 @@ export default function LeadDetailPanel({
                                   )}
                                   <div style={{ marginTop: 4, fontSize: 12, color: 'rgba(0,0,0,0.45)' }}>
                                     {log.realName || log.username}
-                                    {log.createdAt ? ` · ${dayjs(log.createdAt).format('YYYY-MM-DD HH:mm')}` : ''}
+                                    {log.createdAt ? ` · ${dayjs(log.createdAt).format('YYYY-MM-DD HH:mm:ss')}` : ''}
                                   </div>
                                 </div>
                               ),

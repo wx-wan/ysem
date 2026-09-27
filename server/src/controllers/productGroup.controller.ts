@@ -41,9 +41,10 @@ const groupSchema = z.object({
   description: z.string().nullish(),
   // 组合的「分类信息」：工艺/受众/品类/可见性 由组合统一选定，
   // 作为所有组合子单品（行内快速新建）的分类，无需逐行填写
-  craftIds: z.array(z.string().uuid()).nullish(),
-  audienceId: z.string().uuid().nullish(),
-  categoryId: z.string().uuid().nullish(),
+  // 同 product.controller：分类 id 为 cuid，仅校验非空字符串
+  craftIds: z.array(z.string().min(1)).nullish(),
+  audienceId: z.string().min(1).nullish(),
+  categoryId: z.string().min(1).nullish(),
   visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
   visibleUserIds: z.array(z.string()).nullish(),
   // 组合明细：productId 关联已有单品；无 productId 时行内快速新建单品（name 必填）

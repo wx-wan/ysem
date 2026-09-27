@@ -95,7 +95,7 @@ export interface Product {
   sizeL?: string | null;        // 长 cm
   sizeW?: string | null;        // 宽 cm
   sizeH?: string | null;        // 高 cm
-  weight?: string | null;       // 克重 g
+  weight?: number | null;       // 克重 g（服务端 Float，序列化返回 number）
 
   // 产品要求
   sampleNo?: string | null;     // 打样单号
@@ -205,7 +205,7 @@ export interface ProductGroup {
   productIds?: string; // 兼容旧字段（后端已改用 items，可能为空）
   items?: ProductGroupItemInput[];
   productCount?: number;
-  products?: { id: string; name: string; sku?: string | null; weight?: string | null }[];
+  products?: { id: string; name: string; sku?: string | null; weight?: number | null }[];
   status: number;
   createdAt: string;
   updatedAt: string;
@@ -240,7 +240,7 @@ export interface Quote {
   status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
   remark?: string | null;
   items?: string | null;
-  products?: { id: string; name: string; sku?: string | null; weight?: string | null }[];
+  products?: { id: string; name: string; sku?: string | null; weight?: number | null }[];
   createdAt: string;
 }
 

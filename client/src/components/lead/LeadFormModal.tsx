@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   App,
@@ -22,7 +22,7 @@ import dayjs from 'dayjs';
 import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
-import CountrySelect, { findCountry } from '../CountrySelect';
+import CountrySelect, { findCountry, getCountryCode } from '../CountrySelect';
 
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
@@ -114,6 +114,36 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 转商机强制建档时，保存待解锁的 Promise（弹窗保存后 resolve 出新记录 id；用户取消关闭时 reject）
   const pendingResolveRef = useRef<((v: { id: string }) => void) | null>(null);
   const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
+  // 进入「需求详情」步后回填的守卫：每个被编辑线索仅回填一次（避免回退步骤时覆盖用户已改内容）
+  const appliedStep1Ref = useRef<string | null>(null);
+  // 需求详情「线索级字段」变更比对基线（客户具体要求 productDesc / 客户期望交期 expectedDelivery / 目标价位 targetPrice），
+  // 相对「线索表」存储值比对；在表单初始化（进入 step1）与每次保存后抓取，保证「有更新」标记在保存后归零
+  const step1BaselineRef = useRef<{
+    productDesc?: string | null;
+    expectedDelivery?: string | null;
+    targetPrice?: { currency?: string | null; amount?: number | null } | null;
+  }>({
+    productDesc: undefined,
+    expectedDelivery: undefined,
+    targetPrice: undefined,
+  });
+  // 仅比对目标价位中用户可编辑部分（币种 + 金额）；汇率快照为建档时后端抓取，不可编辑，不参与比对
+  const normMoney = (m: any) =>
+    m && (m.currency || m.amount != null)
+      ? { currency: m.currency ?? 'CNY', amount: m.amount == null ? null : Number(m.amount) }
+      : null;
+  const captureStep1Baseline = () => {
+    const v = form.getFieldsValue(true) as Record<string, any>;
+    step1BaselineRef.current = {
+      productDesc: v.productDesc ?? null,
+      expectedDelivery: v.expectedDelivery
+        ? dayjs.isDayjs(v.expectedDelivery)
+          ? v.expectedDelivery.toISOString()
+          : new Date(v.expectedDelivery).toISOString()
+        : null,
+      targetPrice: normMoney(v.targetPrice),
+    };
+  };
 
   // 步骤状态：每个步骤独立维护自己的 { status, locked, editing }，避免跨步骤共用变量导致状态纠缠
   // 步骤0（客户信息）：status=归属/建档状态(mine/other/publicSea/none/idle)；locked=建档后锁定全部必填项；editing=点击「编辑」解锁态
@@ -139,6 +169,51 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [matchedProductId, setMatchedProductId] = useState<string | null>(null);
   // exist（已建档）时拉取完整产品对象，作为需求详情「产品级字段」变更比对基线
   const [matchedProduct, setMatchedProduct] = useState<Product | null>(null);
+
+  // 需求详情（step1）字段回填：从详情接口权威数据取 LeadItem 明细。
+  // 单独抽成函数，便于在字段已挂载（进入 step1）时再应用一次，
+  // 消除「setFieldsValue 早于条件渲染挂载的字段」导致回填未生效的时序隐患。
+  const applyStep1Values = (item: Lead) => {
+    form.setFieldsValue({
+      productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
+      quantity: item.quantity ?? undefined,
+      unit: item.unit ?? '个',
+      targetMarket: item.targetMarket || undefined,
+      productType: item.productType || undefined,
+      // 需求详情：回填 LeadItem.productDesc（当条线索的产品需求，非产品描述）
+      productDesc: item.items?.[0]?.productDesc || undefined,
+      craftIds: item.items?.[0]?.craftIds || [],
+      categoryCascade:
+        item.items?.[0]?.audienceId && item.items?.[0]?.categoryId
+          ? [item.items?.[0].audienceId, item.items?.[0].categoryId]
+          : undefined,
+      sizeL: item.items?.[0]?.sizeL ?? undefined,
+      sizeW: item.items?.[0]?.sizeW ?? undefined,
+      sizeH: item.items?.[0]?.sizeH ?? undefined,
+      weight: item.items?.[0]?.weight ?? undefined,
+      targetPrice: {
+        currency: item.currency ?? 'CNY',
+        amount: item.targetPrice != null && item.targetPrice !== '' ? Number(item.targetPrice) || null : null,
+        exchangeRate: currentRateOf(item.currency ?? 'CNY', rates),
+      } as MoneyValue,
+      expectedDelivery: item.expectedDelivery ? dayjs(item.expectedDelivery) : undefined,
+      images:
+        item.attachments && item.attachments.length
+          ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
+          : '',
+    });
+    // 进入需求详情步时，以线索存储值建立「线索级字段」比对基线（productDesc / 客户期望交期）
+    captureStep1Baseline();
+  };
+
+  // 进入「需求详情」步（字段已挂载）时，保证 step1 字段从详情数据回填一次；
+  // 每个被编辑线索仅回填一次（appliedStep1Ref 守卫），回退步骤不会覆盖用户已改内容。
+  useEffect(() => {
+    if (step === 1 && editing && appliedStep1Ref.current !== editing.id) {
+      applyStep1Values(editing);
+      appliedStep1Ref.current = editing.id;
+    }
+  }, [step, editing]);
   const handleCompanyResolved = (info: {
     status: CompanyStatus;
     companyName?: string;
@@ -214,16 +289,28 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setStep0((s) => ({ ...s, editing: false }));
   };
 
-  // 选中/解析到既有产品时，把其名称、描述、参考图自动带入线索需求详情（产品级字段）
-  const applyProductFieldValues = (p: {
-    name?: string;
-    description?: string | null;
-    images?: string | null;
-  }) => {
+  // 选中/解析到既有产品时，把产品级字段自动带入线索需求详情。
+  // 结构映射：产品扁平结构（craftIds / audienceId+categoryId / sizeL/W/H / weight）
+  //   → 表单结构（craftIds 多选 / categoryCascade 级联 / 长宽高克重）。
+  // 「客户具体要求」属于当条线索的产品需求（LeadItem.productDesc），不反填产品 description，二者语义分离。
+  const applyProductFieldValues = (p: Product) => {
     const patch: Record<string, any> = {};
     if (p.name) patch.productKey = p.name;
-    if (p.description) patch.productDesc = p.description;
     if (p.images) patch.images = p.images;
+    // 工艺：兼容 craftIds（id 数组）与 crafts（对象数组）两种返回结构
+    const craftIdList = Array.isArray((p as any).craftIds)
+      ? (p as any).craftIds
+      : Array.isArray(p.crafts)
+        ? p.crafts.map((c: any) => c.id).filter(Boolean)
+        : [];
+    patch.craftIds = craftIdList;
+    // 受众 → 品类：两个 id 齐全才构成级联值
+    patch.categoryCascade = p.audienceId && p.categoryId ? [p.audienceId, p.categoryId] : undefined;
+    // 规格：长 / 宽 / 高 / 克重
+    patch.sizeL = p.sizeL ?? undefined;
+    patch.sizeW = p.sizeW ?? undefined;
+    patch.sizeH = p.sizeH ?? undefined;
+    patch.weight = (p as any).weight ?? undefined;
     if (Object.keys(patch).length) form.setFieldsValue(patch);
   };
 
@@ -284,20 +371,49 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setStep1((s) => ({ ...s, status: 'exist' }));
       setStep1((s) => ({ ...s, locked: true }));
       setStep1((s) => ({ ...s, editing: false }));
+      // 回写完整基线（含同步到产品的规格字段），使「有更新」比对在更新/锁定后立即归零
       setMatchedProduct({
         ...(matchedProduct ?? {}),
         id: pid,
         name: v.productKey,
-        description: v.productDesc || null,
         images: v.images || null,
+        crafts: Array.isArray(v.craftIds) ? v.craftIds.map((id: string) => ({ id })) : [],
+        audienceId: v.categoryCascade?.[0] ?? null,
+        categoryId: v.categoryCascade?.[1] ?? null,
+        sizeL: v.sizeL != null ? Number(v.sizeL) : null,
+        sizeW: v.sizeW != null ? Number(v.sizeW) : null,
+        sizeH: v.sizeH != null ? Number(v.sizeH) : null,
+        weight: v.weight != null ? Number(v.weight) : null,
       } as Product);
-      // 关联线索产品主键（已建档线索立即写回；新建线索待保存时按名匹配 productId）
+      // 建档产品：产品主数据落库后，同步把需求详情（工艺/受众品类/长宽高/克重/具体要求等）
+      // 落「线索表」LeadItem —— 即走一遍暂存逻辑，确保线索与产品两端数据一致。
+      // 已建档（编辑中）线索：直接 update；新建线索：create 落库后再关联（与「建档客户」一步逻辑一致）。
+      const leadValues = form.getFieldsValue(true);
+      const leadPayload = buildLeadPayload(leadValues);
+      // 刚建档的产品尚未进入 productOptions，强制覆盖为真实主键，避免退化为存 productName 文本
+      leadPayload.productId = pid;
+      leadPayload.productName = null;
+      let leadSavedId: string | undefined;
       if (editing?.id) {
-        await leadApi.update(editing.id, { productId: pid, productName: null });
-        setEditing({ ...editing, productId: pid, productName: null });
+        await leadApi.update(editing.id, leadPayload);
+        leadSavedId = editing.id;
+        setEditing({ ...editing, ...(leadPayload as any), productId: pid, productName: null });
+      } else {
+        const created = await leadApi.create(leadPayload);
+        leadSavedId = created.data?.id;
+        setEditing({
+          ...(editing as Lead),
+          id: leadSavedId as string,
+          productId: pid,
+          productName: null,
+          draft: false,
+          status: 'NEW',
+        } as Lead);
       }
+      // 建档/更新产品后重建「线索级字段」基线（productDesc / 期望交期已随线索一并落库）
+      captureStep1Baseline();
       onRefreshProducts();
-      onSaved(editing?.id);
+      onSaved(leadSavedId);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
     }
@@ -308,7 +424,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const v = form.getFieldsValue(true) as Record<string, any>;
     const res: any = await productApi.create({
       name: (v.productKey || '').trim(),
-      description: v.productDesc || undefined,
       images: serializeImages(parseImages(v.images)),
       // 需求详情分类与规格带入产品主数据
       craftIds: Array.isArray(v.craftIds) ? v.craftIds : [],
@@ -328,7 +443,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const norm = (x: any) => (x === undefined || x === null || x === '' ? null : x);
     const patch: Record<string, any> = {};
     if (norm(v.productKey) !== norm(p.name)) patch.name = norm(v.productKey);
-    if (norm(v.productDesc) !== norm(p.description)) patch.description = norm(v.productDesc);
     const formImgs = serializeImages(parseImages(v.images));
     const baseImgs = serializeImages(parseImages(p.images));
     if (formImgs !== baseImgs) patch.images = formImgs;
@@ -432,7 +546,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // （编辑态主按钮：无修改展示「锁定」，有修改展示「更新」）
   const customerChanged = Form.useWatch((values: Record<string, any>) => {
     if (step0.status !== 'mine' || !matchedCustomer) return false;
-    if ((values.targetMarket ?? '') !== (matchedCustomer.country ?? '')) return true;
+    // A：国家/地区按规范 code 比对——表单 CountrySelect 存中文名，客户表 country 可能存 code/英文名，
+    // 直接比原始字符串会恒不等（导致无改动也判「更新」），故统一归一为 ISO code 再比
+    if ((getCountryCode(values.targetMarket) ?? '') !== (getCountryCode(matchedCustomer.country) ?? '')) return true;
     if ((values.customerType ?? '') !== (matchedCustomer.customerType ?? '')) return true;
     if ((values.contactName ?? '') !== (matchedCustomer.contactName ?? '')) return true;
     // 比对联系方式时忽略「tool/account 均为空」的占位空行，否则与客户的空联系方式误判为差异
@@ -452,11 +568,27 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 实时比对：客户信息「各字段」相对「本人已建档」基线 matchedCustomer 是否变更（用于对应 label 右侧显示「有更新」）
   const allFormValues = Form.useWatch([], form) as Record<string, any> | undefined;
+  // 表单值读取：以 form.getFieldsValue(true)（store 含 preserve 保真值）为底，
+  // 仅用 useWatch 快照补全「刚挂载、快照尚未同步」的字段；
+  // 避免步骤切换（上一步/下一步/步骤条跳转）时新挂载字段在快照里短暂缺失而被读作 undefined，
+  // 与基线比对误判为「有更新」而闪一下。普通输入时 useWatch 已同步，不影响响应式。
+  const liveFormValues = (): Record<string, any> => {
+    const store = form.getFieldsValue(true) as Record<string, any>;
+    if (allFormValues && Object.keys(allFormValues).length > 0) {
+      const snap = allFormValues as Record<string, any>;
+      for (const k of Object.keys(snap)) {
+        if (store[k] === undefined) store[k] = snap[k];
+      }
+    }
+    return store;
+  };
   const customerFieldDiff = (() => {
     if (step0.status !== 'mine' || !matchedCustomer) return null;
-    const v = allFormValues ?? (form.getFieldsValue(true) as Record<string, any>);
-    const baseCm = matchedCustomer.contactMethods || [];
-    const formCm = Array.isArray(v.contactMethods) ? v.contactMethods.filter(Boolean) : [];
+    const v = liveFormValues();
+    // B：与 customerChanged 保持同一口径——忽略 tool/account 均为空的占位空行，否则空行会被当成「有更新」
+    const isRealCm = (r: any) => r && (r.tool || r.account);
+    const baseCm = (matchedCustomer.contactMethods || []).filter(isRealCm);
+    const formCm = Array.isArray(v.contactMethods) ? v.contactMethods.filter(isRealCm) : [];
     const cmChanged =
       baseCm.length !== formCm.length ||
       baseCm.some((b: any, i: number) => b?.tool !== formCm[i]?.tool || b?.account !== formCm[i]?.account);
@@ -464,7 +596,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const formSrc = safeParseSource(v.sourceKey);
     const srcChanged = baseSrc !== `${formSrc?.channelId ?? ''}|${formSrc?.shopId ?? ''}`;
     return {
-      targetMarket: (v.targetMarket ?? '') !== (matchedCustomer.country ?? ''),
+      targetMarket: (getCountryCode(v.targetMarket) ?? '') !== (getCountryCode(matchedCustomer.country) ?? ''),
       customerType: (v.customerType ?? '') !== (matchedCustomer.customerType ?? ''),
       contactName: (v.contactName ?? '') !== (matchedCustomer.contactName ?? ''),
       contactMethods: cmChanged,
@@ -479,18 +611,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       </Tag>
     ) : null;
 
+  // 统一从「已建档」基线 matchedProduct 提取工艺 id 列表（排序后）：
+  // 后端 getProductById 仅返回 crafts（摊平的工艺实体数组），craftIds 字段不存在；
+  // 两处比对必须复用同一来源，避免双路径口径不一导致「工艺」误判有更新（D：工艺 baseline 统一）
+  const getBaseCraftIds = (p: any): string[] =>
+    Array.isArray(p?.crafts) ? p.crafts.map((c: any) => c.id).filter(Boolean).sort() : [];
+
   // 实时比对：当前需求详情「产品级字段」相对「已建档」基线 matchedProduct 是否发生变更
   const productChanged = Form.useWatch((values: Record<string, any>) => {
     if (step1.status !== 'exist' || !matchedProduct) return false;
     if ((values.productKey ?? '') !== (matchedProduct.name ?? '')) return true;
-    if ((values.productDesc ?? '') !== (matchedProduct.description ?? '')) return true;
     const baseImgs = serializeImages(parseImages(matchedProduct.images));
     const formImgs = serializeImages(parseImages(values.images));
     if (baseImgs !== formImgs) return true;
     // 分类与规格：工艺（数组排序后比对）/ 受众品类（级联值）/ 长宽高克重
     const formCraftIds = Array.isArray(values.craftIds) ? [...values.craftIds].sort() : [];
-    const baseCraftIds = Array.isArray(matchedProduct.crafts) ? matchedProduct.crafts.map((c: any) => c.id).sort() : [];
-    if (JSON.stringify(formCraftIds) !== JSON.stringify(baseCraftIds)) return true;
+    if (JSON.stringify(formCraftIds) !== JSON.stringify(getBaseCraftIds(matchedProduct))) return true;
     const formAud = values.categoryCascade?.[0] ?? null;
     const formCat = values.categoryCascade?.[1] ?? null;
     if ((formAud ?? '') !== (matchedProduct.audienceId ?? '')) return true;
@@ -501,6 +637,84 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     if (Number(values.weight ?? null) !== Number(matchedProduct.weight ?? null)) return true;
     return false;
   }, form);
+
+  // 实时比对：需求详情「各字段」相对「已建档」基线 matchedProduct 是否变更（用于对应 label 右侧显示「有更新」）；
+  // 仅比对会写「产品表」的产品级字段（名称/参考图/工艺/受众品类/长宽高克重），不比对 lead 级字段
+  // （客户具体要求 productDesc、数量、期望交期等仅落线索表，不随建档/更新同步产品，故不在此列）
+  const productFieldDiff = (() => {
+    if (step1.status !== 'exist' || !matchedProduct) return null;
+    const v = liveFormValues();
+    const baseCraftIds = getBaseCraftIds(matchedProduct);
+    const formCraftIds = Array.isArray(v.craftIds) ? [...v.craftIds].sort() : [];
+    const craftChanged = JSON.stringify(formCraftIds) !== JSON.stringify(baseCraftIds);
+    const audChanged = (v.categoryCascade?.[0] ?? null) !== (matchedProduct.audienceId ?? null);
+    const catChanged = (v.categoryCascade?.[1] ?? null) !== (matchedProduct.categoryId ?? null);
+    const num = (x: any) => (x === undefined || x === null || x === '' ? null : Number(x));
+    return {
+      productKey: (v.productKey ?? '') !== (matchedProduct.name ?? ''),
+      images: serializeImages(parseImages(v.images)) !== serializeImages(parseImages(matchedProduct.images)),
+      craftIds: craftChanged,
+      categoryCascade: audChanged || catChanged,
+      sizeL: num(v.sizeL) !== num(matchedProduct.sizeL),
+      sizeW: num(v.sizeW) !== num(matchedProduct.sizeW),
+      sizeH: num(v.sizeH) !== num(matchedProduct.sizeH),
+      weight: num(v.weight) !== num((matchedProduct as any).weight),
+    };
+  })();
+
+  // 实时比对：需求详情「线索级字段」（客户具体要求 productDesc / 客户期望交期 expectedDelivery）
+  // 相对「线索表」存储值是否变更（用于对应 label 右侧显示「有更新」）；
+  // 这些字段不写产品表，故基线来自线索存储（step1BaselineRef），仅在编辑既有线索时生效
+  const leadFieldDiff = (() => {
+    if (!editing) return null;
+    // 基线尚未建立（applyStep1Values 尚未对当前线索执行）时，不计算差异，
+    // 避免进入 step1 首帧里表单已是存储值、但基线仍为初始 undefined 而误判「有更新」闪一下
+    if (appliedStep1Ref.current !== editing.id) return null;
+    const v = liveFormValues();
+    const base = step1BaselineRef.current;
+    const formExpected = v.expectedDelivery
+      ? dayjs.isDayjs(v.expectedDelivery)
+        ? v.expectedDelivery.toISOString()
+        : new Date(v.expectedDelivery).toISOString()
+      : null;
+    return {
+      productDesc: (v.productDesc ?? '') !== (base.productDesc ?? ''),
+      expectedDelivery: (formExpected ?? null) !== (base.expectedDelivery ?? null),
+      targetPrice:
+        JSON.stringify(normMoney(v.targetPrice)) !== JSON.stringify(normMoney(base.targetPrice)),
+    };
+  })();
+  // 需求详情「线索级字段」任一发生变更（客户具体要求 / 期望交期 / 目标价位）→ 视为需求详情整体有更新，
+  // 与主按钮「更新/锁定」判定共用（产品级字段变更见 productChanged）
+  const leadChanged =
+    !!leadFieldDiff && (leadFieldDiff.productDesc || leadFieldDiff.expectedDelivery || leadFieldDiff.targetPrice);
+
+  // 关闭拦截：取消 / 遮罩 / ESC / ✕ 关闭前，判定是否有未保存改动。
+  // 关键：与「当前步骤」主按钮的「更新/锁定」判定保持一致（step0 看 customerChanged，
+  // step1 看 productChanged||leadChanged）——而非三个标志的全量 OR。否则在 step0 时，
+  // 即便主按钮显示「锁定」（customerChanged=false），step1 的产品级/线索级字段（如 images、
+  // 产品记录与线索 item 数据不完全对齐）被误判为变更，也会导致无改动却弹确认框。
+  // 主按钮显示「更新」→ 弹确认防误触；显示「锁定」→ 静默退出。
+  const attemptClose = () => {
+    const dirty =
+      step === 0
+        ? !!customerChanged
+        : step === 1
+          ? !!(productChanged || leadChanged)
+          : false;
+    if (dirty) {
+      modal.confirm({
+        title: t('lead.leaveConfirmTitle'),
+        content: t('lead.leaveConfirmContent'),
+        okText: t('lead.leaveConfirmOk'),
+        cancelText: t('common.cancel'),
+        okButtonProps: { danger: true },
+        onOk: () => setDrawerOpen(false),
+      });
+    } else {
+      setDrawerOpen(false);
+    }
+  };
 
   // ============ 三步向导 ============
   const wizardSteps = [t('lead.stepCustomer'), t('lead.stepRequirement'), t('lead.stepConfirm')];
@@ -598,6 +812,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       const item = res.data;
       // 用详情接口的权威数据更新 editing（确保 status 等字段最新、完整）
       setEditing(item);
+      // 重置 step1 回填守卫，确保进入「需求详情」步时按本条线索重新回填
+      appliedStep1Ref.current = null;
       form.setFieldsValue({
         customerKey: item.customer?.companyName || item.companyName || undefined,
         // 联系人：回填 Lead.contactName
@@ -801,6 +1017,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         const created = await leadApi.create(payload);
         savedId = created.data?.id;
       }
+      // 保存后重建「线索级字段」基线，使「有更新」标记归零
+      captureStep1Baseline();
       message.success(t('lead.draftSaved'));
       setDrawerOpen(false);
       onSaved(savedId);
@@ -834,6 +1052,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         savedId = created.data?.id;
         message.success(t('common.createSuccess'));
       }
+      // 提交后重建「线索级字段」基线，使「有更新」标记归零
+      captureStep1Baseline();
       setDrawerOpen(false);
       onSaved(savedId);
     } catch (err: any) {
@@ -972,7 +1192,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   }): Promise<{ id: string }> => {
     const res: any = await productApi.create({
       name: initial?.name ?? editing?.items?.[0]?.productName ?? '',
-      description: initial?.description ?? editing?.items?.[0]?.productDesc ?? undefined,
+      // 产品 description 与线索「客户具体要求」(LeadItem.productDesc) 语义分离（见 applyProductFieldValues），
+      // 不再从 productDesc 反填产品主数据描述；仅当用户经产品弹窗显式传入 initial.description 时才写入
+      description: initial?.description,
     } as any);
     const p = (res?.data ?? res) as { id: string };
     return { id: p.id };
@@ -1223,20 +1445,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       <Form form={form} layout="vertical" preserve autoComplete="off" disabled={readonly} size="large" className="lead-form-v2">
         <AppModal
           open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          onMaskClick={() => {
-            modal.confirm({
-              title: t('lead.leaveConfirmTitle'),
-              content: t('lead.leaveConfirmContent'),
-              okText: t('lead.leaveConfirmOk'),
-              cancelText: t('common.cancel'),
-              okButtonProps: { danger: true },
-              onOk: () => setDrawerOpen(false),
-            });
-          }}
+          onClose={attemptClose}
+          onMaskClick={attemptClose}
           title={
             <div className="lead-wizard-header">
-              <button type="button" className="lead-wizard-header__close" onClick={() => setDrawerOpen(false)}>
+              <button type="button" className="lead-wizard-header__close" onClick={attemptClose}>
                 <CloseOutlined />
               </button>
               <div className="lead-wizard-header__title">
@@ -1274,7 +1487,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 {step > 0 ? (
                   <Button type="link" size="large" icon={<ArrowLeftOutlined />} onClick={goPrev}>{t('lead.prevStep')}</Button>
                 ) : (
-                  <Button type="link" size="large" onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>
+                  <Button type="link" size="large" onClick={attemptClose}>{t('common.cancel')}</Button>
                 )}
               </div>
               <div className="lead-wizard-footer__dots">
@@ -1332,8 +1545,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         {t('lead.fileLead')}
                       </Button>
                     ) : step1.status === 'exist' ? (
-                      // 编辑态（未锁定/已建档）：无修改展示「锁定」，有修改展示「更新」
-                      productChanged ? (
+                      // 编辑态（未锁定/已建档）：需求详情「产品级字段」或「线索级字段」任一变更 → 更新；无改动 → 锁定
+                      productChanged || leadChanged ? (
                         <Button size="large" type="primary" onClick={handleFileOrUpdateProduct}>
                           {t('lead.updateProduct')}
                         </Button>
@@ -1466,7 +1679,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 <Form.Item
                   name="productKey"
                   label={
-                    <>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                       <span>{t('lead.product')}</span>
                       {step1.status === 'none' && !step1.locked && (
                         <Tag color="orange" style={{ marginInlineEnd: 0 }}>{t('lead.pendingTag')}</Tag>
@@ -1474,7 +1687,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       {step1.locked && (
                         <Tag color="green" style={{ marginInlineEnd: 0 }}>{t('lead.filedTag')}</Tag>
                       )}
-                    </>
+                      <UpdatedTag show={productFieldDiff?.productKey} />
+                    </span>
                   }
                   rules={[{ required: true, message: t('lead.productRequired') }]}
                 >
@@ -1493,8 +1707,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Col span={12}>
                 <Form.Item
                   name="craftIds"
-                  label={t('lead.craft')}
-                  rules={[{ required: !step1.locked, message: t('lead.craftRequired') }]}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.craft')}</span>
+                      <UpdatedTag show={productFieldDiff?.craftIds} />
+                    </span>
+                  }
+                  rules={[{ required: true, message: t('lead.craftRequired') }]}
                 >
                   <Select
                     mode="multiple"
@@ -1509,9 +1728,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Col span={12}>
                 <Form.Item
                   name="categoryCascade"
-                  label={t('lead.audienceCategory')}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.audienceCategory')}</span>
+                      <UpdatedTag show={productFieldDiff?.categoryCascade} />
+                    </span>
+                  }
                   rules={[
-                    { required: !step1.locked, message: t('lead.audienceCategoryRequired') },
+                    { required: true, message: t('lead.audienceCategoryRequired') },
                     {
                       validator: (_, value) =>
                         !value || value.length >= 2
@@ -1525,6 +1749,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                     disabled={step1.locked}
                     placeholder={t('lead.audienceCategoryPlaceholder')}
                     expandTrigger="hover"
+                    // 支持按受众/品类名称搜索选择（默认按 label 命中，父级受众或子级品类均可被搜到）
+                    showSearch={{
+                      filter: (input, path) =>
+                        (path || []).some((opt) =>
+                          String((opt as { label?: string }).label ?? '')
+                            .toLowerCase()
+                            .includes(String(input ?? '').toLowerCase()),
+                        ),
+                    }}
                   />
                 </Form.Item>
               </Col>
@@ -1532,37 +1765,57 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Col span={6}>
                 <Form.Item
                   name="sizeL"
-                  label={t('lead.sizeL')}
-                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.sizeL')}</span>
+                      <UpdatedTag show={productFieldDiff?.sizeL} />
+                    </span>
+                  }
+                  rules={[{ required: true, message: t('lead.sizeRequired') }]}
                 >
-                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} suffix="cm" placeholder="0" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={6}>
                 <Form.Item
                   name="sizeW"
-                  label={t('lead.sizeW')}
-                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.sizeW')}</span>
+                      <UpdatedTag show={productFieldDiff?.sizeW} />
+                    </span>
+                  }
+                  rules={[{ required: true, message: t('lead.sizeRequired') }]}
                 >
-                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} suffix="cm" placeholder="0" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={6}>
                 <Form.Item
                   name="sizeH"
-                  label={t('lead.sizeH')}
-                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.sizeH')}</span>
+                      <UpdatedTag show={productFieldDiff?.sizeH} />
+                    </span>
+                  }
+                  rules={[{ required: true, message: t('lead.sizeRequired') }]}
                 >
-                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="cm" placeholder="0" disabled={step1.locked} />
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} suffix="cm" placeholder="0" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={6}>
                 <Form.Item
                   name="weight"
-                  label={t('lead.weight')}
-                  rules={[{ required: !step1.locked, message: t('lead.sizeRequired') }]}
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.weight')}</span>
+                      <UpdatedTag show={productFieldDiff?.weight} />
+                    </span>
+                  }
+                  rules={[{ required: true, message: t('lead.sizeRequired') }]}
                 >
-                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} addonAfter="g" placeholder="0" disabled={step1.locked} />
+                  <InputNumber min={0} step={0.1} precision={2} style={{ width: '100%' }} suffix="g" placeholder="0" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -1580,6 +1833,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         inputMode="numeric"
                         maxLength={12}
                         placeholder={t('lead.quantityRequirementPlaceholder')}
+                        disabled={step1.locked}
                         // 仅允许输入非负整数（数量需求）
                         onChange={(e) => form.setFieldsValue({ quantity: e.target.value.replace(/[^\d]/g, '') })}
                       />
@@ -1589,32 +1843,66 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       onChange={(v: string) => form.setFieldsValue({ unit: v })}
                       options={unitOptions}
                       style={{ width: 88 }}
+                      disabled={step1.locked}
                     />
                   </Space.Compact>
                 </Form.Item>
               </Col>
               <Col span={12}>
                 {/* 目标价位：统一金额组件（币种 + 金额 + 汇率快照）；币种取系统设置维护的启用币种 */}
-                <Form.Item name="targetPrice" label={t('lead.targetPrice')}>
-                  <MoneyInput placeholder={t('lead.targetPricePlaceholder')} size="large" />
+                <Form.Item
+                  name="targetPrice"
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.targetPrice')}</span>
+                      <UpdatedTag show={leadFieldDiff?.targetPrice} />
+                    </span>
+                  }
+                >
+                  <MoneyInput placeholder={t('lead.targetPricePlaceholder')} size="large" disabled={step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item name="productDesc" label={t('lead.productDesc')}>
-                  <Input.TextArea rows={3} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} disabled={step1.locked} />
+                <Form.Item
+                  name="productDesc"
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.productDesc')}</span>
+                      <UpdatedTag show={leadFieldDiff?.productDesc} />
+                    </span>
+                  }
+                >
+                  <Input.TextArea rows={3} autoComplete="off" placeholder={t('lead.productDescPlaceholder')} disabled={readonly || step1.locked} />
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item name="expectedDelivery" label={t('lead.expectedDelivery')}>
+                <Form.Item
+                  name="expectedDelivery"
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.expectedDelivery')}</span>
+                      <UpdatedTag show={leadFieldDiff?.expectedDelivery} />
+                    </span>
+                  }
+                >
                   <DatePicker
                     style={{ width: '100%' }}
                     placeholder={t('lead.expectedDeliveryPlaceholder')}
+                    disabled={step1.locked}
                     disabledDate={(current) => !!current && current < dayjs().startOf('day')}
                   />
                 </Form.Item>
               </Col>
               <Col span={24}>
-                <Form.Item name="images" label={t('lead.attachments')}>
+                <Form.Item
+                  name="images"
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.attachments')}</span>
+                      <UpdatedTag show={productFieldDiff?.images} />
+                    </span>
+                  }
+                >
                   <ProductImageList disabled={readonly || step1.locked} allowFiles />
                 </Form.Item>
               </Col>

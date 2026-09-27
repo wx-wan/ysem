@@ -340,7 +340,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   )}
                   <span className="pm-activity-verb">于</span>
                   <span className="pm-activity-time-inline">
-                    {dayjs(act.createdAt).format('YYYY-MM-DD HH:mm')}
+                    {dayjs(act.createdAt).format('YYYY-MM-DD HH:mm:ss')}
                   </span>
                   <span className="pm-activity-verb">{meta.label}</span>
                 </div>

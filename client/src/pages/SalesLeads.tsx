@@ -16,6 +16,7 @@ import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
 import { debounce } from '../utils/rateLimit';
+import { useSearchParams } from 'react-router-dom';
 
 export default function SalesLeads() {
   const { token } = theme.useToken();
@@ -89,6 +90,16 @@ export default function SalesLeads() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list.listData]);
+
+  // 深链：从客户详情「销售记录」点击关联线索时携带 ?leadId= 自动选中并打开详情
+  const [searchParams] = useSearchParams();
+  const leadIdParam = searchParams.get('leadId');
+  useEffect(() => {
+    if (leadIdParam && list.listData.length && list.listData.some((l) => l.id === leadIdParam)) {
+      setSelectedId(leadIdParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leadIdParam, list.listData]);
 
   // 删除（详情面板/列表通用）：删除的是当前选中项时清空右侧面板
   const handleRemove = useCallback(

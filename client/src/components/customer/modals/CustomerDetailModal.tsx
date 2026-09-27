@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Avatar, Empty, Typography, Tag, Pagination, ConfigProvider, theme, App, message, Skeleton } from 'antd';
 import AppModal from '../../AppModal';
 import {
-  PlusOutlined,
   DollarOutlined,
   ShoppingCartOutlined,
   ClockCircleOutlined,
@@ -19,8 +18,9 @@ import {
   FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { Customer, CustomerActivity, customerApi, type SalesOrderSummary, type OpportunitySummary } from '../../../api/customers';
+import { Customer, CustomerActivity, customerApi, type SalesOrderSummary, type OpportunitySummary, type CustomerLeadSummary } from '../../../api/customers';
 import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/salesOrders';
+import { useNavigate } from 'react-router-dom';
 import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import Price from '../../common/Price';
@@ -46,9 +46,6 @@ interface CustomerDetailModalProps {
   onRelease?: (customer: Customer) => void;
   onDelete?: (customer: Customer) => void;
   onAddPipeline?: (customer: Customer) => void;
-  /** 点击「新建销售记录」区块：由父级弹出类型选择（线索/商机/订单） */
-  onPickNewType?: (customer: Customer) => void;
-  onCreateOrder?: (customer: Customer) => void;
   /** 切换重点客户成功后由父级刷新数据 */
   onToggleKeyAccount?: (customer: Customer) => void;
   /** 打开详情时 getById 异步补充完整数据，仅更新弹窗自身，不回写列表（避免污染列表聚合字段） */
@@ -87,20 +84,22 @@ export type RealPipeline = OpportunityRow;
 /** 销售记录统一条目：销售订单 + 商机，按创建时间混合排序 */
 type UnifiedRecord =
   | { kind: 'salesOrder'; data: SalesOrderSummary }
-  | { kind: 'opportunity'; data: OpportunityRow };
+  | { kind: 'opportunity'; data: OpportunityRow }
+  | { kind: 'lead'; data: CustomerLeadSummary };
 
 // ============================================================
 // 主组件
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
-  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onPickNewType, onCreateOrder, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
+  open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
   onEditPipeline, onConvertPipeline, onDeletePipeline, detailVersion,
 }) => {
   const { modal } = App.useApp();
+  const navigate = useNavigate();
   const { token } = theme.useToken();
   const [activeTab, setActiveTab] = useState<'pipeline' | 'orders' | 'activities'>('pipeline');
   const [currentPage, setCurrentPage] = useState(1);
-  // 概览 tab 不分页；销售记录每页 5 条（首栏留给添加区块）；跟进动态每页 8 条
+  // 概览 tab 不分页；销售记录每页 5 条；跟进动态每页 8 条
   const pageSize = activeTab === 'pipeline' ? 3 : activeTab === 'orders' ? 5 : 8;
 
   // 抽屉编辑状态
@@ -225,6 +224,14 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   // V1.0 canonical：Customer.pipelines → Customer.opportunities
   const opportunityRows = (customer?.opportunities || []) as OpportunityRow[];
 
+  // 关联线索：仅显示在「确认转商机」之前尚未转化的线索（已转化者由对应商机承接，避免重复展示）
+  const linkedLeads = useMemo(() => {
+    const convertedLeadIds = new Set(
+      (opportunityRows.map((o) => o.leadId).filter(Boolean)) as string[],
+    );
+    return (customer?.leads || []).filter((l) => !convertedLeadIds.has(l.id));
+  }, [customer?.leads, opportunityRows]);
+
   // 分页切片
   const paginatedData = useMemo(() => {
     let data: any[] = [];
@@ -233,7 +240,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       case 'orders': {
         const salesOrders: UnifiedRecord[] = (customer?.salesOrders || []).map(o => ({ kind: 'salesOrder', data: o }));
         const opportunityRecords: UnifiedRecord[] = opportunityRows.map(p => ({ kind: 'opportunity', data: p }));
-        data = [...salesOrders, ...opportunityRecords].sort(
+        const leadRecords: UnifiedRecord[] = linkedLeads.map(l => ({ kind: 'lead', data: l }));
+        data = [...salesOrders, ...opportunityRecords, ...leadRecords].sort(
           (a, b) => new Date(b.data.createdAt || '').getTime() - new Date(a.data.createdAt || '').getTime()
         );
       } break;
@@ -249,7 +257,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   const totalCount =
     activeTab === 'pipeline' ? opportunityRows.length :
-    activeTab === 'orders' ? ((customer?.salesOrders?.length ?? 0) + opportunityRows.length) :
+    activeTab === 'orders' ? ((customer?.salesOrders?.length ?? 0) + opportunityRows.length + linkedLeads.length) :
     activeTab === 'activities' ? (customer?.activities?.length ?? 0) : 0;
 
   // ---- 圆形操作按钮样式工厂 ----
@@ -264,7 +272,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   // ---- tab 配置 ----
   const tabOptions = [
     { key: 'pipeline' as const, label: '概览', count: opportunityRows.length },
-    { key: 'orders' as const, label: '销售记录', count: customer?.salesOrders?.length ?? 0 },
+    { key: 'orders' as const, label: '销售记录', count: (customer?.salesOrders?.length ?? 0) + opportunityRows.length + linkedLeads.length },
     { key: 'activities' as const, label: '跟进动态', count: customer?.activities?.length ?? 0 },
   ];
 
@@ -381,6 +389,65 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
               <DeleteOutlined />
             </button>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  // ---- 关联线索项渲染（建档后尚未转商机的线索，展示在「销售记录」中） ----
+  const LEAD_STATUS_LABEL: Record<string, string> = {
+    NEW: '新线索',
+    CONFIRMED: '已确认',
+    SAMPLED: '已打样',
+    WON: '已成交',
+  };
+  const LEAD_SOURCE_LABEL: Record<string, string> = {
+    MANUAL: '手动录入',
+    EXCEL: 'Excel 导入',
+    RPA: 'RPA 抓取',
+    SYNC: '同步',
+  };
+  const renderLeadItem = (item: CustomerLeadSummary) => {
+    const statusLabel = LEAD_STATUS_LABEL[item.status] || '新线索';
+    const sourceLabel = LEAD_SOURCE_LABEL[item.source || 'MANUAL'] || '手动录入';
+    const navigateToLead = () => navigate(`/sales/leads?leadId=${item.id}`);
+    return (
+      <div
+        key={item.id}
+        style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
+        onClick={navigateToLead}
+        onMouseEnter={listCardHover}
+        onMouseLeave={listCardLeave}
+      >
+        {/* 左侧：类型 + 状态标签 */}
+        <div style={{ flexShrink: 0, minWidth: 80 }}>
+          <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
+            线索
+          </Tag>
+          <div style={{ marginTop: 6 }}>
+            <Tag color="gold" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none' }}>
+              {statusLabel}
+            </Tag>
+          </div>
+        </div>
+
+        {/* 中间：线索名称 + 编号/来源 + 创建时间 */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.leadName || '-'}</Text>
+          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3 }}>
+            {item.leadNo ? `${item.leadNo} · ` : ''}{sourceLabel}
+          </div>
+          {item.createdAt && (
+            <Text ellipsis style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3, display: 'block' }}>
+              <ClockCircleOutlined style={{ marginRight: 4, fontSize: 10 }} />
+              {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm')}
+            </Text>
+          )}
+        </div>
+
+        {/* 右侧：前往查看 */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
+          <span style={{ fontSize: 12, color: ct.primary, fontWeight: 600 }}>查看</span>
         </div>
       </div>
     );
@@ -712,44 +779,13 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   </div>
                 ) : paginatedData.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {activeTab === 'orders' && (
-                      <div
-                        onClick={() => onPickNewType?.(customer)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                          padding: '12px 16px', borderRadius: 12, cursor: 'pointer',
-                          background: ct.primaryBg,
-                          border: `1px dashed ${ct.primary}`,
-                          transition: 'all .2s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderStyle = 'solid';
-                          e.currentTarget.style.boxShadow = `0 2px 12px ${ct.primary}25`;
-                          e.currentTarget.style.background = ct.primaryLight;
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderStyle = 'dashed';
-                          e.currentTarget.style.boxShadow = 'none';
-                          e.currentTarget.style.background = ct.primaryBg;
-                        }}
-                      >
-                        <span
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                            width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                            background: ct.primary, color: '#fff', fontSize: 14,
-                          }}
-                        >
-                          <PlusOutlined />
-                        </span>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: token.colorText, whiteSpace: 'nowrap' }}>
-                          新建销售记录
-                        </span>
-                      </div>
-                    )}
                     {activeTab === 'orders' && paginatedData.map((it: UnifiedRecord, index: number) => (
-                      <React.Fragment key={`orders-${it.data.id}-${index}`}>
-                        {it.kind === 'salesOrder' ? renderOrderItem(it.data) : renderPipelineItem(it.data)}
+                      <React.Fragment key={`orders-${it.kind}-${it.data.id}-${index}`}>
+                        {it.kind === 'salesOrder'
+                          ? renderOrderItem(it.data as SalesOrderSummary)
+                          : it.kind === 'lead'
+                            ? renderLeadItem(it.data as CustomerLeadSummary)
+                            : renderPipelineItem(it.data as OpportunityRow)}
                       </React.Fragment>
                     ))}
                     {activeTab === 'activities' && paginatedData.map((it, index) => <React.Fragment key={`activities-${it.id ?? 'x'}-${index}`}>{renderActivityItem(it as CustomerActivity)}</React.Fragment>)}
@@ -761,23 +797,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       {activeTab === 'activities' && '暂无活动记录'}
                     </div>
                   } style={{ padding: '52px 0' }}>
-                    {activeTab === 'orders' && onCreateOrder && (
-                      <button
-                        type="button"
-                        onClick={() => onCreateOrder(customer)}
-                        style={{
-                          marginTop: 8, padding: '6px 16px', borderRadius: 8, cursor: 'pointer',
-                          border: `1px solid ${ct.primary}`, color: ct.primary, background: 'transparent',
-                          fontSize: 13, fontWeight: 600, transition: 'all 0.18s ease', outline: 'none',
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = ct.primaryBg; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                        onFocus={(e) => { e.currentTarget.style.boxShadow = `0 0 0 3px ${ct.primary}25`; }}
-                        onBlur={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
-                      >
-                        新建订单
-                      </button>
-                    )}
                   </Empty>
                 )}
               </div>

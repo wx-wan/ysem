@@ -30,7 +30,7 @@ const LEAD_DIFF_LABELS: Record<string, string> = {
   currency: '币种',
   unit: '单位',
   targetPrice: '目标价位',
-  usdRate: '建档美元汇率',
+  usdRate: '创建美元汇率',
   expectedDelivery: '期望交期',
   customerType: '客户类型',
   ownerId: '负责人',
@@ -53,6 +53,18 @@ const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
     return (v as { tool?: string; account?: string }[])
       .map((m) => `${m?.tool || '—'}：${m?.account || '—'}`)
       .join('、');
+  },
+  // 期望交期：ISO 时间戳 → 业务时区（Asia/Shanghai）日期，避免裸露 UTC 时间戳
+  expectedDelivery: (v) => {
+    if (!v) return '空';
+    const d = new Date(v as string);
+    if (Number.isNaN(d.getTime())) return String(v);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d);
   },
 };
 
@@ -459,14 +471,27 @@ export const getLeadLogs = async (req: AuthRequest, res: Response): Promise<void
   try {
     const lead = await prisma.lead.findFirst({
       where: await scopedWhere(req, req.params.id),
-      select: { id: true },
+      select: { id: true, customerId: true, items: { select: { productId: true } } },
     });
     if (!lead) {
       fail(res, 404, '线索不存在');
       return;
     }
+    // 线索操作记录不仅包含线索自身（LEAD）的变更，也纳入「在线索中更新关联客户 / 产品」时
+    // 由 customer / product 控制器写下的对应操作日志（businessType=CUSTOMER / PRODUCT，businessId 为关联主键），
+    // 使线索详情「操作记录」Tab 能完整反映对客户、产品的修改历史。
+    const productId = lead.items?.[0]?.productId ?? null;
+    const where: Record<string, any> = {
+      OR: [
+        { businessType: BUSINESS_TYPE.LEAD, businessId: lead.id },
+        ...(lead.customerId
+          ? [{ businessType: BUSINESS_TYPE.CUSTOMER, businessId: lead.customerId }]
+          : []),
+        ...(productId ? [{ businessType: BUSINESS_TYPE.PRODUCT, businessId: productId }] : []),
+      ],
+    };
     const list = await prisma.operationLog.findMany({
-      where: { businessType: BUSINESS_TYPE.LEAD, businessId: lead.id },
+      where,
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -477,9 +502,10 @@ export const getLeadLogs = async (req: AuthRequest, res: Response): Promise<void
 };
 
 /**
- * 抓取「建档美元汇率」：当日 DailyExchangeRate 中 USD 的 rateToCny（1 USD = X CNY）。
+ * 抓取「创建线索美元汇率」：当日 DailyExchangeRate 中 USD 的 rateToCny（1 USD = X CNY）。
  * 优先取当日记录；缺当日则取最近历史；都无则回退内置参考值（与 exchange.controller FALLBACK_RATES 一致）。
- * 该值于线索建档时落库一次（Lead.usdRate），与线索自身币种无关。
+ * 该值于线索创建时落库一次（Lead.usdRate，见 createLead 中 lead.create），与线索自身币种无关；
+ * 后续编辑 / 建档（转商机）均不刷新，保持创建时刻快照。
  */
 async function getTodayUsdRate(): Promise<number> {
   const today = new Date().toISOString().slice(0, 10);
@@ -635,7 +661,7 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           currency: data.currency ?? null,
           unit: data.unit ?? null,
           targetPrice: data.targetPrice ?? null,
-          // 建档美元汇率：抓取建档当日 1 USD = X CNY 快照（与线索币种无关，建档后不随编辑变更）
+          // 创建线索时快照美元汇率：创建当日 1 USD = X CNY（与线索币种无关，创建后不再刷新，编辑/建档均不更新）
           usdRate: await getTodayUsdRate(),
           expectedDelivery: data.expectedDelivery ?? null,
           customerType: data.customerType ?? null,

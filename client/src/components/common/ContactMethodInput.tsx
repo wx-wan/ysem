@@ -34,6 +34,8 @@ interface Props {
   toolWidth?: number;
   /** 是否内部渲染「新增」按钮（默认 true）；若把按钮放到 label 旁可设为 false，再用 ref.add() 触发 */
   showAddButton?: boolean;
+  /** 透传给首行沟通工具下拉的 id（Form.Item 关联 label 使用，a11y） */
+  id?: string;
 }
 
 /**
@@ -46,7 +48,7 @@ interface Props {
  * - 未触发过校验（`validate()` 之前）不会主动飘红，避免边填边报错。
  */
 const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function ContactMethodInput(
-  { value, onChange, options = [], disabled, variant, size, compact, toolWidth, showAddButton = true },
+  { value, onChange, options = [], disabled, variant, size, compact, toolWidth, showAddButton = true, id },
   ref,
 ) {
   const { t } = useTranslation();
@@ -56,6 +58,8 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
   const [errors, setErrors] = useState<Record<string, string>>({});
   /** 是否已触发过整体验证（未触发前不对空值主动飘红） */
   const [validated, setValidated] = useState(false);
+  /** 当前 hover 的行索引：删除角标仅在悬停该行时显示 */
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   const fieldKey = (idx: number, field: FieldName) => `${idx}:${field}`;
   const messageOf = (field: FieldName) =>
@@ -146,9 +150,14 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
         const toolError = errors[fieldKey(idx, 'tool')];
         const accountError = errors[fieldKey(idx, 'account')];
         return (
-          <div key={idx} style={{ position: 'relative', marginBottom: compact ? 4 : 8 }}>
-            {/* 删除角标：固定在输入框右上角、始终可见（取消 hover 才出现的交互）；仅多行且非禁用时展示 */}
-            {list.length > 1 && !disabled && (
+          <div
+            key={idx}
+            style={{ position: 'relative', marginBottom: compact ? 4 : 8 }}
+            onMouseEnter={() => setHoveredIdx(idx)}
+            onMouseLeave={() => setHoveredIdx((cur) => (cur === idx ? null : cur))}
+          >
+            {/* 删除角标：固定在输入框右上角，仅悬停该行时显示；仅多行且非禁用时展示 */}
+            {list.length > 1 && !disabled && hoveredIdx === idx && (
               <span
                 role="button"
                 title={t('common.delete')}
@@ -173,6 +182,7 @@ const ContactMethodInput = forwardRef<ContactMethodHandle, Props>(function Conta
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ display: 'flex', flexDirection: 'column', width: compact ? 104 : toolWidth ?? 160 }}>
                 <Select
+                  id={idx === 0 ? id : undefined}
                   placeholder={t('lead.contactToolPlaceholder')}
                   value={it.tool || undefined}
                   onChange={(v) => setRow(idx, { tool: v })}

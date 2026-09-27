@@ -12,6 +12,8 @@ interface Props {
   onChange?: (v: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** 透传给内部输入框的 id（Form.Item 关联 label 使用，a11y） */
+  id?: string;
   /**
    * 实时查询信号（每次打开弹窗自增）。打开弹窗（含编辑回填 / 重开草稿）时已带公司名时，
    * 组件据此立即查询归属接口，确保标签反映最新状态，而非依赖线索冗余字段（customerId 缺失）派生。
@@ -44,7 +46,7 @@ interface Props {
  *   3) IN_PUBLIC_SEA（other）→ 显示「已在公海」；
  *   4) OWNED_BY_ME（mine）→ 不显示内容，由父级比对信息变更。
  */
-export default function CompanyNameInput({ value, onChange, disabled, placeholder, querySignal, options, onPick, onResolved }: Props) {
+export default function CompanyNameInput({ value, onChange, disabled, placeholder, id, querySignal, options, onPick, onResolved }: Props) {
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const [status, setStatus] = useState<CompanyStatus>('idle');
@@ -117,6 +119,7 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <AutoComplete
+        id={id}
         value={value}
         options={options?.map((o) => ({ ...o, value: o.label, id: o.value })) as any}
         disabled={disabled}

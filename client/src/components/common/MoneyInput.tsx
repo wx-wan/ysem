@@ -26,6 +26,8 @@ interface Props {
   disabled?: boolean;
   size?: 'small' | 'middle' | 'large';
   placeholder?: string;
+  /** 透传给金额输入框的 id（Form.Item 关联 label 使用，a11y） */
+  id?: string;
   /** 金额小数位（默认 2） */
   precision?: number;
   min?: number;
@@ -85,6 +87,7 @@ export default function MoneyInput({
   disabled,
   size,
   placeholder,
+  id,
   precision = 2,
   min = 0,
   currencyWidth = 88,
@@ -139,6 +142,7 @@ export default function MoneyInput({
         style={{ width: currencyWidth }}
       />
       <InputNumber
+        id={id}
         value={current.amount}
         onChange={(amount) => emit({ amount: typeof amount === 'number' ? amount : null })}
         disabled={disabled}

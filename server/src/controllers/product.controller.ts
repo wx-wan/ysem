@@ -66,12 +66,23 @@ const toSupplyModes = (v?: string | null): $Enums.SupplyMode[] | undefined => {
 const toCurrency = (v?: string | null): $Enums.Currency | undefined =>
   v && (CURRENCIES as readonly string[]).includes(v) ? (v as $Enums.Currency) : undefined;
 
+/**
+ * 读取侧：把 coverImage 冗余列透出为前端约定的 `images`（JSON 数组字符串）。
+ * 产品图片范式是 coverImage + Attachment(ownerType=PRODUCT)，建档仅在 coverImage 落库图片（不生成 Attachment 记录），
+ * 因此响应统一以 coverImage 回填 images，使前端 ProductDetailModal / ProductEditModal / ProductCard 能正确渲染。
+ */
+function withImages<T extends Record<string, any>>(p: T): T & { images: string | null } {
+  return { ...p, images: (p.coverImage as string | null) ?? null };
+}
+
 const productSchema = z.object({
   name: z.string().min(1, '产品名称不能为空'),
   sku: z.string().nullish(),
-  craftIds: z.array(z.string().uuid()).nullish(),
-  audienceId: z.string().uuid().nullish(),
-  categoryId: z.string().uuid().nullish(),
+  // 分类 id 为 cuid（ProductCraft/ProductAudience/ProductCategory @default(cuid())），历史数据可能为 uuid，
+  // 仅校验非空字符串，避免误杀合法 id（z.string().uuid() 会把 cuid 报成 Invalid uuid → 400）
+  craftIds: z.array(z.string().min(1)).nullish(),
+  audienceId: z.string().min(1).nullish(),
+  categoryId: z.string().min(1).nullish(),
   // 产品属性（V1.0 Product 尺寸/克重为 Float，兼容前端传字符串或数字）
   images: z.string().nullish(),
   sizeL: z.preprocess(toFloat, z.number().nullable().optional()),
@@ -286,7 +297,7 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
     ]);
 
     // crafts 摊平为工艺实体数组，保持旧响应形状
-    const rows = list.map(({ crafts, ...rest }) => ({ ...rest, crafts: crafts.map((l) => l.productCraft) }));
+    const rows = list.map(({ crafts, ...rest }) => withImages({ ...rest, crafts: crafts.map((l) => l.productCraft) }));
     success(res, { list: rows, total, page, pageSize });
   } catch { fail(res, 500, '服务器错误'); }
 };
@@ -317,7 +328,7 @@ export const getProductById = async (req: AuthRequest, res: Response): Promise<v
     }
     // crafts 摊平为工艺实体数组，保持旧响应形状
     const { crafts, ...rest } = product;
-    success(res, { ...rest, crafts: crafts.map((l) => l.productCraft) });
+    success(res, withImages({ ...rest, crafts: crafts.map((l) => l.productCraft) }));
   } catch { fail(res, 500, '服务器错误'); }
 };
 
@@ -621,7 +632,7 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
         const { crafts, ...rest } = p;
         entries.push({
           type: 'PRODUCT',
-          data: { ...rest, crafts: crafts.map((l) => l.productCraft) } as unknown as Record<string, unknown>,
+          data: withImages({ ...rest, crafts: crafts.map((l) => l.productCraft) }) as unknown as Record<string, unknown>,
         });
       });
     }

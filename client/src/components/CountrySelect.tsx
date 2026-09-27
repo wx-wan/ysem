@@ -1,9 +1,9 @@
 import { Select } from 'antd';
-import { COUNTRIES, findCountry } from '../data/countries';
+import { COUNTRIES, findCountry, getCountryCode } from '../data/countries';
 import FlagIcon from './FlagIcon';
 
 // 供外部使用
-export { findCountry };
+export { findCountry, getCountryCode };
 
 interface CountrySelectProps<T = string> {
   value?: T;

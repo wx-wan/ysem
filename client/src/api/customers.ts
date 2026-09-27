@@ -48,6 +48,8 @@ export interface Customer {
   salesOrders?: SalesOrderSummary[];
   /** V1.0 canonical：客户商机（getById 返回完整对象；list 端点仅 `{ intentLevel }` 投影） */
   opportunities?: OpportunitySummary[];
+  /** V1.0：客户关联线索（仅 getById 返回；建档后 Lead.customerId 关联，确认转商机后由商机承接） */
+  leads?: CustomerLeadSummary[];
   activities?: CustomerActivity[];
   totalAmount?: number;
   lastOrderDate?: string | null;
@@ -115,10 +117,22 @@ export interface OpportunitySummary {
   owner?: { id: string; realName?: string; username?: string } | null;
   createdAt?: string;
   updatedAt?: string;
+  /** 来源线索 ID（确认转商机时绑定；用于详情「销售记录」识别已转化的线索，避免线索与商机重复展示） */
+  leadId?: string | null;
 }
 
 /** V1.0 商机采购意向等级（对齐 Prisma `IntentLevel` enum） */
 export type IntentLevelCode = 'LOW' | 'MEDIUM' | 'HIGH' | 'READY';
+
+/** 客户详情关联的线索投影（仅显示必要字段；已转商机的线索由对应商机承接，不在此列出） */
+export interface CustomerLeadSummary {
+  id: string;
+  leadNo?: string | null;
+  leadName: string;
+  status: 'NEW' | 'CONFIRMED' | 'SAMPLED' | 'WON';
+  source?: 'MANUAL' | 'EXCEL' | 'RPA' | 'SYNC';
+  createdAt?: string;
+}
 
 export interface CustomerActivity {
   id: string;

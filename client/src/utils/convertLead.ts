@@ -138,7 +138,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
       }
     }
     if (needProduct) {
-      const created = await openProductForm?.({ name: firstItem?.productName!, description: firstItem?.productDesc ?? undefined, images: productImages });
+      const created = await openProductForm?.({ name: firstItem?.productName!, images: productImages });
       productId = created?.id ?? null;
       if (productId) {
         productCreated = true;

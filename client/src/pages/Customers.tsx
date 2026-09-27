@@ -17,7 +17,7 @@ import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
 import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
 import TransferOwnerModal from '../components/common/TransferOwnerModal';
-import OrderFormModal from '../components/customer/modals/OrderFormModal';
+
 import SalesFormModal from '../components/sales/SalesFormModal';
 import type { SalesStage } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
@@ -55,19 +55,11 @@ export default function CustomersPage() {
   const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
   const [userList, setUserList] = useState<UserSelectItem[]>([]);
 
-  // 订单弹窗
-  const [orderModalOpen, setOrderModalOpen] = useState(false);
-  const [orderCustomer, setOrderCustomer] = useState<Customer | null>(null);
-
   // 商机编辑弹窗
   const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
   const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
   // 从详情新建时携带的客户（公司名称固定、基础信息带出、负责人锁当前用户）
   const [newPipelineCustomer, setNewPipelineCustomer] = useState<Customer | null>(null);
-
-  // 新建销售记录：类型选择弹窗（线索 / 商机 / 订单）
-  const [newTypeOpen, setNewTypeOpen] = useState(false);
-  const [newTypeCustomer, setNewTypeCustomer] = useState<Customer | null>(null);
 
   // 转化订单弹窗
   const [convertModalOpen, setConvertModalOpen] = useState(false);
@@ -273,22 +265,6 @@ export default function CustomersPage() {
     }
   }, [message, fetchData]);
 
-  // 打开「新建销售记录」类型选择弹窗
-  const openPickNewType = useCallback((c: Customer) => {
-    setNewTypeCustomer(c);
-    setNewTypeOpen(true);
-  }, []);
-
-  // 按类型打开对应新建表单（线索/商机走 SalesFormModal，订单走 OrderFormModal）
-  // 注意：保留客户详情弹窗不关闭，新建表单叠在其上
-  const openCreatePipeline = useCallback((c: Customer) => {
-    setNewTypeOpen(false);
-    setNewTypeCustomer(null);
-    setEditingPipeline(null);
-    setNewPipelineCustomer(c); // 携带客户：公司名称固定、基础信息带出、负责人锁当前用户
-    setPipelineEditOpen(true);
-  }, []);
-
   // 编辑商机：数据来自父级（详情里的 opportunities 已含完整商机字段），无需再请求
   const handleEditPipeline = useCallback((pipeline: any) => {
     setEditingPipeline(pipeline as SalesItem);
@@ -404,14 +380,6 @@ export default function CustomersPage() {
     });
   }, [message, detailCustomer]);
 
-  const openCreateOrder = useCallback((customerId: string) => {
-    const found = list.find((c) => c.id === customerId);
-    if (found) {
-      setOrderCustomer(found);
-      setOrderModalOpen(true);
-    }
-  }, [list]);
-
   // 加载用户列表（用于筛选和转交）
   const usersFetched = useRef(false);
   useEffect(() => {
@@ -429,13 +397,6 @@ export default function CustomersPage() {
     setDetailCustomer(customer);
     setDetailModalOpen(true);
   }, []);
-
-  const handleOrderSuccess = useCallback(async () => {
-    setOrderModalOpen(false);
-    // 订单数据已通过 orderApi 持久化；保持前端详情缓存，不额外回源
-    // （订单成功属详情内变更，切走标签页时缓存失效，下次进入自然刷新）
-    if (detailCustomer) setDetailCache(detailCustomer);
-  }, [detailCustomer]);
 
   // ========== 渲染卡片视图 ==========
   const renderCardView = useMemo(() => (
@@ -558,8 +519,6 @@ export default function CustomersPage() {
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}
-        onPickNewType={(c) => openPickNewType(c)}
-        onCreateOrder={(c) => openCreateOrder(c.id)}
         onEditPipeline={handleEditPipeline}
         onConvertPipeline={handleConvertPipeline}
         onDeletePipeline={handleDeletePipeline}
@@ -581,14 +540,6 @@ export default function CustomersPage() {
             message.error('重点客户状态更新失败');
           }
         }}
-      />
-
-      {/* ===== 订单弹窗 ===== */}
-      <OrderFormModal
-        open={orderModalOpen}
-        customer={orderCustomer}
-        onClose={() => { setOrderModalOpen(false); setOrderCustomer(null); }}
-        onSuccess={handleOrderSuccess}
       />
 
       {/* ===== 商机编辑 / 新建弹窗 ===== */}
@@ -620,57 +571,7 @@ export default function CustomersPage() {
         </div>
       </Modal>
 
-      {/* 新建销售记录 — 选择类型（线索 / 商机 / 订单） */}
-      <Modal
-        title="新建销售记录"
-        open={newTypeOpen}
-        footer={null}
-        onCancel={() => { setNewTypeOpen(false); setNewTypeCustomer(null); }}
-        width={520}
-        destroyOnHidden
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, padding: '8px 0 4px' }}>
-          {[
-            { key: 'OPPORTUNITY', label: '商机', desc: '有明确采购意向与预计成交，阶段随关联报价/打样/订单自动推进', color: '#1677ff' },
-            { key: 'ORDER', label: '订单', desc: '已成交，进入订单 7 阶段流程', color: '#16a34a' },
-          ].map((opt) => (
-            <div
-              key={opt.key}
-              onClick={() => {
-                if (!newTypeCustomer) return;
-                if (opt.key === 'ORDER') {
-                  setNewTypeOpen(false);
-                  setNewTypeCustomer(null);
-                  openCreateOrder(newTypeCustomer.id);
-                } else {
-                  openCreatePipeline(newTypeCustomer);
-                }
-              }}
-              style={{
-                cursor: 'pointer', padding: '18px 16px', borderRadius: 12,
-                border: `1px solid ${token.colorBorderSecondary}`, background: token.colorBgContainer,
-                transition: 'all .2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = opt.color;
-                e.currentTarget.style.boxShadow = `0 4px 16px ${opt.color}22`;
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = token.colorBorderSecondary;
-                e.currentTarget.style.boxShadow = 'none';
-                e.currentTarget.style.transform = 'none';
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: opt.color }} />
-                <span style={{ fontSize: 15, fontWeight: 600, color: token.colorText }}>{opt.label}</span>
-              </div>
-              <div style={{ fontSize: 12, color: token.colorTextSecondary, lineHeight: 1.5 }}>{opt.desc}</div>
-            </div>
-          ))}
-        </div>
-      </Modal>
+
     </div>
   );
 }

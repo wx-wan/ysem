@@ -296,7 +296,8 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
           visibleUserIds: buildVisibleUserIds(values),
           certificationIds: joinCertIds(values),
         } as Partial<Product>;
-        // 尺寸/克重后端以字符串存储；编辑回填为数字时需统一转字符串，否则 Zod 校验失败
+        // 尺寸/克重后端以 Float 存储且 Zod 用 toFloat 接受字符串或数字；此处统一转字符串以兼容
+        // 输入框空值（空串/undefined/null → null），数字提交也由后端 toFloat 重新解析为 Float
         (['sizeL', 'sizeW', 'sizeH', 'weight'] as const).forEach((k) => {
           const v = (values as Record<string, unknown>)[k];
           (payload as Record<string, unknown>)[k] = v === undefined || v === null || v === '' ? null : String(v);

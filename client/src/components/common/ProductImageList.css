@@ -273,6 +273,52 @@
   color: var(--c-text-tertiary, #94a3b8);
 }
 
+/* ============ 禁用态（只读 / 锁定）：去除所有交互反馈，弱化外观，明确不可编辑 ============ */
+/* 空态拖拽区：禁用时彻底消除蓝色 hover 与抬升反馈（覆盖 hover 与子元素 hover 的高特定性规则） */
+.pil-disabled .pil-hero-drop,
+.pil-disabled .pil-hero-drop:hover,
+.pil-hero-drop:disabled,
+.pil-hero-drop:disabled:hover {
+  border-color: var(--c-border, #f1f5f9);
+  background: var(--c-fill-quaternary, #f5f5f5);
+  color: var(--c-text-tertiary, #94a3b8);
+  transform: none;
+  box-shadow: none;
+  cursor: default;
+}
+.pil-disabled .pil-hero-drop .pil-hero-drop-icon,
+.pil-disabled .pil-hero-drop:hover .pil-hero-drop-icon,
+.pil-hero-drop:disabled .pil-hero-drop-icon,
+.pil-hero-drop:disabled:hover .pil-hero-drop-icon {
+  border-color: var(--c-border, #e2e8f0);
+  background: transparent;
+  color: var(--c-text-tertiary, #94a3b8);
+  transform: none;
+}
+/* 缩略图：禁用时去除悬浮抬升 / 边框反馈（保留选中态蓝色边框以标识当前图，但不增加反馈） */
+.pil-disabled .pil-thumb {
+  cursor: default;
+}
+.pil-disabled .pil-thumb:hover {
+  transform: none;
+  border-color: transparent;
+}
+.pil-disabled .pil-thumb.is-active:hover {
+  border-color: var(--c-primary, #1677ff);
+}
+/* 主图悬浮遮罩 / 操作条：禁用时不浮现，避免被误认为可操作 */
+.pil-disabled .pil-hero:hover::after,
+.pil-disabled .pil-hero:hover .pil-hero-ops {
+  opacity: 0;
+}
+.pil-disabled .pil-hero-img {
+  cursor: default;
+}
+/* 附件下载入口：弱化但保留可点击（只读查看用途） */
+.pil-disabled .pil-hero-file-dl {
+  opacity: 0.85;
+}
+
 /* ============ 缩略图条 ============ */
 .pil-thumbs {
   position: relative;

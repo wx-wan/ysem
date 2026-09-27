@@ -11,7 +11,7 @@
  *   4. RolePermission  角色-权限授予（admin 全量；其余按最小可用集合）
  *   5. User            仅创建 1 个管理员（密码由环境变量注入）
  *   6. NumberSequence  编号序列基线（15 个 code，currentValue = 0）
- *   7. Channel         获客渠道基线（3 平台 + 6 店铺）
+ *   7. Channel         获客渠道基线（7 平台 + 4 店铺）
  *   8. CustomerType / ProductCraft / ProductAudience / ProductCategory 主数据
  *
  * 明确不初始化（禁止）：
@@ -269,11 +269,15 @@ interface ChannelSeed {
   shops: string[];
 }
 
-/** 渠道基线：3 个平台 + 6 个店铺（平台 parentId = null） */
+/** 渠道基线：7 个平台 + 4 个店铺（平台 parentId = null，与渠道管理页当前结构一致） */
 const CHANNELS: ChannelSeed[] = [
   { name: '国际站', category: 'ONLINE', shops: ['寿春店', '微它店'] },
   { name: '1688', category: 'ONLINE', shops: ['微它店', '景元店'] },
-  { name: '展会', category: 'OFFLINE', shops: ['广交会', '义博会'] },
+  { name: '展会', category: 'OFFLINE', shops: [] },
+  { name: '转介绍', category: 'OFFLINE', shops: [] },
+  { name: 'RFQ', category: 'ONLINE', shops: [] },
+  { name: '邮件', category: 'ONLINE', shops: [] },
+  { name: '社媒', category: 'ONLINE', shops: [] },
 ];
 
 /**
