@@ -19,7 +19,7 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ExclamationCircleFilled, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry, getCountryCode } from '../CountrySelect';
@@ -169,6 +169,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     locked: false,
     editing: false,
   });
+  // 前置步骤（客户信息 / 需求详情）是否全部锁定（建档完成）。未全部锁定时，确认步隐藏「确认」按钮与需求汇总栏，仅展示锁定提示
+  const allStepsLocked = step0.locked && step1.locked;
+  // 需求汇总栏（客户需求 + 需求清单）与确认按钮可见性：前置步骤全部锁定才可见（新建/已建档线索一致）
+  const showSummary = allStepsLocked;
   // 命中产品的主键：建档/更新用于同步产品档案
   const [matchedProductId, setMatchedProductId] = useState<string | null>(null);
   // exist（已建档）时拉取完整产品对象，作为需求详情「产品级字段」变更比对基线
@@ -1345,6 +1349,70 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     });
   };
 
+  // 确认商机前置校验：先校验各步骤是否锁定，再校验后端是否完成全部建档；均通过才弹出最终确认框
+  const handlePreCheckConfirm = () => {
+    if (!editing) return;
+    // 1) 步骤锁定校验：客户信息(step0) / 需求详情(step1) 必须均已锁定（建档后锁定），否则提示并支持跳转到对应步骤
+    const unlocked: { index: number; label: string }[] = [];
+    if (!step0.locked) unlocked.push({ index: 0, label: t('lead.stepCustomer') });
+    if (!step1.locked) unlocked.push({ index: 1, label: t('lead.stepRequirement') });
+    if (unlocked.length > 0) {
+      const instance = modal.warning({
+        title: t('lead.confirmPrecheckLockedTitle'),
+        content: (
+          <div>
+            <p style={{ marginBottom: 12 }}>{t('lead.confirmPrecheckLockedDesc')}</p>
+            <Space direction="vertical" style={{ width: '100%' }}>
+              {unlocked.map((u) => (
+                <Button
+                  key={u.index}
+                  type="primary"
+                  block
+                  onClick={() => {
+                    setStep(u.index);
+                    instance.destroy();
+                  }}
+                >
+                  {u.label}
+                </Button>
+              ))}
+            </Space>
+          </div>
+        ),
+        okText: t('common.ok'),
+      });
+      return;
+    }
+    // 2) 已锁定 → 校验后端实际建档完成情况（客户 + 产品均需落库，且非草稿态）
+    (async () => {
+      try {
+        const fresh = (await leadApi.get(editing.id)).data as Lead;
+        const customerFiled = !!fresh.customerId && !fresh.draft;
+        const productFiled = !!(fresh.items?.[0]?.productId) && !fresh.draft;
+        if (!customerFiled || !productFiled) {
+          const missing: string[] = [];
+          if (!customerFiled) missing.push(t('lead.stepCustomer'));
+          if (!productFiled) missing.push(t('lead.stepRequirement'));
+          modal.warning({
+            title: t('lead.confirmFilingIncompleteTitle'),
+            content: (
+              <div>
+                <p>{t('lead.confirmFilingIncompleteDesc')}</p>
+                <p style={{ fontWeight: 600 }}>{missing.join('、')}</p>
+              </div>
+            ),
+            okText: t('common.ok'),
+          });
+          return;
+        }
+        // 3) 全部就绪 → 弹出最终转商机确认框
+        handleConfirmLead();
+      } catch {
+        message.error(t('common.loadFailed'));
+      }
+    })();
+  };
+
   // 认领线索（公海 → 私海）
   const handleClaimLead = async () => {
     if (!editing) return;
@@ -1364,13 +1432,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   saveDraftRef.current = saveDraft;
   const submitRef = useRef(submit);
   submitRef.current = submit;
-  const handleConfirmLeadRef = useRef(handleConfirmLead);
-  handleConfirmLeadRef.current = handleConfirmLead;
   const handleClaimLeadRef = useRef(handleClaimLead);
   handleClaimLeadRef.current = handleClaimLead;
   const throttledSaveDraft = useMemo(() => throttle(() => void saveDraftRef.current(), 800), []);
   const throttledSubmit = useMemo(() => throttle(() => void submitRef.current(), 800), []);
-  const throttledConfirmLead = useMemo(() => throttle(() => handleConfirmLeadRef.current(), 800), []);
+  const handlePreCheckConfirmRef = useRef(handlePreCheckConfirm);
+  handlePreCheckConfirmRef.current = handlePreCheckConfirm;
+  const throttledPreCheckConfirm = useMemo(() => throttle(() => handlePreCheckConfirmRef.current(), 800), []);
   const throttledClaimLead = useMemo(() => throttle(() => void handleClaimLeadRef.current(), 800), []);
 
   // ============ 确认建档 ============
@@ -1581,14 +1649,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         {t('lead.claim')}
                       </Button>
                     )}
-                    {/* 已建档线索：最终步提供「确认」（转商机），样式与保存一致（primary） */}
-                    {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && computeRequirement().allReady && (
-                      <Button size="large" type="primary" onClick={throttledConfirmLead}>
+                    {/* 已建档线索：最终步提供「确认」（转商机），点击先做前置校验（步骤锁定 + 后端建档完成），
+                        任一不满足则弹提示（可点击跳转到对应步骤），全部通过才弹出最终确认框 */}
+                    {editing?.id && !readonly && !isPoolLead && editing.status === 'NEW' && allStepsLocked && (
+                      <Button size="large" type="primary" onClick={throttledPreCheckConfirm}>
                         {t('lead.confirmLead')}
                       </Button>
                     )}
-                    {/* 新建线索：最终步以「确认」提交（样式与保存一致），不再单独显示「保存」按钮 */}
-                    {!editing?.id && (
+                    {/* 新建线索：最终步以「确认」提交（样式与保存一致），不再单独显示「保存」按钮；前置步骤未全部锁定时隐藏 */}
+                    {!editing?.id && allStepsLocked && (
                       <Button size="large" type="primary" icon={<CheckOutlined />} onClick={throttledSubmit}>{t('lead.confirmRequirement')}</Button>
                     )}
                   </>
@@ -1956,16 +2025,32 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 />
               )}
 
+              {/* 步骤锁定校验：客户信息 / 需求详情 任一未锁定（解锁后），内联黄色卡片提示，点击整卡跳转对应步骤 */}
+              {(() => {
+                const unlocked: { index: number; label: string }[] = [];
+                if (!step0.locked) unlocked.push({ index: 0, label: t('lead.stepCustomer') });
+                if (!step1.locked) unlocked.push({ index: 1, label: t('lead.stepRequirement') });
+                if (!unlocked.length) return null;
+                return (
+                  <div className="lead-lock-pending">
+                    {unlocked.map((u) => (
+                      <div key={u.index} className="lead-lock-pending__card" onClick={() => setStep(u.index)}>
+                        <ExclamationCircleFilled className="lead-lock-pending__icon" />
+                        <div className="lead-lock-pending__body">
+                          <div className="lead-lock-pending__title">{u.label}</div>
+                          <div className="lead-lock-pending__desc">{t('lead.lockPendingRowDesc')}</div>
+                        </div>
+                        <RightOutlined className="lead-lock-pending__arrow" />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* 确认商机阶段内容与详情「详细信息」一致：上=客户需求（本阶段标题为「需求清单」），下=基本信息。
                   客户 / 产品未建档时展示可点击的「未建档」标签，弹窗建档后方可确认转商机 */}
-              {!computeRequirement().allReady && (
-                <Alert
-                  type="warning"
-                  showIcon
-                  style={{ marginBottom: 16 }}
-                  title={t('lead.requirementPendingTip')}
-                />
-              )}
+              {showSummary && (
+              <>
               <div className="lead-wizard-summary">
                 <div className="lead-wizard-summary__title">{t('lead.customerReq')}</div>
                 {(() => {
@@ -2065,6 +2150,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   );
                 })()}
               </div>
+              </>
+              )}
             </>
           )}
         </AppModal>
