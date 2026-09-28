@@ -4,17 +4,15 @@ import AppModal from '../../AppModal';
 import {
   DollarOutlined,
   ShoppingCartOutlined,
-  ClockCircleOutlined,
-  EditOutlined,
-  DeleteOutlined,
   SwapOutlined,
   RollbackOutlined,
   CloseOutlined,
+  EditOutlined,
+  DeleteOutlined,
   UserOutlined,
   IdcardOutlined,
   NumberOutlined,
   MoneyCollectOutlined,
-  RiseOutlined,
   FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -36,6 +34,7 @@ import CustomerEditDrawer from './CustomerEditDrawer';
 import KeyAccountStar from '../../KeyAccountStar';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import CustomerOverview from './CustomerOverview';
+import SalesRecordCard from '../../common/SalesRecordCard';
 
 const { Text } = Typography;
 
@@ -55,10 +54,6 @@ interface CustomerDetailModalProps {
   onSaved?: (customer: Customer) => void;
   /** 标签变更：仅传入客户 id 与最新的标签字符串，由父级做最小化同步 */
   onTagsChanged?: (id: string, tags: string[]) => void;
-  /** 商机操作回调 */
-  onEditPipeline?: (pipeline: RealPipeline) => void;
-  onConvertPipeline?: (pipeline: RealPipeline) => void;
-  onDeletePipeline?: (pipeline: RealPipeline) => void;
   /** 详情版本号：商机编辑/转化/删除后递增，触发 modal 内部重新拉取客户数据 */
   detailVersion?: number;
 }
@@ -93,7 +88,7 @@ type UnifiedRecord =
 // ============================================================
 const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   open, customer, onClose, onTransfer, onRelease, onDelete, onAddPipeline, onToggleKeyAccount, onSaved, onTagsChanged, onDetailLoaded,
-  onEditPipeline, onConvertPipeline, onDeletePipeline, detailVersion,
+  detailVersion,
 }) => {
   const { modal } = App.useApp();
   const navigate = useNavigate();
@@ -109,9 +104,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   // 详情异步加载状态（open 时由 getById 补充完整数据）
   // 用正向标记：初始 false，仅 fetch 成功后才置 true。避免首帧显示"暂无记录"的中间态
   const [detailLoaded, setDetailLoaded] = useState(false);
-
-  // 商机列表项悬浮态（控制侧边操作按钮滑出）
-  const [hoveredPipelineId, setHoveredPipelineId] = useState<string | null>(null);
 
   const ct = getCustomerTier(customer);
 
@@ -287,9 +279,9 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     fontSize: 15, lineHeight: 1, transition: 'all 0.22s ease', padding: 0, flexShrink: 0,
   });
 
-  // ---- tab 配置 ----
+  // ---- tab 配置（与产品模块一致：销售记录 / 操作记录显示数量角标，概览不显示）----
   const tabOptions = [
-    { key: 'pipeline' as const, label: '概览', count: opportunityRows.length },
+    { key: 'pipeline' as const, label: '概览' },
     { key: 'orders' as const, label: '销售记录', count: (customer?.salesOrders?.length ?? 0) + opportunityRows.length + linkedLeads.length },
     { key: 'activities' as const, label: '跟进动态', count: logs.length ?? 0 },
   ];
@@ -301,114 +293,27 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     const ownerName = item.owner?.realName || customer?.owner?.realName || '未分配';
     const stage = item.orderStatus || '商机';
     const stageColor = item.orderStatus ? '#16a34a' : ct.primary;
-    const isHovered = hoveredPipelineId === item.id;
-
-    const actionBtnBase: React.CSSProperties = {
-      width: 32, height: 32, borderRadius: 8, border: `1px solid ${token.colorBorderSecondary}`,
-      background: token.colorBgContainer, cursor: 'pointer',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 14, transition: 'all 0.18s ease', outline: 'none', color: token.colorTextSecondary,
-    };
-
     return (
-      <div
+      <SalesRecordCard
         key={item.id}
-        style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16, cursor: 'default', position: 'relative', overflow: 'hidden' }}
-        onMouseEnter={(e) => { listCardHover(e); setHoveredPipelineId(item.id); }}
-        onMouseLeave={(e) => { listCardLeave(e); setHoveredPipelineId(null); }}
-      >
-        {/* 左侧：阶段标签 */}
-        <div style={{ flexShrink: 0, minWidth: 80 }}>
-          <Tag color={stageColor} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-            {stage}
-          </Tag>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>
+        typeLabel="商机"
+        typeColor="blue"
+        statusLabel={stage}
+        statusColor={stageColor}
+        title={item.title || item.companyName || '-'}
+        createdAt={item.createdAt}
+        onClick={() => navigate(`/sales/opportunities?pipelineId=${item.id}`)}
+        detail={(
+          <>
+            {item.opportunityNo && <span>商机号：{item.opportunityNo}</span>}
+            <span>负责人：{ownerName}</span>
+            <span>预估金额：<Price value={Number(item.estimatedAmount ?? 0)} /></span>
+            {item.estimatedCloseDate && <span>预计成交 {item.estimatedCloseDate}</span>}
             {/* V1.0 canonical：intentLevel 为 authority（不再直显 probability 文案） */}
-            {intentLevelToPipelineLevel(item.intentLevel, item.probability)}
-          </div>
-        </div>
-
-        {/* 中间：标题 + 创建时间 + 预计成交 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.title || item.companyName || '-'}</Text>
-          {item.createdAt && (
-            <Text ellipsis style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3, display: 'block' }}>
-              <ClockCircleOutlined style={{ marginRight: 4, fontSize: 10 }} />
-              {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm')}
-            </Text>
-          )}
-          {item.estimatedCloseDate && (
-            <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 2, display: 'block' }}>
-              预计成交 {item.estimatedCloseDate}
-            </Text>
-          )}
-          </div>
-
-          {/* 右侧：预估金额 */}
-          <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
-            <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>预估金额</div>
-            {/* V1.0 canonical：Opportunity.estimatedAmount 为 Decimal（JSON string）→ Number 归一 */}
-            <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={Number(item.estimatedAmount ?? 0)} /></Text>
-          </div>
-
-        {/* 负责人 */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Avatar size={26} style={{ backgroundColor: stageColor, fontSize: 12, fontWeight: 700 }}>
-              {ownerName.charAt(0)}
-            </Avatar>
-            <span style={{ fontSize: 12, color: token.colorTextSecondary }}>{ownerName}</span>
-          </div>
-        </div>
-
-        {/* 侧边操作按钮组（hover 时滑出） */}
-        <div
-          style={{
-            position: 'absolute',
-            right: isHovered ? 8 : -108,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            gap: 6,
-            transition: 'right 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-            padding: '4px',
-            borderRadius: 10,
-            background: token.colorBgContainer,
-            boxShadow: isHovered ? `0 2px 12px ${ct.primary}1a` : 'none',
-          }}
-        >
-          {onEditPipeline && (
-            <button type="button" title="编辑商机"
-              style={actionBtnBase}
-              onClick={(e) => { e.stopPropagation(); onEditPipeline(item); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = ct.primaryBg; e.currentTarget.style.borderColor = ct.primary + '40'; e.currentTarget.style.color = ct.primary; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
-            >
-              <EditOutlined />
-            </button>
-          )}
-          {onConvertPipeline && (
-            <button type="button" title="转为订单"
-              style={actionBtnBase}
-              onClick={(e) => { e.stopPropagation(); onConvertPipeline(item); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#e6f7e6'; e.currentTarget.style.borderColor = '#16a34a40'; e.currentTarget.style.color = '#16a34a'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
-            >
-              <RiseOutlined />
-            </button>
-          )}
-          {onDeletePipeline && (
-            <button type="button" title="删除商机"
-              style={actionBtnBase}
-              onClick={(e) => { e.stopPropagation(); onDeletePipeline(item); }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = '#fff1f0'; e.currentTarget.style.borderColor = '#ff4d4f40'; e.currentTarget.style.color = '#ff4d4f'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = token.colorBgContainer; e.currentTarget.style.borderColor = token.colorBorderSecondary; e.currentTarget.style.color = token.colorTextSecondary; }}
-            >
-              <DeleteOutlined />
-            </button>
-          )}
-        </div>
-      </div>
+            <span>{intentLevelToPipelineLevel(item.intentLevel, item.probability)}</span>
+          </>
+        )}
+      />
     );
   };
 
@@ -428,46 +333,23 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const renderLeadItem = (item: CustomerLeadSummary) => {
     const statusLabel = LEAD_STATUS_LABEL[item.status] || '新线索';
     const sourceLabel = LEAD_SOURCE_LABEL[item.source || 'MANUAL'] || '手动录入';
-    const navigateToLead = () => navigate(`/sales/leads?leadId=${item.id}`);
     return (
-      <div
+      <SalesRecordCard
         key={item.id}
-        style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer', position: 'relative', overflow: 'hidden' }}
-        onClick={navigateToLead}
-        onMouseEnter={listCardHover}
-        onMouseLeave={listCardLeave}
-      >
-        {/* 左侧：类型 + 状态标签 */}
-        <div style={{ flexShrink: 0, minWidth: 80 }}>
-          <Tag color="blue" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-            线索
-          </Tag>
-          <div style={{ marginTop: 6 }}>
-            <Tag color="gold" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none' }}>
-              {statusLabel}
-            </Tag>
-          </div>
-        </div>
-
-        {/* 中间：线索名称 + 编号/来源 + 创建时间 */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Text strong ellipsis style={{ fontSize: 13, color: token.colorTextHeading }}>{item.leadName || '-'}</Text>
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3 }}>
-            {item.leadNo ? `${item.leadNo} · ` : ''}{sourceLabel}
-          </div>
-          {item.createdAt && (
-            <Text ellipsis style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 3, display: 'block' }}>
-              <ClockCircleOutlined style={{ marginRight: 4, fontSize: 10 }} />
-              {dayjs(item.createdAt).format('YYYY-MM-DD HH:mm')}
-            </Text>
-          )}
-        </div>
-
-        {/* 右侧：前往查看 */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0, minWidth: 90 }}>
-          <span style={{ fontSize: 12, color: ct.primary, fontWeight: 600 }}>查看</span>
-        </div>
-      </div>
+        typeLabel="线索"
+        typeColor="blue"
+        statusLabel={statusLabel}
+        statusColor="gold"
+        title={item.leadName || '-'}
+        createdAt={item.createdAt}
+        onClick={() => navigate(`/sales/leads?leadId=${item.id}`)}
+        detail={(
+          <>
+            {item.leadNo && <span>编号：{item.leadNo}</span>}
+            <span>来源：{sourceLabel}</span>
+          </>
+        )}
+      />
     );
   };
 
@@ -491,34 +373,21 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // ---- 销售订单项渲染（V1.0 canonical：SalesOrderSummary） ----
   const renderOrderItem = (item: SalesOrderSummary) => (
-    <div
+    <SalesRecordCard
       key={item.id}
-      style={{ ...listCardBase, display: 'flex', alignItems: 'center', gap: 16 }}
-      onMouseEnter={listCardHover}
-      onMouseLeave={listCardLeave}
-    >
-      <div style={{ flexShrink: 0, minWidth: 110 }}>
-        <Tag color="#16a34a" style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
-          {SALES_ORDER_STATUS_TEXT[item.status as SalesOrderStatus] || item.status || '订单'}
-        </Tag>
-        {item.orderNo && (
-          <div style={{ fontSize: 11, color: token.colorTextTertiary, marginTop: 6 }}>{item.orderNo}</div>
-        )}
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <Text strong style={{ fontSize: 13, color: token.colorTextHeading }}>销售订单</Text>
-        {item.orderDate && (
-          <Text ellipsis style={{ fontSize: 12, color: token.colorTextSecondary, marginTop: 3, display: 'block' }}>
-            下单日期 {dayjs(item.orderDate).format('YYYY-MM-DD')}
-          </Text>
-        )}
-      </div>
-      <div style={{ textAlign: 'right', flexShrink: 0, minWidth: 110 }}>
-        <div style={{ fontSize: 11, color: token.colorTextTertiary, marginBottom: 2 }}>订单金额</div>
-        {/* V1.0 canonical：旧 Order.amountCNY → SalesOrder.totalAmountCny（Decimal string → Number 归一） */}
-        <Text strong style={{ fontSize: 16, color: token.colorTextHeading }}><Price value={Number(item.totalAmountCny ?? 0)} /></Text>
-      </div>
-    </div>
+      typeLabel="销售订单"
+      typeColor="#16a34a"
+      statusLabel={SALES_ORDER_STATUS_TEXT[item.status as SalesOrderStatus] || item.status || undefined}
+      title={item.orderNo || '销售订单'}
+      createdAt={item.createdAt}
+      onClick={() => navigate(`/sales/orders?salesOrderId=${item.id}`)}
+      detail={(
+        <>
+          {item.orderDate && <span>下单日期 {dayjs(item.orderDate).format('YYYY-MM-DD')}</span>}
+          <span>订单金额：<Price value={Number(item.totalAmountCny ?? 0)} /></span>
+        </>
+      )}
+    />
   );
 
   // ---- 活动记录项渲染（来自 OperationLog，单一日志库） ----
@@ -710,7 +579,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   onChange={(v) => { setActiveTab(v as typeof activeTab); setCurrentPage(1); }}
                   options={tabOptions}
                   activeColor={ct.primary}
-                  showCount={false}
                 />
 
                 {/* 右：负责人 + 操作图标 */}

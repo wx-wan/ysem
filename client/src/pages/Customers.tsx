@@ -4,7 +4,6 @@ import {
 } from 'antd';
 import { customerApi, Customer, type OpportunitySummary } from '../api/customers';
 import { userApi, User, UserSelectItem } from '../api/users';
-import { salesApi, SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
 import { diffList } from '../utils/diff';
@@ -15,11 +14,9 @@ import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
 import CustomerList from '../components/customer/list/CustomerList';
-import CustomerDetailModal, { type RealPipeline } from '../components/customer/modals/CustomerDetailModal';
+import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
 import TransferOwnerModal from '../components/common/TransferOwnerModal';
 
-import SalesFormModal from '../components/sales/SalesFormModal';
-import type { SalesStage } from '../components/sales/stages';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useReleaseToPool } from '../hooks/useReleaseToPool';
 
@@ -54,16 +51,6 @@ export default function CustomersPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferCustomer, setTransferCustomer] = useState<Customer | null>(null);
   const [userList, setUserList] = useState<UserSelectItem[]>([]);
-
-  // 商机编辑弹窗
-  const [pipelineEditOpen, setPipelineEditOpen] = useState(false);
-  const [editingPipeline, setEditingPipeline] = useState<SalesItem | null>(null);
-  // 从详情新建时携带的客户（公司名称固定、基础信息带出、负责人锁当前用户）
-  const [newPipelineCustomer, setNewPipelineCustomer] = useState<Customer | null>(null);
-
-  // 转化订单弹窗
-  const [convertModalOpen, setConvertModalOpen] = useState(false);
-  const [convertPipeline, setConvertPipeline] = useState<RealPipeline | null>(null);
 
   // 详情版本号：商机变更后递增，触发 CustomerDetailModal 重新拉取数据
   const [detailVersion, setDetailVersion] = useState(0);
@@ -265,121 +252,6 @@ export default function CustomersPage() {
     }
   }, [message, fetchData]);
 
-  // 编辑商机：数据来自父级（详情里的 opportunities 已含完整商机字段），无需再请求
-  const handleEditPipeline = useCallback((pipeline: any) => {
-    setEditingPipeline(pipeline as SalesItem);
-    setPipelineEditOpen(true);
-  }, []);
-
-  // 商机编辑保存成功：先更新前端缓存保证界面一致，最后再持久化到数据库
-  const handlePipelineEditSuccess = useCallback(async (values: any) => {
-    const cid = detailCustomer?.id;
-    // 1) 先更新前端缓存（乐观更新详情中的商机数据），保证前端数据一致
-    if (cid && detailCustomer && editingPipeline) {
-      setDetailCustomer((prev) => {
-        if (!prev) return prev;
-        const opportunities: OpportunitySummary[] = prev.opportunities ? [...prev.opportunities] : [];
-        const idx = opportunities.findIndex((p) => p.id === editingPipeline.id);
-        const updated = { ...editingPipeline, ...values, stage: values.stage || editingPipeline.stage } as unknown as OpportunitySummary;
-        if (idx >= 0) opportunities[idx] = updated;
-        else opportunities.push(updated);
-        return { ...prev, opportunities };
-      });
-    }
-    // 2) 最后更新到数据库
-    try {
-      if (editingPipeline) {
-        await salesApi.update(editingPipeline.id, values);
-        message.success('更新成功');
-      } else {
-        await salesApi.create(values);
-        message.success('创建成功');
-      }
-    } catch (e) {
-      message.error('保存失败，请重试');
-    }
-    setPipelineEditOpen(false);
-    setEditingPipeline(null);
-    setDetailVersion(v => v + 1);
-    // 3) 仅更新前端详情缓存，不再发网络回源（概览聚合金额来自详情缓存，已由上方乐观更新保持一致）
-    if (cid) {
-      setDetailCustomer((prev2) => {
-        if (prev2) setDetailCache(prev2);
-        return prev2;
-      });
-    }
-    invalidateDetail(cid || '');
-  }, [detailCustomer, editingPipeline, message]);
-
-  // 商机转订单
-  const handleConvertPipeline = useCallback((pipeline: RealPipeline) => {
-    setConvertPipeline(pipeline);
-    setConvertModalOpen(true);
-  }, []);
-
-  const handleConvertConfirm = useCallback(async () => {
-    if (!convertPipeline) return;
-    try {
-      await salesApi.update(convertPipeline.id, {
-        orderStatus: '成交',
-        orderAmount: convertPipeline.estimatedAmount,
-        orderDate: convertPipeline.estimatedCloseDate || undefined,
-      } as any);
-      message.success('商机已转为成交订单');
-      setConvertModalOpen(false);
-      setConvertPipeline(null);
-      // 刷新客户详情（数据层来自缓存，不拉列表）
-      setDetailVersion(v => v + 1);
-      if (detailCustomer) {
-        setDetailCustomer((prev) => {
-          if (!prev) return prev;
-          const opportunities = (prev.opportunities || []).map((p) =>
-            p.id === convertPipeline.id
-              ? ({ ...p, orderStatus: '成交', orderAmount: convertPipeline.estimatedAmount, orderDate: convertPipeline.estimatedCloseDate || undefined } as unknown as OpportunitySummary)
-              : p
-          );
-          const updated = { ...prev, opportunities };
-          setDetailCache(updated);
-          return updated;
-        });
-      }
-      invalidateDetail(detailCustomer?.id || '');
-    } catch {
-      message.error('转化失败');
-    }
-  }, [convertPipeline, message, detailCustomer]);
-
-  // 删除商机
-  const handleDeletePipeline = useCallback((pipeline: RealPipeline) => {
-    modal.confirm({
-      title: '删除商机',
-      content: `确认删除商机「${pipeline.title || pipeline.companyName}」？此操作不可撤销。`,
-      okText: '确认删除',
-      okType: 'danger',
-      cancelText: '取消',
-      onOk: async () => {
-        try {
-          await salesApi.delete(pipeline.id);
-          message.success('商机已删除');
-          // 刷新客户详情（数据层来自缓存，不拉列表）
-          setDetailVersion(v => v + 1);
-          if (detailCustomer) {
-            setDetailCustomer((prev) => {
-              if (!prev) return prev;
-              const opportunities = (prev.opportunities || []).filter((p) => p.id !== pipeline.id);
-              const updated = { ...prev, opportunities };
-              setDetailCache(updated);
-              return updated;
-            });
-          }
-          invalidateDetail(detailCustomer?.id || '');
-        } catch {
-          message.error('删除失败');
-        }
-      },
-    });
-  }, [message, detailCustomer]);
-
   // 加载用户列表（用于筛选和转交）
   const usersFetched = useRef(false);
   useEffect(() => {
@@ -519,9 +391,6 @@ export default function CustomersPage() {
         onTransfer={handleTransferFromModal}
         onRelease={handleReleaseFromModal}
         onDelete={handleDeleteFromModal}
-        onEditPipeline={handleEditPipeline}
-        onConvertPipeline={handleConvertPipeline}
-        onDeletePipeline={handleDeletePipeline}
         detailVersion={detailVersion}
         onToggleKeyAccount={async (c) => {
           // 先本地乐观更新（保留聚合字段，避免金额被清成 undefined），再调用后端持久化
@@ -541,36 +410,6 @@ export default function CustomersPage() {
           }
         }}
       />
-
-      {/* ===== 商机编辑 / 新建弹窗 ===== */}
-      <SalesFormModal
-        open={pipelineEditOpen}
-        editingItem={editingPipeline}
-        customer={newPipelineCustomer}
-        fixedOwner={!!newPipelineCustomer}
-        onClose={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); }}
-        onSaved={() => { setPipelineEditOpen(false); setEditingPipeline(null); setNewPipelineCustomer(null); setDetailVersion(v => v + 1); }}
-      />
-
-      {/* 商机转化订单 — 选择订单类型 */}
-      <Modal
-        title="转为订单"
-        open={convertModalOpen}
-        onOk={handleConvertConfirm}
-        onCancel={() => { setConvertModalOpen(false); setConvertPipeline(null); }}
-        okText="确认转化"
-        cancelText="取消"
-        destroyOnHidden
-      >
-        <div style={{ marginBottom: 12 }}>
-          将商机「<strong>{convertPipeline?.title || convertPipeline?.companyName}</strong>」转为成交订单，预计成交金额 ¥{convertPipeline?.estimatedAmount?.toLocaleString() || 0} 将作为订单金额。
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>订单阶段：</span>
-          <span style={{ color: '#16a34a', fontWeight: 600 }}>订单（已成交，进入订单流程）</span>
-        </div>
-      </Modal>
-
 
     </div>
   );

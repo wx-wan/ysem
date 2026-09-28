@@ -726,7 +726,7 @@
     "confirmLeadPending": "Confirm lead feature is in development",
     "batchDeleteConfirm": "Delete the selected {{n}} leads?",
     "confirmConvertTitle": "Confirm converting to opportunity",
-    "confirmConvertContent": "Customer and product filing will be auto-checked: if not filed, they will be created automatically, then an opportunity is generated and the lead is marked as Confirmed. Continue?",
+    "confirmConvertContent": "Customer information and requirement details are both locked (filed). Confirming will generate an opportunity record and mark this lead as Confirmed. Continue?",
     "confirmPrecheckLockedTitle": "Please lock the following modules first",
     "confirmPrecheckLockedDesc": "The following modules are not locked (filed) yet. Click to go and complete locking, then confirm the opportunity:",
     "confirmFilingIncompleteTitle": "Filing not fully completed",

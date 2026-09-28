@@ -109,6 +109,10 @@ const leadSchema = z.object({
   // 三步向导当前阶段（0 客户信息 / 1 需求详情 / 2 确认商机）：暂存/保存时由前端写入并落库，
   // 详情接口原样返回，详情面板据此决定底部按钮展示「编辑」或「确认」
   stage: z.number().int().min(0).max(2).nullable().optional(),
+  // 阶段锁定标志：客户信息（建档后锁定）/ 需求详情（建档后锁定）是否锁定；随暂存/建档/提交落库，
+  // 详情打开时直接复现锁定状态（不再仅依赖 draft 派生）
+  customerLocked: z.boolean().optional(),
+  productLocked: z.boolean().optional(),
   // 线索状态不接受外部入参：只由单据事件自动推进（转商机 / 建打样单 / 建销售订单），
   // 见 utils/leadStatus.ts。此处不声明 status（即使前端误传也会被 zod 剥离，不落库）。
   companyName: z.string().trim().max(200).nullable().optional(),
@@ -197,6 +201,9 @@ const LEAD_WRITABLE_FIELDS = [
   // 草稿标记（暂存=1 / 建档·锁定·正式提交=0）：持久化落库，详情接口返回，
   // 前端据此区分「草稿（可编辑、显示暂存）」与「已正式建档（锁定）」
   'draft',
+  // 阶段锁定标志：随建档/锁定/暂存/提交落库，详情打开时复现锁定状态
+  'customerLocked',
+  'productLocked',
 ] as const;
 
 /**
@@ -384,6 +391,9 @@ export const getLeads = async (req: AuthRequest, res: Response): Promise<void> =
     }
     if (status) where.status = status;
     if (source) where.source = source;
+    // 按产品过滤（additive）：命中线索明细 LeadItem.productId；不改变 scope / 分页 / 排序
+    const productId = req.query.productId as string;
+    if (productId) where.items = { some: { productId: String(productId) } };
 
     // 列表范围切换：mine=我的（ownerId=当前用户）；pool=公海（ownerId=null）
     const scope = req.query.scope as string;
@@ -682,6 +692,9 @@ export const createLead = async (req: AuthRequest, res: Response): Promise<void>
           stage: data.stage ?? null,
           // 草稿标记：暂存=1（仅落线索表），建档/正式提交=0；持久化落库供详情复现弹窗状态
           draft: data.draft ?? false,
+          // 阶段锁定标志：随建档/锁定/暂存/提交落库，详情打开时复现锁定状态
+          customerLocked: data.customerLocked ?? false,
+          productLocked: data.productLocked ?? false,
           ownerId: data.ownerId ?? null,
           createdBy: req.userId ?? null,
           leadNo,

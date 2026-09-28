@@ -8,6 +8,7 @@ import {
   PlusOutlined, UnorderedListOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useSearchParams } from 'react-router-dom';
 import {
   SALES_ORDER_FLOW,
   SALES_ORDER_STATUS_COLOR,
@@ -298,6 +299,8 @@ const SalesOrdersPage: React.FC = () => {
     }
   };
 
+  const [searchParams] = useSearchParams();
+
   const openDetail = async (id: string) => {
     setDetailLoading(true);
     setDetailOpen(true);
@@ -310,6 +313,14 @@ const SalesOrdersPage: React.FC = () => {
       setDetailLoading(false);
     }
   };
+
+  // 从产品/客户销售记录「查看」跳转过来时，携带 ?salesOrderId= 自动打开对应订单详情
+  useEffect(() => {
+    const id = searchParams.get('salesOrderId');
+    if (!id) return;
+    openDetail(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const stats = useMemo(() => {
     const amount = list.reduce((s, o) => s + (num(o.totalAmountCny) ?? 0), 0);

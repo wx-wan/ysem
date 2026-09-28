@@ -248,6 +248,10 @@ model Lead {
   /// 草稿标记：暂存=1（仅落线索表，未建档）；建档/锁定/正式提交=0。
   /// 详情接口返回，前端据此区分「草稿（可编辑、显示暂存）」与「已正式建档（锁定）」。
   draft Boolean @default(false)
+  /// 阶段锁定标志：客户信息（建档后锁定）/ 需求详情（建档后锁定）是否锁定。
+  /// 随暂存 / 建档 / 正式提交落库，详情打开时直接复现，避免仅依赖 draft 派生导致关掉后锁定状态丢失。
+  customerLocked Boolean @default(false)
+  productLocked  Boolean @default(false)
 
   // ---------- 转化（转商机后回填）----------
   convertedAt   DateTime?

@@ -323,7 +323,9 @@ export default function LeadDetailPanel({
       </Spin>
 
       {/* 底部操作条与内容之间属模块间主次边界：实线 + 强分隔色（分割线规范）。
-          线用 margin 收进内容宽度，两端与上方文本对齐，不做通栏 */}
+          线用 margin 收进内容宽度，两端与上方文本对齐，不做通栏。
+          已推进（已确认 / 已打样 / 已成交）的线索为只读：直接隐藏全部操作按钮（不置灰），仅公海「认领」保留 */}
+      {isPool || !readonly ? (
       <div style={{ flexShrink: 0, margin: '0 16px', padding: '12px 0', borderTop: '1px solid var(--c-border-strong, #e2e8f0)', display: 'flex', gap: 8 }}>
         {isPool ? (
           <Button type="primary" block onClick={() => onClaim(detail)}>
@@ -335,7 +337,6 @@ export default function LeadDetailPanel({
               <Button
                 type="primary"
                 style={{ flex: 1 }}
-                disabled={readonly}
                 onClick={() => onConvert(detail)}
               >
                 {t('lead.confirmLead')}
@@ -344,18 +345,17 @@ export default function LeadDetailPanel({
               <Button
                 type="primary"
                 style={{ flex: 1 }}
-                disabled={readonly}
                 onClick={() => onEdit(detail, detail.stage ?? 0)}
               >
                 {t('common.edit')}
               </Button>
             )}
-            <Button disabled={readonly} onClick={() => onRelease(detail)}>
+            <Button onClick={() => onRelease(detail)}>
               {t('lead.release')}
             </Button>
             {isAdmin && (
               <Popconfirm title={t('common.confirmDelete')} onConfirm={() => onRemove(detail.id)}>
-                <Button danger disabled={readonly}>
+                <Button danger>
                   {t('common.delete')}
                 </Button>
               </Popconfirm>
@@ -363,6 +363,7 @@ export default function LeadDetailPanel({
           </>
         )}
       </div>
+      ) : null}
     </div>
   );
 }

@@ -402,6 +402,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 刚建档的产品尚未进入 productOptions，强制覆盖为真实主键，避免退化为存 productName 文本
       leadPayload.productId = pid;
       leadPayload.productName = null;
+      // 产品建档 = 需求详情阶段锁定
+      leadPayload.productLocked = true;
       let leadSavedId: string | undefined;
       if (editing?.id) {
         await leadApi.update(editing.id, leadPayload);
@@ -885,14 +887,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 归属状态不再由线索冗余字段（customerId 缺失）派生，而是在打开弹窗时由 CompanyNameInput
       // 通过 /ownership 实时查询决定（querySignal 触发）。此处仅递增信号，组件挂载/打开即查询。
       setCompanyQuerySeq((n) => n + 1);
-      // 已关联客户且非草稿（已正式建档）的线索打开即锁定客户信息，防止改后与客户档案脱节；
-      // 草稿态（draft=true，即便历史数据误带 customerId）一律不锁定，仍可编辑、可暂存
-      setStep0((s) => ({ ...s, locked: !!item.customerId && !item.draft }));
+      // 阶段锁定标志优先取持久化字段（随建档/锁定/暂存落库，详情打开直接复现）；
+      // 旧数据无该字段时回退到「已关联且非草稿」派生，保证历史线索行为不变
+      setStep0((s) => ({ ...s, locked: item.customerLocked ?? (!!item.customerId && !item.draft) }));
       setStep0((s) => ({ ...s, editing: false }));
       // 已关联产品且非草稿（已正式建档）的线索打开即锁定需求详情的产品级字段
       const reopenProductName = item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined;
       const pid = (item.items?.[0]?.productId ?? item.productId ?? null) as string | null;
-      setStep1((s) => ({ ...s, locked: !!pid && !item.draft }));
+      setStep1((s) => ({ ...s, locked: item.productLocked ?? (!!pid && !item.draft) }));
       setStep1((s) => ({ ...s, editing: false }));
       // 重开（含暂存草稿）：产品名已填但无 productId → 视为「待建档(none)」，展示「未建档」标签与「建档」按钮；
       // 有 productId 视为已建档(exist)；名、id 皆无则回到 idle（避免草稿重开后标签与主按钮错位）
@@ -1021,7 +1023,12 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       : [];
     const payload = buildLeadPayload(values);
     payload.contactMethods = validContacts.length ? validContacts : null;
-    payload.draft = true;
+    // 暂存沿用线索已有的草稿态：已建档的正式线索（editing.draft=false）保持非草稿，避免被置为草稿后重新打开丢失锁定状态；
+    // 新建线索（尚无 editing）一律记为草稿，正式提交时由 submit 覆盖为 false
+    payload.draft = editing?.draft ?? true;
+    // 持久化各阶段锁定状态，关掉后重新打开仍可复现
+    payload.customerLocked = step0.locked;
+    payload.productLocked = step1.locked;
     // 暂存：记录当前向导阶段（0 客户信息 / 1 需求详情 / 2 确认商机），供详情面板据此展示「编辑」或「确认」
     payload.stage = step;
     try {
@@ -1055,8 +1062,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const payload = buildLeadPayload(values);
     // 完整提交：记录当前阶段（确认动作仅在最后一步触发，stage 记为 2）
     payload.stage = step;
-    // 正式提交 = 非草稿
+    // 正式提交 = 非草稿；同步持久化各阶段锁定状态
     payload.draft = false;
+    payload.customerLocked = step0.locked;
+    payload.productLocked = step1.locked;
     try {
       let savedId: string | undefined;
       if (editing?.id) {
@@ -1157,8 +1166,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 建档 + 保存线索（一步）：注入命中客户确保关联 customerId，但不关闭弹窗，便于继续填需求
       const payload = buildLeadPayload(v, { id: custId, name });
       payload.stage = step;
-      // 建档 / 锁定 = 正式落库客户主数据，线索不再处于草稿态
+      // 建档 / 锁定 = 正式落库客户主数据，线索不再处于草稿态；客户信息阶段锁定
       payload.draft = false;
+      payload.customerLocked = true;
       let savedId: string | undefined;
       if (editing?.id) {
         await leadApi.update(editing.id, payload);
@@ -1316,6 +1326,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               }
             }
             const res = await convertLeadToOpportunity(editing.id, { openCustomerForm, openProductForm, showCreateSummary });
+            // 后端已把线索推进为「已确认」：同步本地状态，使 readonly 立即生效（操作按钮禁用、仅保留步骤切换）
+            setEditing((prev) => (prev ? { ...prev, status: 'CONFIRMED' } : prev));
             const successModal = modal.success({
               title: t('lead.convertSuccessTitle'),
               content: (
@@ -1591,23 +1603,23 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <>
                     {step0.locked ? (
                       <>
-                        {/* 已锁定（已建档）客户：提供「编辑」解锁修正，并提供「下一步」前进 */}
-                        <Button size="large" onClick={() => setStep0((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
+                        {/* 已锁定（已建档）客户：提供「编辑」解锁修正，并提供「下一步」前进；只读（已确认等）时仅保留步骤切换 */}
+                        <Button size="large" disabled={readonly} onClick={() => setStep0((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
                         <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
                       </>
                     ) : step0.status === 'none' ? (
                       // 未建档客户（已输入公司名并解析为不存在）：建档
-                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={handleFileOrUpdateCustomer}>
+                      <Button size="large" type="primary" icon={<CheckOutlined />} disabled={readonly} onClick={handleFileOrUpdateCustomer}>
                         {t('lead.fileLead')}
                       </Button>
                     ) : step0.status === 'mine' ? (
                       // 编辑态（未锁定/已建档）：无修改展示「锁定」，有修改展示「更新」
                       customerChanged ? (
-                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
+                        <Button size="large" type="primary" disabled={readonly} onClick={handleFileOrUpdateCustomer}>
                           {t('lead.updateCustomer')}
                         </Button>
                       ) : (
-                        <Button size="large" type="primary" onClick={handleFileOrUpdateCustomer}>
+                        <Button size="large" type="primary" disabled={readonly} onClick={handleFileOrUpdateCustomer}>
                           {t('lead.lock')}
                         </Button>
                       )
@@ -1619,23 +1631,23 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <>
                     {step1.locked ? (
                       <>
-                        {/* 已锁定（已建档）产品：提供「编辑」解锁修正，并提供「下一步」前进 */}
-                        <Button size="large" onClick={() => setStep1((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
+                        {/* 已锁定（已建档）产品：提供「编辑」解锁修正，并提供「下一步」前进；只读（已确认等）时仅保留步骤切换 */}
+                        <Button size="large" disabled={readonly} onClick={() => setStep1((s) => ({ ...s, locked: false, editing: true }))}>{t('common.edit')}</Button>
                         <Button size="large" type="primary" onClick={goNext}>{t('lead.nextStep')}</Button>
                       </>
                     ) : step1.status === 'none' ? (
                       // 未建档产品（已输入产品名并解析为不存在）：建档
-                      <Button size="large" type="primary" icon={<CheckOutlined />} onClick={handleFileOrUpdateProduct}>
+                      <Button size="large" type="primary" icon={<CheckOutlined />} disabled={readonly} onClick={handleFileOrUpdateProduct}>
                         {t('lead.fileLead')}
                       </Button>
                     ) : step1.status === 'exist' ? (
                       // 编辑态（未锁定/已建档）：需求详情「产品级字段」或「线索级字段」任一变更 → 更新；无改动 → 锁定
                       productChanged || leadChanged ? (
-                        <Button size="large" type="primary" onClick={handleFileOrUpdateProduct}>
+                        <Button size="large" type="primary" disabled={readonly} onClick={handleFileOrUpdateProduct}>
                           {t('lead.updateProduct')}
                         </Button>
                       ) : (
-                        <Button size="large" type="primary" onClick={handleFileOrUpdateProduct}>
+                        <Button size="large" type="primary" disabled={readonly} onClick={handleFileOrUpdateProduct}>
                           {t('lead.lock')}
                         </Button>
                       )

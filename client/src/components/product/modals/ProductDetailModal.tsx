@@ -4,12 +4,15 @@ import { Avatar, Button, Empty, Tag, theme, Tooltip } from 'antd';
 import {
   EditOutlined, CloseOutlined,
   ProfileOutlined, ArrowsAltOutlined, ColumnHeightOutlined,
-  HomeOutlined, FileTextOutlined, ClockCircleOutlined,
+  HomeOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product } from '../../../api/products';
 import { SalesItem } from '../../../api/sales';
+import { leadApi, type Lead } from '../../../api/lead';
+import SalesRecordCard from '../../common/SalesRecordCard';
 import { getProductLogs, type OperationLogItem } from '../../../api/operationLog';
 import OperationLogTimeline from '../../common/OperationLogTimeline';
 import { getStageMeta, getStageI18nKey } from '../../sales/stages';
@@ -57,6 +60,20 @@ const RELATED_BUSINESS_COLOR: Record<RelatedBusinessType, string> = {
   SALES_ORDER: 'green',
 };
 
+// 线索状态 / 来源标签（与客户「销售记录」中的线索卡片一致）
+const LEAD_STATUS_LABEL: Record<string, string> = {
+  NEW: '新线索',
+  CONFIRMED: '已确认',
+  SAMPLED: '已打样',
+  WON: '已成交',
+};
+const LEAD_SOURCE_LABEL: Record<string, string> = {
+  MANUAL: '手动录入',
+  EXCEL: 'Excel 导入',
+  RPA: 'RPA 抓取',
+  SYNC: '同步',
+};
+
 /** Decimal / null 安全归一：非法值返回 null */
 const toAmount = (v?: string | number | null): number | null => {
   if (v === null || v === undefined || v === '') return null;
@@ -101,9 +118,12 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('overview');
   const [relatedDocs, setRelatedDocs] = useState<RelatedBusinessDocument[]>([]);
   const [relatedLoading, setRelatedLoading] = useState(false);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [leadsLoading, setLeadsLoading] = useState(false);
 
   useEffect(() => {
     if (open) setTab('overview');
@@ -193,6 +213,26 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     loadRelatedOrders();
   }, [loadRelatedOrders]);
 
+  // 加载关联该产品的线索（已转化商机的线索由「商机」承接，避免重复展示；与客户「销售记录」一致）
+  const loadLeads = useCallback(() => {
+    if (!open || !product) {
+      setLeads([]);
+      return;
+    }
+    setLeadsLoading(true);
+    leadApi.list({ productId: product.id, pageSize: 50 })
+      .then((r) => {
+        const list = (r.data?.list ?? []).filter((l) => !l.pipelineId);
+        setLeads(list);
+      })
+      .catch(() => setLeads([]))
+      .finally(() => setLeadsLoading(false));
+  }, [open, product?.id]);
+
+  useEffect(() => {
+    loadLeads();
+  }, [loadLeads]);
+
   const handleOrderCreated = () => {
     loadRelatedOrders();
     onSalesRefresh?.();
@@ -257,68 +297,105 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     outline: 'none',
   });
 
-  // 相关单据（报价 / 打样 / 销售订单）：三类业务各自展示自己的编号与状态
-  const renderRelated = () => {
-    if (relatedLoading) {
+  // 销售记录（统一模块）：商机 / 报价 / 打样 / 销售订单 / 线索 合并为同一列表，按时间倒序排列。
+  // 卡片样式与交互统一收口到 common/SalesRecordCard，产品与客户共用，避免两边重复维护。
+  const renderSalesRecords = () => {
+    if (relatedLoading || salesLoading || leadsLoading) {
       return <div className="pdm-empty-state">加载中…</div>;
     }
-    if (!relatedDocs.length) {
-      return <div style={{ fontSize: 13, color: token.colorTextTertiary, padding: '8px 0 4px' }}>暂无关联单据</div>;
-    }
-    return (
-      <div>
-        {relatedDocs.map((doc) => (
-          <div className="pm-sales-item" key={`${doc.businessType}-${doc.id}`} style={{ background: token.colorFillQuaternary }}>
-            <div className="pm-sales-item-main">
-              <div className="pm-sales-item-title">
-                <Tag color={RELATED_BUSINESS_COLOR[doc.businessType]}>{RELATED_BUSINESS_LABEL[doc.businessType]}</Tag>
-                <span className="pm-sales-customer">{doc.businessNo || doc.id.slice(0, 8)}</span>
-                <Tag color={doc.statusColor}>{doc.statusText}</Tag>
-              </div>
-              <div className="pm-sales-item-sub">
-                <span>客户：{doc.customerName || '-'}</span>
-                <span>金额：{doc.amount === null ? '-' : `${doc.currency || 'CNY'} ${doc.amount.toFixed(2)}`}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  const renderSales = () => {
-    if (salesLoading) {
-      return <div className="pdm-empty-state">加载中…</div>;
-    }
-    if (!salesList.length) {
+    if (!relatedDocs.length && !salesList.length && !leads.length) {
       return <Empty description="暂无销售记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
     }
+    // 归一为统一记录并按时间倒序
+    const unified: Array<
+      | { kind: 'related'; ts: string; data: RelatedBusinessDocument }
+      | { kind: 'opportunity'; ts: string; data: SalesItem }
+      | { kind: 'lead'; ts: string; data: Lead }
+    > = [
+      ...relatedDocs.map((d) => ({ kind: 'related' as const, ts: d.createdAt || '', data: d })),
+      ...salesList.map((s) => ({ kind: 'opportunity' as const, ts: s.createdAt || '', data: s })),
+      ...leads.map((l) => ({ kind: 'lead' as const, ts: l.createdAt || '', data: l })),
+    ].sort((a, b) => dayjs(b.ts).valueOf() - dayjs(a.ts).valueOf());
+
     return (
-      <div className="pm-sales-list">
-        {salesList.map((sale) => {
-          // 阶段由真实关联单据推导（报价/打样/订单），以阶段标签作为类型展示，不再使用遗留的 orderType（打样/正式）
-          const meta = getStageMeta(sale.stage);
-          const saleAmount = sale.stage === 'ORDER' || sale.stage === 'SHIPPED' ? sale.orderAmount : sale.estimatedAmount;
-          const saleLabel = sale.stage === 'ORDER' ? '订单金额' : '预估金额';
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {unified.map((rec) => {
+          if (rec.kind === 'related') {
+            const doc = rec.data;
+            const navTo =
+              doc.businessType === 'QUOTATION'
+                ? () => navigate(`/sales/quotes?quotationId=${doc.id}`)
+                : doc.businessType === 'SAMPLE_ORDER'
+                ? () => navigate(`/sales/samples?sampleOrderId=${doc.id}`)
+                : () => navigate(`/sales/orders?salesOrderId=${doc.id}`);
+            return (
+              <SalesRecordCard
+                key={`${doc.businessType}-${doc.id}`}
+                typeLabel={RELATED_BUSINESS_LABEL[doc.businessType]}
+                typeColor={RELATED_BUSINESS_COLOR[doc.businessType]}
+                statusLabel={doc.statusText || undefined}
+                statusColor={doc.statusColor}
+                title={doc.businessNo || doc.id.slice(0, 8)}
+                createdAt={doc.createdAt}
+                onClick={navTo}
+                detail={(
+                  <>
+                    <span>客户：{doc.customerName || '-'}</span>
+                    <span>金额：{doc.amount === null ? '-' : <Price value={doc.amount} />}</span>
+                  </>
+                )}
+              />
+            );
+          }
+          // 商机
+          if (rec.kind === 'opportunity') {
+            const sale = rec.data;
+            const meta = getStageMeta(sale.stage);
+            const saleAmount = sale.stage === 'ORDER' || sale.stage === 'SHIPPED' ? sale.orderAmount : sale.estimatedAmount;
+            const saleLabel = sale.stage === 'ORDER' ? '订单金额' : '预估金额';
+            return (
+              <SalesRecordCard
+                key={sale.id}
+                typeLabel="商机"
+                typeColor="blue"
+                statusLabel={t(`sales.stage.${getStageI18nKey(sale.stage)}`)}
+                statusColor={meta?.color || 'default'}
+                title={sale.companyName || sale.title || '未知客户'}
+                createdAt={sale.createdAt}
+                onClick={() => navigate(`/sales/opportunities?pipelineId=${sale.id}`)}
+                detail={(
+                  <>
+                    {sale.opportunityNo && <span>商机号：{sale.opportunityNo}</span>}
+                    {sale.quantity != null && <span>数量：{sale.quantity}</span>}
+                    {(sale.assignee?.realName || sale.assignee?.username) && <span>负责人：{sale.assignee?.realName || sale.assignee?.username}</span>}
+                    <span>{saleLabel}：<Price value={saleAmount} /></span>
+                  </>
+                )}
+              />
+            );
+          }
+          // 线索（已转化商机的线索已在「商机」中展示，此处不再重复）
+          const lead = rec.data;
+          const leadStatusLabel = LEAD_STATUS_LABEL[lead.status] || '新线索';
+          const leadSourceLabel = LEAD_SOURCE_LABEL[lead.source || 'MANUAL'] || '手动录入';
           return (
-            <div className="pm-sales-item" key={sale.id}>
-              <div className="pm-sales-item-main">
-                <div className="pm-sales-item-title">
-                  <span className="pm-sales-customer">{sale.companyName || sale.title || '未知客户'}</span>
-                  <Tag color={meta?.color || 'default'}>{t(`sales.stage.${getStageI18nKey(sale.stage)}`)}</Tag>
-                </div>
-                <div className="pm-sales-item-sub">
-                  <span>商机号：{sale.opportunityNo || '-'}</span>
-                  {sale.quantity != null && <span>数量：{sale.quantity}</span>}
-                  <span>负责人：{sale.assignee?.realName || sale.assignee?.username || '未分配'}</span>
-                  {sale.updateTime && <span>更新：{dayjs(sale.updateTime).format('YYYY-MM-DD')}</span>}
-                </div>
-              </div>
-              <div className="pm-sales-item-right">
-                <div className="pm-sales-amount-label">{saleLabel}</div>
-                <div className="pm-sales-amount"><Price value={saleAmount} /></div>
-              </div>
-            </div>
+            <SalesRecordCard
+              key={lead.id}
+              typeLabel="线索"
+              typeColor="blue"
+              statusLabel={leadStatusLabel}
+              statusColor="gold"
+              title={lead.leadName || '-'}
+              createdAt={lead.createdAt}
+              onClick={() => navigate(`/sales/leads?leadId=${lead.id}`)}
+              detail={(
+                <>
+                  {lead.leadNo && <span>编号：{lead.leadNo}</span>}
+                  <span>来源：{leadSourceLabel}</span>
+                  {(lead.owner?.realName || lead.owner?.username) && <span>负责人：{lead.owner?.realName || lead.owner?.username}</span>}
+                </>
+              )}
+            />
           );
         })}
       </div>
@@ -499,7 +576,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               activeColor={token.colorPrimary}
               options={[
                 { key: 'overview', label: '概览' },
-                { key: 'sales', label: '销售记录', count: salesList.length },
+                { key: 'sales', label: '销售记录', count: relatedDocs.length + salesList.length + leads.length },
                 { key: 'activity', label: '操作记录', count: logs.length },
               ]}
             />
@@ -562,18 +639,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           {/* 内容区 */}
           <div style={{ flex: 1, minHeight: 0, padding: 16, overflow: 'auto' }}>
             {tab === 'overview' && <ProductOverview product={product} salesList={salesList} loading={salesLoading} />}
-            {tab === 'sales' && (
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, marginBottom: 8 }}>
-                  相关单据（报价 / 打样 / 销售订单）
-                </div>
-                {renderRelated()}
-                <div style={{ fontSize: 13, fontWeight: 600, color: token.colorTextSecondary, margin: '16px 0 8px' }}>
-                  关联商机
-                </div>
-                {renderSales()}
-              </div>
-            )}
+            {tab === 'sales' && renderSalesRecords()}
             {tab === 'activity' && renderActivity()}
           </div>
         </div>

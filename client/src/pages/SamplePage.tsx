@@ -5,6 +5,7 @@ import {
 } from 'antd';
 import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useSearchParams } from 'react-router-dom';
 import {
   SAMPLE_ROUND_RESULT_TEXT,
   SAMPLE_STATUS_COLOR,
@@ -223,6 +224,8 @@ const SamplePage: React.FC = () => {
     }
   };
 
+  const [searchParams] = useSearchParams();
+
   const openDetail = async (id: string) => {
     setDetailLoading(true);
     setDetailOpen(true);
@@ -235,6 +238,14 @@ const SamplePage: React.FC = () => {
       setDetailLoading(false);
     }
   };
+
+  // 从产品/客户销售记录「查看」跳转过来时，携带 ?sampleOrderId= 自动打开对应打样详情
+  useEffect(() => {
+    const id = searchParams.get('sampleOrderId');
+    if (!id) return;
+    openDetail(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const columns = [
     {

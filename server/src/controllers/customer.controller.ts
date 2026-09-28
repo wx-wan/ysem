@@ -1647,8 +1647,10 @@ export const getCustomerLogs = async (req: AuthRequest, res: Response, next: Nex
     });
     if (!customer) { return success(res, { code: "NOT_FOUND" }); }
 
+    // 客户模块只展示「对客户本身操作」的记录（businessType=CUSTOMER 且 businessId=客户 id），
+    // 不再把关联实体（线索 / 商机等通过 customerId 落库的跨实体事件）混入客户时间线，实现按模块隔离
     const list = await prisma.operationLog.findMany({
-      where: { customerId: customer.id },
+      where: { businessType: BUSINESS_TYPE.CUSTOMER, businessId: customer.id },
       orderBy: { createdAt: "desc" },
       take: 100,
     });

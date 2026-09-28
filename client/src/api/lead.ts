@@ -85,6 +85,10 @@ export interface Lead {
   owner?: { id: string; username: string; realName: string | null } | null;
   /** 草稿标记：暂存场景为 true，已建档 / 正式提交为 false（用于区分「草稿态关联了客户」与「已正式建档锁定」） */
   draft?: boolean | null;
+  /** 客户信息阶段是否已锁定（建档后锁定）：详情打开时直接复现，避免关掉后锁定状态丢失 */
+  customerLocked?: boolean | null;
+  /** 需求详情阶段是否已锁定（建档后锁定）：详情打开时直接复现 */
+  productLocked?: boolean | null;
   createdBy?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -137,6 +141,10 @@ export interface LeadPayload {
   ownerId?: string | null;
   /** 草稿标记：暂存场景为 true，后端放宽联系方式等必填约束，允许空必填创建草稿线索（不落库） */
   draft?: boolean;
+  /** 客户信息阶段是否已锁定（建档后锁定） */
+  customerLocked?: boolean;
+  /** 需求详情阶段是否已锁定（建档后锁定） */
+  productLocked?: boolean;
 }
 
 /** 线索操作日志条目（OperationLog 投影） */
@@ -165,6 +173,8 @@ export interface LeadListParams {
   platform?: string;
   status?: LeadStatus;
   source?: LeadSource;
+  /** 按关联产品过滤（命中 LeadItem.productId） */
+  productId?: string;
   /** 按负责人筛选（V1.0 canonical；服务端只读 ownerId） */
   ownerId?: string;
   scope?: 'mine' | 'pool';

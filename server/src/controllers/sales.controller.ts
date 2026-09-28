@@ -433,6 +433,20 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
     // 线索状态自动推进：商机绑定线索（Opportunity.leadId）→ 线索置为「已确认」
     await advanceLeadStatus(opportunity.leadId, 'CONFIRMED');
 
+    // 线索确认转商机：在「线索」自己的操作记录中落一条 STATUS 日志，使线索详情「跟进记录」可见本次确认，便于溯源
+    if (opportunity.leadId) {
+      await activityLogger.log({
+        userId: req.userId!,
+        username: req.username!,
+        realName: req.realName,
+        action: 'STATUS',
+        module: 'sales',
+        businessType: BUSINESS_TYPE.LEAD,
+        businessId: opportunity.leadId,
+        summary: `确认转为商机（${opportunity.opportunityNo}）`,
+      });
+    }
+
     // 读取侧（DQ-3=C）：明细中不可见 PRIVATE 产品的属性不得进入响应
     created(res, withProductVisibility(req, opportunity), '创建成功');
   } catch (err) {
