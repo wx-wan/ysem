@@ -37,4 +37,17 @@ export const shipmentRepository = {
     return model(db).findMany({ where: { salesOrderId }, select: { freightAmountCny: true } });
   },
 
+  /**
+   * （Round R-5 · Phase 4 · D1-b）宿主 scope 校验 / 详情读取。
+   * Shipment 无 ownerId 列 —— 归属经 `salesOrder` relation 继承，条件由调用方组装。
+   */
+  findFirst<T extends Prisma.ShipmentFindFirstArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ShipmentGetPayload<T> | null> {
+    return model(db).findFirst(args as Prisma.ShipmentFindFirstArgs) as unknown as Promise<
+      Prisma.ShipmentGetPayload<T> | null
+    >;
+  },
+
 };

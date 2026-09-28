@@ -29,4 +29,12 @@ export const supplierRepository = {
   create(data: Prisma.SupplierUncheckedCreateInput, db: DbClient = prisma) {
     return model(db).create({ data });
   },
+
+  /** 批量存在性校验结果（供应商引用：只要求存在，不施加 owner scope） */
+  async findExistingIds(ids: string[], db: DbClient = prisma): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await model(db).findMany({ where: { id: { in: ids } }, select: { id: true } });
+    return rows.map((r) => r.id);
+  },
+
 };

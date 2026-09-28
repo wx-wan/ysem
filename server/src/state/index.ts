@@ -16,3 +16,6 @@
 export * from './leadStatus.state';
 export * from './pipelineStage.state';
 export * from './customerIntent.state';
+
+// ---- ProductionOrder State（R-5 · Phase 4 · D1-b）----
+export * from './productionOrderState.state';

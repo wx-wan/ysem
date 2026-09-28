@@ -220,4 +220,18 @@ export const salesOrderRepository = {
     `;
   },
 
+
+  // ============================================================
+  // Round R-5 · Phase 4 · D1-b：销售订单明细读取（生产明细快照来源）
+  // ============================================================
+
+  /** 生产明细快照来源：`SalesOrderItem`（productName / spec / quantity / unit） */
+  findItemsByIds(ids: string[], db: DbClient = prisma) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return (db as typeof prisma).salesOrderItem.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, orderId: true, productName: true, spec: true, quantity: true, unit: true },
+    });
+  },
+
 };

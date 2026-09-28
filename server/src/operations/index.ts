@@ -52,6 +52,11 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- Production & QC Domain（R-5 · Phase 4 · D1-b）----
+// 生产质量域 $transaction 唯一归属地：ProductionOrder 建/改（含明细重建引用保护临界区）、
+// QualityInspection 取号。
+export * from './production.operations';
+
 // ---- Procurement Domain（R-5 · Phase 4 · D1-a）----
 // 采购域 $transaction 唯一归属地：Supplier 取号、PurchaseOrder 建/改（含生产明细行锁）。
 export * from './procurement.operations';

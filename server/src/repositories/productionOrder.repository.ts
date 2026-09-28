@@ -79,4 +79,63 @@ export const productionOrderRepository = {
     >;
   },
 
+
+  // ============================================================
+  // Round R-5 · Phase 4 · D1-b 生产质量域：属主 CRUD + 明细重建支撑
+  // ============================================================
+
+  findMany<T extends Prisma.ProductionOrderFindManyArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ProductionOrderGetPayload<T>[]> {
+    return model(db).findMany(args as Prisma.ProductionOrderFindManyArgs) as unknown as Promise<
+      Prisma.ProductionOrderGetPayload<T>[]
+    >;
+  },
+
+  count(where: Prisma.ProductionOrderWhereInput, db: DbClient = prisma): Promise<number> {
+    return model(db).count({ where });
+  },
+
+  create<T extends Prisma.ProductionOrderCreateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ProductionOrderGetPayload<T>> {
+    return model(db).create(args as Prisma.ProductionOrderCreateArgs) as unknown as Promise<
+      Prisma.ProductionOrderGetPayload<T>
+    >;
+  },
+
+  update<T extends Prisma.ProductionOrderUpdateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ProductionOrderGetPayload<T>> {
+    return model(db).update(args as Prisma.ProductionOrderUpdateArgs) as unknown as Promise<
+      Prisma.ProductionOrderGetPayload<T>
+    >;
+  },
+
+  delete(id: string, db: DbClient = prisma) {
+    return model(db).delete({ where: { id } });
+  },
+
+  /** 本次将被删除的旧明细 id（行锁目标 + 引用计数范围） */
+  findItemIdsByOrderId(productionOrderId: string, db: DbClient = prisma) {
+    return (db as typeof prisma).productionOrderItem.findMany({
+      where: { productionOrderId },
+      select: { id: true },
+    });
+  },
+
+  /**
+   * 成本归集链（ADR-14）引用计数：有多少 `PurchaseOrderItem` 指向这些生产明细。
+   * **必须在锁定 `ProductionOrderItem` 之后读取**（顺序不可颠倒，否则仍是 TOCTOU）。
+   */
+  countPurchaseOrderItemRefs(productionOrderItemIds: string[], db: DbClient = prisma): Promise<number> {
+    if (productionOrderItemIds.length === 0) return Promise.resolve(0);
+    return (db as typeof prisma).purchaseOrderItem.count({
+      where: { productionOrderItemId: { in: productionOrderItemIds } },
+    });
+  },
+
 };
