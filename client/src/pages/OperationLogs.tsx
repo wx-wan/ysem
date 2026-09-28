@@ -14,7 +14,6 @@ interface OpLog {
   realName: string | null;
   action: string;
   module: string;
-  target: string | null;
   detail: string | null;
   diff: string | DiffItem[] | null;
   createdAt: string;
@@ -157,13 +156,6 @@ export default function OperationLogs() {
       ),
     },
     {
-      title: '对象',
-      dataIndex: 'target',
-      width: 260,
-      ellipsis: true,
-      render: (v: string | null) => (v ? <span title={v} style={{ wordBreak: 'break-all' }}>{v}</span> : '—'),
-    },
-    {
       title: '操作内容与变更',
       key: 'detail',
       render: (_, r) => (
@@ -204,7 +196,7 @@ export default function OperationLogs() {
           />
           <Input
             allowClear
-            placeholder="操作人 / 对象关键字"
+            placeholder="操作人 / 单据号 / 摘要"
             prefix={<SearchOutlined />}
             style={{ width: 220 }}
             value={filters.keyword}

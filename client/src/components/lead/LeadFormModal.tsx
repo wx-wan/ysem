@@ -1352,7 +1352,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </div>
               ),
             });
+            // 转化成功：刷新列表并自动关闭线索弹窗（成功提示为顶层渲染，不受抽屉卸载影响）
             onSaved?.();
+            setDrawerOpen(false);
           } catch {
             // convertLead 内部已 message.error，此处仅吞掉异常避免 unhandled rejection
           }
