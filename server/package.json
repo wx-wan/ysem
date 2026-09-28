@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false --ignore node_modules --ignore .git --ignore '*.db' --ignore dist src/index.ts",
     "build": "tsc",
+    "verify": "prisma validate && prisma generate && tsc --noEmit",
     "start": "node dist/index.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "lint": "eslint src/"
+    "lint": "eslint src/",
+    "lint:layering": "tsx src/scripts/check-layering.ts",
+    "lint:layering:strict": "tsx src/scripts/check-layering.ts --strict"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

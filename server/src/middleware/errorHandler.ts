@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { Prisma } from '@prisma/client';
+import { DomainError } from '../lib/errors';
 
 export const errorHandler = (
   err: Error,
@@ -9,6 +10,18 @@ export const errorHandler = (
   _next: NextFunction
 ): void => {
   console.error('Error:', err.message);
+
+  // 业务层错误（Round R-1）：Business / Operation 层以 DomainError 表达业务失败，
+  // 由本 HTTP 边界统一映射为状态码，领域层不得自行构造响应。
+  // 纯新增分支：既有错误（ZodError / P2002 / 其他）行为不变。
+  if (err instanceof DomainError) {
+    res.status(err.httpStatus).json({
+      code: err.code,
+      message: err.message,
+      ...(err.details === undefined ? {} : { details: err.details }),
+    });
+    return;
+  }
 
   // Zod 校验错误
   if (err instanceof ZodError) {

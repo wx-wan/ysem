@@ -1,0 +1,44 @@
+/**
+ * Operation Layer（操作层）入口 —— Round R-1 Foundation / R-2 Lead Pilot 首批落地
+ *
+ * 职责：
+ *   - 多个 Data Layer 操作的组合
+ *   - 可复用的数据操作流程
+ *   - 查询组合
+ *   - 事务中的数据库操作编排
+ *   - 跨 Repository 数据访问
+ *
+ * 不负责：决定业务政策。
+ *
+ * 【边界示例】（来自架构冻结文档，用于区分本层与 Business 层）
+ *   `createCustomerFromLead()` 若只做「读取 Lead → 读取 Customer 相关数据 →
+ *   创建 Customer → 更新 Lead」，属** Operation 层**；
+ *   而「什么时候允许 Confirm」「Confirm 是否允许创建 Customer」
+ *   「Customer.channelId 应该如何确定」属 **Business 层**。
+ *
+ * 命名目录（全项目唯一，禁止出现 `operation/` 平行目录）。
+ */
+
+/**
+ * Operation 层统一的调用上下文。
+ *
+ * 存在的理由：Operation 函数需要（a）一个可能处于事务中的数据库客户端，
+ * （b）写入 OperationLog 时所需的操作人身份。两者若由每个 Operation 自行拼装，
+ * 首个试点模块就会发明出自己的约定 —— 因此在此处冻结最小约定。
+ */
+export interface OperationContext {
+  /** 事务客户端或全局单例；由调用方决定是否处于事务中 */
+  db: import('../repositories/types').DbClient;
+  /** 操作人身份（来自 JWT 解析结果，Controller 注入） */
+  actor: {
+    userId: string;
+    username: string;
+    realName?: string;
+  };
+}
+
+// ---- Lead Pilot（R-2）----
+export * from './lead.operations';
+
+// ---- Customer Pilot（R-3）----
+export * from './customer.operations';
