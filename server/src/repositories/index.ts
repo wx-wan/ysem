@@ -53,6 +53,10 @@ export { purchaseOrderRepository } from './purchaseOrder.repository';
 export { paymentRepository } from './payment.repository';
 export { profitRepository } from './profit.repository';
 
+// ---- Organization & Permission Domain（R-5 · Phase 4 · D4-a1）----
+export { permissionRepository } from './permission.repository';
+export { departmentRepository } from './department.repository';
+
 // ---- Production & QC Domain（R-5 · Phase 4 · D1-b）----
 export { qualityInspectionRepository } from './qualityInspection.repository';
 
