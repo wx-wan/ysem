@@ -52,6 +52,10 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- Procurement Domain（R-5 · Phase 4 · D1-a）----
+// 采购域 $transaction 唯一归属地：Supplier 取号、PurchaseOrder 建/改（含生产明细行锁）。
+export * from './procurement.operations';
+
 // ---- Finance Domain（R-5 · Phase 4 · D2）----
 // 跨域回写与事务编排：Payment → SalesOrder.paidAmountCny 重算；Profit → Shipment 运费归集。
 export * from './finance.operations';

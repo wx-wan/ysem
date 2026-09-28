@@ -65,6 +65,10 @@ export * as salesOrderService from './salesOrder.service';
 export * as channelService from './channel.service';
 export type { SalesActorContext } from './salesProcess.shared';
 
+// ---- Procurement Domain（R-5 · Phase 4 · D1-a）----
+export * as supplierService from './supplier.service';
+export * as purchaseOrderService from './purchaseOrder.service';
+
 // ---- Finance Domain（R-5 · Phase 4 · D2）----
 export * as paymentService from './payment.service';
 export * as profitService from './profit.service';

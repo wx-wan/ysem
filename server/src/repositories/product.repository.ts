@@ -198,4 +198,17 @@ export const productRepository = {
   ) {
     return buildSkuCode(db, craftIds, audienceId, excludeId);
   },
+  /**
+   * （Round R-5 · Phase 4 · D1-a 采购域）按对象级可见边界批量取产品 id。
+   *
+   * 采购明细的 Product 引用必须复用与销售域**同一**的 `productVisibilityWhere` 授权边界
+   * （BC-8-5 / DQ-8-E）；「不存在」与「对 caller 不可见」同结果。
+   */
+  findIdsByVisibility(ids: string[], visibilityWhere: Prisma.ProductWhereInput = {}, db: DbClient = prisma) {
+    return (db as typeof prisma).product.findMany({
+      where: { id: { in: ids }, ...visibilityWhere },
+      select: { id: true },
+    });
+  },
+
 };

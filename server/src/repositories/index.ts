@@ -53,6 +53,9 @@ export { purchaseOrderRepository } from './purchaseOrder.repository';
 export { paymentRepository } from './payment.repository';
 export { profitRepository } from './profit.repository';
 
+// ---- Procurement Domain（R-5 · Phase 4 · D1-a）----
+export { supplierRepository } from './supplier.repository';
+
 // ---- Master Data Domain（R-5 · Phase 2）----
 export { dictionaryRepository } from './dictionary.repository';
 export type { DictionaryTable } from './dictionary.repository';
