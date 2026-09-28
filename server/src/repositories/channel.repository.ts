@@ -32,4 +32,36 @@ export const channelRepository = {
       select: { name: true },
     });
   },
+
+  // ============================================================
+  // Round R-5 · Phase 1（B4）：删除保护所需的**引用计数**（只读）
+  // ============================================================
+
+  /**
+   * 被销售记录引用计数：Customer / Lead / Opportunity 的 `channelId` 或 `shopId`
+   * 指向该 Channel 的行数合计。
+   *
+   * 说明：本系统 Channel 为自关联树（父=渠道 / 子=平台），**不存在独立 Shop 模型**，
+   * 因此一个 id 既可能被 `channelId` 引用，也可能被 `shopId` 引用，两者都要计入。
+   * 仓储只负责计数，**不决定**「被引用是否允许删除」（业务政策在 Business 层）。
+   */
+  async countSalesReferences(id: string, db: DbClient = prisma): Promise<{
+    customers: number;
+    leads: number;
+    opportunities: number;
+    total: number;
+  }> {
+    const or = [{ channelId: id }, { shopId: id }];
+    const [customers, leads, opportunities] = await Promise.all([
+      db.customer.count({ where: { OR: or } }),
+      db.lead.count({ where: { OR: or } }),
+      db.opportunity.count({ where: { OR: or } }),
+    ]);
+    return { customers, leads, opportunities, total: customers + leads + opportunities };
+  },
+
+  /** 子节点计数（父渠道是否仍挂平台） */
+  countChildren(id: string, db: DbClient = prisma): Promise<number> {
+    return db.channel.count({ where: { parentId: id } });
+  },
 };

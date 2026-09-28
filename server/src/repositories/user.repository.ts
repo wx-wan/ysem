@@ -53,6 +53,17 @@ export const userRepository = {
     return db.user.findMany({ select: { id: true, realName: true, username: true } });
   },
 
+  /**
+   * （Round R-5 · Phase 1 新增，**纯新增、不影响 Lead / Customer / Product**）
+   * 商机页「可分配用户」下拉：启用用户的基础展示字段。
+   */
+  findActiveBasicList(db: DbClient = prisma) {
+    return db.user.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, realName: true, username: true },
+    });
+  },
+
   /** 差异比对用：按 id 集合取用户展示名 */
   findNamesByIds(ids: string[], db: DbClient = prisma) {
     return db.user.findMany({

@@ -46,3 +46,8 @@ export * from './customer.operations';
 // ---- Product Layering（R-4）----
 export * from './product.operations';
 export * from './productGroup.operations';
+
+// ---- Sales Process Domain（R-5 · Phase 1）----
+// 销售域**唯一**事务归属地：Opportunity / Quotation / SampleOrder / SalesOrder
+// 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
+export * from './sales.operations';

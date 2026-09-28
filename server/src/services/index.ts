@@ -56,3 +56,11 @@ export type {
   ProductMixedFilters,
 } from './product.service';
 export type { ProductGroupActorContext, GroupInput, GroupItemsInput } from './productGroup.service';
+
+// ---- Sales Process Domain（R-5 · Phase 1）----
+export * as opportunityService from './opportunity.service';
+export * as quotationService from './quotation.service';
+export * as sampleOrderService from './sampleOrder.service';
+export * as salesOrderService from './salesOrder.service';
+export * as channelService from './channel.service';
+export type { SalesActorContext } from './salesProcess.shared';

@@ -33,11 +33,15 @@ export { dailyExchangeRateRepository } from './dailyExchangeRate.repository';
 export { operationLogRepository } from './operationLog.repository';
 
 // ---- Customer Pilot（R-3）----
-// 后三个为「业务域只读读模型」（非 Customer 自身）：仅供 Customer 列表 / 报表 / 意向派生使用
 export { customerRepository } from './customer.repository';
+// 以下三个原本为「业务域只读读模型」；Round R-5 · Phase 1 已按 D15 约定**就地扩展**为
+// 对应销售域（Opportunity / SampleOrder / SalesOrder）的权威访问仓储，**未**新建平行仓储。
 export { salesOrderRepository } from './salesOrder.repository';
 export { opportunityRepository } from './opportunity.repository';
 export { sampleOrderRepository } from './sampleOrder.repository';
+
+// ---- Sales Process Domain（R-5 · Phase 1）----
+export { quotationRepository } from './quotation.repository';
 
 // ---- Product Layering（R-4）----
 export { productRepository } from './product.repository';

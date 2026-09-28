@@ -1,3 +1,4 @@
+import type { Currency, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import type { DbClient } from './types';
 
@@ -23,5 +24,19 @@ export const dailyExchangeRateRepository = {
       orderBy: { date: 'desc' },
       select: { rateToCny: true },
     });
+  },
+
+  /**
+   * （Round R-5 · Phase 1 新增，**纯新增、不影响 Lead**）
+   * 任意币种最近一条历史汇率：报价 / 打样 / 销售订单的 `rateToCny` 归一来源。
+   * 对既有 `findLatest`（仅 USD）为零影响。
+   */
+  async findLatestRateAny(currencyCode: Currency, db: DbClient = prisma): Promise<Prisma.Decimal | null> {
+    const row = await db.dailyExchangeRate.findFirst({
+      where: { currencyCode },
+      orderBy: { date: 'desc' },
+      select: { rateToCny: true },
+    });
+    return row?.rateToCny ?? null;
   },
 };

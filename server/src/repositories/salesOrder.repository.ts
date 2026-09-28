@@ -1,14 +1,25 @@
-import type { Prisma, SalesOrderStatus } from '@prisma/client';
+import { Prisma, type SalesOrderStatus } from '@prisma/client';
 import prisma from '../lib/prisma';
 import type { DbClient } from './types';
 
 /**
- * SalesOrder 数据访问 —— **仅供 Customer 领域读模型使用**（Round R-3 · Customer Pilot）
+ * SalesOrder 数据访问（Data Layer）
  *
- * 范围限制：只提供 Customer 列表 / 报表实际需要的**只读聚合**，
- * 不迁移 SalesOrder 模块自身的 CRUD 与状态机（属后续模块轮次）。
+ * 两种角色：
+ *   ① **SalesOrder 业务域的权威访问**（Round R-5 · Phase 1 Sales Process Domain 扩充）；
+ *   ② **Customer 领域只读读模型**（Round R-3 建立，方法语义与签名保持不变）。
+ *
+ * 追加职责（Round R-5 Phase 1 · B5）：为「Customer 订单统计」提供**回算口径的只读聚合**。
+ * 仓储只负责聚合，不判定「什么算有效订单」—— 该口径由 Operation 层显式传入 `status` 过滤条件。
  */
+
+const salesOrderModel = (db: DbClient) => (db as typeof prisma).salesOrder;
+
 export const salesOrderRepository = {
+  // ============================================================
+  // ① Customer 读模型（R-3 建立，语义不变）
+  // ============================================================
+
   /** 按 customer where 汇总本币金额（客户列表「成交总额」口径） */
   sumAmountCnyByCustomerWhere(customerWhere: Prisma.CustomerWhereInput, db: DbClient = prisma) {
     return db.salesOrder.aggregate({
@@ -38,5 +49,114 @@ export const salesOrderRepository = {
   /** 按状态计数（报表：已出货订单数） */
   countByStatus(status: SalesOrderStatus, db: DbClient = prisma) {
     return db.salesOrder.count({ where: { status } });
+  },
+
+  // ============================================================
+  // ② SalesOrder 属主访问（Round R-5 · Phase 1）
+  // ============================================================
+
+  findMany<T extends Prisma.SalesOrderFindManyArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.SalesOrderGetPayload<T>[]> {
+    return salesOrderModel(db).findMany(args as Prisma.SalesOrderFindManyArgs) as unknown as Promise<
+      Prisma.SalesOrderGetPayload<T>[]
+    >;
+  },
+
+  findFirst<T extends Prisma.SalesOrderFindFirstArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.SalesOrderGetPayload<T> | null> {
+    return salesOrderModel(db).findFirst(args as Prisma.SalesOrderFindFirstArgs) as unknown as Promise<
+      Prisma.SalesOrderGetPayload<T> | null
+    >;
+  },
+
+  countWhere(where?: Prisma.SalesOrderWhereInput, db: DbClient = prisma): Promise<number> {
+    return salesOrderModel(db).count(where ? { where } : undefined);
+  },
+
+  create<T extends Prisma.SalesOrderCreateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.SalesOrderGetPayload<T>> {
+    return salesOrderModel(db).create(args as Prisma.SalesOrderCreateArgs) as unknown as Promise<
+      Prisma.SalesOrderGetPayload<T>
+    >;
+  },
+
+  update<T extends Prisma.SalesOrderUpdateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.SalesOrderGetPayload<T>> {
+    return salesOrderModel(db).update(args as Prisma.SalesOrderUpdateArgs) as unknown as Promise<
+      Prisma.SalesOrderGetPayload<T>
+    >;
+  },
+
+  delete<T extends Prisma.SalesOrderDeleteArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.SalesOrderGetPayload<T>> {
+    return salesOrderModel(db).delete(args as Prisma.SalesOrderDeleteArgs) as unknown as Promise<
+      Prisma.SalesOrderGetPayload<T>
+    >;
+  },
+
+  /** 明细整表重建用：清空某订单全部 SalesOrderItem */
+  deleteItemsByOrderId(orderId: string, db: DbClient = prisma) {
+    return db.salesOrderItem.deleteMany({ where: { orderId } });
+  },
+
+  /** 明细快照的产品批量读取（授权条件由调用方给出；不可见与不存在同结果） */
+  findVisibleProducts(
+    productIds: string[],
+    visibilityWhere: Prisma.ProductWhereInput = {},
+    db: DbClient = prisma,
+  ) {
+    return db.product.findMany({
+      where: { id: { in: productIds }, ...visibilityWhere },
+      select: { id: true, name: true, sku: true, packaging: true, material: true, colors: true },
+    });
+  },
+
+  /**
+   * B5 回算：某客户**有效订单**的三项统计原始值。
+   *
+   * `effectiveWhere` 由 Operation 层显式给出（「什么算有效订单」是业务口径，不在 Data 层判定）。
+   * 返回 null 表示该客户无任何有效订单 ⇒ 三项统计应回置 null / 0。
+   */
+  async aggregateCustomerOrderStats(
+    customerId: string,
+    effectiveWhere: Prisma.SalesOrderWhereInput,
+    db: DbClient = prisma,
+  ): Promise<{
+    firstOrderAt: Date | null;
+    lastOrderAt: Date | null;
+    totalOrderAmountCny: Prisma.Decimal;
+  }> {
+    const [agg, first, last] = await Promise.all([
+      salesOrderModel(db).aggregate({
+        where: { customerId, ...effectiveWhere },
+        _sum: { totalAmountCny: true },
+      }),
+      salesOrderModel(db).findFirst({
+        where: { customerId, ...effectiveWhere },
+        orderBy: [{ orderDate: 'asc' }, { createdAt: 'asc' }],
+        select: { orderDate: true, createdAt: true },
+      }),
+      salesOrderModel(db).findFirst({
+        where: { customerId, ...effectiveWhere },
+        orderBy: [{ orderDate: 'desc' }, { createdAt: 'desc' }],
+        select: { orderDate: true, createdAt: true },
+      }),
+    ]);
+
+    return {
+      firstOrderAt: first ? (first.orderDate ?? first.createdAt) : null,
+      lastOrderAt: last ? (last.orderDate ?? last.createdAt) : null,
+      totalOrderAmountCny: agg._sum.totalAmountCny ?? new Prisma.Decimal(0),
+    };
   },
 };

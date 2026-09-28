@@ -1,0 +1,82 @@
+import type { Prisma } from '@prisma/client';
+import prisma from '../lib/prisma';
+import type { DbClient } from './types';
+
+/**
+ * Quotation 数据访问（Data Layer）—— Round R-5 · Phase 1 Sales Process Domain
+ *
+ * 归属：Data Layer。只做持久化与查询，不含业务规则、不含权限政策、不含状态机判断
+ * （报价状态流转、客户一致性、金额三件套口径均在 Business / Operation 层）。
+ */
+
+const quotationModel = (db: DbClient) => (db as typeof prisma).quotation;
+
+export const quotationRepository = {
+  findMany<T extends Prisma.QuotationFindManyArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.QuotationGetPayload<T>[]> {
+    return quotationModel(db).findMany(args as Prisma.QuotationFindManyArgs) as unknown as Promise<
+      Prisma.QuotationGetPayload<T>[]
+    >;
+  },
+
+  findFirst<T extends Prisma.QuotationFindFirstArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.QuotationGetPayload<T> | null> {
+    return quotationModel(db).findFirst(args as Prisma.QuotationFindFirstArgs) as unknown as Promise<
+      Prisma.QuotationGetPayload<T> | null
+    >;
+  },
+
+  count(where?: Prisma.QuotationWhereInput, db: DbClient = prisma): Promise<number> {
+    return quotationModel(db).count(where ? { where } : undefined);
+  },
+
+  create<T extends Prisma.QuotationCreateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.QuotationGetPayload<T>> {
+    return quotationModel(db).create(args as Prisma.QuotationCreateArgs) as unknown as Promise<
+      Prisma.QuotationGetPayload<T>
+    >;
+  },
+
+  update<T extends Prisma.QuotationUpdateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.QuotationGetPayload<T>> {
+    return quotationModel(db).update(args as Prisma.QuotationUpdateArgs) as unknown as Promise<
+      Prisma.QuotationGetPayload<T>
+    >;
+  },
+
+  delete<T extends Prisma.QuotationDeleteArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.QuotationGetPayload<T>> {
+    return quotationModel(db).delete(args as Prisma.QuotationDeleteArgs) as unknown as Promise<
+      Prisma.QuotationGetPayload<T>
+    >;
+  },
+
+  /** 同一商机的下一版号（version = max + 1；无报价时 1） */
+  maxVersion(opportunityId: string, db: DbClient = prisma): Promise<number | null> {
+    return quotationModel(db)
+      .aggregate({ where: { opportunityId }, _max: { version: true } })
+      .then((r) => r._max.version ?? null);
+  },
+
+  /** 明细快照的可见产品批量读取（授权条件由调用方给出） */
+  findVisibleProducts(
+    productIds: string[],
+    visibilityWhere: Prisma.ProductWhereInput = {},
+    db: DbClient = prisma,
+  ) {
+    return db.product.findMany({
+      where: { id: { in: productIds }, ...visibilityWhere },
+      select: { id: true, name: true, sku: true, packaging: true },
+    });
+  },
+};

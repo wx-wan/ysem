@@ -2,7 +2,9 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { MasterStatus, Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
+import { assertChannelDeletable } from '../services/channel.service';
 import { success, created, fail } from '../utils/response';
 
 const channelSchema = z.object({
@@ -108,10 +110,16 @@ export const updateChannel = async (req: AuthRequest, res: Response): Promise<vo
 
 export const deleteChannel = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    // 删除父级时级联删除子平台
+    // Round R-5 · Phase 1 · B4（业务冻结）：已被销售记录引用的渠道/平台禁止删除，只允许停用。
+    // 校验范围不限于 Customer：Customer / Lead / Opportunity 的 channelId 与 shopId 引用一并计入。
+    await assertChannelDeletable(req.params.id);
     await prisma.channel.delete({ where: { id: req.params.id } });
     success(res, null, '删除成功');
-  } catch {
+  } catch (err) {
+    if (err instanceof DomainError) {
+      fail(res, err.code, err.message);
+      return;
+    }
     fail(res, 500, '服务器错误');
   }
 };

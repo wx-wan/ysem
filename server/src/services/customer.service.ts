@@ -621,14 +621,18 @@ export async function update(id: string, body: UpdateCustomerInput, ctx: Custome
   // D-INTENT v2：Customer.intentLevel 已非人工字段 ⇒ 不再记录「意向等级变更」日志
   if (tags !== undefined && !sameTags(tags, existing.tags)) changes.push('标签已更新');
 
-  // F-CRM-CHANNEL：编辑时来源组合（sourceKey 优先；否则显式；否则保留原值），先补齐再校验
-  const fromSourceKey = splitSourceKey(body.sourceKey);
-  let effChannelId = existing.channelId;
-  let effShopId = existing.shopId;
-  if (fromSourceKey.channelId !== undefined) effChannelId = fromSourceKey.channelId;
-  else if (body.channelId !== undefined) effChannelId = body.channelId;
-  if (fromSourceKey.shopId !== undefined) effShopId = fromSourceKey.shopId;
-  else if (body.shopId !== undefined) effShopId = body.shopId;
+  // ---- Round R-5 · Phase 1 · B3（业务冻结）：Customer First Acquisition Fact 建档后锁定 ----
+  //
+  // `Customer.channelId / shopId` 是**客户第一次进入销售体系时的来源事实**，
+  // 只在**首次建档（create）**时确定；建档完成后：
+  //   · 后续 Lead / Opportunity / Quotation / SampleOrder / SalesOrder 均**不得**覆盖；
+  //   · 客户编辑接口**不再采信** `sourceKey` / `channelId` / `shopId` 入参，
+  //     一律沿用已落库的首次获客事实（后端为最终业务权威）。
+  //
+  // 入参形状保持不变（API Contract 稳定）；既有前端「线索转客户时同步来源」的
+  // 旧调用可以继续发出，但**不再产生任何写入效果**（行为变化已在 Phase 1 报告记录）。
+  const effChannelId = existing.channelId;
+  const effShopId = existing.shopId;
   await assertChannelShop(effChannelId, effShopId);
 
   const customer = await customerRepository.update({
