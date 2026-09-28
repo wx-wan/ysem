@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
+import { applyScope } from '../utils/scope';
 import type { DbClient } from './types';
 
 /**
@@ -66,6 +67,22 @@ export const quotationRepository = {
     return quotationModel(db)
       .aggregate({ where: { opportunityId }, _max: { version: true } })
       .then((r) => r._max.version ?? null);
+  },
+
+  /**
+   * （Round R-5 · Phase 4 · D3 审批域）多态审批引用读取：主键 + 业务编号。
+   * 审批流水以 `bizType + businessId` 旁挂（无外键），需按 bizType 分派到各域仓储取数。
+   */
+  findRefById(id: string, db: DbClient = prisma) {
+    return quotationModel(db).findUnique({ where: { id }, select: { id: true, quotationNo: true } });
+  },
+
+  /** 审批 Scope 白名单：当前用户可见的业务对象 id（scope 条件由调用方给出） */
+  findScopedIds(scope: Record<string, unknown>, id?: string, db: DbClient = prisma) {
+    return quotationModel(db).findMany({
+      where: applyScope(id ? { id } : {}, scope) as Prisma.QuotationWhereInput,
+      select: { id: true },
+    });
   },
 
   /**

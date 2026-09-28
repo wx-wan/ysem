@@ -52,6 +52,10 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- Approval Domain（R-5 · Phase 4 · D3）----
+// 多态业务引用分派 + 审批流转事务（审批域 $transaction 的唯一归属地）。
+export * from './approval.operations';
+
 // ---- State Capability（R-5 · Phase 3）----
 // State 相关数据操作流程：线索状态推进、商机阶段派生的信号装载与组合。
 // State 规则本身是纯函数，位于 src/state/（不访问 Prisma / HTTP）。

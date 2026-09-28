@@ -65,6 +65,11 @@ export * as salesOrderService from './salesOrder.service';
 export * as channelService from './channel.service';
 export type { SalesActorContext } from './salesProcess.shared';
 
+// ---- Approval Domain（R-5 · Phase 4 · D3）----
+export * as approvalConfigService from './approvalConfig.service';
+export * as approvalRecordService from './approvalRecord.service';
+export type { ApprovalActorContext } from './approvalRecord.service';
+
 // ---- Master Data Domain（R-5 · Phase 2）----
 // 字典域按**域**收敛（币种 / 单位 / 客户类型 / 沟通工具 共享同一套规则实现）；
 // 认证资质与汇率为各自独立主数据服务。

@@ -43,6 +43,16 @@ export { sampleOrderRepository } from './sampleOrder.repository';
 // ---- Sales Process Domain（R-5 · Phase 1）----
 export { quotationRepository } from './quotation.repository';
 
+// ---- Approval Domain（R-5 · Phase 4 · D3）----
+export { approvalConfigRepository } from './approvalConfig.repository';
+export { approvalRecordRepository } from './approvalRecord.repository';
+// 下列为「多态审批引用」读取所需的最小面，由 D1 / D2 履约与财务域迁移时**就地扩展**
+export { productionOrderRepository } from './productionOrder.repository';
+export { shipmentRepository } from './shipment.repository';
+export { purchaseOrderRepository } from './purchaseOrder.repository';
+export { paymentRepository } from './payment.repository';
+export { profitRepository } from './profit.repository';
+
 // ---- Master Data Domain（R-5 · Phase 2）----
 export { dictionaryRepository } from './dictionary.repository';
 export type { DictionaryTable } from './dictionary.repository';
