@@ -52,6 +52,10 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- Account & Role Domain（R-5 · Phase 4 · D4-a2）----
+// 账号与角色域 $transaction 唯一归属地：角色权限关联整表重建（先清空 → 再批量写入，原子）。
+export * from './role.operations';
+
 // ---- Shipment Domain（R-5 · Phase 4 · D1-c）----
 // 出运域 $transaction 唯一归属地：建单/改单（含 SalesOrderItem 行锁、上限校验、
 // C-3 数量门禁、C-2 出运前质检门禁、shippedQty 派生汇总重算）。

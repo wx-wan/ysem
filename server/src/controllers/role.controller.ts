@@ -1,131 +1,77 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import prisma from '../lib/prisma';
+import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
-import { success, created, fail } from '../utils/response';
-import { DEFAULT_DATA_SCOPE } from '../utils/scope';
-import { pushNotification } from '../utils/notify';
+import * as roleService from '../services/role.service';
+import { created, fail, success } from '../utils/response';
 
 /**
- * 向某角色下所有用户推送通知（权限/数据范围变更时刷新其会话）。
- * 角色下用户可能很多，这里逐个写库并推送在线连接；离线用户由首连补偿拉取。
+ * Role Controller —— Round R-5 · Phase 4 · D4-a2 账号与角色域
+ *
+ * 职责（仅此）：HTTP request/response、DTO 校验、错误映射。
+ * **禁止** Prisma 访问 / 事务 / 业务规则 —— 已在
+ *   `services/role.service.ts`（Business：编码唯一 / admin 角色保护 / 权限变更通知）
+ *   `operations/role.operations.ts`（Operation：角色权限关联整表重建事务）
+ *   `repositories/role.repository.ts`（Data）。API Contract 保持不变。
  */
-const notifyRoleUsers = async (roleId: string) => {
-  const users = await prisma.user.findMany({
-    where: { roleId },
-    select: { id: true },
-  });
-  await Promise.all(
-    users.map((u) =>
-      pushNotification({
-        userId: u.id,
-        type: 'PERM_CHANGED',
-        title: '权限已变更',
-        body: '您所属角色的权限或数据范围已更新',
-        payload: { roleId },
-      }),
-    ),
-  );
-};
 
-const roleSchema = z.object({
-  name: z.string().min(1).max(50),
-  code: z.string().min(1).max(50),
-  description: z.string().optional().nullable(),
-  sort: z.number().optional().default(0),
-  dataScope: z.enum(['ALL', 'DEPT', 'SELF']).optional().default(DEFAULT_DATA_SCOPE),
-});
+function respondError(res: Response, err: unknown): void {
+  if (err instanceof DomainError) {
+    fail(res, err.code, err.message);
+    return;
+  }
+  if (err instanceof z.ZodError) {
+    fail(res, 400, '参数校验失败：' + err.errors.map((e) => e.message).join(', '));
+    return;
+  }
+  fail(res, 500, '服务器错误');
+}
 
 // 获取角色列表
 export const getRoles = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const roles = await prisma.role.findMany({
-      include: {
-        _count: { select: { users: true } },
-        users: {
-          take: 5,
-          select: { id: true, realName: true, avatar: true },
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-      orderBy: { sort: 'asc' },
-    });
-    success(res, roles);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await roleService.list());
+  } catch (err) {
+    respondError(res, err);
   }
 };
 
 // 获取单个角色
 export const getRole = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const role = await prisma.role.findUnique({
-      where: { id: req.params.id },
-      include: {
-        permissions: { include: { permission: true } },
-        _count: { select: { users: true } },
-      },
-    });
-    if (!role) { fail(res, 404, '角色不存在'); return; }
-    success(res, role);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await roleService.getOne(req.params.id));
+  } catch (err) {
+    respondError(res, err);
   }
 };
 
 // 创建角色
 export const createRole = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = roleSchema.parse(req.body);
-    const existing = await prisma.role.findUnique({ where: { code: data.code } });
-    if (existing) { fail(res, 409, '角色编码已存在'); return; }
-
-    const role = await prisma.role.create({ data });
-    created(res, role, '角色创建成功');
+    const data = roleService.roleSchema.parse(req.body);
+    created(res, await roleService.create(data), '角色创建成功');
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, '参数校验失败：' + err.errors.map(e => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err);
   }
 };
 
 // 更新角色
 export const updateRole = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = roleSchema.partial().parse(req.body);
-    const role = await prisma.role.update({ where: { id: req.params.id }, data });
-    // 角色数据范围变更 → 通知该角色下所有用户刷新权限会话
-    if (data.dataScope !== undefined) {
-      await notifyRoleUsers(req.params.id);
-    }
-    success(res, role, '角色更新成功');
+    const data = roleService.roleSchema.partial().parse(req.body);
+    success(res, await roleService.update(req.params.id, data), '角色更新成功');
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, '参数校验失败：' + err.errors.map(e => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err);
   }
 };
 
 // 删除角色
 export const deleteRole = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const role = await prisma.role.findUnique({ where: { id: req.params.id } });
-    if (!role) {
-      fail(res, 404, '角色不存在');
-      return;
-    }
-    if (role.code === 'admin') {
-      fail(res, 400, '超级管理员角色不可删除');
-      return;
-    }
-    await prisma.role.delete({ where: { id: req.params.id } });
+    await roleService.remove(req.params.id);
     success(res, null, '角色删除成功');
-  } catch {
-    fail(res, 500, '服务器错误');
+  } catch (err) {
+    respondError(res, err);
   }
 };
 
@@ -133,23 +79,9 @@ export const deleteRole = async (req: AuthRequest, res: Response): Promise<void>
 export const assignPermissions = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { permissionIds } = req.body as { permissionIds: string[] };
-    if (!Array.isArray(permissionIds)) {
-      fail(res, 400, '请提供权限ID数组');
-      return;
-    }
-
-    await prisma.$transaction([
-      prisma.rolePermission.deleteMany({ where: { roleId: req.params.id } }),
-      prisma.rolePermission.createMany({
-        data: permissionIds.map(pid => ({ roleId: req.params.id, permissionId: pid })),
-      }),
-    ]);
-
-    // 权限变更 → 通知该角色下所有用户刷新权限会话
-    await notifyRoleUsers(req.params.id);
-
+    await roleService.assignPermissions(req.params.id, permissionIds);
     success(res, null, '权限分配成功');
-  } catch {
-    fail(res, 500, '服务器错误');
+  } catch (err) {
+    respondError(res, err);
   }
 };
