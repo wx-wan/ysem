@@ -1,7 +1,10 @@
 import type { IntentLevel } from '@prisma/client';
 
 /**
- * 客户意向等级（D-INTENT v2）：**不再落库**，统一由关联商机**读时派生**。
+ * 客户意向等级（Customer Intent）派生规则 —— Round R-5 · Phase 3 · State Capability
+ *
+ * 【State 能力边界（冻结）】纯函数 / 纯常量：不访问 Prisma、不访问 HTTP、不承载编排。
+ * 本文件自 `utils/customerIntent.ts` **逐字迁移**（该文件本就无 IO，属纯 State）。
  *
  * 规则（Round F-8B 冻结）：
  *   Customer.intentLevel = max(该 Customer 全部 Opportunity.intentLevel)
@@ -12,9 +15,8 @@ import type { IntentLevel } from '@prisma/client';
  *   · 存储列 `Customer.intentLevel` 降级为 legacy：**不写入**、**不作为读取来源**（不删列、不迁移）
  *   · `Opportunity.intentLevel` 仍为人工维护的商机自身字段，不受本模块影响
  *   · 商机 create / update / delete / batchDelete / import **无需**任何 Customer 回写
- *     （读时派生 ⇒ sales.controller 零改动）
- *
- * 本模块只做纯计算与响应投影，**绝不产生任何持久化写入**。
+ *     （读时派生 ⇒ sales 域零改动）
+ *   · 本模块只做纯计算与响应投影，**绝不产生任何持久化写入**
  */
 
 /** 意向优先级（数值越大优先级越高）。显式定义业务顺序，禁止依赖 enum 声明顺序。 */
@@ -56,7 +58,7 @@ export function deriveCustomerIntentLevel(
  * 批量派生：输入 `prisma.opportunity.groupBy({ by: ['customerId', 'intentLevel'] })` 的结果行，
  * 在**内存中**聚合为 `Map<customerId, 最高意向>`（无商机/全 null 的客户值为 null）。
  *
- * ⇒ 一次 groupBy、无 N+1、无逐客户查询；与 `utils/pipelineStage.ts` 的批量派生思想一致。
+ * ⇒ 一次 groupBy、无 N+1、无逐客户查询；与 pipeline stage 的批量派生思想一致。
  */
 export function deriveCustomerIntentLevels(
   rows: ReadonlyArray<{ customerId?: string | null; intentLevel?: IntentLevel | null }>,

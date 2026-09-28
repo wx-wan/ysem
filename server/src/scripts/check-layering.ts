@@ -27,7 +27,7 @@ type RankedLayer = 'controllers' | 'services' | 'operations' | 'repositories';
 /** 非业务层：不参与方向判定，但受「不得依赖业务层」约束 */
 type SharedLayer = 'lib' | 'utils' | 'middleware';
 
-type Layer = RankedLayer | SharedLayer | 'routes' | 'composition' | 'unknown';
+type Layer = RankedLayer | SharedLayer | 'state' | 'routes' | 'composition' | 'unknown';
 
 const RANK: Record<RankedLayer, number> = {
   controllers: 1,
@@ -67,6 +67,7 @@ function layerOfTopSegment(segment: string): Layer {
   if (segment === 'controllers' || segment === 'services' || segment === 'operations' || segment === 'repositories') {
     return segment;
   }
+  if (segment === 'state') return 'state';
   if (segment === 'routes') return 'routes';
   if (segment === 'scripts') return 'composition';
   return 'unknown';
@@ -141,6 +142,7 @@ const RULE_TITLES: Record<string, string> = {
   'R2-CONTROLLER-PRISMA': 'Controller/Routes 直接访问 Prisma（禁止；应经 Business/Operation/Data 层）',
   'R3-SHARED-BUSINESS': '共享基础设施（lib/utils/middleware）依赖业务层（禁止反向依赖）',
   'R4-HTTP-IN-DOMAIN': 'Business/Operation/Data 层依赖 HTTP 框架（禁止；HTTP 只在 Controller 边界）',
+  'R5-STATE-PURITY': 'State 能力越界（禁止 Prisma / HTTP / 业务层依赖；State 只能是纯规则）',
 };
 
 function checkFile(file: string, violations: Violation[]): void {
@@ -165,6 +167,19 @@ function checkFile(file: string, violations: Violation[]): void {
         HTTP_PACKAGES.includes(spec) || HTTP_PACKAGE_PREFIXES.some((p) => spec.startsWith(p));
       if (isExternal && isHttp) {
         violations.push({ rule: 'R4-HTTP-IN-DOMAIN', file: rel, detail: `import '${spec}'` });
+      }
+    }
+
+    // R5：State 能力必须保持纯规则（不得 Prisma / HTTP / 业务层依赖）
+    if (ownLayer === 'state') {
+      const isHttp =
+        HTTP_PACKAGES.includes(spec) || HTTP_PACKAGE_PREFIXES.some((p) => spec.startsWith(p));
+      const target = resolved ? relativeToSrc(resolved) : '';
+      const hitsBusinessLayer =
+        !!resolved &&
+        ['controllers', 'services', 'operations', 'repositories'].includes(target.split('/')[0]);
+      if ((isExternal && isHttp) || target === 'lib/prisma.ts' || hitsBusinessLayer) {
+        violations.push({ rule: 'R5-STATE-PURITY', file: rel, detail: `import '${spec}'` });
       }
     }
 
@@ -269,6 +284,7 @@ function main(): void {
   console.log(`  业务层文件：controllers=${metrics.perLayer.controllers ?? 0} services=${
     metrics.perLayer.services ?? 0
   } operations=${metrics.perLayer.operations ?? 0} repositories=${metrics.perLayer.repositories ?? 0}`);
+  console.log(`  State 能力文件：${metrics.perLayer.state ?? 0}（必须保持纯规则）`);
   console.log(`  Controller 总数：${metrics.controllers}`);
   console.log(`  仍直接 import Prisma 的 Controller：${metrics.controllersWithPrisma}`);
   console.log(`  Controller 内 prisma.* 调用点：${metrics.controllerPrismaCallSites}`);
@@ -283,7 +299,7 @@ function main(): void {
   if (violations.length === 0) {
     console.log('  无');
   } else {
-    const ruleOrder = ['R1-UPWARD', 'R2-CONTROLLER-PRISMA', 'R3-SHARED-BUSINESS', 'R4-HTTP-IN-DOMAIN'];
+    const ruleOrder = ['R1-UPWARD', 'R2-CONTROLLER-PRISMA', 'R3-SHARED-BUSINESS', 'R4-HTTP-IN-DOMAIN', 'R5-STATE-PURITY'];
     for (const rule of ruleOrder) {
       const list = byRule.get(rule);
       if (!list || list.length === 0) continue;

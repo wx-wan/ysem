@@ -17,7 +17,7 @@ import {
 } from '../repositories';
 import { DECIMAL_PRECISION, round, toCny, toDecimal } from '../utils/currency';
 import { applyScope } from '../utils/scope';
-import { advanceLeadStatusByOpportunity } from '../utils/leadStatus';
+import { advanceLeadStatusByOpportunityOperation } from '../operations/state.operations';
 import {
   assertAssignableOwner,
   resolveExchangeRate,
@@ -452,7 +452,7 @@ export async function createSalesOrder(
   });
 
   // 线索状态自动推进（经 Opportunity.leadId 追溯）→ 已成交
-  await advanceLeadStatusByOpportunity(item.opportunityId, 'WON');
+  await advanceLeadStatusByOpportunityOperation(item.opportunityId, 'WON');
 
   return item;
 }

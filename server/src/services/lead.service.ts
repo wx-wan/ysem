@@ -473,7 +473,7 @@ export const LEAD_WRITABLE_FIELDS = [
   'channelId',
   'shopId',
   'source',
-  // status 不在白名单：状态只由单据事件推进（utils/leadStatus.ts）
+  // status 不在白名单：状态只由单据事件推进（state/leadStatus.state.ts + operations/state.operations.ts）
   'companyName',
   'contactName',
   'contactMethods',

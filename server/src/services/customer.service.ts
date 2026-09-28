@@ -3,13 +3,14 @@ import { z } from 'zod';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { DomainConflictError, DomainNotFoundError, DomainValidationError } from '../lib/errors';
-import { deriveStages, type PipelineStage } from '../utils/pipelineStage';
+import { deriveOpportunityStagesOperation } from '../operations/state.operations';
+import type { PipelineStage } from '../state';
 import {
   INTENT_LEVEL_ORDER,
   deriveCustomerIntentLevel,
   deriveCustomerIntentLevels,
   withCustomerIntent,
-} from '../utils/customerIntent';
+} from '../state';
 import { applyScope, includePublicSea, publicSeaScope } from '../utils/scope';
 import {
   createCustomerAggregate,
@@ -914,7 +915,7 @@ export function getCountries() {
 
 /**
  * 报表统计：商机漏斗 / 打样 / 出货 / 新老客户 / 转化率。
- * 阶段为**派生值**（utils/pipelineStage），不落库。
+ * 阶段为**派生值**（state/pipelineStage.state.ts 纯规则 + operations/state.operations.ts 装载），不落库。
  */
 export async function getReportStats(ctx: CustomerActorContext) {
   const isAdmin = ctx.isAdmin;
@@ -934,7 +935,7 @@ export async function getReportStats(ctx: CustomerActorContext) {
   const oldCustomerAmount = raw.oldCustomerOrders.reduce((s, o) => s + Number(o.totalAmountCny ?? 0), 0);
 
   // 按派生阶段统计商机数量
-  const stageMap = await deriveStages(raw.allOpportunities);
+  const stageMap = await deriveOpportunityStagesOperation(raw.allOpportunities);
   const stageCount = (s: PipelineStage) => [...stageMap.values()].filter((v) => v === s).length;
   const opportunityCount = stageCount('OPPORTUNITY');
   const pipelineOrderCount = stageCount('ORDER') + stageCount('SHIPPED');

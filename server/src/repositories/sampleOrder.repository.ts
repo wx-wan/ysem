@@ -123,6 +123,18 @@ export const sampleOrderRepository = {
     return sampleRoundModel(db).delete({ where: { id } });
   },
 
+  /**
+   * （Round R-5 · Phase 3）按商机 id 集合统计打样单数 —— 商机阶段派生的信号来源。
+   * 只取数据；阶段判定在 State 能力（state/pipelineStage.state）。
+   */
+  groupCountByOpportunityIds(ids: string[], db: DbClient = prisma) {
+    return sampleOrderModel(db).groupBy({
+      by: ['opportunityId'],
+      where: { opportunityId: { in: ids } },
+      _count: { _all: true },
+    });
+  },
+
   /** 明细快照的产品批量读取（授权条件由调用方给出） */
   findVisibleProduct(
     productId: string,

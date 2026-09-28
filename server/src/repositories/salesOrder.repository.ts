@@ -109,6 +109,22 @@ export const salesOrderRepository = {
     return db.salesOrderItem.deleteMany({ where: { orderId } });
   },
 
+  /**
+   * （Round R-5 · Phase 3）按商机 id 集合取阶段信号 —— 是否存在销售订单、
+   * 以及该订单是否已有生产工单 / 出运单。
+   * 只取数据；「有生产/出运算什么阶段」由 State 能力（state/pipelineStage.state）判定。
+   */
+  findStageSignalsByOpportunityIds(ids: string[], db: DbClient = prisma) {
+    return salesOrderModel(db).findMany({
+      where: { opportunityId: { in: ids } },
+      select: {
+        opportunityId: true,
+        productionOrders: { select: { id: true }, take: 1 },
+        shipments: { select: { id: true }, take: 1 },
+      },
+    });
+  },
+
   /** 明细快照的产品批量读取（授权条件由调用方给出；不可见与不存在同结果） */
   findVisibleProducts(
     productIds: string[],

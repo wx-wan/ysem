@@ -16,8 +16,8 @@ import {
   opportunityRepository,
   userRepository,
 } from '../repositories';
-import { advanceLeadStatus } from '../utils/leadStatus';
-import { deriveStages, PIPELINE_STAGES } from '../utils/pipelineStage';
+import { advanceLeadStatusOperation, deriveOpportunityStagesOperation } from '../operations/state.operations';
+import { PIPELINE_STAGES } from '../state';
 import { applyScope } from '../utils/scope';
 import {
   findVisibleProductNames,
@@ -235,7 +235,7 @@ export async function listOpportunities(filters: OpportunityListFilters, ctx: Sa
       include: OPPORTUNITY_INCLUDE,
       orderBy: { updatedAt: 'desc' },
     });
-    const stageMap = await deriveStages(all);
+    const stageMap = await deriveOpportunityStagesOperation(all);
     const filtered = all.filter((o) => stageMap.get(o.id) === filters.stage);
     const total = filtered.length;
     const slice = filtered.slice(
@@ -261,7 +261,7 @@ export async function listOpportunities(filters: OpportunityListFilters, ctx: Sa
     opportunityRepository.count(whereInput),
   ]);
 
-  const stageMap = await deriveStages(list);
+  const stageMap = await deriveOpportunityStagesOperation(list);
   return {
     list: list.map((o) => ({ ...o, stage: stageMap.get(o.id) })),
     total,
@@ -278,7 +278,7 @@ export async function getKanban(ctx: SalesActorContext) {
     orderBy: { updatedAt: 'desc' },
   });
 
-  const stageMap = await deriveStages(opportunities);
+  const stageMap = await deriveOpportunityStagesOperation(opportunities);
   const withStages = opportunities.map((o) => ({ ...o, stage: stageMap.get(o.id) }));
 
   const columns = {
@@ -310,7 +310,7 @@ export async function getOpportunity(id: string, ctx: SalesActorContext) {
     include: OPPORTUNITY_INCLUDE,
   });
   if (!opportunity) throw new DomainNotFoundError('记录不存在');
-  const stageMap = await deriveStages([opportunity]);
+  const stageMap = await deriveOpportunityStagesOperation([opportunity]);
   return { ...opportunity, stage: stageMap.get(opportunity.id) };
 }
 
@@ -343,7 +343,7 @@ export async function getByProduct(productId: string, ctx: SalesActorContext) {
     orderBy: { updatedAt: 'desc' },
   });
 
-  const stageMap = await deriveStages(opportunities);
+  const stageMap = await deriveOpportunityStagesOperation(opportunities);
 
   const list = opportunities.map((o) => ({
     id: o.id,
@@ -435,7 +435,7 @@ export async function createOpportunity(
   });
 
   // 线索状态自动推进：商机绑定线索（Opportunity.leadId）→ 线索置为「已确认」
-  await advanceLeadStatus(opportunity.leadId, 'CONFIRMED');
+  await advanceLeadStatusOperation(opportunity.leadId, 'CONFIRMED');
 
   if (opportunity.leadId) {
     await activityLogger.log({

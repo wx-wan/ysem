@@ -68,6 +68,18 @@ export const quotationRepository = {
       .then((r) => r._max.version ?? null);
   },
 
+  /**
+   * （Round R-5 · Phase 3）按商机 id 集合统计报价数 —— 商机阶段派生的信号来源。
+   * 只取数据；「多少个报价算什么阶段」由 State 能力（state/pipelineStage.state）判定。
+   */
+  groupCountByOpportunityIds(ids: string[], db: DbClient = prisma) {
+    return quotationModel(db).groupBy({
+      by: ['opportunityId'],
+      where: { opportunityId: { in: ids } },
+      _count: { _all: true },
+    });
+  },
+
   /** 明细快照的可见产品批量读取（授权条件由调用方给出） */
   findVisibleProducts(
     productIds: string[],

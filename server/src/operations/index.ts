@@ -52,6 +52,11 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- State Capability（R-5 · Phase 3）----
+// State 相关数据操作流程：线索状态推进、商机阶段派生的信号装载与组合。
+// State 规则本身是纯函数，位于 src/state/（不访问 Prisma / HTTP）。
+export * from './state.operations';
+
 // ---- Master Data Domain（R-5 · Phase 2）----
 // 字典域唯一需要事务的操作：批量更新排序。
 export * from './dictionary.operations';

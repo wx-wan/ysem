@@ -306,5 +306,5 @@ export const transferLead = async (req: AuthRequest, res: Response): Promise<voi
 };
 
 // 人工改状态入口已下线：线索状态只由单据事件自动推进（绑定商机 → 已确认 / 建打样单 → 已打样 / 建订单 → 已成交），
-// 见 utils/leadStatus.ts。原 `PATCH /leads/:id/status`（changeLeadStatus）已从路由移除，
+// 见 state/leadStatus.state.ts（纯规则）与 operations/state.operations.ts（推进编排）。原 `PATCH /leads/:id/status`（changeLeadStatus）已从路由移除，
 // 且 `status` 不在 PUT 白名单内，避免状态与实际单据不一致的脏值。

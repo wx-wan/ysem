@@ -11,7 +11,7 @@ import {
 import { customerRepository, opportunityRepository, sampleOrderRepository } from '../repositories';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
 import { applyScope } from '../utils/scope';
-import { advanceLeadStatusByOpportunity } from '../utils/leadStatus';
+import { advanceLeadStatusByOpportunityOperation } from '../operations/state.operations';
 import {
   assertAssignableOwner,
   salesScopedWhere,
@@ -328,7 +328,7 @@ export async function createSampleOrder(
   });
 
   // 线索状态自动推进（经 Opportunity.leadId 追溯）→ 已打样
-  await advanceLeadStatusByOpportunity(item.opportunityId, 'SAMPLED');
+  await advanceLeadStatusByOpportunityOperation(item.opportunityId, 'SAMPLED');
 
   return item;
 }
