@@ -52,6 +52,10 @@ export * from './productGroup.operations';
 // 的编号分配、跨表编排、Customer 订单统计回算均在此文件内完成。
 export * from './sales.operations';
 
+// ---- Finance Domain（R-5 · Phase 4 · D2）----
+// 跨域回写与事务编排：Payment → SalesOrder.paidAmountCny 重算；Profit → Shipment 运费归集。
+export * from './finance.operations';
+
 // ---- Approval Domain（R-5 · Phase 4 · D3）----
 // 多态业务引用分派 + 审批流转事务（审批域 $transaction 的唯一归属地）。
 export * from './approval.operations';

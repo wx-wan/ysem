@@ -26,4 +26,45 @@ export const paymentRepository = {
       select: { id: true },
     });
   },
+
+  // ============================================================
+  // Round R-5 · Phase 4 · D2 财务域：Payment 属主 CRUD
+  // ============================================================
+
+  findMany<T extends Prisma.PaymentFindManyArgs>(args: T, db: DbClient = prisma): Promise<Prisma.PaymentGetPayload<T>[]> {
+    return model(db).findMany(args as Prisma.PaymentFindManyArgs) as unknown as Promise<Prisma.PaymentGetPayload<T>[]>;
+  },
+
+  findFirst<T extends Prisma.PaymentFindFirstArgs>(args: T, db: DbClient = prisma): Promise<Prisma.PaymentGetPayload<T> | null> {
+    return model(db).findFirst(args as Prisma.PaymentFindFirstArgs) as unknown as Promise<Prisma.PaymentGetPayload<T> | null>;
+  },
+
+  count(where: Prisma.PaymentWhereInput, db: DbClient = prisma): Promise<number> {
+    return model(db).count({ where });
+  },
+
+  create<T extends Prisma.PaymentCreateArgs>(args: T, db: DbClient = prisma): Promise<Prisma.PaymentGetPayload<T>> {
+    return model(db).create(args as Prisma.PaymentCreateArgs) as unknown as Promise<Prisma.PaymentGetPayload<T>>;
+  },
+
+  update<T extends Prisma.PaymentUpdateArgs>(args: T, db: DbClient = prisma): Promise<Prisma.PaymentGetPayload<T>> {
+    return model(db).update(args as Prisma.PaymentUpdateArgs) as unknown as Promise<Prisma.PaymentGetPayload<T>>;
+  },
+
+  delete(id: string, db: DbClient = prisma) {
+    return model(db).delete({ where: { id } });
+  },
+
+  /**
+   * `SalesOrder.paidAmountCny` 重算口径（P0 权威）：SUM(amountCny WHERE IN + CONFIRMED)。
+   * SUM 忽略 NULL；无有效金额 → null（由 Operation 层落 0，绝不写 NULL）。
+   */
+  async sumConfirmedInCny(salesOrderId: string, db: DbClient = prisma) {
+    const agg = await model(db).aggregate({
+      where: { salesOrderId, direction: 'IN', status: 'CONFIRMED' },
+      _sum: { amountCny: true },
+    });
+    return agg._sum.amountCny ?? null;
+  },
+
 };

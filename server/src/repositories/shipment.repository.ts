@@ -27,4 +27,14 @@ export const shipmentRepository = {
       select: { id: true },
     });
   },
+
+  /**
+   * （Round R-5 · Phase 4 · D2 财务域）运费归集读取（ADR-20）。
+   * Profit.freightCostCny = Σ Shipment.freightAmountCny（WHERE salesOrderId = X）；
+   * 只取数据，求和与「无有效运费 → 0」口径由 Operation 层执行。
+   */
+  findFreightBySalesOrderId(salesOrderId: string, db: DbClient = prisma) {
+    return model(db).findMany({ where: { salesOrderId }, select: { freightAmountCny: true } });
+  },
+
 };

@@ -65,6 +65,11 @@ export * as salesOrderService from './salesOrder.service';
 export * as channelService from './channel.service';
 export type { SalesActorContext } from './salesProcess.shared';
 
+// ---- Finance Domain（R-5 · Phase 4 · D2）----
+export * as paymentService from './payment.service';
+export * as profitService from './profit.service';
+export type { FinanceActorContext } from './finance.shared';
+
 // ---- Approval Domain（R-5 · Phase 4 · D3）----
 export * as approvalConfigService from './approvalConfig.service';
 export * as approvalRecordService from './approvalRecord.service';

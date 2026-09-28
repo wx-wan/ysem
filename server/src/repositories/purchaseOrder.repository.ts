@@ -23,4 +23,14 @@ export const purchaseOrderRepository = {
       select: { id: true },
     });
   },
+  /** 宿主 scope 校验（Payment OUT 方向的 PurchaseOrder 归属门） */
+  findFirst<T extends Prisma.PurchaseOrderFindFirstArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.PurchaseOrderGetPayload<T> | null> {
+    return model(db).findFirst(args as Prisma.PurchaseOrderFindFirstArgs) as unknown as Promise<
+      Prisma.PurchaseOrderGetPayload<T> | null
+    >;
+  },
+
 };

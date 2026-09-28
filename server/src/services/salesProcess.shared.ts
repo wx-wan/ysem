@@ -1,7 +1,7 @@
 import { Currency, Prisma } from '@prisma/client';
 import { DomainValidationError } from '../lib/errors';
 import { dailyExchangeRateRepository, opportunityRepository, userRepository } from '../repositories';
-import { BASE_CURRENCY, normalizeRate, toDecimal } from '../utils/currency';
+import { BASE_CURRENCY, normalizeRate, toDecimal, type DecimalInput } from '../utils/currency';
 import { applyScope } from '../utils/scope';
 
 /**
@@ -15,7 +15,11 @@ import { applyScope } from '../utils/scope';
  * 不放任何单模块业务规则，也不构成新的一层。
  */
 
-/** 金额入参：JSON number 或 string，一律经 Decimal 归一（禁止 JS number 参与运算） */
+/**
+ * 金额入参：JSON number 或 string，一律经 Decimal 归一（禁止 JS number 参与运算）。
+ * 注：`resolveExchangeRate` 接受更宽的 `DecimalInput`（含已有 Decimal），
+ * 以便财务域直接用已有 Decimal 汇率值调用而不必二次转换。
+ */
 export type AmountInput = number | string;
 
 /**
@@ -60,7 +64,7 @@ export async function assertAssignableOwner(ctx: SalesActorContext, ownerId: str
  */
 export async function resolveExchangeRate(
   currency: Currency,
-  input?: AmountInput | null,
+  input?: DecimalInput | null,
 ): Promise<Prisma.Decimal | null> {
   if (currency === BASE_CURRENCY) return new Prisma.Decimal(1);
   const normalized = normalizeRate(input ?? null, 'rateToCny');

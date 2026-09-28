@@ -192,4 +192,32 @@ export const salesOrderRepository = {
       totalOrderAmountCny: agg._sum.totalAmountCny ?? new Prisma.Decimal(0),
     };
   },
+
+  /**
+   * （Round R-5 · Phase 4 · D2 财务域）行级锁 —— `SELECT ... FOR UPDATE`。
+   *
+   * 【为什么必须加锁】`paidAmountCny` 的维护是「聚合读 → 整值覆写」两条语句，
+   * 写回的是先前算好的常量；无锁时后提交方会以更早快照的求和值覆盖正确值（经典 lost update）。
+   *
+   * 约束（不得放宽）：
+   *   · 只锁 `SalesOrder`（`paidAmountCny` 的唯一宿主）；
+   *   · 必须 `ORDER BY id ASC` —— owner 迁移（SO-A ↔ SO-B）同时涉及两行，
+   *     确定性顺序消除 AB/BA 循环等待；
+   *   · 必须在**调用方的事务内**执行（锁随该事务提交/回滚释放）；
+   *   · 入参先 Set 去重 + 过滤空值；空数组直接返回（不得生成 `IN ()`）。
+   *
+   * 原始 SQL 属 Data 层职责（Operation / Business 不直接持有 SQL）。
+   */
+  async lockRowsForUpdate(ids: Array<string | null | undefined>, db: DbClient = prisma): Promise<void> {
+    const unique = Array.from(new Set(ids.filter((v): v is string => Boolean(v)))).sort();
+    if (unique.length === 0) return;
+    await db.$queryRaw`
+      SELECT id
+      FROM "SalesOrder"
+      WHERE id IN (${Prisma.join(unique)})
+      ORDER BY id ASC
+      FOR UPDATE
+    `;
+  },
+
 };
