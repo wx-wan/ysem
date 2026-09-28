@@ -4,7 +4,8 @@
 > 它不是业务规则说明书，也不是目标架构设计文档；只记录**已完成的事实**与**明确的边界**。
 >
 > 冻结时间：2026-09-28
-> 冻结轮次：Round R-3.1（Lead + Customer）→ **Round R-4.1（Lead + Customer + Product）**
+> 冻结轮次：Round R-3.1（Lead + Customer）→ Round R-4.1（Lead + Customer + Product）
+> → **Round R-5.2（三模块收口：D14 历史快照修复 / D15 入口注释 / 两层状态体系冻结）**
 > 冻结版本：见 §4 Completed Rounds
 
 ---
@@ -406,12 +407,105 @@ npx prisma migrate status      # 数据库迁移状态（只读）
 
 ---
 
-## 14. Next Action
+## 14. Status Architecture（两层状态体系）
+
+> **Round R-5.2 正式冻结。** 本轮**只冻结原则，不实现**第二层。
+
+### 第一层 · 模块子状态（Module Sub-status）
+
+每一个**具有自身生命周期的 Business Module**，都拥有自己的子状态，表达「**本模块自身**生命周期处于什么阶段」：
+
+```
+Lead.status          （NEW → CONFIRMED → SAMPLED → WON，单调只进）
+Opportunity.outcome  （当前仅有 @default(OPEN)，无写入 —— 见 R-6）
+Quotation.status
+SampleOrder.status
+SalesOrder.status
+...
+```
+
+**约束**：
+
+- 模块子状态**只描述本模块**，不得被借用为整条流程的状态。
+- **纯 Master Data 模块不强行制造生命周期状态** —— `Customer` / `Product` / `ProductGroup` / `ProductTaxonomy`
+  当前**没有**流程性 status，且**不得**为「形式整齐」而新增状态字段。
+  （`Product.status` = `MasterStatus`(ACTIVE)，属**主数据启用状态**，不是流程状态；
+  `Lead.status` 属流程子状态；`Customer` 只有**归属态**：在池 / 已认领。）
+
+### 第二层 · 销售流程主状态（Sales Process Main Status）
+
+未来需要**另行规划**的一层，表达「整条销售流程推进到哪个业务阶段」：
+
+```
+Lead → Opportunity → Quotation → Sample → Sales Order → …
+```
+
+**关键不等关系（冻结）**：
+
+```
+销售流程主状态 ≠ Lead.status
+销售流程主状态 ≠ Opportunity.outcome
+销售流程主状态 ≠ Quotation.status
+```
+
+### 当前实现状态
+
+```
+Sales Process Main Status : ❌ NOT IMPLEMENTED（本轮及此前均未实现）
+当前 Decision             : DEFERRED / FUTURE DESIGN
+```
+
+### 未来设计前置条件（进入 Opportunity / Quotation / SampleOrder / SalesOrder 规划时必须单独设计）
+
+```
+1. 主状态定义          2. 模块子状态定义        3. 主状态与子状态关系
+4. 谁可以推动主状态     5. 是否允许回退          6. 取消 / 暂停 / 丢单 / 赢单
+7. 多 Opportunity 情况  8. 多 Quotation 情况     9. Sample 与 SalesOrder 的关系
+10. 主状态是持久化还是派生
+```
+
+### `Lead.status` 的定位（冻结）
+
+```
+Lead.status = Lead 模块子状态（Lead 自身生命周期状态机）
+Lead.status ≠ 销售流程主状态
+```
+
+本轮**不迁移** `utils/leadStatus.ts`（D11 = DEFERRED，见下）。
+
+### R-5.2 决策记录
+
+| 决策 | 状态 |
+|---|---|
+| **D13** Lead / Customer 的 `assertChannelShop` 是否统一 | **DEFERRED / DO NOT UNIFY** —— 两处语义不同（首次获取事实 vs 长期归属），且实现边界差异（空串判定）属既有行为，不得因「代码重复」机械合并 |
+| **D14** 历史快照读取侧被权限过滤改写 | ✅ **FIXED** —— `utils/scope.projectProductRow` 不再对 Snapshot 字段做 destructive mutation；**权限不改变历史事实**（新增冻结原则，见下） |
+| **D15** `repositories/index.ts` 导出 / 注释一致性 | ✅ **FIXED** —— 14 个仓储**本就全部导出**（R-5.1 该判断有误，已自我纠正）；仅修正头部注释漂移，并补充「仓储两种角色」说明 |
+| **D11** `Lead.status` 状态机的层次归属 | **DEFERRED** —— 当前调用方含 OUT-OF-SCOPE Legacy 模块（`sales` / `sampleOrder` / `salesOrder`），待这些模块重构时处理 |
+| **D12** `utils/` `lib/` 全面归位 | **DEFERRED** |
+| **销售流程主状态** | **FUTURE DESIGN**（不在本轮实现） |
+
+### 新增冻结原则 · SN（Snapshot Immutability）
+
+> **权限控制当前 Master Data 的可见性，不得修改历史业务记录已经保存的 Snapshot Fact。**
+
+```
+「当前不可见」 ≠ 「历史上不存在」
+```
+
+- 关联产品**不可见** ⇒ 仅 `product` 关联置 `null`（当前 Master Data 不可见）；
+  历史 Snapshot 字段（`LeadItem.productName` / `OpportunityItem.productName` / `QuotationItem.productName` 等）**保持原始事实**
+- 关联产品**已删除 / 不存在** ⇒ 外键已 `SetNull`，Snapshot 同样保持
+- 实现落点：`utils/scope.ts` `projectProductRow` / `projectProductRows`
+
+---
+
+## 15. Next Action
 
 ```
 1. 把注意力转回 Opportunity 的业务设计（业务规则 / 状态机 / 终止态 / 与 Customer 关系）
 2. 业务模型冻结后，再决定下一轮拆分哪个模块
 3. 不要因为剩余 26 个 layering violations 而继续机械拆分
+4. 销售流程主状态：进入 Opportunity/Quotation/SampleOrder/SalesOrder 规划时单独设计（FUTURE DESIGN）
 ```
 
-**本基线已 FROZEN。R-5 不自动开始。**
+**本基线已 FROZEN。R-5.2 已收口，未自动开始下一轮。**

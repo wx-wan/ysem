@@ -192,26 +192,36 @@ export const canReadProduct = (
 };
 
 /**
- * 读取侧投影：对「带 `product` 关联（+ 可选 `productId` / `productName` 快照）」的单行做可见性投影。
+ * 读取侧投影：对「带 `product` 关联（+ 历史 Snapshot 字段）」的单行做可见性投影。
  *
- *  - 关联产品**不可见** ⇒ `product = null`；且当 `productId != null` 时，快照字段
- *    （`options.nameField`，如 productName）一并置 null（人工录入名称不受影响）
+ * 【冻结原则 —— Round R-5.2 · D14：权限不改变历史事实】
+ *   权限只决定**当前 Master Data（`product` 关联）**是否可见；
+ *   **不得**改写业务记录已保存的 **Snapshot Fact**
+ *   （如 `LeadItem.productName` / `OpportunityItem.productName` / `QuotationItem.productName` 等）。
+ *   「当前不可见」≠「历史上不存在」—— 把历史快照置 null 会使历史记录失真。
+ *
+ *  - 关联产品**不可见** ⇒ `product = null`（当前 Master Data 不可见）；
+ *    快照字段**保持原始历史事实**，不置 null
  *  - 关联产品**可见** ⇒ `product` 仅保留 `fields` 白名单内的公开字段
  *    （`visibility` / `createdBy` / `visibleUsers` 等内部授权字段**必须**被剔除，不得进入响应）
+ *  - 关联产品**已删除 / 不存在** ⇒ Prisma 侧 `product` 已为 null（外键 SetNull），
+ *    本函数原样返回，快照同样保持
+ *
+ * `_options` 仅为**调用点签名兼容**保留（5 处调用方中 3 处不在 R-5.2 范围内，本轮不修改它们）；
+ * 自 D14 起**不再用于任何字段 mutation**。
  */
 export const projectProductRow = <T>(
   req: AuthRequest,
   row: T,
   fields: readonly string[],
-  options: { nameField?: string } = {},
+  _options: { nameField?: string } = {},
 ): T => {
   const record = row as Record<string, unknown>;
   const raw = record.product as (ProductVisibilityShape & Record<string, unknown>) | null | undefined;
   if (!raw) return row;
   if (!canReadProduct(req, raw)) {
-    const next: Record<string, unknown> = { ...record, product: null };
-    if (options.nameField && record.productId != null) next[options.nameField] = null;
-    return next as T;
+    // D14：仅屏蔽当前 Master Data；历史 Snapshot 字段原样保留（不得置 null）
+    return { ...record, product: null } as T;
   }
   const projected: Record<string, unknown> = {};
   for (const f of fields) if (f in raw) projected[f] = raw[f];
