@@ -52,4 +52,20 @@ export const qualityInspectionRepository = {
       Prisma.QualityInspectionGetPayload<T>
     >;
   },
+
+  /**
+   * C-2 · 出运前「最新一条」PRE_SHIPMENT 质检单（判定在 Business）。
+   *
+   * 排序键 `createdAt DESC, id DESC`：`createdAt` 非空且创建后不可变；
+   * `id` 为非空唯一值（确定性并列键）。`inspectionDate` 可空、`updatedAt` 可被改写
+   * —— **均不得**用作排序键。
+   */
+  findLatestPreShipment(shipmentId: string, type: string, db: DbClient = prisma) {
+    return model(db).findFirst({
+      where: { shipmentId, type: type as never },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { inspectionNo: true, result: true },
+    });
+  },
+
 };

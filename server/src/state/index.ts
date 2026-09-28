@@ -19,3 +19,4 @@ export * from './customerIntent.state';
 
 // ---- ProductionOrder State（R-5 · Phase 4 · D1-b）----
 export * from './productionOrderState.state';
+export * from './shipmentState.state';

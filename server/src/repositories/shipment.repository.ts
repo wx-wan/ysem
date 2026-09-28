@@ -50,4 +50,52 @@ export const shipmentRepository = {
     >;
   },
 
+
+  // ============================================================
+  // Round R-5 · Phase 4 · D1-c 出运域：属主 CRUD + 明细重建支撑
+  // ============================================================
+
+  findMany<T extends Prisma.ShipmentFindManyArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ShipmentGetPayload<T>[]> {
+    return model(db).findMany(args as Prisma.ShipmentFindManyArgs) as unknown as Promise<
+      Prisma.ShipmentGetPayload<T>[]
+    >;
+  },
+
+  count(where: Prisma.ShipmentWhereInput, db: DbClient = prisma): Promise<number> {
+    return model(db).count({ where });
+  },
+
+  create<T extends Prisma.ShipmentCreateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ShipmentGetPayload<T>> {
+    return model(db).create(args as Prisma.ShipmentCreateArgs) as unknown as Promise<
+      Prisma.ShipmentGetPayload<T>
+    >;
+  },
+
+  update<T extends Prisma.ShipmentUpdateArgs>(
+    args: T,
+    db: DbClient = prisma,
+  ): Promise<Prisma.ShipmentGetPayload<T>> {
+    return model(db).update(args as Prisma.ShipmentUpdateArgs) as unknown as Promise<
+      Prisma.ShipmentGetPayload<T>
+    >;
+  },
+
+  /** 本单既有明细（`quantity` 供 C-3 门禁取「本单最终量」） */
+  findItemsByShipmentId(shipmentId: string, db: DbClient = prisma) {
+    return (db as typeof prisma).shipmentItem.findMany({
+      where: { shipmentId },
+      select: { salesOrderItemId: true, quantity: true },
+    });
+  },
+
+  deleteItemsByShipmentId(shipmentId: string, db: DbClient = prisma) {
+    return (db as typeof prisma).shipmentItem.deleteMany({ where: { shipmentId } });
+  },
+
 };

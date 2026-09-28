@@ -234,4 +234,73 @@ export const salesOrderRepository = {
     });
   },
 
+
+  // ============================================================
+  // Round R-5 · Phase 4 · D1-c 出运域：shippedQty 派生汇总支撑
+  // ============================================================
+
+  /** 订单行数量（可出货上限判定依据；此为核心 5 字段的轻量投影） */
+  findItemQuantitiesByIds(ids: string[], db: DbClient = prisma) {
+    if (ids.length === 0) return Promise.resolve([]);
+    return (db as typeof prisma).salesOrderItem.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, quantity: true },
+    });
+  },
+
+  /**
+   * 按订单行汇总有效出货量（`ShipmentItem.quantity` 之和）。
+   *
+   * V1.0（D-E4-C = SEMANTIC-A）：**CANCELLED 出运单的明细不计入**有效出货量。
+   * `excludeShipmentId` 用于 C-3 门禁「排除本单后取其他单合计」，
+   * 在「已删旧明细 / 尚未重建新明细」的任意中间态下均得到同一结论。
+   */
+  groupShippedQtyByItemIds(
+    ids: string[],
+    opts: { excludeShipmentId?: string } = {},
+    db: DbClient = prisma,
+  ) {
+    if (ids.length === 0) {
+      return Promise.resolve([] as Array<{ salesOrderItemId: string; _sum: { quantity: Prisma.Decimal | null } }>);
+    }
+    return (db as typeof prisma).shipmentItem.groupBy({
+      by: ['salesOrderItemId'],
+      where: {
+        salesOrderItemId: { in: ids },
+        ...(opts.excludeShipmentId ? { shipmentId: { not: opts.excludeShipmentId } } : {}),
+        shipment: { status: { not: 'CANCELLED' } },
+      },
+      _sum: { quantity: true },
+    });
+  },
+
+  /** 派生缓存写回：`SalesOrderItem.shippedQty = SUM(有效 ShipmentItem.quantity)`（**重算**，非累加） */
+  updateItemShippedQty(id: string, shippedQty: Prisma.Decimal, db: DbClient = prisma) {
+    return (db as typeof prisma).salesOrderItem.update({ where: { id }, data: { shippedQty } });
+  },
+
+  /**
+   * 锁定受影响的 `SalesOrderItem` 行（并发硬化）。
+   *
+   * 目的：把「读聚合 → 判定 / 写回」纳入同一临界区，消除两类并发缺陷：
+   *   1) over-shipment：两个并发请求各自读到 already = 0 → 双双通过上限校验；
+   *   2) shippedQty 缓存陈旧：`groupBy 读 → UPDATE 写回` 是两条语句，后提交方可能以更早快照
+   *      的求和值整值覆写（经典 lost update）。
+   *
+   * 约束（不得放宽）：只锁 `SalesOrderItem`（它同时是「判定依据 quantity」与「派生缓存
+   * shippedQty」的宿主）；`ORDER BY id ASC` 消除 AB/BA 循环等待；必须在**调用方事务**内执行；
+   * 入参先 Set 去重 + 过滤空值，空数组直接返回（不得生成 `IN ()`）。
+   */
+  async lockItemsForUpdate(ids: Array<string | null | undefined>, db: DbClient = prisma): Promise<void> {
+    const unique = Array.from(new Set(ids.filter((v): v is string => Boolean(v)))).sort();
+    if (unique.length === 0) return;
+    await db.$queryRaw`
+      SELECT id
+      FROM "SalesOrderItem"
+      WHERE id IN (${Prisma.join(unique)})
+      ORDER BY id ASC
+      FOR UPDATE
+    `;
+  },
+
 };

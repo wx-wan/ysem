@@ -65,6 +65,9 @@ export * as salesOrderService from './salesOrder.service';
 export * as channelService from './channel.service';
 export type { SalesActorContext } from './salesProcess.shared';
 
+// ---- Shipment Domain（R-5 · Phase 4 · D1-c）----
+export * as shipmentService from './shipment.service';
+
 // ---- Production & QC Domain（R-5 · Phase 4 · D1-b）----
 export * as productionOrderService from './productionOrder.service';
 export * as qualityInspectionService from './qualityInspection.service';
