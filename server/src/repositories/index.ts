@@ -53,6 +53,9 @@ export { purchaseOrderRepository } from './purchaseOrder.repository';
 export { paymentRepository } from './payment.repository';
 export { profitRepository } from './profit.repository';
 
+// ---- Auth & Audit Domain（R-5 · Phase 4 · D4-b）----
+export { loginLogRepository } from './loginLog.repository';
+
 // ---- Account & Role Domain（R-5 · Phase 4 · D4-a2）----
 export { roleRepository } from './role.repository';
 

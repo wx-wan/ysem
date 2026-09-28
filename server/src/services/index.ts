@@ -1,3 +1,7 @@
+// ---- Auth & Audit Domain（R-5 · Phase 4 · D4-b）----
+export * as authService from './auth.service';
+export * as operationLogService from './operationLog.service';
+
 /**
  * Business Layer（业务层）入口 —— Round R-1 Foundation / R-2 Lead Pilot 首批落地
  *

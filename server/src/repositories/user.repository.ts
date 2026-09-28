@@ -175,4 +175,88 @@ export const userRepository = {
     return model(db).update({ where: { id }, data: { password, lastLoginAt } });
   },
 
+  // ============================================================
+  // Round R-5 · Phase 4 · D4-b 认证与会话域
+  // ============================================================
+  // 说明：以下方法的 select 与迁移前控制器内的查询**逐字段一致**，不扩大查询范围。
+
+  /** 登录：按用户名取用户 + 角色 + 角色权限明细（密码 / 状态 / refreshTokens 均需） */
+  findByUsernameWithAuthz(username: string, db: DbClient = prisma) {
+    return model(db).findUnique({
+      where: { username },
+      include: { role: { include: { permissions: { include: { permission: true } } } } },
+    });
+  },
+
+  /** 登出：仅需 refreshTokens 列表 */
+  findByIdWithRefreshTokens(id: string, db: DbClient = prisma) {
+    return model(db).findUnique({ where: { id }, select: { id: true, refreshTokens: true } });
+  },
+
+  /** 刷新：需 username 以重建 payload */
+  findByIdForRefresh(id: string, db: DbClient = prisma) {
+    return model(db).findUnique({
+      where: { id },
+      select: { id: true, username: true, refreshTokens: true },
+    });
+  },
+
+  /** 改密：需既有密码哈希与新登录态清空目标 */
+  findByIdWithPassword(id: string, db: DbClient = prisma) {
+    return model(db).findUnique({
+      where: { id },
+      select: { id: true, password: true, refreshTokens: true },
+    });
+  },
+
+  /** 当前用户资料（含角色权限明细与部门） */
+  findProfileById(id: string, db: DbClient = prisma) {
+    return model(db).findUnique({
+      where: { id },
+      select: {
+        id: true, username: true, realName: true, email: true, phone: true,
+        avatar: true, status: true, lastLoginAt: true, createdAt: true,
+        role: { include: { permissions: { include: { permission: true } } } },
+        department: true,
+      },
+    });
+  },
+
+  /** 登录成功：追加 refreshToken（多端在线，上限由 Business 裁剪）并记录最后登录时间 */
+  setRefreshTokensAndLastLogin(
+    id: string,
+    refreshTokens: string[],
+    lastLoginAt: Date,
+    db: DbClient = prisma,
+  ) {
+    return model(db).update({
+      where: { id },
+      data: { refreshTokens: { set: refreshTokens }, lastLoginAt },
+    });
+  },
+
+  /** 刷新轮换 / 登出：整体覆写 refreshTokens 列表 */
+  setRefreshTokens(id: string, refreshTokens: string[], db: DbClient = prisma) {
+    return model(db).update({ where: { id }, data: { refreshTokens: { set: refreshTokens } } });
+  },
+
+  /** 注册（公开注册入口）：密码由 Business 哈希后传入 */
+  createFromRegister(
+    data: { username: string; password: string; realName: string; email?: string; phone?: string },
+    db: DbClient = prisma,
+  ) {
+    return model(db).create({
+      data,
+      select: { id: true, username: true, realName: true, email: true, createdAt: true },
+    });
+  },
+
+  /** 改密：写入新哈希并清空全部端登录态（强制重新登录） */
+  setPasswordAndClearTokens(id: string, password: string, db: DbClient = prisma) {
+    return model(db).update({
+      where: { id },
+      data: { password, refreshTokens: { set: [] } },
+    });
+  },
+
 };
