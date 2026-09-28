@@ -455,6 +455,7 @@
     "selectAssignee": "Select assignee",
     "filterByOwner": "Filter by owner",
     "sourceLead": "Source lead",
+    "sourceChannel": "Source channel / platform",
     "viewLead": "View",
     "stage": {
       "label": "Stage",
@@ -467,6 +468,10 @@
     },
     "amount": "Amount",
     "filterStage": "Filter by stage",
+    "searchPlaceholder": "Search opportunity title / customer / contact",
+    "scopeMine": "Mine",
+    "scopeAll": "All",
+    "filterOwner": "Owner",
     "emptyStage": "No records",
     "newRecord": "New Opportunity",
     "newRecordDesc": "Log a new opportunity, link a customer and products, and move it toward closing",

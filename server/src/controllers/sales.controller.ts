@@ -42,6 +42,9 @@ const createOpportunitySchema = z.object({
   ownerId: z.string().optional().nullable(),
   // 来源线索 ID（线索确认转商机时绑定，便于溯源）
   leadId: z.string().optional().nullable(),
+  // 来源渠道 / 平台（与 Lead.channelId / shopId 同义；线索转商机时原样带入）
+  channelId: z.string().optional().nullable(),
+  shopId: z.string().optional().nullable(),
   // 商机关联产品：[{ productId, quantity }]
   products: z.array(z.object({
     productId: z.string(),
@@ -78,11 +81,13 @@ const withProductVisibility = <T>(req: AuthRequest, record: T): T => {
   } as T;
 };
 
-/** 商机详情统一 include（V1.0 关系：owner / customer / lead / items / activities） */
+/** 商机详情统一 include（V1.0 关系：owner / customer / lead / channel / shop / items / activities） */
 const OPPORTUNITY_INCLUDE = {
   owner: { select: { id: true, realName: true, username: true } },
   customer: { select: { id: true, companyName: true, contactName: true } },
   lead: { select: { id: true, leadNo: true, leadName: true } },
+  channel: { select: { id: true, name: true } },
+  shop: { select: { id: true, name: true } },
   items: {
     include: { product: { select: OPPORTUNITY_ITEM_PRODUCT_SELECT } },
     orderBy: { sort: 'asc' },
@@ -135,7 +140,7 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
   try {
     const {
       page = '1', pageSize = '20', keyword = '', stage = '', ownerId = '',
-      startDate, endDate,
+      channel = '', platform = '', startDate, endDate,
     } = req.query as Record<string, string>;
 
     const pageNum = Number(page);
@@ -161,12 +166,13 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
       where.createdAt = dateFilter;
     }
 
-    // 数据范围：管理员可用 ownerId 自由筛选；其余用户按角色 dataScope 过滤（含公海）
-    if (ownerId && (req.roleCode === 'admin' || req.roleCode === 'ADMIN')) {
-      where.ownerId = ownerId;
-    } else {
-      where = applyScope(where, await roleScope(req, { field: 'ownerId' }));
-    }
+    // 来源渠道 / 平台筛选（对齐线索页：channel = 渠道，platform = 平台/shopId）
+    if (channel) where.channelId = channel;
+    if (platform) where.shopId = platform;
+
+    // 数据范围：所有用户均可按 ownerId 自由筛选；非选中时仍按角色 dataScope 限制可见范围
+    if (ownerId) where.ownerId = ownerId;
+    where = applyScope(where, await roleScope(req, { field: 'ownerId' }));
 
     if (AND.length > 0) {
       where.AND = [...((where.AND ?? []) as unknown[]), ...AND];
@@ -403,6 +409,8 @@ export const createOpportunity = async (req: AuthRequest, res: Response): Promis
           title: data.title,
           customerId: data.customerId,
           leadId: data.leadId ?? null,
+          channelId: data.channelId ?? undefined,
+          shopId: data.shopId ?? undefined,
           ownerId: data.ownerId ?? req.userId ?? null,
           estimatedAmount: data.estimatedAmount ?? undefined,
           estimatedCloseDate: data.estimatedCloseDate ? new Date(data.estimatedCloseDate) : null,

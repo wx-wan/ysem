@@ -34,6 +34,13 @@ export interface SalesItem {
   ownerId?: string | null;
   /** 负责人（后端 assignee relation；显示优先使用） */
   assignee?: { id: string; realName: string; username: string } | null;
+  /** 来源渠道 ID（与 Lead.channelId 同义；线索转商机时带入） */
+  channelId?: string | null;
+  /** 来源平台 ID（与 Lead.shopId 同义） */
+  shopId?: string | null;
+  /** 来源渠道 / 平台（后端 include 带回，用于展示渠道名而非内部 ID） */
+  channel?: { id: string; name: string } | null;
+  shop?: { id: string; name: string } | null;
   activities?: SalesActivity[];
   leadProducts?: LeadProduct[];
   createdAt: string;

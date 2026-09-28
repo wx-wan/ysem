@@ -162,6 +162,9 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     customerId: customerId ?? undefined,
     products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
     ownerId: lead.ownerId ?? undefined,
+    // 来源渠道 / 平台：原样带入线索的 channelId / shopId，使商机页「渠道/平台」筛选可对齐线索页
+    channelId: (lead as any).channelId ?? lead.channel?.id ?? undefined,
+    shopId: (lead as any).shopId ?? lead.shop?.id ?? undefined,
     leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
     // 商机做实：带入线索的预估数据，新商机不再是空壳
     estimatedAmount: lead.targetPrice ? Number(lead.targetPrice) : undefined,

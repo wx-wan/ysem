@@ -1,479 +1,249 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import {
-  Card, Button, Space, Input, Select, Table, Tag, Popconfirm, App, Upload, Tabs, Modal,
-  Statistic, Row, Col, Pagination,
-} from 'antd';
-import {
-  PlusOutlined, SearchOutlined, DeleteOutlined,
-  AppstoreOutlined, UnorderedListOutlined, ImportOutlined,
-  InboxOutlined, EditOutlined, EyeOutlined,
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-import { theme } from 'antd';
-import { salesApi, SalesItem } from '../api/sales';
-import { customerApi, Customer } from '../api/customers';
-import SalesFormModal from '../components/sales/SalesFormModal';
-import SalesDetailDrawer from '../components/sales/SalesDetailDrawer';
+import { App, Button, Card, Pagination, Space } from 'antd';
+import { ImportOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
-import { SALES_STAGES, getStageMeta, getStageI18nKey, type SalesStage } from '../components/sales/stages';
-import { buildTablePagination } from '../components/common/tablePagination';
-import KanbanView from '../components/sales/KanbanView';
-import Price from '../components/common/Price';
-import CreateEntryCard from '../components/common/CreateEntryCard';
+import { debounce } from '../utils/rateLimit';
+import { theme } from 'antd';
+
+import FilterToolbar, { FilterGroup } from '../components/common/FilterToolbar';
+import CapsuleSwitch from '../components/common/CapsuleSwitch';
+import ImportModal from '../components/sales/ImportModal';
+import SalesFormModal from '../components/sales/SalesFormModal';
+import OpportunityCardList from '../components/sales/OpportunityCardList';
+import OpportunityDetailPanel from '../components/sales/OpportunityDetailPanel';
+import { useOpportunityList } from '../components/sales/useOpportunityList';
+import { useLeadOptions } from '../components/lead/useLeadOptions';
+import { flattenChannelOptions, flattenPlatformOptions } from '../components/lead/constants';
+import { salesApi, type SalesItem } from '../api/sales';
+import { useAuthStore } from '../stores/useAuthStore';
+import type { SalesStage } from '../components/sales/stages';
 
 export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
-  const { message } = App.useApp();
   const { token } = theme.useToken();
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
+  const { message } = App.useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isAdmin = useAuthStore((s) => s.user?.role?.code === 'admin');
+  const { channels } = useLeadOptions();
 
-  // 阶段选项：由后端按关联单据派生，仅用于展示与筛选
-  const stageOptions = SALES_STAGES.map((s) => ({
-    value: s,
-    label: t(`sales.stage.${getStageI18nKey(s)}`),
-    color: getStageMeta(s).color,
-    bg: getStageMeta(s).bg,
-    border: getStageMeta(s).border,
-  }));
+  const list = useOpportunityList(fixedStage);
 
-  // 视图模式
-  const [viewMode, setViewMode] = useState<'kanban' | 'list'>(fixedStage ? 'list' : 'kanban');
-
-  // 数据状态
-  const [kanbanData, setKanbanData] = useState<Record<string, { title: string; items: SalesItem[] }>>({});
-  const [listData, setListData] = useState<SalesItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-
-  // 筛选
-  const [keyword, setKeyword] = useState('');
-  const [filterStage, setFilterStage] = useState<string>(fixedStage ?? '');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(19);
-
-  // 弹窗状态
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importTab, setImportTab] = useState('excel');
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailItem, setDetailItem] = useState<SalesItem | null>(null);
-  const [assignUsers, setAssignUsers] = useState<{ id: string; realName: string }[]>([]);
-  const [customerOptions, setCustomerOptions] = useState<{ label: string; value: string; raw: Customer }[]>([]);
-
-  // ============ 数据加载 ============
-
-  const fetchKanban = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    try {
-      const res = await salesApi.kanban(signal);
-      setKanbanData(res.data.data.columns);
-    } catch {
-      // 忽略取消/异常
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchList = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true);
-    try {
-      const params: Record<string, string> = { page: String(page), pageSize: String(pageSize) };
-      if (keyword) params.keyword = keyword;
-      if (filterStage) params.stage = filterStage;
-      const res = await salesApi.list(params, signal);
-      setListData(res.data.data.list);
-      setTotal(res.data.data.total);
-    } catch {
-      // 忽略取消/异常
-    } finally {
-      setLoading(false);
-    }
-  }, [page, pageSize, keyword, filterStage]);
-
-  const fetchAssignUsers = async () => {
-    try {
-      const res = await salesApi.getAssignUsers();
-      setAssignUsers(res.data.data);
-    } catch { /* ignore */ }
+  // 搜索（防抖）
+  const [kw, setKw] = useState('');
+  const commitKeyword = useMemo(
+    () => debounce((v: string) => list.setKeyword(v), 350),
+    [list.setKeyword],
+  );
+  const onSearchChange = (v: string) => {
+    setKw(v);
+    commitKeyword(v);
   };
 
-  const fetchCustomers = async () => {
+  // 选中详情
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<SalesItem | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const refetchDetail = useCallback(async () => {
+    if (!selectedId) {
+      setDetail(null);
+      return;
+    }
+    setDetailLoading(true);
     try {
-      const res = await customerApi.options();
-      setCustomerOptions(
-        (res.data.data || []).map((c: Customer) => ({ label: c.companyName, value: c.id, raw: c }))
-      );
-    } catch { /* ignore */ }
-  };
+      const res = await salesApi.get(selectedId);
+      setDetail(res.data.data);
+    } catch {
+      message.error(t('common.loadFailed'));
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [selectedId, message, t]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    if (viewMode === 'kanban') fetchKanban(controller.signal);
-    else fetchList(controller.signal);
-    return () => controller.abort();
-  }, [viewMode, fetchKanban, fetchList]);
+    refetchDetail();
+  }, [refetchDetail]);
 
-  const refresh = () => {
-    if (viewMode === 'kanban') fetchKanban();
-    else fetchList();
-  };
-
-  // 从线索页「前往查看」跳转过来时，携带 ?pipelineId= 自动打开对应商机详情抽屉
+  // 深链：?pipelineId= 自动打开详情
   useEffect(() => {
-    const pipelineId = searchParams.get('pipelineId');
-    if (!pipelineId) return;
-    (async () => {
-      try {
-        const res = await salesApi.get(pipelineId);
-        setDetailItem(res.data.data);
-        setDetailOpen(true);
-      } catch {
-        // 找不到则不打开，停留在列表
-      }
-    })();
+    const pid = searchParams.get('pipelineId');
+    if (pid) {
+      setSelectedId(pid);
+      searchParams.delete('pipelineId');
+      setSearchParams(searchParams, { replace: true });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // ============ 操作 ============
+  // 客户端按创建时间排序（后端列表暂按更新时间返回，前端对齐线索排序交互）
+  const sortedData = useMemo(() => {
+    const arr = [...list.listData];
+    if (list.sort === 'createdAt:asc') {
+      arr.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+    }
+    return arr;
+  }, [list.listData, list.sort]);
 
-  // 阶段由后端派生，新建时不再指定阶段
+  const activeCount =
+    (list.filterChannel ? 1 : 0) +
+    (list.filterPlatform ? 1 : 0) +
+    (list.filterOwner ? 1 : 0) +
+    (list.scope === 'mine' ? 1 : 0);
+
+  const handleClear = () => {
+    list.setFilterChannel(undefined);
+    list.setFilterPlatform(undefined);
+    list.setFilterOwner(undefined);
+    list.setScope('all');
+    setKw('');
+    list.setKeyword('');
+  };
+
+  // 新建 / 编辑
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
   const handleCreate = () => {
     setEditingItem(null);
-    fetchAssignUsers();
-    fetchCustomers();
     setModalOpen(true);
   };
-
   const handleEdit = (item: SalesItem) => {
     setEditingItem(item);
-    fetchAssignUsers();
     setModalOpen(true);
   };
-
-  const handleFormSuccess = async (values: any) => {
-    try {
-      if (editingItem) {
-        await salesApi.update(editingItem.id, values);
-        message.success('保存成功');
-      } else {
-        await salesApi.create(values);
-        message.success('创建成功');
-      }
-      refresh();
-    } catch {
-      message.error('保存失败，请重试');
+  const handleDelete = async (item: SalesItem) => {
+    await list.remove(item.id);
+    if (selectedId === item.id) {
+      setSelectedId(null);
+      setDetail(null);
     }
   };
 
-  const handleViewDetail = async (id: string) => {
-    try {
-      const res = await salesApi.get(id);
-      setDetailItem(res.data.data);
-      setDetailOpen(true);
-    } catch { /* ignore */ }
-  };
+  // Excel 导入
+  const [importOpen, setImportOpen] = useState(false);
 
-  const handleDelete = async (id: string) => {
-    try {
-      await salesApi.delete(id);
-      message.success('删除成功');
-      refresh();
-    } catch { /* ignore */ }
-  };
-
-  const handleBatchDelete = async () => {
-    if (selectedKeys.length === 0) { message.warning('请先选择记录'); return; }
-    try {
-      await salesApi.batchDelete(selectedKeys);
-      message.success('删除成功');
-      setSelectedKeys([]);
-      refresh();
-    } catch { /* ignore */ }
-  };
-
-  const handleImport = async (file: File) => {
-    try {
-      const res = await salesApi.importExcel(file);
-      message.success(`导入完成：成功 ${res.data.data.successCount} 条，失败 ${res.data.data.failCount} 条`);
-      setImportOpen(false);
-      refresh();
-    } catch { /* ignore */ }
-    return false; // 阻止 Upload 默认上传
-  };
-
-  // ============ 表格列定义 ============
-
-  const columns: ColumnsType<SalesItem> = useMemo(() => [
-    { title: t('sales.title_field'), dataIndex: 'title', width: 180, ellipsis: true },
-    { title: t('sales.companyName'), dataIndex: 'companyName', width: 140 },
-    { title: t('sales.contactName'), dataIndex: 'contactName', width: 100 },
-    {
-      title: t('sales.stage.label'), dataIndex: 'stage', width: 90,
-      render: (s: string) => {
-        const st = getStageMeta(s);
-        return (
-          <Tag color={st?.color} variant="filled">
-            {t(`sales.stage.${getStageI18nKey(s)}`)}
-          </Tag>
-        );
-      },
-    },
-    {
-      title: t('sales.amount'), dataIndex: 'estimatedAmount', width: 120,
-      render: (_: unknown, r: SalesItem) => {
-        const amt = r.stage === 'ORDER' || r.stage === 'SHIPPED' ? r.orderAmount : r.estimatedAmount;
-        return amt ? <Price value={amt} /> : '-';
-      },
-    },
-    { title: '来源', dataIndex: 'source', width: 90 },
-    {
-      title: '负责人', dataIndex: 'assignee', width: 80,
-      render: (v: SalesItem['assignee']) => v?.realName || '-',
-    },
-    {
-      title: '更新时间', dataIndex: 'updatedAt', width: 120,
-      render: (v: string) => new Date(v).toLocaleDateString('zh-CN'),
-    },
-    {
-      title: '操作', key: 'action', width: 160, fixed: 'right',
-      render: (_: unknown, r: SalesItem) => (
-        <Space size="small">
-          <Button size="small" type="link" icon={<EyeOutlined />} onClick={() => handleViewDetail(r.id)}>
-            {t('sales.detail')}
-          </Button>
-          <Button size="small" type="link" icon={<EditOutlined />} onClick={() => handleEdit(r)}>
-            {t('common.edit')}
-          </Button>
-          <Popconfirm title={t('common.confirmDelete')} onConfirm={() => handleDelete(r.id)}>
-            <Button size="small" type="link" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ], [t]);
-
-  // ============ 列表视图 ============
-
-  const ListView = () => (
-    <>
-      <Card
-        variant="borderless"
-        style={{ borderRadius: token.borderRadiusLG, border: `1px solid ${token.colorBorderSecondary}` }}
-      >
-      {/* 顶部新建入口卡片：与线索列表样式统一，作为商机列表的唯一新增入口 */}
-      <CreateEntryCard
-        onClick={() => handleCreate()}
-        title={t('sales.newRecord')}
-        description={t('sales.newRecordDesc')}
-      />
-
-      {/* 搜索与筛选栏：对齐客户页工具栏（白卡内 dashed 底边框） */}
-      <div
-        style={{
-          padding: '16px 20px',
-          borderBottom: `1px dashed ${token.colorBorderSecondary}`,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          gap: 8, flexWrap: 'wrap', marginBottom: 16,
-        }}
-      >
-        <Space wrap>
-          <Select
-            style={{ width: 130 }}
-            placeholder={t('sales.filterStage')}
-            allowClear
-            value={filterStage || undefined}
-            onChange={(v) => { setFilterStage(v || ''); setPage(1); }}
-            options={stageOptions}
-          />
-          <Input
-            style={{ width: 200 }}
-            placeholder="搜索标题/公司/联系人"
-            prefix={<SearchOutlined />}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            onPressEnter={() => { setPage(1); fetchList(); }}
-          />
-          <Button onClick={() => { setPage(1); fetchList(); }}>搜索</Button>
-        </Space>
-        <Space>
-          {selectedKeys.length > 0 && (
-            <Popconfirm title={`确定删除 ${selectedKeys.length} 条记录？`} onConfirm={handleBatchDelete}>
-              <Button danger icon={<DeleteOutlined />}>批量删除</Button>
-            </Popconfirm>
-          )}
-        </Space>
-      </div>
-
-      <Table
-        rowKey="id"
-        columns={columns}
-        dataSource={listData}
-        loading={loading}
-        size="middle"
-        rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys as string[]) }}
-        scroll={{ x: 1000 }}
-        pagination={false}
-      />
-    </Card>
-
-    {total > pageSize && (
-      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
-        <Pagination
-          {...buildTablePagination({
-            total, page, pageSize,
-            onChange: (p, s) => { setPage(p); setPageSize(s); },
-          })}
-        />
-      </div>
-    )}
-    </>
-  );
-
-  // ============ 统计卡片 ============
-
-  const stats = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const stage of stageOptions) {
-      const col = kanbanData[stage.value];
-      result[stage.value] = col ? col.items.length : 0;
-    }
-    return result;
-  }, [kanbanData, stageOptions]);
-
-  // ============ 主渲染 ============
+  const ownerOptions = list.ownerOptions.map((o) => ({ key: o.id, label: o.realName || o.username }));
 
   return (
-    <div>
-      {/* 概览卡片 */}
-      {!fixedStage && (
-      <Row gutter={16} style={{ marginBottom: 16 }}>
-        {stageOptions.map((stage) => (
-          <Col xs={12} sm={6} key={stage.value}>
-            <Card
-              variant="borderless"
-              size="small"
-              style={{ borderRadius: 16, cursor: 'pointer', background: stage.bg, border: '1px solid transparent', transition: 'border-color .2s' }}
-              hoverable
-              onClick={() => { setViewMode('list'); setFilterStage(stage.value); setPage(1); }}
-            >
-              <Statistic
-                title={<span style={{ color: stage.color, fontSize: 13 }}>{stage.label}</span>}
-                value={stats[stage.value] || 0}
-                styles={{ content: { color: stage.color, fontSize: 26, fontWeight: 700 } }}
-              />
-            </Card>
-          </Col>
-        ))}
-      </Row>
-      )}
-
-      {/* 工具栏：商机列表等固定阶段页面以顶部「新建商机」卡片为唯一新增入口；仅看板视图保留工具栏快捷新增 */}
-      {!fixedStage && (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, flexWrap: 'wrap', gap: 8 }}>
-        <Space>
-          {viewMode === 'kanban' && (
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => handleCreate()}>{t('common.add')}</Button>
-          )}
-          <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>{t('sales.import')}</Button>
-        </Space>
-
-        <Space>
-          <Button
-            type={viewMode === 'kanban' ? 'primary' : 'default'}
-            icon={<AppstoreOutlined />}
-            onClick={() => setViewMode('kanban')}
-          >
-            {t('sales.kanban')}
-          </Button>
-          <Button
-            type={viewMode === 'list' ? 'primary' : 'default'}
-            icon={<UnorderedListOutlined />}
-            onClick={() => setViewMode('list')}
-          >
-            {t('sales.list')}
-          </Button>
-        </Space>
-      </div>
-      )}
-
-      {/* 内容区 */}
-      {viewMode === 'kanban' ? (
-        <KanbanView
-          kanbanData={kanbanData}
-          onViewDetail={handleViewDetail}
-          onAdd={() => handleCreate()}
-        />
-      ) : <ListView />}
-
-      {/* 导入弹窗 */}
-      <Modal
-        title="导入数据"
-        open={importOpen}
-        onCancel={() => setImportOpen(false)}
-        footer={null}
-        width={600}
+    <Card className="sales-card" styles={{ body: { padding: 16 } }}>
+      <FilterToolbar
+        searchPlaceholder={t('sales.searchPlaceholder')}
+        searchValue={kw}
+        onSearchChange={onSearchChange}
+        sortOptions={[
+          { value: 'createdAt:desc', label: t('lead.sortLatest') },
+          { value: 'createdAt:asc', label: t('lead.sortEarliest') },
+        ]}
+        sortValue={list.sort}
+        onSortChange={list.setSort}
+        activeCount={activeCount}
+        onClear={handleClear}
+        tabs={
+          <CapsuleSwitch
+            value={list.scope}
+            onChange={list.setScope}
+            options={[
+              { value: 'mine', label: t('sales.scopeMine') },
+              { value: 'all', label: t('sales.scopeAll') },
+            ]}
+          />
+        }
+        total={list.total}
+        actions={
+          <Space>
+            {isAdmin && list.selectedKeys.length > 0 && (
+              <Button danger onClick={() => list.batchRemove(list.selectedKeys)}>
+                {t('common.batchDelete')}
+              </Button>
+            )}
+            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
+              {t('sales.import')}
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
+              {t('sales.newRecord')}
+            </Button>
+          </Space>
+        }
       >
-        <Tabs activeKey={importTab} onChange={setImportTab} items={[
-          {
-            key: 'excel',
-            label: 'Excel 导入',
-            children: (
-              <div>
-                <Upload.Dragger
-                  accept=".xlsx,.xls,.csv"
-                  maxCount={1}
-                  beforeUpload={handleImport}
-                  showUploadList={false}
-                >
-                  <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-                  <p>点击或拖拽上传 Excel 文件</p>
-                  <p style={{ color: token.colorTextTertiary, fontSize: 12 }}>
-                    支持 .xlsx / .xls / .csv 格式
-                  </p>
-                </Upload.Dragger>
-                <div style={{ marginTop: 16, padding: '12px 16px', background: token.colorFillQuaternary, borderRadius: 12, fontSize: 12, color: token.colorTextSecondary }}>
-                  <div style={{ fontWeight: 600, marginBottom: 6 }}>{t('sales.importFieldsTitle')}</div>
-                  <div>{t('sales.importFieldsBasic')}</div>
-                  <div>{t('sales.importFieldsOpp')}</div>
-                  <div>{t('sales.importFieldsOrder')}</div>
-                  <div style={{ marginTop: 6, color: token.colorWarning }}>{t('sales.importStageNote')}</div>
-                </div>
-              </div>
-            ),
-          },
-          {
-            key: 'xiaoman',
-            label: '小满 API',
-            children: (
-              <div style={{ textAlign: 'center', padding: 40 }}>
-                <InboxOutlined style={{ fontSize: 48, color: token.colorTextTertiary, marginBottom: 16 }} />
-                <p style={{ color: token.colorTextSecondary }}>小满 API 对接功能开发中</p>
-                <p style={{ color: token.colorTextTertiary, fontSize: 12 }}>
-                  后续将支持通过小满开放接口自动同步客户与商机数据
-                </p>
-              </div>
-            ),
-          },
-        ]} />
-      </Modal>
+        <FilterGroup label={t('lead.filterPlatform')} value={list.filterChannel} onChange={list.setFilterChannel}>
+          {[{ key: 'all', label: t('common.all') }, ...flattenChannelOptions(channels)].map((o) => ({
+            key: o.key,
+            label: o.label,
+          }))}
+        </FilterGroup>
+        <FilterGroup
+          label={t('lead.filterShop')}
+          value={list.filterPlatform}
+          onChange={list.setFilterPlatform}
+        >
+          {[{ key: 'all', label: t('common.all') }, ...flattenPlatformOptions(channels, list.filterChannel)].map(
+            (o) => ({ key: o.key, label: o.label }),
+          )}
+        </FilterGroup>
+        <FilterGroup label={t('sales.filterOwner')} value={list.filterOwner} onChange={list.setFilterOwner}>
+          {[{ key: 'all', label: t('common.all') }, ...ownerOptions].map((o) => ({ key: o.key, label: o.label }))}
+        </FilterGroup>
+      </FilterToolbar>
 
-      {/* 弹窗 */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 16 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <OpportunityCardList
+            dataSource={sortedData}
+            loading={list.loading}
+            selectedId={selectedId}
+            onSelect={(r) => setSelectedId(r.id)}
+          />
+        </div>
+        <div
+          className="lead-detail-col"
+          style={{ width: 380, flexShrink: 0, position: 'sticky', top: 16, alignSelf: 'flex-start' }}
+        >
+          <OpportunityDetailPanel
+            detail={detail}
+            loading={detailLoading}
+            isAdmin={isAdmin}
+            onClose={() => {
+              setSelectedId(null);
+              setDetail(null);
+            }}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 12,
+          color: token.colorTextSecondary,
+          fontSize: 13,
+        }}
+      >
+        <span>{t('lead.resultCount', { total: list.total })}</span>
+        <Pagination
+          current={list.page}
+          pageSize={list.pageSize}
+          total={list.total}
+          showSizeChanger={false}
+          onChange={(p) => list.setPage(p)}
+        />
+      </div>
+
       <SalesFormModal
         open={modalOpen}
         editingItem={editingItem}
-        onClose={() => { setModalOpen(false); setEditingItem(null); }}
-        onSaved={() => { setModalOpen(false); setEditingItem(null); refresh(); }}
+        onClose={() => setModalOpen(false)}
+        onSaved={() => {
+          setModalOpen(false);
+          setEditingItem(null);
+          list.refresh();
+          if (selectedId) refetchDetail();
+        }}
       />
-      <SalesDetailDrawer
-        open={detailOpen}
-        detailItem={detailItem}
-        onClose={() => { setDetailOpen(false); setDetailItem(null); }}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-      />
-    </div>
+      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={() => list.refresh()} />
+    </Card>
   );
 }
