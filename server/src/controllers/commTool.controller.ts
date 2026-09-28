@@ -1,39 +1,36 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import prisma from '../lib/prisma';
+import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
-import { success, created, fail } from '../utils/response';
+import * as dictionaryService from '../services/dictionary.service';
+import { created, fail, success } from '../utils/response';
 
-const commToolSchema = z.object({
-  name: z.string().min(1, '名称不能为空').max(50, '名称最多 50 字符'),
-  // 允许 null：编辑回填时 description 可能为 null，z.string().optional() 不接受 null
-  description: z.string().max(200, '说明最多 200 字符').optional().nullable(),
-  icon: z.string().max(50, '图标名称最多 50 字符').optional().nullable(),
-  isActive: z.boolean().optional(),
-  // 数字输入框可能提交字符串；空串/置空视为未填（交由默认值逻辑处理）
-  sort: z.preprocess(
-    (v) => (v === '' || v === null || v === undefined ? undefined : Number(v)),
-    z.number().int('排序必须为整数').optional(),
-  ),
-});
+/**
+ * CommunicationTool Controller —— Round R-5 · Phase 2 · Master Data Domain（字典域）
+ * 职责与边界同 `currency.controller.ts`（Transport only）。API Contract 保持不变。
+ */
 
-const sortSchema = z.array(
-  z.object({
-    id: z.string(),
-    sort: z.number().int(),
-  }),
-);
+const KIND = 'commTool' as const;
+const schema = dictionaryService.schemaOf(KIND);
+
+function respondError(res: Response, err: unknown, zodAware: boolean): void {
+  if (zodAware && err instanceof z.ZodError) {
+    fail(res, 400, err.errors.map((e) => e.message).join(', '));
+    return;
+  }
+  if (err instanceof DomainError) {
+    fail(res, err.code, err.message);
+    return;
+  }
+  fail(res, 500, '服务器错误');
+}
 
 // 启用的沟通工具（用于下拉选择）
 export const getActiveCommTools = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const list = await prisma.communicationTool.findMany({
-      where: { isActive: true },
-      orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }],
-    });
-    success(res, list);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await dictionaryService.listActive(KIND));
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
@@ -41,100 +38,55 @@ export const getActiveCommTools = async (_req: AuthRequest, res: Response): Prom
 export const getAllCommTools = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const keyword = (req.query.keyword as string | undefined)?.trim();
-    const list = await prisma.communicationTool.findMany({
-      where: keyword
-        ? {
-            OR: [
-              { name: { contains: keyword } },
-              { description: { contains: keyword } },
-            ],
-          }
-        : undefined,
-      orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }],
-    });
-    success(res, list);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await dictionaryService.listAll(KIND, keyword));
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
 export const getCommTool = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const item = await prisma.communicationTool.findUnique({ where: { id: req.params.id } });
-    if (!item) {
-      fail(res, 404, '沟通工具不存在');
-      return;
-    }
-    success(res, item);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await dictionaryService.getOne(KIND, req.params.id));
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
 export const createCommTool = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = commToolSchema.parse(req.body);
-    const maxSort = await prisma.communicationTool.aggregate({ _max: { sort: true } });
-    const item = await prisma.communicationTool.create({
-      data: {
-        name: data.name,
-        description: data.description ?? null,
-        icon: data.icon ?? null,
-        isActive: data.isActive ?? true,
-        sort: data.sort ?? (maxSort._max.sort ?? 0) + 1,
-      },
-    });
-    created(res, item);
+    const data = schema.parse(req.body) as Record<string, unknown>;
+    created(res, await dictionaryService.create(KIND, data));
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err, true);
   }
 };
 
 export const updateCommTool = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = commToolSchema.partial().parse(req.body);
-    await prisma.communicationTool.update({ where: { id: req.params.id }, data });
+    const data = schema.partial().parse(req.body) as Record<string, unknown>;
+    await dictionaryService.update(KIND, req.params.id, data);
     success(res, null, '更新成功');
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err, true);
   }
 };
 
 export const deleteCommTool = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    await prisma.communicationTool.delete({ where: { id: req.params.id } });
+    await dictionaryService.remove(KIND, req.params.id);
     success(res, null, '删除成功');
-  } catch {
-    fail(res, 500, '服务器错误');
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
 // 批量更新排序
 export const updateCommToolSort = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const items = sortSchema.parse(req.body);
-    await prisma.$transaction(
-      items.map((item) =>
-        prisma.communicationTool.update({
-          where: { id: item.id },
-          data: { sort: item.sort },
-        }),
-      ),
-    );
+    const items = dictionaryService.dictionarySortSchema.parse(req.body);
+    await dictionaryService.updateSort(KIND, items);
     success(res, null, '排序更新成功');
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err, true);
   }
 };

@@ -64,3 +64,11 @@ export * as sampleOrderService from './sampleOrder.service';
 export * as salesOrderService from './salesOrder.service';
 export * as channelService from './channel.service';
 export type { SalesActorContext } from './salesProcess.shared';
+
+// ---- Master Data Domain（R-5 · Phase 2）----
+// 字典域按**域**收敛（币种 / 单位 / 客户类型 / 沟通工具 共享同一套规则实现）；
+// 认证资质与汇率为各自独立主数据服务。
+export * as dictionaryService from './dictionary.service';
+export * as certificateService from './certificate.service';
+export * as exchangeService from './exchange.service';
+export type { DictionaryKind, DictionarySortItem } from './dictionary.service';

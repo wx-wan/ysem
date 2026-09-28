@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import type { DbClient } from './types';
 
@@ -63,5 +64,31 @@ export const channelRepository = {
   /** 子节点计数（父渠道是否仍挂平台） */
   countChildren(id: string, db: DbClient = prisma): Promise<number> {
     return db.channel.count({ where: { parentId: id } });
+  },
+
+  // ============================================================
+  // Round R-5 · Phase 2：Channel / Shop 属主访问（主数据 CRUD）
+  // ============================================================
+
+  /** 全部渠道 / 平台（既有排序口径逐字沿用） */
+  findAll(db: DbClient = prisma) {
+    return db.channel.findMany({ orderBy: [{ sort: 'asc' }, { createdAt: 'asc' }] });
+  },
+
+  /** 单条（详情 / 父级类别继承） */
+  findById(id: string, db: DbClient = prisma) {
+    return db.channel.findUnique({ where: { id } });
+  },
+
+  create(data: Prisma.ChannelUncheckedCreateInput, db: DbClient = prisma) {
+    return db.channel.create({ data });
+  },
+
+  update(id: string, data: Prisma.ChannelUncheckedUpdateInput, db: DbClient = prisma) {
+    return db.channel.update({ where: { id }, data });
+  },
+
+  delete(id: string, db: DbClient = prisma) {
+    return db.channel.delete({ where: { id } });
   },
 };

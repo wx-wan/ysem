@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import type { DbClient } from './types';
 
@@ -20,5 +21,30 @@ export const certificateRepository = {
   /** 差异比对用：按 id 集合取认证名称 */
   findNamesByIds(ids: string[], db: DbClient = prisma) {
     return db.certificate.findMany({ where: { id: { in: ids } }, select: { name: true } });
+  },
+
+  // ============================================================
+  // Round R-5 · Phase 2：Certificate 属主访问（主数据 CRUD）
+  // ============================================================
+
+  /** 列表（不分页，证书数量有限；既有排序口径逐字沿用） */
+  findAll(db: DbClient = prisma) {
+    return db.certificate.findMany({ orderBy: [{ createdAt: 'asc' }] });
+  },
+
+  findById(id: string, db: DbClient = prisma) {
+    return db.certificate.findUnique({ where: { id } });
+  },
+
+  create(data: Prisma.CertificateUncheckedCreateInput, db: DbClient = prisma) {
+    return db.certificate.create({ data });
+  },
+
+  update(id: string, data: Prisma.CertificateUncheckedUpdateInput, db: DbClient = prisma) {
+    return db.certificate.update({ where: { id }, data });
+  },
+
+  delete(id: string, db: DbClient = prisma) {
+    return db.certificate.delete({ where: { id } });
   },
 };

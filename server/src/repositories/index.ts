@@ -43,6 +43,11 @@ export { sampleOrderRepository } from './sampleOrder.repository';
 // ---- Sales Process Domain（R-5 · Phase 1）----
 export { quotationRepository } from './quotation.repository';
 
+// ---- Master Data Domain（R-5 · Phase 2）----
+export { dictionaryRepository } from './dictionary.repository';
+export type { DictionaryTable } from './dictionary.repository';
+export { exchangeRepository } from './exchange.repository';
+
 // ---- Product Layering（R-4）----
 export { productRepository } from './product.repository';
 export { productTaxonomyRepository } from './productTaxonomy.repository';

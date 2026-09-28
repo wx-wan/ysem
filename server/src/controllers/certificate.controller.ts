@@ -1,93 +1,71 @@
 import { Response } from 'express';
 import { z } from 'zod';
-import { MasterStatus, Prisma } from '@prisma/client';
-import prisma from '../lib/prisma';
+import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
-import { success, created, fail } from '../utils/response';
+import * as certificateService from '../services/certificate.service';
+import { created, fail, success } from '../utils/response';
 
-const certificateSchema = z.object({
-  name: z.string().min(1, '证书名称不能为空'),
-  code: z.string().trim().max(50).optional(),
-  issuer: z.string().trim().max(100).optional(),
-  category: z.string().trim().max(50).optional(),
-  validUntil: z.string().optional(), // ISO 字符串，可选
-  status: z.nativeEnum(MasterStatus).optional(),
-  remark: z.string().trim().max(500).optional(),
-  logo: z.string().trim().max(500).optional(),
-});
+/**
+ * Certificate Controller —— Round R-5 · Phase 2 · Master Data Domain
+ *
+ * 职责（仅此）：HTTP request/response、参数解析、DTO 校验、响应格式化。
+ * **禁止** Prisma 访问 / 业务规则 —— 已在 `services/certificate.service.ts`
+ * / `repositories/certificate.repository.ts`。API Contract 保持不变。
+ */
+
+function respondError(res: Response, err: unknown, zodAware: boolean): void {
+  if (err instanceof DomainError) {
+    fail(res, err.code, err.message);
+    return;
+  }
+  if (zodAware && err instanceof z.ZodError) {
+    fail(res, 400, err.errors.map((e) => e.message).join(', '));
+    return;
+  }
+  fail(res, 500, '服务器错误');
+}
 
 // 列表（不分页，证书数量有限）
 export const getCertificates = async (_req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const list = await prisma.certificate.findMany({ orderBy: [{ createdAt: 'asc' }] });
-    success(res, list);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await certificateService.list());
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
 export const getCertificate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const item = await prisma.certificate.findUnique({ where: { id: req.params.id } });
-    if (!item) {
-      fail(res, 404, '证书不存在');
-      return;
-    }
-    success(res, item);
-  } catch {
-    fail(res, 500, '服务器错误');
+    success(res, await certificateService.getOne(req.params.id));
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
 
 export const createCertificate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const data = certificateSchema.parse(req.body);
-    const item = await prisma.certificate.create({
-      data: {
-        name: data.name,
-        code: data.code ?? null,
-        issuer: data.issuer ?? null,
-        category: data.category ?? null,
-        validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        status: data.status ?? MasterStatus.ACTIVE,
-        remark: data.remark ?? null,
-      },
-    });
-    created(res, item);
+    const data = certificateService.certificateSchema.parse(req.body);
+    created(res, await certificateService.create(data));
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err, true);
   }
 };
 
 export const updateCertificate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { validUntil, ...rest } = certificateSchema.partial().parse(req.body);
-    // 类型化 payload：Record<string, unknown> 会擦除 status 的 MasterStatus 校验，
-    // 使 1 / 0 绕过 TypeScript 直达 Prisma
-    const update: Prisma.CertificateUncheckedUpdateInput = { ...rest };
-    if (validUntil !== undefined) {
-      update.validUntil = validUntil ? new Date(validUntil) : null;
-    }
-    await prisma.certificate.update({ where: { id: req.params.id }, data: update });
+    const data = certificateService.certificateSchema.partial().parse(req.body);
+    await certificateService.update(req.params.id, data);
     success(res, null, '更新成功');
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      fail(res, 400, err.errors.map((e) => e.message).join(', '));
-      return;
-    }
-    fail(res, 500, '服务器错误');
+    respondError(res, err, true);
   }
 };
 
 export const deleteCertificate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    await prisma.certificate.delete({ where: { id: req.params.id } });
+    await certificateService.remove(req.params.id);
     success(res, null, '删除成功');
-  } catch {
-    fail(res, 500, '服务器错误');
+  } catch (err) {
+    respondError(res, err, false);
   }
 };
