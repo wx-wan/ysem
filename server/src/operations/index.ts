@@ -42,3 +42,7 @@ export * from './lead.operations';
 
 // ---- Customer Pilot（R-3）----
 export * from './customer.operations';
+
+// ---- Product Layering（R-4）----
+export * from './product.operations';
+export * from './productGroup.operations';

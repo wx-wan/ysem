@@ -29,3 +29,10 @@ export { customerRepository } from './customer.repository';
 export { salesOrderRepository } from './salesOrder.repository';
 export { opportunityRepository } from './opportunity.repository';
 export { sampleOrderRepository } from './sampleOrder.repository';
+
+// ---- Product Layering（R-4）----
+export { productRepository } from './product.repository';
+export { productTaxonomyRepository } from './productTaxonomy.repository';
+export { productGroupRepository, COMBO_ITEM_PRODUCT_SELECT } from './productGroup.repository';
+export type { ComboItemInput } from './productGroup.repository';
+export { certificateRepository } from './certificate.repository';

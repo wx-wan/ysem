@@ -44,3 +44,15 @@ export type {
   CreateCustomerInput,
   UpdateCustomerInput,
 } from './customer.service';
+
+// ---- Product Layering（R-4）----
+export * as productService from './product.service';
+export * as productGroupService from './productGroup.service';
+export * as productTaxonomyService from './productTaxonomy.service';
+export type {
+  ProductActorContext,
+  ProductWriteInput,
+  ProductListFilters,
+  ProductMixedFilters,
+} from './product.service';
+export type { ProductGroupActorContext, GroupInput, GroupItemsInput } from './productGroup.service';

@@ -44,4 +44,20 @@ export const userRepository = {
       },
     });
   },
+
+  /**
+   * （R-4 Product Layering 新增，**纯新增、不影响 Lead / Customer**）
+   * Excel 导入用：「可见人员」展示名（realName / username）→ id 的解析来源。
+   */
+  findIdentityPairs(db: DbClient = prisma) {
+    return db.user.findMany({ select: { id: true, realName: true, username: true } });
+  },
+
+  /** 差异比对用：按 id 集合取用户展示名 */
+  findNamesByIds(ids: string[], db: DbClient = prisma) {
+    return db.user.findMany({
+      where: { id: { in: ids } },
+      select: { realName: true, username: true },
+    });
+  },
 };
