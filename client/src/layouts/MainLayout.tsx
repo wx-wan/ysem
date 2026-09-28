@@ -239,22 +239,30 @@ export default function MainLayout() {
     return path;
   })();
 
-  // 当前展开项：非收缩状态下自动展开所在业务分组；
-  // 收缩状态下清空 openKeys，避免弹出菜单被强制打开后无法收起。
-  const [openKeys, setOpenKeys] = useState<string[]>(parentKeys);
+  // 当前路由所在的业务分组
+  const activeParentKey = useMemo(
+    () => parentKeys.find((p) => location.pathname.startsWith(p)),
+    [location.pathname, parentKeys],
+  );
+
+  // 当前展开项：手风琴模式，任意时刻最多只有一个主导航分组展开；
+  // 初始仅展开当前路由所在分组；收缩状态下清空 openKeys，避免弹出菜单被强制打开后无法收起。
+  const [openKeys, setOpenKeys] = useState<string[]>(activeParentKey ? [activeParentKey] : []);
+
+  // 手风琴交互：只保留新展开的分组，自动折叠其他已展开的分组
+  const handleOpenChange = (keys: string[]) => {
+    const latestOpened = keys.find((k) => !openKeys.includes(k));
+    setOpenKeys(latestOpened ? [latestOpened] : []);
+  };
+
+  // 路由切换 / 侧边栏折叠时同步展开态
   useEffect(() => {
     if (collapsed) {
       setOpenKeys([]);
       return;
     }
-    const activeParent = parentKeys.find((p) => location.pathname.startsWith(p));
-    setOpenKeys((prev) => {
-      if (activeParent && !prev.includes(activeParent)) {
-        return [...prev, activeParent];
-      }
-      return prev;
-    });
-  }, [collapsed, location.pathname, parentKeys]);
+    setOpenKeys(activeParentKey ? [activeParentKey] : []);
+  }, [collapsed, activeParentKey]);
 
   // 用户/权限未就绪时显示骨架屏过渡，避免首屏重渲染闪烁
   if (!ready) {
@@ -335,7 +343,7 @@ export default function MainLayout() {
           openKeys={openKeys}
           items={menuItems}
           onClick={handleMenuClick}
-          onOpenChange={setOpenKeys}
+          onOpenChange={handleOpenChange}
           style={{ borderInlineEnd: 'none', background: 'transparent' }}
         />
       </Sider>
