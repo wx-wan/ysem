@@ -60,18 +60,6 @@ export function createOpportunityAggregate<I extends Prisma.OpportunityInclude>(
   });
 }
 
-/** 创建商机（无 include，Excel 导入逐行事务用） */
-export function createOpportunityRowAggregate(
-  data: Omit<Prisma.OpportunityUncheckedCreateInput, 'opportunityNo'>,
-): Promise<OpportunityRow> {
-  return runInTransaction(async (tx) => {
-    const opportunityNo = await getNextNumber(tx, 'OPP');
-    return opportunityRepository.create({ data: { ...data, opportunityNo } }, tx) as Promise<OpportunityRow>;
-  });
-}
-
-type OpportunityRow = Prisma.OpportunityGetPayload<Record<string, never>>;
-
 /**
  * 更新商机。
  *

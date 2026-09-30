@@ -18,8 +18,8 @@ export function useLeadList() {
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
   const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
   const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
-  // 列表范围：mine=私有；pool=公海（已释放、无负责人）
-  const [scope, setScope] = useState<'mine' | 'pool'>('mine');
+  // 列表范围：mine=我的；all=全部已归属线索（仅管理员可选）；pool=公海（无负责人）
+  const [scope, setScope] = useState<'mine' | 'all' | 'pool'>('mine');
   // 排序（后端白名单，格式 字段:方向）
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);

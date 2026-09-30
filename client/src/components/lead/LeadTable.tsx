@@ -76,8 +76,8 @@ export default function LeadTable({
         title: t('lead.customer'),
         width: 160,
         render: (_: unknown, r: Lead) => {
-          const name = r.customer?.companyName || r.companyName || '';
-          const contact = r.customer?.contactName || r.contactName || '';
+          const name = r.customer?.companyName || '';
+          const contact = r.customer?.contactName || '';
           if (!name && !contact) return '-';
           return (
             <Space size={4}>

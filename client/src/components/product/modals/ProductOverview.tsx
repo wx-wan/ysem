@@ -10,7 +10,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useTranslation } from 'react-i18next';
-import { SalesItem } from '../../../api/sales';
+import { ProductOpportunityItem } from '../../../api/sales';
 import { SALES_STAGES, getStageMeta, getStageI18nKey } from '../../sales/stages';
 import { Product } from '../../../api/products';
 import Price from '../../common/Price';
@@ -19,7 +19,7 @@ const { Text } = Typography;
 
 interface ProductOverviewProps {
   product: Product;
-  salesList: SalesItem[];
+  salesList: ProductOpportunityItem[];
   loading?: boolean;
 }
 
@@ -31,18 +31,20 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
   const { token } = theme.useToken();
 
   // 派生指标
+  // 数据源是 GET /api/sales/by-product/:id 的扁平投影：只有 estimatedAmount / stage /
+  // updateTime / quantity，没有 orderAmount / orderDate / createdAt，故金额口径统一为「商机预估金额」。
   const stats = useMemo(() => {
     const orders = salesList.filter((s) => s.stage === 'ORDER');
-    const samples = salesList.filter((s) => s.orderType === 'SAMPLE');
-    const totalAmount = orders.reduce((sum, s) => sum + (s.orderAmount || 0), 0);
+    const samples = salesList.filter((s) => s.stage === 'SAMPLE');
+    const totalAmount = salesList.reduce((sum, s) => sum + Number(s.estimatedAmount || 0), 0);
     const thisYear = dayjs().year();
-    const thisYearAmount = orders
-      .filter((s) => s.orderDate && dayjs(s.orderDate).year() === thisYear)
-      .reduce((sum, s) => sum + (s.orderAmount || 0), 0);
-    const avgAmount = orders.length ? totalAmount / orders.length : 0;
-    const lastOrderDate = orders
-      .map((s) => s.orderDate)
-      .filter(Boolean)
+    const thisYearAmount = salesList
+      .filter((s) => s.updateTime && dayjs(s.updateTime).year() === thisYear)
+      .reduce((sum, s) => sum + Number(s.estimatedAmount || 0), 0);
+    const avgAmount = salesList.length ? totalAmount / salesList.length : 0;
+    const lastUpdate = salesList
+      .map((s) => s.updateTime)
+      .filter((v): v is string => !!v)
       .sort()
       .pop();
     const conversionRate = samples.length ? (orders.length / samples.length) * 100 : null;
@@ -51,30 +53,24 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
       totalAmount,
       thisYearAmount,
       avgAmount,
-      lastOrderDate: lastOrderDate || null,
+      lastUpdate: lastUpdate || null,
       sampleCount: samples.length,
       conversionRate,
     };
   }, [salesList]);
 
-  // 月度趋势：订单金额（实际）+ 商机/线索预估金额
+  // 月度趋势：按商机更新时间聚合预估金额；第二序列为已进入订单阶段的商机金额
   const trendData = useMemo(() => {
     const now = dayjs();
     const months = Array.from({ length: 6 }, (_, i) => now.subtract(5 - i, 'month'));
     return months.map((m) => {
       const key = m.format(MONTH_FMT);
-      const orderAmount = salesList
-        .filter((s) => s.stage === 'ORDER' && s.orderDate && s.orderDate.startsWith(key))
-        .reduce((sum, s) => sum + (s.orderAmount || 0), 0);
-      const pipelineAmount = salesList
-        .filter(
-          (s) =>
-            (s.stage === 'OPPORTUNITY' || s.stage === 'LEAD') &&
-            s.estimatedCloseDate &&
-            s.estimatedCloseDate.startsWith(key),
-        )
-        .reduce((sum, s) => sum + (s.estimatedAmount || 0), 0);
-      return { month: m.format('MMM'), 销售金额: orderAmount, 预估金额: pipelineAmount };
+      const monthItems = salesList.filter((s) => s.updateTime && s.updateTime.startsWith(key));
+      const estimated = monthItems.reduce((sum, s) => sum + Number(s.estimatedAmount || 0), 0);
+      const ordered = monthItems
+        .filter((s) => s.stage === 'ORDER')
+        .reduce((sum, s) => sum + Number(s.estimatedAmount || 0), 0);
+      return { month: m.format('MMM'), 预估金额: estimated, 订单阶段: ordered };
     });
   }, [salesList]);
 
@@ -96,28 +92,28 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
 
   const metrics = [
     {
-      icon: <ShoppingCartOutlined />, label: '累积成交金额', value: <Price value={stats.totalAmount} />,
-      sub: '单产品历史成交金额', color: '#1677ff',
+      icon: <ShoppingCartOutlined />, label: '累积预估金额', value: <Price value={stats.totalAmount} />,
+      sub: '单产品商机预估金额合计', color: '#1677ff',
     },
     {
-      icon: <DollarOutlined />, label: '本年销量', value: <Price value={stats.thisYearAmount} />,
-      sub: `${dayjs().year()} 年成交金额`, color: '#16a34a',
+      icon: <DollarOutlined />, label: '本年预估金额', value: <Price value={stats.thisYearAmount} />,
+      sub: `${dayjs().year()} 年更新商机的预估金额`, color: '#16a34a',
     },
     {
-      icon: <WalletOutlined />, label: '平均客单价', value: <Price value={stats.avgAmount} />,
-      sub: '单笔订单均值', color: '#d97706',
+      icon: <WalletOutlined />, label: '平均预估金额', value: <Price value={stats.avgAmount} />,
+      sub: '单条商机均值', color: '#d97706',
     },
     {
-      icon: <CalendarOutlined />, label: '最近下单', value: stats.lastOrderDate ? dayjs(stats.lastOrderDate).format('YYYY-MM-DD') : '—',
-      sub: '最近成交时间', color: '#7c3aed',
+      icon: <CalendarOutlined />, label: '最近更新', value: stats.lastUpdate ? dayjs(stats.lastUpdate).format('YYYY-MM-DD') : '—',
+      sub: '最近商机更新时间', color: '#7c3aed',
     },
     {
-      icon: <ExperimentOutlined />, label: '下打样单数', value: String(stats.sampleCount),
-      sub: '累计打样需求', color: '#0891b2',
+      icon: <ExperimentOutlined />, label: '打样阶段商机', value: String(stats.sampleCount),
+      sub: '进入打样的商机数', color: '#0891b2',
     },
     {
-      icon: <SwapOutlined />, label: '样品到订单率', value: stats.conversionRate != null ? `${stats.conversionRate.toFixed(1)}%` : '—',
-      sub: '打样转正式订单', color: '#db2777',
+      icon: <SwapOutlined />, label: '打样到订单率', value: stats.conversionRate != null ? `${stats.conversionRate.toFixed(1)}%` : '—',
+      sub: '打样阶段转订单阶段', color: '#db2777',
     },
   ];
 
@@ -157,7 +153,7 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
           </div>
           {loading ? (
             <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: token.colorTextTertiary }}>加载中…</div>
-          ) : trendData.some((d) => d.销售金额 > 0 || d.预估金额 > 0) ? (
+          ) : trendData.some((d) => d.预估金额 > 0 || d.订单阶段 > 0) ? (
             <div style={{ flex: 1, minHeight: 0, width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={trendData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
@@ -169,8 +165,8 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
                     contentStyle={{ borderRadius: 12, border: `1px solid ${token.colorBorderSecondary}`, fontSize: 12 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="销售金额" fill="#1677ff" radius={[6, 6, 0, 0]} maxBarSize={28} />
-                  <Bar dataKey="预估金额" fill="#d97706" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="预估金额" fill="#1677ff" radius={[6, 6, 0, 0]} maxBarSize={28} />
+                  <Bar dataKey="订单阶段" fill="#d97706" radius={[6, 6, 0, 0]} maxBarSize={28} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -459,7 +459,7 @@ const QuotePage: React.FC = () => {
         onOk={handleSave}
         confirmLoading={saving}
         width={840}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={{ currency: 'USD', status: 'DRAFT' }}>
           <Row gutter={16}>

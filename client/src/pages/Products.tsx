@@ -14,7 +14,7 @@ import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductActivity,
   MixedItem, taxonomyApi, productGroupApi,
 } from '../api/products';
-import { salesApi, SalesItem } from '../api/sales';
+import { salesApi, ProductOpportunityItem } from '../api/sales';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useCardGutter } from '../components/common/tokens';
 import ViewModeSwitch from '../components/common/ViewModeSwitch';
@@ -62,7 +62,7 @@ export default function Products() {
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [viewing, setViewing] = useState<Product | null>(null);
-  const [salesList, setSalesList] = useState<SalesItem[]>([]);
+  const [salesList, setSalesList] = useState<ProductOpportunityItem[]>([]);
   const [salesLoading, setSalesLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
 

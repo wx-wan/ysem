@@ -222,6 +222,9 @@ router.patch("/:id/tags", ctrl.updateTags);
  */
 router.get("/ownership", ctrl.checkOwnership);
 
+// 模板下载必须排在 `/:id` 之前，否则会被 `/:id` 捕获（id='template' → 404「客户不存在」）
+router.get("/template", ctrl.downloadTemplate);
+
 router.get("/:id/logs", ctrl.getCustomerLogs);
 
 router.get("/:id", ctrl.getById);

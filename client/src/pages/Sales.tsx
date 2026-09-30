@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Pagination, Space } from 'antd';
-import { ImportOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import { debounce } from '../utils/rateLimit';
 import { theme } from 'antd';
 
 import FilterToolbar, { FilterGroup } from '../components/common/FilterToolbar';
 import CapsuleSwitch from '../components/common/CapsuleSwitch';
-import ImportModal from '../components/sales/ImportModal';
 import SalesFormModal from '../components/sales/SalesFormModal';
 import OpportunityCardList from '../components/sales/OpportunityCardList';
 import OpportunityDetailPanel from '../components/sales/OpportunityDetailPanel';
 import { useOpportunityList } from '../components/sales/useOpportunityList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
 import { flattenChannelOptions, flattenPlatformOptions } from '../components/lead/constants';
+import { buildTablePagination } from '../components/common/tablePagination';
 import { salesApi, type SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
 import type { SalesStage } from '../components/sales/stages';
@@ -100,13 +99,9 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
     list.setKeyword('');
   };
 
-  // 新建 / 编辑
+  // 编辑（商机不支持新建 / 导入，只能由线索转商机产生，故无新建弹窗与导入弹窗）
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<SalesItem | null>(null);
-  const handleCreate = () => {
-    setEditingItem(null);
-    setModalOpen(true);
-  };
   const handleEdit = (item: SalesItem) => {
     setEditingItem(item);
     setModalOpen(true);
@@ -119,131 +114,143 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
     }
   };
 
-  // Excel 导入
-  const [importOpen, setImportOpen] = useState(false);
-
   const ownerOptions = list.ownerOptions.map((o) => ({ key: o.id, label: o.realName || o.username }));
 
   return (
-    <Card className="sales-card" styles={{ body: { padding: 16 } }}>
-      <FilterToolbar
-        searchPlaceholder={t('sales.searchPlaceholder')}
-        searchValue={kw}
-        onSearchChange={onSearchChange}
-        sortOptions={[
-          { value: 'createdAt:desc', label: t('lead.sortLatest') },
-          { value: 'createdAt:asc', label: t('lead.sortEarliest') },
-        ]}
-        sortValue={list.sort}
-        onSortChange={list.setSort}
-        activeCount={activeCount}
-        onClear={handleClear}
-        tabs={
-          <CapsuleSwitch
-            value={list.scope}
-            onChange={list.setScope}
+    <div>
+      <Card
+        variant="borderless"
+        style={{
+          borderRadius: token.borderRadiusLG,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          boxShadow: token.boxShadowSecondary,
+        }}
+      >
+        <FilterToolbar
+          searchPlaceholder={t('sales.searchPlaceholder')}
+          searchValue={kw}
+          onSearchChange={onSearchChange}
+          sortOptions={[
+            { value: 'createdAt:desc', label: t('lead.sortLatest') },
+            { value: 'createdAt:asc', label: t('lead.sortEarliest') },
+          ]}
+          sortValue={list.sort}
+          onSortChange={list.setSort}
+          activeCount={activeCount}
+          onClear={handleClear}
+          tabs={
+            <CapsuleSwitch<'mine' | 'all'>
+              value={list.scope}
+              onChange={list.setScope}
+              options={[
+                { key: 'mine', label: t('sales.scopeMine') },
+                { key: 'all', label: t('sales.scopeAll') },
+              ]}
+            />
+          }
+          total={list.total}
+          actions={
+            <Space>
+              {isAdmin && list.selectedKeys.length > 0 && (
+                <Button danger onClick={() => list.batchRemove(list.selectedKeys)}>
+                  {t('common.batchDelete')}
+                </Button>
+              )}
+            </Space>
+          }
+        >
+          <FilterGroup
+            label={t('lead.filterPlatform')}
+            value={list.filterChannel}
+            onChange={(key) => {
+              list.setFilterChannel(key || undefined);
+              list.setFilterPlatform(undefined);
+              list.setPage(1);
+            }}
             options={[
-              { value: 'mine', label: t('sales.scopeMine') },
-              { value: 'all', label: t('sales.scopeAll') },
+              { key: '', label: t('common.all') },
+              ...flattenChannelOptions(channels).map((o) => ({ key: o.value, label: o.label })),
             ]}
           />
-        }
-        total={list.total}
-        actions={
-          <Space>
-            {isAdmin && list.selectedKeys.length > 0 && (
-              <Button danger onClick={() => list.batchRemove(list.selectedKeys)}>
-                {t('common.batchDelete')}
-              </Button>
-            )}
-            <Button icon={<ImportOutlined />} onClick={() => setImportOpen(true)}>
-              {t('sales.import')}
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>
-              {t('sales.newRecord')}
-            </Button>
-          </Space>
-        }
-      >
-        <FilterGroup label={t('lead.filterPlatform')} value={list.filterChannel} onChange={list.setFilterChannel}>
-          {[{ key: 'all', label: t('common.all') }, ...flattenChannelOptions(channels)].map((o) => ({
-            key: o.key,
-            label: o.label,
-          }))}
-        </FilterGroup>
-        <FilterGroup
-          label={t('lead.filterShop')}
-          value={list.filterPlatform}
-          onChange={list.setFilterPlatform}
-        >
-          {[{ key: 'all', label: t('common.all') }, ...flattenPlatformOptions(channels, list.filterChannel)].map(
-            (o) => ({ key: o.key, label: o.label }),
-          )}
-        </FilterGroup>
-        <FilterGroup label={t('sales.filterOwner')} value={list.filterOwner} onChange={list.setFilterOwner}>
-          {[{ key: 'all', label: t('common.all') }, ...ownerOptions].map((o) => ({ key: o.key, label: o.label }))}
-        </FilterGroup>
-      </FilterToolbar>
-
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', marginTop: 16 }}>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <OpportunityCardList
-            dataSource={sortedData}
-            loading={list.loading}
-            selectedId={selectedId}
-            onSelect={(r) => setSelectedId(r.id)}
-          />
-        </div>
-        <div
-          className="lead-detail-col"
-          style={{ width: 380, flexShrink: 0, position: 'sticky', top: 16, alignSelf: 'flex-start' }}
-        >
-          <OpportunityDetailPanel
-            detail={detail}
-            loading={detailLoading}
-            isAdmin={isAdmin}
-            onClose={() => {
-              setSelectedId(null);
-              setDetail(null);
+          <FilterGroup
+            label={t('lead.filterShop')}
+            value={list.filterPlatform}
+            onChange={(key) => {
+              list.setFilterPlatform(key || undefined);
+              list.setPage(1);
             }}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
+            options={[
+              { key: '', label: t('common.all') },
+              ...flattenPlatformOptions(channels, list.filterChannel).map((o) => ({ key: o.value, label: o.label })),
+            ]}
+          />
+          <FilterGroup
+            label={t('sales.filterOwner')}
+            value={list.filterOwner}
+            onChange={(key) => {
+              list.setFilterOwner(key || undefined);
+              list.setPage(1);
+            }}
+            options={[{ key: '', label: t('common.all') }, ...ownerOptions]}
+          />
+        </FilterToolbar>
+
+        {/* 卡片列表 + 右侧详情面板（点击卡片联动，与线索列表交互一致） */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginTop: 16 }}>
+          <div style={{ flex: '1 1 auto', minWidth: 0 }}>
+            <OpportunityCardList
+              dataSource={sortedData}
+              loading={list.loading}
+              selectedId={selectedId}
+              onSelect={(r) => setSelectedId(r.id)}
+            />
+          </div>
+          <div className="lead-detail-col">
+            <OpportunityDetailPanel
+              detail={detail}
+              loading={detailLoading}
+              isAdmin={isAdmin}
+              onClose={() => {
+                setSelectedId(null);
+                setDetail(null);
+              }}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* 分页器与线索列表一致：卡片外居中、仅多页时出现、统一走 buildTablePagination（显示总数 + 跳至） */}
+      {list.total > list.pageSize && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 24, paddingBottom: 8 }}>
+          <Pagination
+            {...buildTablePagination({
+              total: list.total,
+              page: list.page,
+              pageSize: list.pageSize,
+              onChange: (p, s) => {
+                list.setPage(p);
+                list.setPageSize(s);
+              },
+            })}
           />
         </div>
-      </div>
+      )}
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginTop: 12,
-          color: token.colorTextSecondary,
-          fontSize: 13,
-        }}
-      >
-        <span>{t('lead.resultCount', { total: list.total })}</span>
-        <Pagination
-          current={list.page}
-          pageSize={list.pageSize}
-          total={list.total}
-          showSizeChanger={false}
-          onChange={(p) => list.setPage(p)}
+      {editingItem && (
+        <SalesFormModal
+          open={modalOpen}
+          editingItem={editingItem}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => {
+            setModalOpen(false);
+            setEditingItem(null);
+            list.refresh();
+            if (selectedId) refetchDetail();
+          }}
         />
-      </div>
-
-      <SalesFormModal
-        open={modalOpen}
-        editingItem={editingItem}
-        onClose={() => setModalOpen(false)}
-        onSaved={() => {
-          setModalOpen(false);
-          setEditingItem(null);
-          list.refresh();
-          if (selectedId) refetchDetail();
-        }}
-      />
-      <ImportModal open={importOpen} onClose={() => setImportOpen(false)} onImported={() => list.refresh()} />
-    </Card>
+      )}
+    </div>
   );
 }

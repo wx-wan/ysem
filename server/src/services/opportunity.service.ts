@@ -1,12 +1,10 @@
 import { Prisma } from '@prisma/client';
-import * as XLSX from 'xlsx';
 import { z } from 'zod';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
 import { DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import {
   createOpportunityAggregate,
-  createOpportunityRowAggregate,
   updateOpportunityAggregate,
 } from '../operations/sales.operations';
 import {
@@ -17,7 +15,6 @@ import {
   userRepository,
 } from '../repositories';
 import { advanceLeadStatusOperation, deriveOpportunityStagesOperation } from '../operations/state.operations';
-import { PIPELINE_STAGES } from '../state';
 import { applyScope } from '../scope';
 import {
   findVisibleProductNames,
@@ -268,39 +265,6 @@ export async function listOpportunities(filters: OpportunityListFilters, ctx: Sa
     page: pageNum,
     pageSize: pageSizeNum,
   };
-}
-
-export async function getKanban(ctx: SalesActorContext) {
-  const where = { ...(await ctx.scope.owner()) } as Prisma.OpportunityWhereInput;
-  const opportunities = await opportunityRepository.findMany({
-    where,
-    include: { owner: { select: { id: true, realName: true, username: true } } },
-    orderBy: { updatedAt: 'desc' },
-  });
-
-  const stageMap = await deriveOpportunityStagesOperation(opportunities);
-  const withStages = opportunities.map((o) => ({ ...o, stage: stageMap.get(o.id) }));
-
-  const columns = {
-    OPPORTUNITY: { title: '商机', items: [] as typeof withStages },
-    QUOTED: { title: '已报价', items: [] as typeof withStages },
-    SAMPLE: { title: '打样', items: [] as typeof withStages },
-    PRODUCTION: { title: '生产', items: [] as typeof withStages },
-    SHIPPED: { title: '出运', items: [] as typeof withStages },
-    ORDER: { title: '订单', items: [] as typeof withStages },
-  };
-
-  for (const o of withStages) {
-    const col = columns[o.stage as keyof typeof columns];
-    if (col) col.items.push(o);
-  }
-
-  const stats: Record<string, number> = { total: withStages.length };
-  for (const s of PIPELINE_STAGES) {
-    stats[s] = columns[s as keyof typeof columns]?.items.length ?? 0;
-  }
-
-  return { columns, stats };
 }
 
 /** 详情：数据范围门后仍不存在 ⇒ 与越权同响应 404「记录不存在」 */
@@ -606,109 +570,9 @@ export async function batchDeleteOpportunities(ids: string[], ctx: SalesActorCon
 }
 
 // ============================================================
-// Excel 导入（B2：逐行同样要求 Lead 强前置 + 服务端派生渠道）
+// 【规则冻结】商机不支持 Excel 导入
 // ============================================================
-
-/** 字段映射（Excel 表头 → V1.0 Opportunity 字段） */
-const FIELD_MAP: Record<string, string> = {
-  标题: 'title',
-  客户ID: 'customerId',
-  线索ID: 'leadId',
-  预估金额: 'estimatedAmount',
-  预计成交日期: 'estimatedCloseDate',
-  采购意向: 'probability',
-  商机备注: 'notes',
-};
-
-export interface ImportResult {
-  successCount: number;
-  failCount: number;
-  total: number;
-  errors: string[];
-}
-
-export async function importOpportunitiesFromBuffer(
-  buffer: Buffer,
-  ctx: SalesActorContext,
-): Promise<ImportResult> {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet);
-
-  if (rows.length === 0) throw new DomainValidationError('文件无数据');
-
-  let successCount = 0;
-  let failCount = 0;
-  const errors: string[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
-    const data: Record<string, unknown> = {};
-
-    for (const [header, value] of Object.entries(row)) {
-      const field = FIELD_MAP[header] || header;
-      if (field === 'estimatedAmount') {
-        data[field] = value ? Number(value) : undefined;
-      } else {
-        data[field] = value?.toString().trim() || undefined;
-      }
-    }
-
-    // B2：标题 / 客户 / 线索 三者均为必填（线索为销售流程起点的强前置关系）
-    if (!data.title || !data.customerId || !data.leadId) {
-      failCount++;
-      errors.push(`第 ${i + 2} 行：标题、客户ID、线索ID 为必填`);
-      continue;
-    }
-
-    const customer = await customerRepository.findFirst({
-      where: { id: data.customerId as string },
-      select: { id: true },
-    });
-    if (!customer) {
-      failCount++;
-      errors.push(`第 ${i + 2} 行：客户不存在（客户ID：${data.customerId}）`);
-      continue;
-    }
-
-    let lead: { id: string; channelId: string | null; shopId: string | null } | null = null;
-    try {
-      lead = await resolveScopedLead(data.leadId as string, ctx);
-    } catch {
-      lead = null;
-    }
-    if (!lead) {
-      failCount++;
-      errors.push(`第 ${i + 2} 行：线索不存在或无权限（线索ID：${data.leadId}）`);
-      continue;
-    }
-
-    try {
-      const { intentLevel, probability } = splitProbability(data.probability as string | undefined);
-      // 逐行独立事务，保留导入的部分成功语义
-      await createOpportunityRowAggregate({
-        title: data.title as string,
-        customerId: data.customerId as string,
-        leadId: lead.id,
-        channelId: lead.channelId ?? null,
-        shopId: lead.shopId ?? null,
-        ownerId: ctx.userId ?? null,
-        createdBy: ctx.userId ?? null,
-        estimatedAmount: data.estimatedAmount as number | undefined,
-        estimatedCloseDate: data.estimatedCloseDate
-          ? new Date(data.estimatedCloseDate as string)
-          : null,
-        intentLevel,
-        probability,
-        notes: data.notes as string | undefined,
-      });
-      successCount++;
-    } catch {
-      failCount++;
-      errors.push(`第 ${i + 2} 行：入库失败`);
-    }
-  }
-
-  return { successCount, failCount, total: rows.length, errors };
-}
+//
+// 商机不提供批量导入能力：`POST /api/sales/import` 已下线，本层不再提供
+// `importOpportunitiesFromBuffer`。商机的唯一来源是「线索转商机」
+// （见上方 `createOpportunity`：`leadId` 强前置 + 服务端派生渠道）。

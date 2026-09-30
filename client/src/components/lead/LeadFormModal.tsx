@@ -93,6 +93,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const { t } = useTranslation();
   const { message, modal } = App.useApp();
   const [form] = Form.useForm();
+  // 管理员：数据范围为全部，客户下拉本就提供全部客户 → 他人负责的客户不阻断
+  const isAdmin = useAuthStore((s) => s.user?.role?.code === 'admin');
 
   const {
     channels,
@@ -151,7 +153,17 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 步骤状态：每个步骤独立维护自己的 { status, locked, editing }，避免跨步骤共用变量导致状态纠缠
   // 步骤0（客户信息）：status=归属/建档状态(mine/other/publicSea/none/idle)；locked=建档后锁定全部必填项；editing=点击「编辑」解锁态
-  const [step0, setStep0] = useState<{ status: CompanyStatus; locked: boolean; editing: boolean }>({
+  const [step0, setStep0] = useState<{
+    status: CompanyStatus;
+    locked: boolean;
+    editing: boolean;
+    /** 命中客户是否在公海（公海客户可关联；他人负责的客户阻断） */
+    publicSea?: boolean;
+    /** 命中客户的负责人姓名（阻断弹窗文案用） */
+    ownerName?: string;
+    /** 阻断态：命中客户「他人负责且非公海」→ 该选择不可用于任何后续操作 */
+    blocked?: boolean;
+  }>({
     status: 'idle',
     locked: false,
     editing: false,
@@ -163,6 +175,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
   // 公司名称归属「实时查询」信号：每次打开弹窗自增，驱动 CompanyNameInput 用 /ownership 重新查询（而非派生）
   const [companyQuerySeq, setCompanyQuerySeq] = useState(0);
+  // 公司名称归属查询中：状态提示统一在 label 行渲染（与「未建档 / 已建档」同款 Tag），故由父级持有
+  const [companyQuerying, setCompanyQuerying] = useState(false);
   // 步骤1（需求详情）：status=产品归属/建档状态(idle/exist/none)；locked=建档后锁定产品级字段；editing=点击「编辑」解锁态
   const [step1, setStep1] = useState<{ status: 'idle' | 'exist' | 'none'; locked: boolean; editing: boolean }>({
     status: 'idle',
@@ -182,24 +196,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 单独抽成函数，便于在字段已挂载（进入 step1）时再应用一次，
   // 消除「setFieldsValue 早于条件渲染挂载的字段」导致回填未生效的时序隐患。
   const applyStep1Values = (item: Lead) => {
+    const first = item.items?.[0];
     form.setFieldsValue({
-      productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
-      // 数量需求：0 为落库默认值，回填视为空（占位符展示），与其他数值字段口径一致
-      quantity: Number(item.quantity) || undefined,
+      // V1.1：产品名取关联产品（LeadItem 不再存产品名快照）
+      productKey: first?.product?.name || undefined,
+      // 数量需求：取线索明细 quantity（Lead 标量已下线）；0 为落库默认值，回填视为空（占位符展示）
+      quantity: Number(first?.quantity) || undefined,
       unit: item.unit ?? '个',
       targetMarket: item.targetMarket || undefined,
-      productType: item.productType || undefined,
       // 需求详情：回填 LeadItem.productDesc（当条线索的产品需求，非产品描述）
-      productDesc: item.items?.[0]?.productDesc || undefined,
-      craftIds: item.items?.[0]?.craftIds || [],
-      categoryCascade:
-        item.items?.[0]?.audienceId && item.items?.[0]?.categoryId
-          ? [item.items?.[0].audienceId, item.items?.[0].categoryId]
-          : undefined,
-      sizeL: item.items?.[0]?.sizeL ?? undefined,
-      sizeW: item.items?.[0]?.sizeW ?? undefined,
-      sizeH: item.items?.[0]?.sizeH ?? undefined,
-      weight: item.items?.[0]?.weight ?? undefined,
+      productDesc: first?.productDesc || undefined,
       targetPrice: {
         currency: item.currency ?? 'CNY',
         amount: item.targetPrice != null && item.targetPrice !== '' ? Number(item.targetPrice) || null : null,
@@ -211,6 +217,18 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
           : '',
     });
+    // 产品级字段（工艺 / 受众品类 / 长宽高 / 克重）唯一权威在**产品库**：
+    // 按 productId 拉取产品档案，只回填这些规格（不覆盖线索自有的产品名与参考图片）
+    const pid = first?.productId;
+    if (pid) {
+      productApi
+        .getById(pid)
+        .then((r: any) => {
+          const p = (r?.data?.data ?? r?.data ?? r) as Product | null;
+          if (p) applyProductSpecs(p);
+        })
+        .catch(() => undefined);
+    }
     // 进入需求详情步时，以线索存储值建立「线索级字段」比对基线（productDesc / 客户期望交期）
     captureStep1Baseline();
   };
@@ -223,6 +241,26 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       appliedStep1Ref.current = editing.id;
     }
   }, [step, editing]);
+  // 阻断提示去重：同一公司名只弹一次（失焦 / 打开弹窗的重复查询不再骚扰）
+  const blockedNameRef = useRef<string | null>(null);
+
+  /**
+   * 「该客户已由他人负责」阻断弹窗。
+   * 语义：该客户**不可用于当前线索** —— 弹窗之后仍不能继续/暂存/提交/建档，
+   * 必须更换公司名（或先由负责人释放 / 转交）。
+   */
+  const showCustomerBlockedModal = (companyName: string, ownerName?: string) => {
+    modal.warning({
+      title: t('lead.customerBlockedTitle'),
+      content: t('lead.customerBlockedContent', {
+        company: companyName || t('common.someone'),
+        name: ownerName || t('common.someone'),
+      }),
+      okText: t('common.ok'),
+      centered: true,
+    });
+  };
+
   const handleCompanyResolved = (info: {
     status: CompanyStatus;
     companyName?: string;
@@ -230,14 +268,37 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     ownerName?: string;
     publicSea?: boolean;
   }) => {
-    setStep0((s) => ({ ...s, status: info.status }));
-    setMatchedCustomerId(info.customerId ?? null);
-    setMatchedCompanyName(info.companyName ?? null);
+    // 「他人负责且非公海」的客户不可用于本线索：弹窗阻断（选择后即弹出），且不得关联其 customerId。
+    // 管理员放行（数据范围为全部，下拉本就提供全部客户）；线索**已关联**同一客户时放行（既有数据合法）。
+    const blocked =
+      info.status === 'other' && !info.publicSea && !isAdmin && info.customerId !== editing?.customerId;
+    setStep0((s) => ({
+      ...s,
+      status: info.status,
+      publicSea: !!info.publicSea,
+      ownerName: info.ownerName,
+      blocked,
+    }));
+    setMatchedCustomerId(blocked ? null : (info.customerId ?? null));
+    setMatchedCompanyName(blocked ? null : (info.companyName ?? null));
+    if (blocked) {
+      const nm = info.companyName ?? '';
+      // 同一名称只弹一次（失焦 / 打开弹窗的重复查询不再骚扰）
+      if (blockedNameRef.current !== nm) {
+        blockedNameRef.current = nm;
+        showCustomerBlockedModal(nm, info.ownerName);
+      }
+    } else if (info.status !== 'other' || info.publicSea) {
+      blockedNameRef.current = null;
+    }
     // 归属不再是「本人已建档」时，退出「编辑已建档客户」状态
     if (info.status !== 'mine') setStep0((s) => ({ ...s, editing: false }));
-    // 客户已存在（本人 / 他人 / 公海）：拉取完整档案并自动带入线索表单客户信息（与下拉选中保持一致）；
-    // 仅本人已建档（mine）额外留存 matchedCustomer 作为信息变更比对基线，其余情况仅带入不留存基线
-    if (info.customerId) {
+    // 客户已存在（本人 / 公海 / 管理员选他人客户）：拉取完整档案并自动带入线索表单客户信息（与下拉选中保持一致）；
+    // 仅本人已建档（mine）额外留存 matchedCustomer 作为信息变更比对基线，其余情况仅带入不留存基线。
+    //
+    // 阻断态不拉详情：非管理员读他人客户会 404，axios 拦截器随即弹「客户不存在」，
+    // 与阻断弹窗构成重复且误导的提示（用户要求：不属于自己的客户只需弹阻断提示）。
+    if (info.customerId && !blocked) {
       customerApi
         .getById(info.customerId)
         .then((r) => {
@@ -246,6 +307,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           // 编辑既有线索（含暂存草稿）时，线索自带的联系人/联系方式才是权威数据，
           // 不能用客户档案覆盖（否则暂存的联系人回显会被客户旧数据顶掉）。
           if (c && !editing?.id) applyCustomerFieldValues(c);
+          // 归属不变量：客户由谁负责，线索负责人就是谁（与后端同口径）。
+          // 客户在公海（无 ownerId）时保持当前登录用户，后端会随线索一并认领该客户；
+          // 管理员为他人客户建线索时，线索负责人同样取该客户负责人（后端派生，前端先行回显）。
+          if (c?.ownerId) form.setFieldsValue({ ownerId: c.ownerId });
           setMatchedCustomer(info.status === 'mine' ? c : null);
         })
         .catch(() => setMatchedCustomer(null));
@@ -302,25 +367,32 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 结构映射：产品扁平结构（craftIds / audienceId+categoryId / sizeL/W/H / weight）
   //   → 表单结构（craftIds 多选 / categoryCascade 级联 / 长宽高克重）。
   // 「客户具体要求」属于当条线索的产品需求（LeadItem.productDesc），不反填产品 description，二者语义分离。
-  const applyProductFieldValues = (p: Product) => {
-    const patch: Record<string, any> = {};
-    if (p.name) patch.productKey = p.name;
-    if (p.images) patch.images = p.images;
+  // 只回填「产品级规格」（工艺 / 受众品类 / 长宽高 / 克重）——这些字段的唯一权威在产品库。
+  // 编辑既有线索时使用：不得用产品档案覆盖线索自有的产品名与参考图片。
+  const applyProductSpecs = (p: Product) => {
     // 工艺：兼容 craftIds（id 数组）与 crafts（对象数组）两种返回结构
     const craftIdList = Array.isArray((p as any).craftIds)
       ? (p as any).craftIds
       : Array.isArray(p.crafts)
         ? p.crafts.map((c: any) => c.id).filter(Boolean)
         : [];
-    patch.craftIds = craftIdList;
-    // 受众 → 品类：两个 id 齐全才构成级联值
-    patch.categoryCascade = p.audienceId && p.categoryId ? [p.audienceId, p.categoryId] : undefined;
-    // 规格：长 / 宽 / 高 / 克重
-    patch.sizeL = p.sizeL ?? undefined;
-    patch.sizeW = p.sizeW ?? undefined;
-    patch.sizeH = p.sizeH ?? undefined;
-    patch.weight = (p as any).weight ?? undefined;
+    form.setFieldsValue({
+      craftIds: craftIdList,
+      // 受众 → 品类：两个 id 齐全才构成级联值
+      categoryCascade: p.audienceId && p.categoryId ? [p.audienceId, p.categoryId] : undefined,
+      sizeL: p.sizeL ?? undefined,
+      sizeW: p.sizeW ?? undefined,
+      sizeH: p.sizeH ?? undefined,
+      weight: (p as any).weight ?? undefined,
+    });
+  };
+
+  const applyProductFieldValues = (p: Product) => {
+    const patch: Record<string, any> = {};
+    if (p.name) patch.productKey = p.name;
+    if (p.images) patch.images = p.images;
     if (Object.keys(patch).length) form.setFieldsValue(patch);
+    applyProductSpecs(p);
   };
 
   // 产品名解析（失焦/下拉选中）：命中既有产品则拉取全量档案并带入（镜像 handleCompanyResolved），否则标记为待新建
@@ -488,6 +560,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // ============ 表单联动 ============
   const watchTargetMarket = Form.useWatch('targetMarket', form);
+  // 阻断态：命中的客户「他人负责且非公海」→ 不可关联、不可继续 / 暂存 / 提交 / 建档
+  const customerBlocked = !!step0.blocked;
+  /** 阻断闸门：返回 true 表示已弹窗阻断，调用方应立即 return */
+  const guardCustomerBlocked = (): boolean => {
+    if (!customerBlocked) return false;
+    showCustomerBlockedModal(watchCustomerKey ?? '', step0.ownerName);
+    return true;
+  };
+
   const watchProductKey = Form.useWatch('productKey', form);
   const watchQuantity = Form.useWatch('quantity', form);
   const watchCustomerKey = Form.useWatch('customerKey', form);
@@ -741,6 +822,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
 
   // 下一步：按当前步骤校验必填项后前进；选中本人已建档客户/产品且未改动时无需建档/更新，直接前进
   const goNext = async () => {
+    // 阻断：公司名命中「他人已负责且非公海」的客户时不可继续
+    if (guardCustomerBlocked()) return;
     if (step === 0) {
       // 联系方式（逐字段）+ 客户必填项 一并校验，所有错误同时飘红
       const contactOk = validateContactMethods();
@@ -832,9 +915,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       // 重置 step1 回填守卫，确保进入「需求详情」步时按本条线索重新回填
       appliedStep1Ref.current = null;
       form.setFieldsValue({
-        customerKey: item.customer?.companyName || item.companyName || undefined,
-        // 联系人：回填 Lead.contactName
-        contactName: item.contactName || undefined,
+        // V1.1：客户信息唯一权威在客户库 —— 公司名 / 联系人 / 联系方式 / 客户类型全部取 customer 关系
+        customerKey: item.customer?.companyName || undefined,
+        contactName: item.customer?.contactName || undefined,
+        customerType: item.customer?.customerType || undefined,
         // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON；
         // 历史数据的 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
         sourceKey: item.channel?.id
@@ -844,33 +928,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 : { channelId: item.channel.id },
             )
           : undefined,
-        // 采购产品：回填 LeadItem 明细（V1.0 产品关联落在 items）
-        productKey: item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined,
+        // 采购产品：产品名取关联产品（LeadItem 不再存产品名快照）
+        productKey: item.items?.[0]?.product?.name || undefined,
         contactMethods:
-          Array.isArray(item.contactMethods) && item.contactMethods.length
-            ? item.contactMethods
+          Array.isArray(item.customer?.contactMethods) && item.customer.contactMethods.length
+            ? item.customer.contactMethods
             : [{ tool: '', account: '' }],
-        // 数量需求：0 为落库默认值，回填视为空（占位符展示），与其他数值字段口径一致
-        quantity: Number(item.quantity) || undefined,
+        // 数量需求：取线索明细 quantity（Lead 标量已下线）；0 为落库默认值，回填视为空（占位符展示）
+        quantity: Number(item.items?.[0]?.quantity) || undefined,
         // 单位：回填线索取值，缺失时回退默认 个
         unit: item.unit ?? '个',
         // 负责人（标题栏 Form.Item 字段，一并回填）：canonical 为 ownerId，回退 owner relation
         ownerId: item.ownerId ?? item.owner?.id ?? undefined,
         // 详情扩展字段
         targetMarket: item.targetMarket || undefined,
-        productType: item.productType || undefined,
-        // 产品描述：回填 LeadItem.productDesc
+        // 产品描述（客户具体要求）：回填 LeadItem.productDesc（线索级，非产品描述）
         productDesc: item.items?.[0]?.productDesc || undefined,
-        // 需求详情扩展：产品分类与规格（落 LeadItem）
-        craftIds: item.items?.[0]?.craftIds || [],
-        categoryCascade:
-          item.items?.[0]?.audienceId && item.items?.[0]?.categoryId
-            ? [item.items?.[0].audienceId, item.items?.[0].categoryId]
-            : undefined,
-        sizeL: item.items?.[0]?.sizeL ?? undefined,
-        sizeW: item.items?.[0]?.sizeW ?? undefined,
-        sizeH: item.items?.[0]?.sizeH ?? undefined,
-        weight: item.items?.[0]?.weight ?? undefined,
         // 目标价位：金额组件值（币种 + 金额 + 实时汇率，仅用于展示换算，不再随金额落库汇率快照）
         targetPrice: {
           currency: item.currency ?? 'CNY',
@@ -878,12 +951,27 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           exchangeRate: currentRateOf(item.currency ?? 'CNY', rates),
         } as MoneyValue,
         expectedDelivery: item.expectedDelivery ? dayjs(item.expectedDelivery) : undefined,
-        customerType: item.customerType || undefined,
         // 参考图片：回填 Attachment(ownerType=LEAD) 记录
         images: item.attachments && item.attachments.length
           ? serializeImages(item.attachments.map((a) => ({ url: a.url, name: a.name || '' })))
           : '',
       });
+      // 客户信息建档基线：以线索关联客户的档案为基准（供「有更新 / 更新」比对）。
+      // 来源渠道 / 平台取线索自身的 channel/shop —— 客户建档时正是由线索来源派生，二者同源。
+      if (item.customer?.id) {
+        setMatchedCustomer({
+          id: item.customer.id,
+          companyName: item.customer.companyName ?? null,
+          contactName: item.customer.contactName ?? null,
+          email: item.customer.email ?? null,
+          phone: item.customer.phone ?? null,
+          country: item.customer.country ?? null,
+          customerType: item.customer.customerType ?? null,
+          contactMethods: item.customer.contactMethods ?? null,
+          channelId: item.channel?.id ?? null,
+          shopId: item.shop?.id ?? null,
+        } as unknown as Customer);
+      }
       // 归属状态不再由线索冗余字段（customerId 缺失）派生，而是在打开弹窗时由 CompanyNameInput
       // 通过 /ownership 实时查询决定（querySignal 触发）。此处仅递增信号，组件挂载/打开即查询。
       setCompanyQuerySeq((n) => n + 1);
@@ -892,8 +980,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setStep0((s) => ({ ...s, locked: item.customerLocked ?? (!!item.customerId && !item.draft) }));
       setStep0((s) => ({ ...s, editing: false }));
       // 已关联产品且非草稿（已正式建档）的线索打开即锁定需求详情的产品级字段
-      const reopenProductName = item.items?.[0]?.product?.name || item.items?.[0]?.productName || undefined;
-      const pid = (item.items?.[0]?.productId ?? item.productId ?? null) as string | null;
+      const reopenProductName = item.items?.[0]?.product?.name || undefined;
+      const pid = (item.items?.[0]?.productId ?? null) as string | null;
       setStep1((s) => ({ ...s, locked: item.productLocked ?? (!!pid && !item.draft) }));
       setStep1((s) => ({ ...s, editing: false }));
       // 重开（含暂存草稿）：产品名已填但无 productId → 视为「待建档(none)」，展示「未建档」标签与「建档」按钮；
@@ -901,11 +989,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setStep1((s) => ({ ...s, status: pid ? 'exist' : (reopenProductName ? 'none' : 'idle') }));
       setMatchedProductId(pid);
       if (pid) {
+        // 产品级规格唯一权威在产品库：拉取档案用于「有更新 / 更新」比对基线，并当场回填规格字段
         productApi
           .getById(pid)
           .then((r: any) => {
             const p = (r?.data?.data ?? r?.data ?? r) as Product | null;
-            if (p) setMatchedProduct(p);
+            if (p) {
+              setMatchedProduct(p);
+              applyProductSpecs(p);
+            }
           })
           .catch(() => setMatchedProduct(null));
       }
@@ -981,7 +1073,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       ownerId: values.ownerId || null,
       // 详情扩展字段
       targetMarket: values.targetMarket || null,
-      productType: values.productType || null,
       productDesc: values.productDesc || null,
       // 目标价位：仅币种 + 金额落库；汇率快照改为建档美元汇率（后端建档时自动抓取，不随金额传入）
       targetPrice: values.targetPrice?.amount != null ? String(values.targetPrice.amount) : null,
@@ -1009,6 +1100,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 暂存数据仅落「线索表」（buildLeadPayload 已把公司名 / 联系人 / 来源 / 需求等写入 Lead 字段），
   // 不创建 / 写入客户表、产品表（客户 / 产品主数据的增改仅在「建档 / 锁定 / 提交」时执行）。
   const saveDraft = async () => {
+    // 阻断：他人已负责的客户不可用于本线索，暂存同样拒绝（后端也会 400）
+    if (guardCustomerBlocked()) return;
     // 第一阶段（客户信息）暂存：客户公司名称必填，仍须校验
     if (step === 0) {
       try {
@@ -1051,6 +1144,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   };
 
   const submit = async () => {
+    // 阻断：他人已负责的客户不可用于本线索
+    if (guardCustomerBlocked()) return;
     // 联系方式：字段级校验（工具 / 账号分开判定），不通过时回到第 1 步展示飘红
     if (!validateContactMethods()) {
       setStep(0);
@@ -1105,6 +1200,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 建档 / 更新客户：操作前校验全部必填项；建档 = 从表单创建客户，更新 = 同步变化字段；
   // 二者均同时保存并关联线索（一步完成）、随后锁定客户信息步骤全部必填项
   const handleFileOrUpdateCustomer = async () => {
+    // 阻断：他人已负责的客户不可建档 / 更新到本线索
+    if (guardCustomerBlocked()) return;
     // 联系方式（逐字段）+ 客户必填项 一并校验，所有错误同时飘红，避免只卡在联系方式而漏掉其它必填
     const contactOk = validateContactMethods();
     let fieldsOk = true;
@@ -1198,14 +1295,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     country?: string;
   }): Promise<{ id: string }> => {
     const res: any = await customerApi.create({
-      companyName: initial?.companyName ?? editing?.companyName ?? '',
-      contactName: initial?.contactName ?? editing?.contactName ?? undefined,
-      email: initial?.email ?? editing?.email ?? undefined,
-      phone: initial?.phone ?? editing?.phone ?? undefined,
+      // V1.1：客户信息唯一权威在客户库，建档初值取线索关联的 customer 档案
+      companyName: initial?.companyName ?? editing?.customer?.companyName ?? '',
+      contactName: initial?.contactName ?? editing?.customer?.contactName ?? undefined,
+      email: initial?.email ?? editing?.customer?.email ?? undefined,
+      phone: initial?.phone ?? editing?.customer?.phone ?? undefined,
       country:
         initial?.country ??
         (editing?.targetMarket ? findCountry(editing.targetMarket)?.zh : undefined),
-      contactMethods: editing?.contactMethods ?? undefined,
+      contactMethods: editing?.customer?.contactMethods ?? undefined,
       channelId: editing?.channelId ?? undefined,
       shopId: editing?.shopId ?? undefined,
     } as any);
@@ -1221,7 +1319,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     description?: string;
   }): Promise<{ id: string }> => {
     const res: any = await productApi.create({
-      name: initial?.name ?? editing?.items?.[0]?.productName ?? '',
+      name: initial?.name ?? editing?.items?.[0]?.product?.name ?? '',
       // 产品 description 与线索「客户具体要求」(LeadItem.productDesc) 语义分离（见 applyProductFieldValues），
       // 不再从 productDesc 反填产品主数据描述；仅当用户经产品弹窗显式传入 initial.description 时才写入
       description: initial?.description,
@@ -1366,6 +1464,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 确认商机前置校验：先校验各步骤是否锁定，再校验后端是否完成全部建档；均通过才弹出最终确认框
   const handlePreCheckConfirm = () => {
     if (!editing) return;
+    // 阻断：公司名命中「他人已负责」的客户时不可推进确认
+    if (guardCustomerBlocked()) return;
     // 1) 步骤锁定校验：客户信息(step0) / 需求详情(step1) 必须均已锁定（建档后锁定），否则提示并支持跳转到对应步骤
     const unlocked: { index: number; label: string }[] = [];
     if (!step0.locked) unlocked.push({ index: 0, label: t('lead.stepCustomer') });
@@ -1459,7 +1559,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 客户「未建档」标签点击：直接用线索信息静默创建客户并关联（不再弹窗）
   const confirmCreateCustomer = async () => {
     if (readonly) return;
-    const name = editing?.companyName || watchCustomerKey;
+    const name = editing?.customer?.companyName || watchCustomerKey;
     if (!name) return;
     try {
       const { id } = await createCustomerSilently({ companyName: name });
@@ -1472,7 +1572,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 确认建档：直接用线索信息静默创建产品（不再弹窗）
   const confirmCreateProduct = async () => {
     if (readonly) return;
-    const name = editing?.items?.[0]?.productName || watchProductKey;
+    const name = editing?.items?.[0]?.product?.name || watchProductKey;
     if (!name) return;
     try {
       const { id } = await createProductSilently({ name });
@@ -1492,11 +1592,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       return;
     }
     try {
-      await leadApi.update(editing.id, { customerId: customer.id, companyName: null });
+      await leadApi.update(editing.id, { customerId: customer.id });
       message.success(t('common.createSuccess'));
       onRefreshCustomers();
       onSaved();
-      setEditing({ ...editing, customerId: customer.id, companyName: null });
+      setEditing({ ...editing, customerId: customer.id });
     } catch {
       message.error(t('common.saveFailed'));
     }
@@ -1520,11 +1620,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       return;
     }
     try {
-      await leadApi.update(editing.id, { productId: saved.id, productName: null });
+      await leadApi.update(editing.id, { productId: saved.id });
       message.success(t('common.createSuccess'));
       onRefreshProducts();
       onSaved();
-      setEditing({ ...editing, productId: saved.id, productName: null });
+      setMatchedProductId(saved.id);
     } catch {
       message.error(t('common.saveFailed'));
     }
@@ -1540,7 +1640,22 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   return (
     <>
       {/* 新建 / 编辑 / 详情弹窗（左右两栏）：Form 包裹整个弹窗，标题栏负责人字段一并纳入表单管理 */}
-      <Form form={form} layout="vertical" preserve autoComplete="off" disabled={readonly} size="large" className="lead-form-v2">
+      <Form
+        form={form}
+        layout="vertical"
+        preserve
+        autoComplete="off"
+        disabled={readonly}
+        size="large"
+        className="lead-form-v2"
+        // 公司名一改就解除阻断态（下次解析命中他人客户时会重新弹窗阻断）
+        onValuesChange={(changed: Record<string, any>) => {
+          if ('customerKey' in changed && step0.blocked) {
+            blockedNameRef.current = null;
+            setStep0((s) => ({ ...s, blocked: false }));
+          }
+        }}
+      >
         <AppModal
           open={drawerOpen}
           onClose={attemptClose}
@@ -1697,16 +1812,29 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                   <Form.Item
                     name="customerKey"
                     label={
+                      // 归属/建档状态一律作为同款 Tag 排布在 label 行（仅颜色区分），不挂在输入框右侧
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
                         <span>{t('lead.customerCompany')}</span>
-                        {step0.status === 'none' && !step0.locked && (
+                        {companyQuerying && (
+                          <Tag style={{ marginInlineEnd: 0 }}>{t('common.loading')}</Tag>
+                        )}
+                        {!companyQuerying && step0.status === 'none' && !step0.locked && (
                           <Tag color="orange" style={{ marginInlineEnd: 0 }}>
                             {t('lead.pendingTag')}
                           </Tag>
                         )}
-                        {step0.locked && (
+                        {!companyQuerying && step0.locked && (
                           <Tag color="green" style={{ marginInlineEnd: 0 }}>
                             {t('lead.filedTag')}
+                          </Tag>
+                        )}
+                        {!companyQuerying && !step0.locked && step0.status === 'other' && (
+                          <Tag color={step0.blocked ? 'red' : 'blue'} style={{ marginInlineEnd: 0 }}>
+                            {step0.publicSea
+                              ? t('lead.customerInPublicSea')
+                              : t('lead.customerOwnedByOther', {
+                                  name: step0.ownerName || t('common.someone'),
+                                })}
                           </Tag>
                         )}
                       </span>
@@ -1720,6 +1848,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                       querySignal={companyQuerySeq}
                       disabled={step0.locked}
                       placeholder={t('lead.customerPlaceholder')}
+                      onQueryingChange={setCompanyQuerying}
                     />
                   </Form.Item>
                 </Col>

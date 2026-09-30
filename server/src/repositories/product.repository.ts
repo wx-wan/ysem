@@ -157,6 +157,17 @@ export const productRepository = {
     return db.product.findUnique({ where: { id } });
   },
 
+  /**
+   * 按 where 取首条（线索建档的「归一名称匹配既有产品」用）。
+   * 调用方负责并入可见性条件，仓储层不构造权限条件。
+   */
+  findFirst(
+    args: { where: Prisma.ProductWhereInput; select?: Prisma.ProductSelect },
+    db: DbClient = prisma,
+  ) {
+    return db.product.findFirst(args as Prisma.ProductFindFirstArgs);
+  },
+
   /** 混排列表的「产品」分支：不分页（分页在 Business 层合并后统一切分） */
   findManyForMixed(where: Prisma.ProductWhereInput, db: DbClient = prisma) {
     return db.product.findMany({

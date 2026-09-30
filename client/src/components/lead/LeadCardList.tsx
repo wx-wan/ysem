@@ -34,10 +34,12 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
         {dataSource.map((r) => {
           const ownerName = r.owner?.realName || r.owner?.username || '';
           const ownerSeed = r.ownerId || r.id;
-          const company = r.customer?.companyName || r.companyName || '-';
-          const country = r.targetMarket || r.country || '';
-          const product = r.items?.[0]?.productName || r.productName || r.productInterest || '';
-          const desc = r.items?.[0]?.productDesc || r.productDesc || '';
+          // V1.1：客户 / 产品信息一律取关联主数据（线索不再冗余持有）
+          const company = r.customer?.companyName || '-';
+          const country = r.targetMarket || '';
+          const product = r.items?.[0]?.product?.name || r.productInterest || '';
+          const desc = r.items?.[0]?.productDesc || '';
+          const quantity = r.items?.[0]?.quantity;
           const statusMeta = STATUS_META[r.status];
           // 左侧大头像代表客户公司：取公司名首字，同一公司颜色稳定
           const companyInitial = company !== '-' ? company[0] : '?';
@@ -55,16 +57,16 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
                 <div className="lead-card__no-row">
                   <span className="lead-card__no">{r.leadNo || r.leadName}</span>
                   {statusMeta && <Tag color={statusMeta.color} className="lead-card__tag">{t(statusMeta.label)}</Tag>}
-                  {r.customerType && <Tag className="lead-card__tag">{r.customerType}</Tag>}
+                  {r.customer?.customerType && <Tag className="lead-card__tag">{r.customer.customerType}</Tag>}
                 </div>
                 <div className="lead-card__company">
                   {country && <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2 }} />}
                   <span className="lead-card__company-name">{company}</span>
                 </div>
                 {product && <div className="lead-card__prod">{product}</div>}
-                {(r.quantity || desc) && (
+                {(quantity || desc) && (
                   <div className="lead-card__meta">
-                    {r.quantity ? <span>{t('lead.quantityRequirement')}：{r.quantity}{r.unit || '个'}</span> : null}
+                    {quantity ? <span>{t('lead.quantityRequirement')}：{quantity}{r.unit || '个'}</span> : null}
                     {desc && <span className="lead-card__desc">{desc}</span>}
                   </div>
                 )}

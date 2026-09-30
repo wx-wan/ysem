@@ -25,7 +25,8 @@ export default function SalesLeads() {
 
   // 用户 / 权限
   const currentUser = useAuthStore((s) => s.user);
-  const isAdmin = currentUser?.role?.code === 'admin';
+  // 与后端口径对齐：后端列表 isAdmin 认 'admin' | 'ADMIN'，此处同样大小写不敏感
+  const isAdmin = currentUser?.role?.code?.toLowerCase() === 'admin';
   const fetchUsers = useUserStore((s) => s.fetchUsers);
   useEffect(() => {
     fetchUsers();
@@ -138,7 +139,9 @@ export default function SalesLeads() {
   const handleRelease = useCallback(
     (r: Lead) => {
       releaseToPool({
-        name: r.leadName || r.companyName || '',
+        name: r.leadName || r.customer?.companyName || '',
+        // 规则：线索放弃到公海 ⇒ 关联客户必然一并放归公海（后端强制联动）
+        note: r.customerId ? t('lead.releaseCustomerNote') : undefined,
         action: () => leadApi.release(r.id),
         onSuccess: () => {
           list.refresh();
@@ -183,7 +186,7 @@ export default function SalesLeads() {
             list.setPage(1);
           }}
           tabs={
-            <CapsuleSwitch<'mine' | 'pool'>
+            <CapsuleSwitch<'mine' | 'all' | 'pool'>
               value={list.scope}
               onChange={(val) => {
                 list.setScope(val);
@@ -191,6 +194,8 @@ export default function SalesLeads() {
               }}
               options={[
                 { key: 'mine', label: t('lead.scopeMine') },
+                // 「全部」= 所有已归属（有负责人）的线索；仅管理员可见（业务员只有「我的 / 公海」）
+                ...(isAdmin ? [{ key: 'all' as const, label: t('lead.scopeAll') }] : []),
                 { key: 'pool', label: t('lead.scopePool') },
               ]}
               activeColor="#1677ff"

@@ -1,14 +1,12 @@
 import { Router } from 'express';
-import multer from 'multer';
 import {
-  getOpportunities, getKanban, getOpportunity, createOpportunity,
+  getOpportunities, getOpportunity, createOpportunity,
   updateOpportunity, deleteOpportunity, batchDelete,
-  importExcel, getAssignUsers, getByCustomer, getByProduct, getSalesLogs,
+  getAssignUsers, getByCustomer, getByProduct, getSalesLogs,
 } from '../controllers/sales.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 router.use(authenticate);
 
@@ -30,40 +28,6 @@ router.use(authenticate);
  *         description: 用户列表
  */
 router.get('/assign-users', getAssignUsers);
-
-/**
- * @swagger
- * /api/sales/kanban:
- *   get:
- *     tags: [销售管理]
- *     summary: 获取看板数据
- *     responses:
- *       200:
- *         description: 按阶段分组的销售看板
- */
-router.get('/kanban', getKanban);
-
-/**
- * @swagger
- * /api/sales/import:
- *   post:
- *     tags: [销售管理]
- *     summary: Excel 批量导入销售记录
- *     requestBody:
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required: [file]
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *     responses:
- *       200:
- *         description: 导入结果
- */
-router.post('/import', upload.single('file'), importExcel);
 
 /**
  * @swagger
@@ -90,15 +54,20 @@ router.get('/:id', getOpportunity);
  * /api/sales:
  *   post:
  *     tags: [销售管理]
- *     summary: 创建销售记录
+ *     summary: 由线索转化创建商机
+ *     description: |
+ *       商机**不提供独立新建入口**，唯一创建路径是「线索转商机」：
+ *       `leadId` 为强前置必填，渠道 / 平台由来源线索派生。
+ *       商机不支持 Excel 导入（`POST /api/sales/import` 已下线）。
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
  *             type: object
- *             required: [customerId, name]
+ *             required: [leadId, customerId, name]
  *             properties:
+ *               leadId: { type: string }
  *               customerId: { type: integer }
  *               name: { type: string }
  *               amount: { type: number }

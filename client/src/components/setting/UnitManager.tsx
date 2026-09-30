@@ -192,7 +192,7 @@ export default function UnitManager() {
         open={modalOpen}
         onOk={handleSubmit}
         onCancel={() => setModalOpen(false)}
-        destroyOnClose
+        destroyOnHidden
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
       >

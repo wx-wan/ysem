@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import * as XLSX from "xlsx";
 import { z } from "zod";
 import { CustomerLevel } from "@prisma/client";
 import { error, success } from "../utils/response";
@@ -283,6 +284,27 @@ export const importExcel = async (req: AuthRequest, res: Response, next: NextFun
     }
     const { created, failed } = await customerService.importExcel(file.buffer);
     success(res, { created, failed }, `导入完成：成功 ${created} 条，失败 ${failed} 条`);
+  } catch (err) {
+    handleFailure(err, res, next);
+  }
+};
+
+/**
+ * Excel 导入模板下载。
+ *
+ * 表头必须与 `customerService.importExcel` 的 fieldMap 对齐（含中英文别名中的中文项）；
+ * 「来源 / 意向等级」按 D-SOURCE-3 / D-INTENT v2 不再由 Excel 决定，故模板不提供这两列。
+ */
+export const downloadTemplate = async (_req: AuthRequest, res: Response, next: NextFunction) => {
+  try {
+    const header = ['公司名称', '联系人', '邮箱', '电话', '国家', '备注', '重点客户', '首次下单日期'];
+    const ws = XLSX.utils.aoa_to_sheet([header]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '客户导入模板');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="customer-import-template.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
   } catch (err) {
     handleFailure(err, res, next);
   }

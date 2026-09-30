@@ -1,15 +1,19 @@
-import type { AttachmentOwnerType } from '@prisma/client';
+import type { AttachmentOwnerType, Prisma } from '@prisma/client';
 import { activityLogger } from '../lib/activity-logger';
-import { BUSINESS_TYPE } from '../lib/business-type';
+import { BUSINESS_TYPE, type BusinessType } from '../lib/business-type';
 import { DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import { computeDiff, type FieldFormatter } from '../lib/operation-diff';
 import {
   buildLeadListWhere,
   claimLeadOwnership,
   createLeadAggregate,
+  findAnyCustomerByName,
   findLeadForLogs,
+  findReusableCustomerByName,
+  findReusableProductByName,
   loadLeadDetail,
   loadLeadsPage,
+  normalizeFilingName,
   releaseLeadOwnership,
   resolveLeadListOrderBy,
   resolveScopedCustomer,
@@ -18,19 +22,22 @@ import {
   resolveUsdRate,
   resolveVisibleProduct,
   transferLeadOwnership,
-  updateLeadRecord,
+  updateLeadAggregate,
   type LeadCaller,
-  type LeadItemCreateInput,
   type LeadListFilters,
   type LeadScopeProvider,
   type AttachmentCreateInput,
 } from '../operations/lead.operations';
+import { createCustomerAggregate } from '../operations/customer.operations';
+import { createProductOperation } from '../operations/product.operations';
+import { buildProductCreateData } from './product.service';
 import { attachmentRepository } from '../repositories/attachment.repository';
 import { channelRepository } from '../repositories/channel.repository';
 import { customerRepository } from '../repositories/customer.repository';
 import { leadRepository } from '../repositories/lead.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
 import { productRepository } from '../repositories/product.repository';
+import type { TxClient } from '../repositories';
 import { applyScope } from '../scope';
 
 /**
@@ -92,20 +99,17 @@ async function requireVisibleLead(ctx: LeadActorContext, id: string) {
 // 字段级差异（操作日志）—— 沿用既有标签与格式化口径
 // ============================================================
 
+/**
+ * 字段级差异标签（V1.1：客户 / 产品信息已不再落线索表，
+ * 相应标签与格式化器一并移除 —— 那些字段的变更现在发生在 Customer / Product 的日志里）。
+ */
 const LEAD_DIFF_LABELS: Record<string, string> = {
   leadName: '线索名称',
   customerId: '客户',
   channelId: '来源渠道',
   shopId: '来源平台',
   source: '来源',
-  companyName: '公司名称',
-  contactName: '联系人',
-  contactMethods: '联系方式',
-  email: '邮箱',
-  phone: '电话',
-  country: '国家',
   productInterest: '产品意向',
-  quantity: '数量',
   remark: '备注',
   targetMarket: '目标国家/地区',
   currency: '币种',
@@ -113,12 +117,11 @@ const LEAD_DIFF_LABELS: Record<string, string> = {
   targetPrice: '目标价位',
   usdRate: '创建美元汇率',
   expectedDelivery: '期望交期',
-  customerType: '客户类型',
   ownerId: '负责人',
   stage: '步骤',
 };
 
-/** 字段值格式化：来源渠道/平台按 ID 解析为名称，联系方式解析为「工具：账号」形式 */
+/** 字段值格式化：来源渠道/平台按 ID 解析为名称（联系方式 / 数量已随冗余列下线） */
 const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
   channelId: async (v) => {
     if (!v) return '空';
@@ -130,12 +133,6 @@ const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
     const ch = await channelRepository.findNameById(v as string);
     return ch?.name ?? String(v);
   },
-  contactMethods: (v) => {
-    if (!Array.isArray(v) || v.length === 0) return '空';
-    return (v as { tool?: string; account?: string }[])
-      .map((m) => `${m?.tool || '—'}：${m?.account || '—'}`)
-      .join('、');
-  },
   expectedDelivery: (v) => {
     if (!v) return '空';
     const d = new Date(v as string);
@@ -146,10 +143,6 @@ const LEAD_DIFF_FORMATTERS: Record<string, FieldFormatter> = {
       month: '2-digit',
       day: '2-digit',
     }).format(d);
-  },
-  quantity: (v) => {
-    if (v == null || v === '' || Number(v) === 0) return '空';
-    return String(Number(v));
   },
   stage: (v) => {
     if (v == null || v === '') return '空';
@@ -248,11 +241,34 @@ async function assertVisibleCustomer(customerId: string | null | undefined, ctx:
   if (!customer) throw new DomainValidationError('客户不存在');
 }
 
-/** 产品引用可见性（不可见与不存在同结果） */
-async function requireVisibleProductName(productId: string, ctx: LeadActorContext): Promise<string> {
-  const product = await resolveVisibleProduct(productId, ctx.scope);
-  if (!product) throw new DomainValidationError('产品不存在');
-  return product.name;
+/**
+ * 同名客户的**复用范围**（业务规则，非数据范围）：仅「本人 ∪ 公海」，管理员不限。
+ *
+ * 方案 A：即便调用方数据范围是 `DEPT` / `ALL`，也**不复用他人负责的同名客户** ——
+ * 与前端「该客户已由【x】负责」阻断弹窗同口径，杜绝把线索挂到他人客户上。
+ */
+function reusableCustomerScope(ctx: LeadActorContext): Record<string, unknown> {
+  if (ctx.isStrictAdmin) return {};
+  return { OR: [{ ownerId: ctx.userId ?? '__no_user__' }, { ownerId: null }] };
+}
+
+/**
+ * 客户引用授权 + 「归属可复用」门（方案 A 收紧）。
+ * 在可见范围之上再要求：该客户**由本人负责或在公海**（管理员不限），
+ * 否则拒绝 —— 不允许把线索关联到他人负责的客户。
+ */
+async function assertReusableCustomer(
+  customerId: string | null | undefined,
+  ctx: LeadActorContext,
+): Promise<void> {
+  if (customerId === undefined || customerId === null) return;
+  const customer = await resolveScopedCustomer(customerId, ctx.scope);
+  if (!customer) throw new DomainValidationError('客户不存在');
+  if (ctx.isStrictAdmin) return;
+  const ownerId = (customer as { ownerId?: string | null }).ownerId ?? null;
+  if (ownerId !== null && ownerId !== ctx.userId) {
+    throw new DomainValidationError('该客户已由其他业务员负责，不能用于当前线索');
+  }
 }
 
 /** 拆分组合来源值（sourceKey = JSON `{channelId, shopId}`），解析失败回退显式值 */
@@ -353,11 +369,211 @@ export interface CreateLeadInput {
   images?: (string | { url: string; name?: string })[] | null;
 }
 
+// ============================================================
+// V1.1 · FK-Only：事务内「归一匹配 → 复用 / 建档」
+// ============================================================
+
+/** 事务内建档结果：外键 + 新建时待补记的审计信息（日志在事务提交后发出） */
+interface FilingResult {
+  id: string;
+  createdLog?: {
+    businessType: BusinessType;
+    businessId: string;
+    businessNo: string;
+    module: string;
+    summary: string;
+  };
+}
+
+/** 建档所需的线索级上下文（负责人 + 来源渠道 / 平台） */
+interface FilingContext {
+  ownerId: string | null;
+  channelId: string | null;
+  shopId: string | null;
+}
+
+/** 参考图片取首张 URL（产品主图 coverImage 为单值列） */
+function firstImageUrl(
+  images?: (string | { url: string; name?: string })[] | null,
+): string | null {
+  const first = Array.isArray(images) ? images[0] : null;
+  if (!first) return null;
+  return typeof first === 'string' ? first : first.url;
+}
+
 /**
- * 创建线索。
+ * 事务内确保客户存在（客户主数据唯一权威 = Customer）：
+ *  1) 显式 `customerId` → 授权校验（owner ∪ 公海 ∪ admin）后直接关联；
+ *  2) 归一（trim + 大小写不敏感）命中**可见范围内**既有客户 → 复用；
+ *  3) 名称已被**不可见**客户占用 → 拒绝（既不产生同名客户，也不泄露归属人信息）；
+ *  4) 否则在同一事务内建档（编号与写入同事务，任一失败全部回滚）。
+ */
+async function resolveCustomerIdInTx(
+  tx: TxClient,
+  input: CreateLeadInput,
+  filing: FilingContext,
+  ctx: LeadActorContext,
+): Promise<FilingResult | null> {
+  if (input.customerId) {
+    await assertReusableCustomer(input.customerId, ctx);
+    return { id: input.customerId };
+  }
+  const name = normalizeFilingName(input.companyName);
+  if (!name) return null;
+
+  // 复用范围：本人 ∪ 公海（管理员不限）—— 不含他人负责的同名客户
+  const reusable = await findReusableCustomerByName(name, reusableCustomerScope(ctx), tx);
+  if (reusable) return { id: reusable.id };
+
+  const occupied = await findAnyCustomerByName(name, tx);
+  if (occupied) {
+    throw new DomainValidationError(
+      `客户「${occupied.companyName}」已由其他业务员负责，不能用于当前线索；如需使用请先由负责人在客户页释放或转交`,
+    );
+  }
+
+  const customer = await createCustomerAggregate(
+    {
+      companyName: name,
+      contactName: input.contactName ?? null,
+      contactMethods: (input.contactMethods ?? null) as Prisma.InputJsonValue | undefined,
+      email: input.email ?? null,
+      phone: input.phone ?? null,
+      country: input.country ?? null,
+      customerType: input.customerType ?? null,
+      channelId: filing.channelId,
+      shopId: filing.shopId,
+      source: 'MANUAL',
+      ownerId: filing.ownerId,
+    },
+    tx,
+  );
+  return {
+    id: customer.id,
+    createdLog: {
+      businessType: BUSINESS_TYPE.CUSTOMER,
+      businessId: customer.id,
+      businessNo: customer.customerNo,
+      module: 'customer',
+      summary: `创建客户：${name}`,
+    },
+  };
+}
+
+/**
+ * 事务内确保产品存在（产品主数据唯一权威 = Product），规则与客户一致。
+ * 命中既有产品即**仅复用**，不用线索表单里的规格覆盖产品主数据 ——
+ * 避免线索侧草稿数据反向污染产品库；产品属性一律在产品模块维护。
+ */
+async function resolveProductIdInTx(
+  tx: TxClient,
+  input: CreateLeadInput,
+  filing: FilingContext,
+  ctx: LeadActorContext,
+): Promise<FilingResult | null> {
+  if (input.productId) {
+    const visible = await resolveVisibleProduct(input.productId, ctx.scope);
+    if (!visible) throw new DomainValidationError('产品不存在');
+    return { id: input.productId };
+  }
+  const name = normalizeFilingName(input.productName);
+  if (!name) return null;
+
+  const reusable = await findReusableProductByName(name, ctx.scope, tx);
+  if (reusable) return { id: reusable.id };
+
+  const craftIds = Array.isArray(input.craftIds) ? input.craftIds : [];
+  const audienceId = input.audienceId ?? null;
+  const data = await buildProductCreateData(
+    {
+      name,
+      craftIds,
+      audienceId,
+      categoryId: input.categoryId ?? null,
+      sizeL: input.sizeL ?? null,
+      sizeW: input.sizeW ?? null,
+      sizeH: input.sizeH ?? null,
+      weight: input.weight ?? null,
+      images: firstImageUrl(input.images),
+    },
+    { userId: ctx.userId, roleCode: ctx.roleCode },
+  );
+  const product = await createProductOperation(
+    {
+      // ownerId 与线索负责人对齐：claim / transfer / release 的联动口径保持一致
+      data: { ...data, ownerId: filing.ownerId },
+      craftIds,
+      audienceId,
+      hasFullContext: Boolean(craftIds.length && audienceId),
+    },
+    tx,
+  );
+  return {
+    id: product.id,
+    createdLog: {
+      businessType: BUSINESS_TYPE.PRODUCT,
+      businessId: product.id,
+      businessNo: product.productNo,
+      module: 'product',
+      summary: `创建了产品「${product.name}」`,
+    },
+  };
+}
+
+/** 事务提交后补记主数据建档日志（放在事务外，避免回滚残留孤儿日志） */
+function flushFilingLogs(logs: (FilingResult['createdLog'] | undefined)[], ctx: LeadActorContext): void {
+  for (const l of logs) {
+    if (!l) continue;
+    void activityLogger.log({
+      userId: ctx.userId ?? '',
+      username: ctx.username ?? '',
+      realName: ctx.realName,
+      action: 'CREATE',
+      module: l.module,
+      businessType: l.businessType,
+      businessId: l.businessId,
+      businessNo: l.businessNo,
+      summary: l.summary,
+      ip: ctx.ip,
+    });
+  }
+}
+
+/**
+ * **归属不变量**：客户由谁负责，线索的负责人就是谁。
  *
- * 校验顺序与既有实现逐条一致：来源拆分 → 联系方式必填（draft 放宽）→
- * 产品引用可见性 → 归属人可指派 → 客户引用授权 → 渠道/平台契约 → 事务写入 → 审计。
+ *  - 客户有负责人 X → 线索负责人恒为 X（请求里的 ownerId 被覆盖，不允许出现「线索挂 A、客户挂 B」）
+ *  - 客户在公海（无负责人）→ 以线索负责人**认领该客户**（客户 ownerId := 线索负责人），
+ *    使不变量在公海场景同样成立（与既有 claim / transfer 的客户联动同向）
+ *  - 未关联客户 → 负责人不受约束，沿用请求值
+ *
+ * 说明：非管理员经「方案 A」只能关联本人 / 公海客户，故推导结果必在可指派范围内；
+ * 管理员数据范围为全部，客户负责人已是权威归属，无需再校验可指派性。
+ */
+async function resolveOwnerForLeadInTx(
+  tx: TxClient,
+  customerId: string | null,
+  requestedOwnerId: string | null,
+  ctx: LeadActorContext,
+): Promise<string | null> {
+  if (!customerId) return requestedOwnerId;
+  const customer = await customerRepository.findOwnerById(customerId, tx);
+  if (!customer) return requestedOwnerId;
+  if (customer.ownerId) return customer.ownerId;
+
+  // 公海客户：随线索一起归入线索负责人名下
+  const owner = requestedOwnerId ?? ctx.userId ?? null;
+  if (owner) await customerRepository.updateOwner(customerId, owner, tx);
+  return owner;
+}
+
+/**
+ * 创建线索（V1.1 · FK-Only）。
+ *
+ * 校验顺序（沿用既有口径）：来源拆分 → 联系方式必填（draft 放宽）→
+ * 归属人可指派 → 渠道/平台契约 → **事务内建档 + 写入** → 审计。
+ *
+ * 建档与线索写入同一事务：客户 / 产品 / 线索三者原子，任一失败全部回滚。
  */
 export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
   // 来源拆分：优先组合 sourceKey（{channelId, shopId}），回退显式 channelId/shopId
@@ -375,35 +591,24 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
   // 名称可选：未传时按「目标国家-产品名称」规则自动生成
   const leadName = data.leadName ?? ([data.targetMarket, data.productName].filter(Boolean).join('-') || '未命名线索');
 
-  // 产品关联落在 LeadItem（Lead 1:N LeadItem），写入时带产品名快照
-  let leadItems: LeadItemCreateInput[] | undefined;
-  if (data.productId) {
-    const productName = await requireVisibleProductName(data.productId, ctx);
-    leadItems = [buildLeadItem({ productId: data.productId, productName, data })];
-  } else if (data.productName || data.productDesc) {
-    leadItems = [buildLeadItem({ productId: null, productName: data.productName ?? null, data })];
-  }
-
   await assertAssignableOwner(data.ownerId, ctx);
-  await assertVisibleCustomer(data.customerId, ctx);
   await assertChannelShop(channelId, shopId);
+
+  const filing: FilingContext = {
+    ownerId: data.ownerId ?? null,
+    channelId: channelId ?? null,
+    shopId: shopId ?? null,
+  };
+  const pendingLogs: (FilingResult['createdLog'] | undefined)[] = [];
 
   const item = await createLeadAggregate({
     leadData: {
       leadName,
-      customerId: data.customerId ?? null,
       channelId: channelId ?? null,
       shopId: shopId ?? null,
-      quantity: data.quantity ?? 0,
       source: data.source ?? 'MANUAL',
       // 新建线索恒为「新线索」：状态推进只发生在绑定商机 / 生成打样单 / 生成订单时
       status: 'NEW',
-      companyName: data.companyName ?? null,
-      contactName: data.contactName ?? null,
-      contactMethods: data.contactMethods ?? undefined,
-      email: data.email ?? null,
-      phone: data.phone ?? null,
-      country: data.country ?? null,
       productInterest: data.productInterest ?? null,
       remark: data.remark ?? null,
       targetMarket: data.targetMarket ?? null,
@@ -412,7 +617,6 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
       targetPrice: data.targetPrice ?? null,
       // 期望交期按既有口径**原样透传字符串**（Prisma 自行按 ISO-8601 解析，不在此改写）
       expectedDelivery: data.expectedDelivery ?? null,
-      customerType: data.customerType ?? null,
       stage: data.stage ?? null,
       draft: data.draft ?? false,
       customerLocked: data.customerLocked ?? false,
@@ -422,10 +626,27 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     },
     // 汇率快照：创建线索时抓取当日 USD 汇率（与线索币种无关，创建后不再刷新）
     resolveUsdRate,
-    items: leadItems,
+    quantity: data.quantity || 1,
+    // 线索级「客户具体要求」（非产品主数据副本）
+    productDesc: data.productDesc ?? null,
     attachments: normalizeAttachments(data.images),
     actorUserId: ctx.userId ?? null,
+    resolveCustomerId: async (tx) => {
+      const r = await resolveCustomerIdInTx(tx, data, filing, ctx);
+      pendingLogs.push(r?.createdLog);
+      return r?.id ?? null;
+    },
+    resolveProductId: async (tx) => {
+      const r = await resolveProductIdInTx(tx, data, filing, ctx);
+      pendingLogs.push(r?.createdLog);
+      return r?.id ?? null;
+    },
+    // 归属不变量：客户由谁负责，线索负责人就是谁
+    resolveOwnerId: (tx, customerId) =>
+      resolveOwnerForLeadInTx(tx, customerId, data.ownerId ?? null, ctx),
   });
+
+  flushFilingLogs(pendingLogs, ctx);
 
   void activityLogger.log({
     userId: ctx.userId ?? '',
@@ -444,28 +665,6 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
   return item;
 }
 
-function buildLeadItem(input: {
-  productId: string | null;
-  productName: string | null;
-  data: CreateLeadInput;
-}): LeadItemCreateInput {
-  const { data } = input;
-  return {
-    productId: input.productId,
-    productName: input.productName,
-    quantity: data.quantity || 1,
-    // D2：产品描述落在 LeadItem 明细行
-    productDesc: data.productDesc ?? null,
-    craftIds: Array.isArray(data.craftIds) ? data.craftIds : [],
-    audienceId: data.audienceId ?? null,
-    categoryId: data.categoryId ?? null,
-    sizeL: data.sizeL ?? null,
-    sizeW: data.sizeW ?? null,
-    sizeH: data.sizeH ?? null,
-    weight: data.weight ?? null,
-  };
-}
-
 /** 更新的可写标量白名单（与 Prisma Lead 模型逐字段一致） */
 export const LEAD_WRITABLE_FIELDS = [
   'leadName',
@@ -474,15 +673,9 @@ export const LEAD_WRITABLE_FIELDS = [
   'shopId',
   'source',
   // status 不在白名单：状态只由单据事件推进（state/leadStatus.state.ts + operations/state.operations.ts）
-  'companyName',
-  'contactName',
-  'contactMethods',
-  'email',
-  'phone',
-  'country',
-  'customerType',
+  // V1.1：客户类 7 列（companyName/contactName/contactMethods/email/phone/country/customerType）
+  // 与 quantity 已下线 —— 客户信息经 customerId 关联 Customer，数量落在 LeadItem.quantity。
   'productInterest',
-  'quantity',
   'targetPrice',
   'targetMarket',
   'currency',
@@ -501,17 +694,20 @@ export interface UpdateLeadInput extends Partial<CreateLeadInput> {
 }
 
 /**
- * 更新线索。
+ * 更新线索（V1.1 · FK-Only）。
  *
- * 校验顺序与既有实现逐条一致：数据范围门 → 归属人可指派 → 客户引用授权 →
- * 来源拆分与渠道/平台契约 → 产品引用可见性 → 主表写入 → 附件整组替换 →
+ * 校验顺序（沿用既有口径）：数据范围门 → 归属人可指派 → 来源拆分与渠道/平台契约 →
+ * 客户/产品引用校验（**事务内建档 + 复用**）→ 主表写入 → 附件整组替换 →
  * LeadItem 明细维护 → 差异与审计。
+ *
+ * 语义约定：**未提交公司名 / 产品名时不得清空既有外键关联**；显式传
+ * `customerId: null` / `productId: null` 才表示解除关联。
  */
 export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadActorContext) {
-  // V1.0：productId / productName / productDesc 不再属于 Lead 标量，改由 LeadItem 承载
+  // V1.1：productDesc 仍属 LeadItem（线索级「客户具体要求」），从 Lead 标量入参中剥离
   const { productId, productName, productDesc, ...leadData } = data;
 
-  // 只写入与 Prisma Lead 标量一致的字段（legacy 字段被接受但不落库）
+  // 只写入与 Prisma Lead 标量一致的字段（客户类冗余列与 quantity 已下线，将被忽略）
   const update: Record<string, unknown> = {};
   for (const field of LEAD_WRITABLE_FIELDS) {
     if ((leadData as Record<string, unknown>)[field] !== undefined) {
@@ -523,7 +719,6 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
   const existing = await requireVisibleLead(ctx, id);
 
   await assertAssignableOwner(leadData.ownerId, ctx);
-  await assertVisibleCustomer(leadData.customerId, ctx);
 
   // 来源渠道/平台：编辑时同样重新校验（先于任何写入）
   const fromSourceKey = splitSourceKey((leadData as Record<string, unknown>).sourceKey as string | undefined);
@@ -543,35 +738,89 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
   update.channelId = effChannelId ?? null;
   update.shopId = effShopId ?? null;
 
-  // 产品可见性校验必须先于任何写入（含主表更新与明细重建）
-  let resolvedProductName: string | null = null;
-  if (productId) {
-    resolvedProductName = await requireVisibleProductName(productId, ctx);
-  }
+  // 建档上下文取「更新后的有效值」，保证新建客户 / 产品的归属与来源与线索一致
+  const effOwnerId =
+    (leadData as Record<string, unknown>).ownerId !== undefined
+      ? ((leadData as Record<string, unknown>).ownerId as string | null)
+      : existing.ownerId;
+  const filing: FilingContext = {
+    ownerId: effOwnerId ?? null,
+    channelId: effChannelId ?? null,
+    shopId: effShopId ?? null,
+  };
 
-  // 需求详情扩展字段：仅当显式传入才写，缺失则不覆盖既有值
-  const itemExtra: Record<string, unknown> = {};
-  if (data.craftIds !== undefined) itemExtra.craftIds = Array.isArray(data.craftIds) ? data.craftIds : [];
-  if (data.audienceId !== undefined) itemExtra.audienceId = data.audienceId;
-  if (data.categoryId !== undefined) itemExtra.categoryId = data.categoryId;
-  if (data.sizeL !== undefined) itemExtra.sizeL = data.sizeL;
-  if (data.sizeW !== undefined) itemExtra.sizeW = data.sizeW;
-  if (data.sizeH !== undefined) itemExtra.sizeH = data.sizeH;
-  if (data.weight !== undefined) itemExtra.weight = data.weight;
+  // 客户关联：显式 customerId 优先（null = 解除关联）；否则按公司名归一匹配 / 建档；两者皆无 → 不改动
+  const hasExplicitCustomer = (leadData as Record<string, unknown>).customerId !== undefined;
+  const hasCompanyName = data.companyName !== undefined;
 
-  await updateLeadRecord({
+  // 产品关联：显式 productId 优先（null = 解除关联）；否则按产品名归一匹配 / 建档；两者皆无 → 不改动
+  const hasExplicitProduct = productId !== undefined;
+  const hasProductName = productName !== undefined;
+
+  const pendingLogs: (FilingResult['createdLog'] | undefined)[] = [];
+
+  await updateLeadAggregate({
     leadId: existing.id,
     update,
-    productId,
-    productName,
     productDesc,
-    resolvedProductName,
-    itemExtra,
     quantity: data.quantity,
     // 仅在显式传入 images 时执行「整组替换」；未传则不动附件
     attachmentRows: data.images !== undefined ? normalizeAttachments(data.images) : undefined,
     actorUserId: ctx.userId ?? null,
+    resolveCustomerId: async (tx) => {
+      if (hasExplicitCustomer) {
+        const explicit = (leadData as Record<string, unknown>).customerId as string | null;
+        // 已关联**同一**客户 → 沿用既有可见性口径（避免重开旧线索被新规则卡死）；
+        // 改为关联**其他**客户 → 必须满足「本人 / 公海 / 管理员」
+        if (explicit && explicit !== existing.customerId) await assertReusableCustomer(explicit, ctx);
+        else await assertVisibleCustomer(explicit, ctx);
+        return explicit ?? null;
+      }
+      if (!hasCompanyName) return undefined;
+      const r = await resolveCustomerIdInTx(
+        tx,
+        { companyName: data.companyName, contactName: data.contactName, contactMethods: data.contactMethods,
+          email: data.email, phone: data.phone, country: data.country, customerType: data.customerType },
+        filing,
+        ctx,
+      );
+      pendingLogs.push(r?.createdLog);
+      return r?.id ?? null;
+    },
+    // 归属不变量：客户由谁负责，线索负责人就是谁（本次未改动客户时按既有客户回退）
+    resolveOwnerId: (tx, customerId) => {
+      const effCustomerId = customerId === undefined ? (existing.customerId ?? null) : customerId;
+      if (!effCustomerId) return Promise.resolve(undefined);
+      return resolveOwnerForLeadInTx(tx, effCustomerId, effOwnerId ?? null, ctx);
+    },
+    resolveProductId: async (tx) => {
+      if (hasExplicitProduct) {
+        const visible = productId ? await resolveVisibleProduct(productId, ctx.scope) : null;
+        if (productId && !visible) throw new DomainValidationError('产品不存在');
+        return productId ?? null;
+      }
+      if (!hasProductName) return undefined;
+      const r = await resolveProductIdInTx(
+        tx,
+        {
+          productName,
+          craftIds: data.craftIds,
+          audienceId: data.audienceId,
+          categoryId: data.categoryId,
+          sizeL: data.sizeL,
+          sizeW: data.sizeW,
+          sizeH: data.sizeH,
+          weight: data.weight,
+        },
+        filing,
+        ctx,
+      );
+      pendingLogs.push(r?.createdLog);
+      return r?.id ?? null;
+    },
   });
+
+  flushFilingLogs(pendingLogs, ctx);
 
   // 字段级变更明细 + 审计
   const diff = await computeDiff(
@@ -642,8 +891,14 @@ export async function deleteLeadAttachment(
  * 释放线索（私海 → 公海）。
  *
  * actor 规则不变（owner OR admin）；非本人统一 404「线索不存在」（可见 ≠ 可操作）。
- * Customer / Product 联动必须**独立授权**：无权时**跳过联动**，Lead 释放主操作照常成功。
- * 产品联动在 mutation 时刻重新执行可见性授权（关闭 TOCTOU）。
+ *
+ * 【规则 1】**线索放弃到公海 ⇒ 关联客户必然一并放归公海**（不再是「可选联动」）。
+ * 依据归属不变量「客户由谁负责，线索的负责人就是谁」：能操作该线索者即客户负责人，
+ * 故释放客户天然具备授权；若遇到历史数据归属不一致（客户由他人负责），
+ * 则**拒绝释放**，避免越权改动他人客户。
+ *
+ * 【规则 2】**关联产品同样强制联动**：不论可见性一律置公开并清空负责人。
+ * 注意副作用：该产品可能同时被其他线索 / 商机引用，置公开会影响这些引用方的可见性与归属。
  */
 export async function releaseLead(id: string, ctx: LeadActorContext): Promise<void> {
   const actorUserId = ctx.userId || '';
@@ -656,19 +911,25 @@ export async function releaseLead(id: string, ctx: LeadActorContext): Promise<vo
   if (!lead.ownerId) throw new DomainValidationError('该线索已在公海');
   if (lead.ownerId !== actorUserId && !ctx.isStrictAdmin) throw new DomainNotFoundError('线索不存在');
 
-  // Customer 联动独立授权（仅 Customer owner 或 admin）
-  const mutableCustomer = lead.customerId
-    ? await customerRepository.findMutableForActor(lead.customerId, actorUserId, ctx.isStrictAdmin)
-    : null;
-  const releaseCustomerId = mutableCustomer && lead.customerId ? lead.customerId : null;
-
-  // 产品联动按当前可见性重新授权；不可见的产品从 mutation 集合中排除（跳过，不阻断主操作）
-  const productIds = lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v));
-  let releasedProductIds: string[] = [];
-  if (productIds.length) {
-    const visibleProducts = await productRepository.findVisibleIds(productIds, ctx.scope.productVisibility());
-    releasedProductIds = visibleProducts.map((p) => p.id);
+  // 客户必随之放归公海：先核对归属一致性（客户已在公海 → 幂等；归本人 → 正常；管理员 → 放行）
+  let releaseCustomerId: string | null = null;
+  if (lead.customerId) {
+    const customer = await customerRepository.findOwnerById(lead.customerId);
+    const customerOwnerId = customer?.ownerId ?? null;
+    if (customerOwnerId === null || customerOwnerId === actorUserId || ctx.isStrictAdmin) {
+      releaseCustomerId = lead.customerId;
+    } else {
+      throw new DomainValidationError(
+        '该线索关联客户的负责人与线索负责人不一致，请先对齐客户归属后再释放',
+      );
+    }
   }
+
+  // 产品强制联动（规则）：关联产品一律置公开并清空负责人，**不按可见性筛选**
+  // （与客户同规格：线索放弃即把关联资产整体放归公共池，避免「线索走了、产品还挂在私人名下」）
+  const releasedProductIds = [
+    ...new Set(lead.items.map((i) => i.productId).filter((v): v is string => Boolean(v))),
+  ];
 
   await releaseLeadOwnership({ leadId: id, releaseCustomerId, releaseProductIds: releasedProductIds });
 
@@ -682,7 +943,7 @@ export async function releaseLead(id: string, ctx: LeadActorContext): Promise<vo
     businessId: id,
     businessNo: lead.leadNo,
     // 日志只描述**实际发生**的联动（跳过时不得虚报）
-    summary: `${ctx.username || ''} 释放该线索到公海${releaseCustomerId ? '，并释放关联客户到公海' : ''}${releasedProductIds.length ? `，关联 ${releasedProductIds.length} 个产品置为公开` : ''}`,
+    summary: `${ctx.username || ''} 释放该线索到公海${releaseCustomerId ? '，关联客户一并放归公海' : ''}${releasedProductIds.length ? `，关联 ${releasedProductIds.length} 个产品置为公开` : ''}`,
     customerId: lead.customerId || undefined,
   });
 }

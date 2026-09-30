@@ -21,6 +21,9 @@ import { productVisibilityWhere, projectProductRows, roleScope } from '../scope'
  * API Contract 保持稳定；本轮**刻意收紧**的两处业务行为已在 Phase 1 报告中记录：
  *   ① `leadId` 成为创建必填（B2）；
  *   ② `channelId / shopId / leadId` 更新不可变（D7）。
+ *
+ * 【规则冻结】商机**不支持新建、不支持导入**：唯一创建路径是「线索转商机」
+ * （`leadId` 强前置）——故无独立 create/import 业务入口，`POST /api/sales` 仅供转化调用。
  */
 
 /** 明细关联产品的公开字段（DQ-3=C 投影白名单；内部授权字段不得进入响应） */
@@ -96,16 +99,6 @@ export const getOpportunities = async (req: AuthRequest, res: Response): Promise
       page: result.page,
       pageSize: result.pageSize,
     });
-  } catch (err) {
-    respondError(res, err);
-  }
-};
-
-// ============ 看板统计 ============
-
-export const getKanban = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    success(res, await opportunityService.getKanban(buildActorContext(req)));
   } catch (err) {
     respondError(res, err);
   }
@@ -203,28 +196,6 @@ export const batchDelete = async (req: AuthRequest, res: Response): Promise<void
     success(res, null, `已删除 ${count} 条记录`);
   } catch (err) {
     respondError(res, err, '参数校验失败');
-  }
-};
-
-// ============ Excel 导入 ============
-
-export const importExcel = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    if (!req.file) {
-      fail(res, 400, '请上传文件');
-      return;
-    }
-    const result = await opportunityService.importOpportunitiesFromBuffer(
-      req.file.buffer,
-      buildActorContext(req),
-    );
-    success(res, result);
-  } catch (err) {
-    if (err instanceof DomainError) {
-      fail(res, err.code, err.message);
-      return;
-    }
-    fail(res, 500, '文件解析失败');
   }
 };
 

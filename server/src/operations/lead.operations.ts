@@ -76,6 +76,12 @@ const LEAD_ITEM_PRODUCT_SELECT = {
   visibleUsers: { select: { userId: true } },
 } as const;
 
+/**
+ * 线索关联客户的读取投影（V1.1：客户信息唯一权威在 Customer，线索只存外键）。
+ * 列表 / 详情 / 编辑回填一律经此对象取值，避免线索再持客户冗余列。
+ * `contactMethods` / `customerType` 与 `companyName` 同属客户档案的基础展示字段，
+ * 随线索可见性一并返回（不引入新的权限面）。
+ */
 const LEAD_CUSTOMER_SELECT = {
   id: true,
   companyName: true,
@@ -83,6 +89,8 @@ const LEAD_CUSTOMER_SELECT = {
   email: true,
   phone: true,
   country: true,
+  customerType: true,
+  contactMethods: true,
 } as const;
 
 const LEAD_INCLUDE = {
@@ -111,12 +119,13 @@ export async function buildLeadListWhere(
   let where: Record<string, unknown> = {};
 
   if (filters.keyword) {
+    // V1.1：客户 / 产品主数据不再冗余在线索表，关键词改为按关系过滤
+    // （线索名称 + 客户公司名 / 联系人 + 关联产品名），检索能力与改造前等价。
     where.OR = [
       { leadName: { contains: filters.keyword } },
-      { companyName: { contains: filters.keyword } },
-      { contactName: { contains: filters.keyword } },
-      { email: { contains: filters.keyword } },
-      { phone: { contains: filters.keyword } },
+      { customer: { companyName: { contains: filters.keyword } } },
+      { customer: { contactName: { contains: filters.keyword } } },
+      { items: { some: { product: { name: { contains: filters.keyword } } } } },
     ];
   }
   // 来源渠道 / 来源平台：按 channelId / shopId 精确匹配（前端筛选项已改为传 ID）
@@ -133,6 +142,10 @@ export async function buildLeadListWhere(
 
   if (filters.scope === 'mine' || filters.scope === 'pool') {
     where.ownerId = filters.scope === 'mine' ? (caller.userId ?? '') : null;
+  } else if (filters.scope === 'all' && caller.isAdmin) {
+    // 全部：**所有已归属（有负责人）的线索**，不含公海。管理员专用；
+    // 非管理员传 all 不进入本分支，落到下方角色 dataScope，拿到的是本人范围（等同「我的」），不泄露全量
+    where.ownerId = { not: null };
   } else if (filters.ownerId && caller.isAdmin) {
     // 管理员可用 ownerId 自由筛选；其余用户按角色 dataScope 过滤（含公海）
     where.ownerId = filters.ownerId;
@@ -237,21 +250,80 @@ export async function resolveUsdRate(): Promise<number> {
 }
 
 // ============================================================
-// 4. 创建（事务：编号 + 主表 + 附件）
+// 3.5 V1.1 · FK-Only 建档：归一名称匹配（事务内，命中即复用）
 // ============================================================
 
+/**
+ * 归一名称：trim 后交由 PostgreSQL 做大小写不敏感比较（`mode: 'insensitive'`）。
+ * 空串 / 全空白视为「未提供」，返回 null。
+ */
+export function normalizeFilingName(raw?: string | null): string | null {
+  const v = (raw ?? '').trim();
+  return v ? v : null;
+}
+
+/**
+ * 按归一名称匹配**可复用**的客户（命中即复用）。
+ * `extraWhere` 为业务层给出的复用范围条件（方案 A 收紧后 = 本人 ∪ 公海；管理员为空条件不限）。
+ * 仓储层不构造权限/政策条件 —— 范围由调用方传入（与既有分层约定一致）。
+ */
+export async function findReusableCustomerByName(
+  name: string,
+  extraWhere: Record<string, unknown>,
+  db: DbClient,
+) {
+  return customerRepository.findFirst(
+    {
+      where: applyScope({ companyName: { equals: name, mode: 'insensitive' } }, extraWhere),
+      select: { id: true, companyName: true, ownerId: true },
+    },
+    db,
+  );
+}
+
+/**
+ * 全库按归一名称匹配客户（忽略可见性）。
+ * 用途：区分「可建档」与「他人已建档」——避免产生仅大小写/空白差异的重名客户；
+ * 只返回主键与公司名，不返回归属人信息，不构成归属信息泄露。
+ */
+export async function findAnyCustomerByName(name: string, db: DbClient) {
+  return customerRepository.findFirst(
+    {
+      where: { companyName: { equals: name, mode: 'insensitive' } },
+      select: { id: true, companyName: true },
+    },
+    db,
+  );
+}
+
+/** 可见性范围内按归一名称匹配产品（命中即复用） */
+export async function findReusableProductByName(
+  name: string,
+  scope: LeadScopeProvider,
+  db: DbClient,
+) {
+  return productRepository.findFirst(
+    {
+      where: applyScope({ name: { equals: name, mode: 'insensitive' } }, scope.productVisibility()),
+      select: { id: true, name: true },
+    },
+    db,
+  );
+}
+
+// ============================================================
+// 4. 创建（事务：建档 + 编号 + 主表 + 明细 + 附件）
+// ============================================================
+
+/**
+ * 线索明细创建入参（V1.1 收敛后）。
+ * 只保留下层仍存在的列：产品外键 + 意向数量 + **线索级**「客户具体要求」。
+ * 产品名称 / 工艺 / 受众 / 品类 / 尺寸 / 克重一律不再落线索，唯一权威在 Product。
+ */
 export interface LeadItemCreateInput {
   productId: string | null;
-  productName: string | null;
   quantity: number;
   productDesc: string | null;
-  craftIds: string[];
-  audienceId: string | null;
-  categoryId: string | null;
-  sizeL: number | null;
-  sizeW: number | null;
-  sizeH: number | null;
-  weight: number | null;
 }
 
 export interface AttachmentCreateInput {
@@ -263,27 +335,55 @@ export interface AttachmentCreateInput {
 }
 
 /**
- * 创建线索聚合（Lead + LeadItem[] + Attachment[]）。
- * 事务：编号分配与业务写入同事务 —— 业务失败则计数一并回滚，不产生编号空洞（沿用既有语义）。
+ * 创建线索聚合（**建档 + Lead + LeadItem[] + Attachment[]**，单事务）。
+ *
+ * V1.1（lead-fk-only）：`resolveCustomerId` / `resolveProductId` 由 Business 层提供，
+ * 在**同一事务内**先完成客户 / 产品建档（归一匹配既有记录则复用，否则新建），
+ * 再把外键写入线索 —— 客户 / 产品 / 线索三者原子：任一失败则全部回滚
+ * （编号计数一并回滚，不产生编号空洞，沿用既有语义）。
  */
 export async function createLeadAggregate(input: {
-  leadData: Omit<Prisma.LeadUncheckedCreateInput, 'leadNo' | 'usdRate'>;
+  leadData: Omit<Prisma.LeadUncheckedCreateInput, 'leadNo' | 'usdRate' | 'customerId' | 'items'>;
   /** 汇率快照解析（由 Business 决定取值口径；在事务内、编号分配之后求值，保持既有顺序） */
   resolveUsdRate: () => Promise<number>;
-  items?: LeadItemCreateInput[];
+  quantity: number;
+  productDesc: string | null;
   attachments: AttachmentCreateInput[];
   actorUserId: string | null;
+  /** 事务内客户建档 / 复用（不传 = 本次不关联客户） */
+  resolveCustomerId?: (tx: TxClient) => Promise<string | null>;
+  /** 事务内产品建档 / 复用（不传 = 本次不关联产品） */
+  resolveProductId?: (tx: TxClient) => Promise<string | null>;
+  /**
+   * 事务内推导线索负责人（Business 提供的归属不变量：**客户由谁负责，线索负责人就是谁**）。
+   * 返回 `undefined` = 不改动（沿用请求值）。
+   */
+  resolveOwnerId?: (tx: TxClient, customerId: string | null) => Promise<string | null | undefined>;
 }) {
   return runInTransaction(async (tx: TxClient) => {
+    const customerId = input.resolveCustomerId ? await input.resolveCustomerId(tx) : null;
+    const productId = input.resolveProductId ? await input.resolveProductId(tx) : null;
+    // 归属推导在客户关联确定之后、写入之前（可能同时认领公海客户 → 必须同事务）
+    const ownerId = input.resolveOwnerId ? await input.resolveOwnerId(tx, customerId) : undefined;
+
+    // 明细：有产品外键、或有线索级「客户具体要求」时建立一条意向明细
+    const items: LeadItemCreateInput[] =
+      productId || input.productDesc
+        ? [{ productId, quantity: input.quantity, productDesc: input.productDesc }]
+        : [];
+
     const leadNo = await getNextNumber(tx, 'LEAD');
 
     const lead = await leadRepository.create(
       {
         data: {
           ...input.leadData,
+          customerId,
+          // 归属不变量优先于请求值（客户负责人 → 线索负责人）
+          ...(ownerId !== undefined ? { ownerId } : {}),
           leadNo,
           usdRate: await input.resolveUsdRate(),
-          ...(input.items ? { items: { create: input.items } } : {}),
+          ...(items.length ? { items: { create: items } } : {}),
         },
       },
       tx,
@@ -317,27 +417,31 @@ export async function createLeadAggregate(input: {
 /**
  * 更新线索：主表字段 + 附件（整组替换）+ LeadItem 明细维护。
  *
- * 事务边界：**保持既有行为 —— 本流程原先未包裹事务**，此处不新增事务，
- * 以免改变「部分失败」的既有语义（已作为 R-2 发现上报，是否收敛由后续决策）。
+ * V1.1：本流程改为**由 `updateLeadAggregate` 包裹在事务内执行**（建档 + 更新原子），
+ * 因此所有写入统一走传入的 `db`（事务客户端）。
  */
 export async function updateLeadRecord(input: {
   leadId: string;
   update: Record<string, unknown>;
   images?: unknown;
+  /** 显式传入 productId 时整组替换明细；null 表示清空产品关联 */
   productId?: string | null;
-  productName?: string | null;
+  /** 线索级「客户具体要求」，与 Product.description 无关 */
   productDesc?: string | null;
-  resolvedProductName?: string | null;
-  itemExtra: Record<string, unknown>;
   quantity?: number;
   attachmentRows?: AttachmentCreateInput[];
   actorUserId: string | null;
+  /** 事务客户端（由 updateLeadAggregate 传入） */
+  db: DbClient;
 }) {
-  await leadRepository.update({ where: { id: input.leadId }, data: input.update as Prisma.LeadUncheckedUpdateInput });
+  await leadRepository.update(
+    { where: { id: input.leadId }, data: input.update as Prisma.LeadUncheckedUpdateInput },
+    input.db,
+  );
 
   // 附件整组替换（仅在显式传入 images 时执行）
   if (input.attachmentRows !== undefined) {
-    await attachmentRepository.deleteByOwner('LEAD', input.leadId);
+    await attachmentRepository.deleteByOwner('LEAD', input.leadId, input.db);
     if (input.attachmentRows.length) {
       await attachmentRepository.createMany(
         input.attachmentRows.map((a) => ({
@@ -351,60 +455,116 @@ export async function updateLeadRecord(input: {
           fileSize: null,
           uploadedBy: input.actorUserId,
         })),
+        input.db,
       );
     }
   }
 
-  // LeadItem 明细维护（沿用既有「显式传 productId 则整组替换 / 否则增量更新」语义）
+  // LeadItem 明细维护（V1.1：明细只有 productId / quantity / productDesc 三列）
+  // 沿用既有「显式传 productId 则整组替换 / 否则增量更新」语义
   if (input.productId !== undefined) {
-    await leadRepository.items.deleteManyByLead(input.leadId);
+    await leadRepository.items.deleteManyByLead(input.leadId, input.db);
     if (input.productId) {
-      await leadRepository.items.create({
-        leadId: input.leadId,
-        productId: input.productId,
-        productName: input.resolvedProductName ?? input.productName ?? null,
-        productDesc: input.productDesc ?? null,
-        quantity: input.quantity || 1,
-        ...input.itemExtra,
-      });
-    } else if (input.productName || input.productDesc || Object.keys(input.itemExtra).length) {
-      await leadRepository.items.create({
-        leadId: input.leadId,
-        productId: null,
-        productName: input.productName ?? null,
-        productDesc: input.productDesc ?? null,
-        quantity: input.quantity || 1,
-        ...input.itemExtra,
-      });
+      await leadRepository.items.create(
+        {
+          leadId: input.leadId,
+          productId: input.productId,
+          productDesc: input.productDesc ?? null,
+          quantity: input.quantity || 1,
+        },
+        input.db,
+      );
     }
   } else {
     const patch: Record<string, unknown> = {};
-    if (input.productName !== undefined) patch.productName = input.productName ?? null;
     if (input.productDesc !== undefined) patch.productDesc = input.productDesc ?? null;
-    Object.assign(patch, input.itemExtra);
+    if (input.quantity !== undefined) patch.quantity = input.quantity || 1;
     if (Object.keys(patch).length) {
-      const existingItem = await leadRepository.items.findFirstByLead(input.leadId);
+      const existingItem = await leadRepository.items.findFirstByLead(input.leadId, input.db);
       if (existingItem) {
-        await leadRepository.items.updateById(existingItem.id, patch as Prisma.LeadItemUncheckedUpdateInput);
+        await leadRepository.items.updateById(
+          existingItem.id,
+          patch as Prisma.LeadItemUncheckedUpdateInput,
+          input.db,
+        );
       } else {
-        await leadRepository.items.create({
-          leadId: input.leadId,
-          productId: null,
-          productName: input.productName ?? null,
-          productDesc: input.productDesc ?? null,
-          quantity: input.quantity || 1,
-          ...input.itemExtra,
-        });
+        await leadRepository.items.create(
+          {
+            leadId: input.leadId,
+            productId: null,
+            productDesc: input.productDesc ?? null,
+            quantity: input.quantity || 1,
+          },
+          input.db,
+        );
       }
     }
   }
+}
+
+/**
+ * 更新线索聚合（**建档 + 主表 + 明细 + 附件**，单事务）。
+ *
+ * V1.1：把原先「无事务的顺序写入」收敛为单事务，并与客户 / 产品建档同事务：
+ * `resolveCustomerId` / `resolveProductId` 返回 `undefined` 表示**本次不改动该项关联**
+ * （未提交公司名 / 产品名时不得清空既有外键），返回 `null` 表示显式清空。
+ */
+export async function updateLeadAggregate(input: {
+  leadId: string;
+  update: Record<string, unknown>;
+  productDesc?: string | null;
+  quantity?: number;
+  attachmentRows?: AttachmentCreateInput[];
+  actorUserId: string | null;
+  resolveCustomerId?: (tx: TxClient) => Promise<string | null | undefined>;
+  resolveProductId?: (tx: TxClient) => Promise<string | null | undefined>;
+  /**
+   * 事务内推导线索负责人（归属不变量：客户由谁负责，线索负责人就是谁）。
+   * 形参 `customerId` 为**本次生效的客户关联**（`undefined` = 未改动，由 Business 回退既有值）。
+   * 返回 `undefined` = 不改动负责人。
+   */
+  resolveOwnerId?: (
+    tx: TxClient,
+    customerId: string | null | undefined,
+  ) => Promise<string | null | undefined>;
+}) {
+  return runInTransaction(async (tx: TxClient) => {
+    const customerId = input.resolveCustomerId ? await input.resolveCustomerId(tx) : undefined;
+    if (customerId !== undefined) input.update.customerId = customerId;
+
+    // 归属不变量：负责人随客户（undefined = 本次不改动负责人）
+    if (input.resolveOwnerId) {
+      const ownerId = await input.resolveOwnerId(tx, customerId);
+      if (ownerId !== undefined) input.update.ownerId = ownerId;
+    }
+
+    // undefined = 本次不改动明细的产品关联；string | null = 整组替换 / 清空
+    const productId = input.resolveProductId ? await input.resolveProductId(tx) : undefined;
+
+    await updateLeadRecord({
+      leadId: input.leadId,
+      update: input.update,
+      productId,
+      productDesc: input.productDesc,
+      quantity: input.quantity,
+      attachmentRows: input.attachmentRows,
+      actorUserId: input.actorUserId,
+      db: tx,
+    });
+  });
 }
 
 // ============================================================
 // 6. 归属联动（release / claim / transfer，各自一个事务）
 // ============================================================
 
-/** 释放：线索 → 公海；可选联动客户 → 公海、产品 → 公开 */
+/**
+ * 释放：线索 → 公海。
+ * `releaseCustomerId` 由 Business 决定（规则 1：线索放弃到公海 ⇒ **客户必然一并放归公海**，
+ * 故线索有客户时该参数恒为其 id）。
+ * `releaseProductIds` 为线索关联的全部产品（规则 2：**产品同样强制联动**，
+ * 不论可见性一律置公开并清空负责人；空数组表示该线索未关联产品）。
+ */
 export async function releaseLeadOwnership(input: {
   leadId: string;
   releaseCustomerId: string | null;

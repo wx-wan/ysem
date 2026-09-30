@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -43,6 +43,15 @@ import path from 'path';
 
 const app = express();
 
+/**
+ * 信任的反向代理层数（nginx / vite dev proxy 各记 1 跳）。
+ * 不设置时 req.ip 恒为代理地址：生产环境所有用户共用一个限流桶，会大面积误报 429。
+ * 不可设为 true（express-rate-limit 视为不安全的宽松配置）；nginx 使用
+ * $proxy_add_x_forwarded_for 追加真实来源 IP，取右侧 1 跳即可得到真实客户端 IP，
+ * 且伪造的 X-Forwarded-For 会被 nginx 追加的真实 IP 覆盖。
+ */
+app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS ?? 1));
+
 // 安全中间件
 app.use(helmet({
   contentSecurityPolicy: false, // 允许 Swagger UI 加载外部资源
@@ -53,14 +62,49 @@ app.use(cors({
 }));
 
 // 限流
+/** 统一的 429 响应体（与全局 API 响应约定 code / message 一致，前端错误拦截器按 code 识别） */
+const rateLimitHandler = (_req: Request, res: Response): void => {
+  res.status(429).json({ code: 429, message: '操作过于频繁，请稍后再试' });
+};
+
+/**
+ * 业务接口限流（单 IP / 15 分钟）。
+ * 额度按「前端单个页面约 10~15 个请求」估算：500 次仅够 30~50 次页面加载，
+ * 开发态几次热更新即可耗尽，随后 15 分钟内全站 429，故放宽到 3000 次。
+ */
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 500,
+  max: Number(process.env.RATE_LIMIT_MAX ?? 3000),
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => req.path.includes('/ext/') || req.path.includes('/docs'),
+  handler: rateLimitHandler,
+  // 以下路径不属于业务调用频率，计入限流会误伤：
+  // /auth/events 为 SSE 长连接（断线重连会反复占用额度）、/health 探活、
+  // /uploads 静态图片、/docs 与 /ext/ 文档及外部交换接口
+  skip: (req) => {
+    if (req.method === 'OPTIONS') return true;
+    const url = req.originalUrl;
+    return (
+      url.includes('/auth/events') ||
+      url.includes('/health') ||
+      url.includes('/uploads/') ||
+      url.includes('/docs') ||
+      url.includes('/ext/')
+    );
+  },
 });
 app.use('/api/', limiter);
+
+/** 认证入口单独限制「失败次数」（成功登录不计入），避免放宽全局额度后削弱防爆破能力 */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX ?? 100),
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: rateLimitHandler,
+});
+app.use(['/api/auth/login', '/api/auth/refresh'], authLimiter);
 
 // 日志 & 解析
 app.use(morgan('dev'));

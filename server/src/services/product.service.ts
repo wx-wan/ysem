@@ -6,6 +6,7 @@ import { DomainForbiddenError, DomainNotFoundError } from '../lib/errors';
 import { computeDiff, type DiffItem, type FieldFormatter } from '../lib/operation-diff';
 import { SkuConcurrencyError, SkuContextError } from '../lib/skuCode';
 import { createProductOperation, updateProductOperation } from '../operations/product.operations';
+import type { DbClient } from '../repositories';
 import { certificateRepository } from '../repositories/certificate.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
 import { productGroupRepository } from '../repositories/productGroup.repository';
@@ -490,19 +491,26 @@ export async function previewProductSku(input: {
 // 2. 创建 / 更新 / 删除
 // ============================================================
 
-export async function createProduct(input: ProductWriteInput, actor: ProductActorContext) {
+export async function createProduct(
+  input: ProductWriteInput,
+  actor: ProductActorContext,
+  db?: DbClient,
+) {
   // 旧 SingleProduct 写入体 → V1.0 Product 写入体（productNo 在事务内分配）
   const data = await buildProductCreateData(input, { userId: actor.userId, roleCode: actor.roleCode });
 
   // SKU 无需人工录入：按「工艺-受众-序号」自动生成（必须在事务内生成）
   const hasFullContext = Boolean(input.craftIds?.length && input.audienceId);
 
-  const product = await createProductOperation({
-    data,
-    craftIds: input.craftIds ?? [],
-    audienceId: input.audienceId ?? null,
-    hasFullContext,
-  });
+  const product = await createProductOperation(
+    {
+      data,
+      craftIds: input.craftIds ?? [],
+      audienceId: input.audienceId ?? null,
+      hasFullContext,
+    },
+    db,
+  );
 
   void activityLogger.log({
     userId: actor.userId || '',

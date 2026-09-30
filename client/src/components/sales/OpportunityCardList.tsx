@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { leadAvatarColor } from '../lead/LeadCardList';
 import { getStageMeta, getStageI18nKey } from './stages';
 import Price from '../common/Price';
-import FlagIcon from '../FlagIcon';
 import type { SalesItem } from '../../api/sales';
 
 interface Props {
@@ -20,13 +19,14 @@ export default function OpportunityCardList({ dataSource, loading, selectedId, o
     <Spin spinning={loading}>
       <div className="lead-card-list">
         {dataSource.map((r) => {
-          const ownerName = r.assignee?.realName || r.assignee?.username || '';
+          // 后端契约：负责人取 owner.*，公司名取 customer.companyName（无顶层 companyName / assignee）
+          const ownerName = r.owner?.realName || r.owner?.username || '';
           const ownerSeed = r.ownerId || r.id;
-          const company = r.customer?.companyName || r.companyName || '-';
-          const country = r.country || '';
-          const product = r.leadProducts?.[0]?.product?.name || r.productInterest || '';
-          const stageMeta = getStageMeta(r.stage);
-          const amount = r.stage === 'ORDER' || r.stage === 'SHIPPED' ? r.orderAmount : r.estimatedAmount;
+          const company = r.customer?.companyName || '-';
+          const product = r.items?.[0]?.productName || r.items?.[0]?.product?.name || '';
+          const stage = r.stage ?? '';
+          const stageMeta = getStageMeta(stage);
+          const amount = Number(r.estimatedAmount || 0);
           const companyInitial = company !== '-' ? company[0] : '?';
           const companySeed = company !== '-' ? company : r.id;
           const isActive = selectedId === r.id;
@@ -44,23 +44,18 @@ export default function OpportunityCardList({ dataSource, loading, selectedId, o
                   <span className="lead-card__no">{r.opportunityNo || r.title}</span>
                   {stageMeta && (
                     <Tag color={stageMeta.color} className="lead-card__tag">
-                      {t(`sales.stage.${getStageI18nKey(r.stage)}`)}
+                      {t(`sales.stage.${getStageI18nKey(stage)}`)}
                     </Tag>
                   )}
                 </div>
                 <div className="lead-card__company">
-                  {country && (
-                    <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2 }} />
-                  )}
                   <span className="lead-card__company-name">{company}</span>
                 </div>
                 {product && <div className="lead-card__prod">{product}</div>}
                 <div className="lead-card__meta">
-                  {amount != null && amount !== 0 ? (
+                  {amount !== 0 ? (
                     <span>
-                      {t('sales.amount')}
-                      {t('common.colon')}
-                      <Price value={amount} />
+                      {t('sales.estAmount')}：<Price value={amount} />
                     </span>
                   ) : null}
                 </div>

@@ -695,7 +695,7 @@ const SalesOrdersPage: React.FC = () => {
         onOk={handleSave}
         confirmLoading={saving}
         width={880}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={{ currency: 'USD', status: 'DRAFT' }}>
           <Row gutter={16}>

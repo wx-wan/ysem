@@ -1,5 +1,6 @@
-import { Empty, Timeline, Typography } from 'antd';
+import { Timeline, Typography } from 'antd';
 import dayjs from 'dayjs';
+import { useTranslation } from 'react-i18next';
 import DiffTags from './DiffTags';
 import {
   type OperationLogItem,
@@ -25,27 +26,68 @@ const parseDiff = (raw?: string | null): any[] => {
   }
 };
 
+/** 动作 → i18n key（`common.logAction.*`）；同义动作（CREATE / CREATED 等）共用一条文案 */
+const ACTION_I18N_KEY: Record<string, string> = {
+  CREATE: 'create',
+  CREATED: 'create',
+  UPDATE: 'update',
+  UPDATED: 'update',
+  DELETE: 'delete',
+  STATUS: 'status',
+  STAGE: 'stage',
+  STAGE_CHANGE: 'stage',
+  CLAIM: 'claim',
+  RELEASE: 'release',
+  TRANSFER: 'transfer',
+  TRANSFERRED: 'transfer',
+  KEY_TOGGLE: 'keyToggle',
+  INTENT_CHANGE: 'intentChange',
+  OPPORTUNITY_CREATED: 'opportunityCreated',
+  PIPELINE_CREATED: 'opportunityCreated',
+  OPPORTUNITY_UPDATED: 'opportunityUpdated',
+  PIPELINE_UPDATED: 'opportunityUpdated',
+  OPPORTUNITY_DELETED: 'opportunityDeleted',
+  PIPELINE_DELETED: 'opportunityDeleted',
+  LOGIN: 'login',
+  AUTH: 'auth',
+  EXPORT: 'export',
+  IMPORT: 'import',
+};
+
 /**
  * 通用操作记录时间线：从 OperationLog 渲染。
  * 所有业务模块（线索 / 产品 / 客户 / 商机）共用——保证「单一日志库、各模块捞对应记录」口径一致。
+ *
+ * 文案与线索详情面板的「操作记录」Tab 对齐：
+ *   - 动作名走 `common.logAction.*`（不再硬编码中文，否则英文环境会掉回中文）；
+ *   - 空态为次要文本（13px，无 Empty 插画）、加载态为「加载中…」。
  */
 export default function OperationLogTimeline({ logs, loading }: Props) {
+  const { t } = useTranslation();
+
   if (!loading && logs.length === 0) {
-    return <Empty description="暂无操作记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    return (
+      <div style={{ fontSize: 13, color: 'rgba(0,0,0,0.45)', padding: '12px 0' }}>
+        {t('common.logEmpty')}
+      </div>
+    );
   }
 
   return (
     <Timeline
-      mode="left"
-      pending={loading ? '加载中…' : false}
+      mode="start"
+      pending={loading ? t('common.logLoading') : false}
       items={logs.map((log) => {
-        const label = LOG_ACTION_LABELS[log.action] || log.action;
+        const i18nKey = ACTION_I18N_KEY[log.action];
+        const label = i18nKey
+          ? t(`common.logAction.${i18nKey}`, { defaultValue: LOG_ACTION_LABELS[log.action] || log.action })
+          : LOG_ACTION_LABELS[log.action] || log.action;
         const color = LOG_ACTION_COLORS[log.action] || 'blue';
         const operator = log.realName || log.username;
         const diff = parseDiff(log.diff);
         return {
           color,
-          children: (
+          content: (
             <div key={log.id}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <Text strong>{label}</Text>

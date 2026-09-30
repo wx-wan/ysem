@@ -102,9 +102,11 @@ export default function LeadDetailPanel({
 
   const statusMeta = STATUS_META[detail.status];
 
-  const company = detail.customer?.companyName || detail.companyName || '—';
-  const country = detail.targetMarket || detail.country || '';
-  const product = detail.items?.[0]?.productName || detail.productName || detail.productInterest || '';
+  // V1.1：客户 / 产品信息一律取关联主数据（线索不再冗余持有）
+  const company = detail.customer?.companyName || '—';
+  const country = detail.targetMarket || '';
+  const product = detail.items?.[0]?.product?.name || detail.productInterest || '';
+  const quantity = detail.items?.[0]?.quantity;
   const ownerName = detail.owner?.realName || detail.owner?.username || '';
   const isPool = !detail.ownerId;
   // 已推进（已确认 / 已打样 / 已成交）的线索只读
@@ -112,8 +114,8 @@ export default function LeadDetailPanel({
   // 是否已到达「确认商机」阶段（stage>=2）：旧数据（无 stage）默认视为可确认；
   // 据此决定底部主按钮显示「编辑」（回到暂存阶段继续）还是「确认」（转商机）
   const reachedConfirm = detail.stage == null ? true : detail.stage >= 2;
-  // 头部联系方式：行内展示首条「icon + 账号」，多条时以 icon 悬停查看全部
-  const contactList = Array.isArray(detail.contactMethods) ? detail.contactMethods : [];
+  // 头部联系方式：取客户档案的 contactMethods，行内展示首条「icon + 账号」，多条时以 icon 悬停查看全部
+  const contactList = Array.isArray(detail.customer?.contactMethods) ? detail.customer.contactMethods : [];
   const primaryContact = contactList[0];
   const hasMoreContacts = contactList.length > 1;
 
@@ -121,7 +123,7 @@ export default function LeadDetailPanel({
     { label: t('lead.fieldLeadNo'), value: detail.leadNo || '—' },
     { label: t('lead.companyName'), value: company },
     { label: t('lead.product'), value: product || '—' },
-    { label: t('lead.quantityRequirement'), value: detail.quantity != null && Number(detail.quantity) !== 0 ? `${detail.quantity}${detail.unit || '个'}` : '—' },
+    { label: t('lead.quantityRequirement'), value: quantity != null && Number(quantity) !== 0 ? `${quantity}${detail.unit || '个'}` : '—' },
     {
       label: t('lead.targetPrice'),
       // 目标价位：展示录入时的币种 + 金额（换算用当前实时汇率，不再依赖落库汇率快照）
@@ -161,7 +163,7 @@ export default function LeadDetailPanel({
         </div>
         {/* 联系人 + 首条联系方式（沟通工具：账号）；多条时 icon 悬停查看全部 */}
         <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {detail.contactName ? <span>{detail.contactName}</span> : null}
+          {detail.customer?.contactName ? <span>{detail.customer.contactName}</span> : null}
           {primaryContact && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <CommToolIcon name={primaryContact.tool} style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)' }} />

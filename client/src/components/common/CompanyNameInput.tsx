@@ -1,6 +1,5 @@
-import { AutoComplete, theme } from 'antd';
-import { useTranslation } from 'react-i18next';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { AutoComplete } from 'antd';
+import { useEffect, useState } from 'react';
 import { customerApi, type OwnershipResult } from '../../api/customers';
 
 /** 公司名称归属状态（onBlur 查询归属接口后得出） */
@@ -35,28 +34,29 @@ interface Props {
     ownerName?: string;
     publicSea?: boolean;
   }) => void;
+  /**
+   * 查询中状态回调：归属查询开始 true、结束 false。
+   * 组件自身不渲染任何状态提示——提示统一由父级在 label 行用 Tag 呈现，
+   * 与「未建档 / 已建档」同款样式（仅颜色不同），不再挤在输入框右侧。
+   */
+  onQueryingChange?: (querying: boolean) => void;
 }
 
 /**
  * 轻量化公司名称输入组件：
  * - 输入完成后触发 onBlur，调用专用归属查询接口（跨全员、仅回 code + 主键 + 负责人姓名）；
- * - 四种归属：
- *   1) NOT_FOUND（none）→ 显示「未建档」标签；
- *   2) OWNED_BY_OTHER（other）→ 显示「已由【x】负责」；
- *   3) IN_PUBLIC_SEA（other）→ 显示「已在公海」；
+ * - 四种归属（提示由父级渲染，本组件只回传判定结果）：
+ *   1) NOT_FOUND（none）→ 父级显示「未建档」标签；
+ *   2) OWNED_BY_OTHER（other）→ 父级显示「已由【x】负责」；
+ *   3) IN_PUBLIC_SEA（other）→ 父级显示「已在公海」；
  *   4) OWNED_BY_ME（mine）→ 不显示内容，由父级比对信息变更。
  */
-export default function CompanyNameInput({ value, onChange, disabled, placeholder, id, querySignal, options, onPick, onResolved }: Props) {
-  const { t } = useTranslation();
-  const { token } = theme.useToken();
+export default function CompanyNameInput({ value, onChange, disabled, placeholder, id, querySignal, options, onPick, onResolved, onQueryingChange }: Props) {
   const [status, setStatus] = useState<CompanyStatus>('idle');
-  const [info, setInfo] = useState<{ customerId?: string; ownerName?: string; publicSea?: boolean } | null>(null);
-  const [querying, setQuerying] = useState(false);
 
   // 外部改值（如打开编辑回填、清空）时重置归属判定，避免残留上一次的标签；用户输入已在 onChange 中处理
   useEffect(() => {
     setStatus('idle');
-    setInfo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
@@ -69,7 +69,6 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
   }, [querySignal]);
 
   const resolve = (name: string, next: CompanyStatus, extra: { customerId?: string; ownerName?: string; publicSea?: boolean } = {}) => {
-    setInfo(extra);
     setStatus(next);
     onResolved?.({ status: next, companyName: name, ...extra });
   };
@@ -81,7 +80,7 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
       resolve('', 'idle');
       return;
     }
-    setQuerying(true);
+    onQueryingChange?.(true);
     try {
       const res = await customerApi.checkOwnership(name);
       const data: OwnershipResult | undefined = res?.data?.data;
@@ -108,7 +107,7 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
       // 查询失败不阻断输入：退化为 idle（按名称落库由公司名文本承担）
       resolve(name, 'idle');
     } finally {
-      setQuerying(false);
+      onQueryingChange?.(false);
     }
   };
 
@@ -117,51 +116,25 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <AutoComplete
-        id={id}
-        value={value}
-        options={options?.map((o) => ({ ...o, value: o.label, id: o.value })) as any}
-        disabled={disabled}
-        placeholder={placeholder}
-        allowClear
-        style={{ flex: 1, minWidth: 0 }}
-        onChange={(v) => {
-          // 输入变化（含清空）即清空上一次的归属判定，待下次 blur / 选中重新查询
-          if (status !== 'idle') {
-            setStatus('idle');
-            setInfo(null);
-          }
-          onChange?.(v);
-        }}
-        onSelect={(v, option) => {
-          // 选中既有客户：通知父级带入国家/地区·客户类型·来源渠道，并触发归属查询（校正 mine/other 状态）
-          onPick?.(option as any);
-          void runQuery(v);
-        }}
-        onBlur={handleBlur}
-      />
-      {querying && (
-        <span style={{ flexShrink: 0, fontSize: 12, color: 'rgba(0,0,0,0.45)', whiteSpace: 'nowrap' }}>
-          {t('common.loading')}
-        </span>
-      )}
-      {!querying && status === 'other' && (
-        <span
-          style={{
-            flexShrink: 0,
-            fontSize: 12,
-            color: 'var(--c-text-tertiary, #94a3b8)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {info?.publicSea
-            ? t('lead.customerInPublicSea')
-            : t('lead.customerOwnedByOther', {
-                name: info?.ownerName || t('common.someone'),
-              })}
-        </span>
-      )}
-    </div>
+    <AutoComplete
+      id={id}
+      value={value}
+      options={options?.map((o) => ({ ...o, value: o.label, id: o.value })) as any}
+      disabled={disabled}
+      placeholder={placeholder}
+      allowClear
+      style={{ width: '100%' }}
+      onChange={(v) => {
+        // 输入变化（含清空）即清空上一次的归属判定，待下次 blur / 选中重新查询
+        if (status !== 'idle') setStatus('idle');
+        onChange?.(v);
+      }}
+      onSelect={(v, option) => {
+        // 选中既有客户：通知父级带入国家/地区·客户类型·来源渠道，并触发归属查询（校正 mine/other 状态）
+        onPick?.(option as any);
+        void runQuery(v);
+      }}
+      onBlur={handleBlur}
+    />
   );
 }

@@ -118,24 +118,18 @@ model Supplier {
 // ========== 线索产品明细（03 §3.1 · 旧 LeadProduct 改名 LeadItem）==========
 // 05 §13.6：LeadProduct → LeadItem（RENAME TABLE）；列语义修正（旧 leadId 值实际指向 SalesPipeline → 重映射到真正 Lead，05 §3.5）。
 model LeadItem {
-  id          String   @id @default(cuid())
-  leadId      String
-  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  productId   String?
-  product     Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
-  /// 未建档产品时直接记录名称（待确认建档）
-  productName String?
-  /// D2（F-8L）：采购产品的描述（材质 / 规格 / 工艺 / 用途等），落在明细行而非 Lead 标量
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  /// V1.1（20260930120000_lead_fk_only）：只存产品外键，产品主数据唯一权威在 Product。
+  /// productName / craftIds / audienceId / categoryId / sizeL / sizeW / sizeH / weight 已下线：
+  /// 产品名与分类规格一律经 product 关系读取，建档由后端在创建/更新线索时原子完成。
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  /// D2（F-8L）：**线索级**「客户具体要求」（材质 / 规格 / 工艺 / 用途等），非产品主数据副本。
+  /// 严禁写入或反填 Product.description（两者语义严格分离，用户 2026-09-27 明确约定）。
   productDesc String?
   quantity    Int      @default(1) // 意向数量，保留 Int（04 §12#7）
-  // 需求详情扩展（与产品主数据字段对齐，建档时带入产品）：产品分类与规格
-  craftIds    String[] @default([]) // 工艺 id 数组（多对多，落数组避免引入关联表）
-  audienceId  String? // 受众（二级分类）
-  categoryId  String? // 品类（三级分类）
-  sizeL       Float? // 长 cm
-  sizeW       Float? // 宽 cm
-  sizeH       Float? // 高 cm
-  weight      Float? // 克重 g
   sort        Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -220,20 +214,16 @@ model Lead {
   shopId    String? // 来源平台
   shop      Channel?   @relation("LeadShop", fields: [shopId], references: [id], onDelete: SetNull)
 
-  // ---------- 客户信息（建档前直填）----------
-  customerId    String?
-  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  companyName   String?
-  contactName   String?
-  contactMethods Json? // 联系方式（沟通工具 + 账号，数组：[{tool, account}]），替代旧 contactMethod
-  email         String?
-  phone         String?
-  country       String?
-  customerType  String?
+  // ---------- 客户（V1.1：只存外键，客户主数据唯一权威在 Customer）----------
+  // 20260930120000_lead_fk_only 起，线索不再持有客户冗余列：
+  // companyName / contactName / contactMethods / email / phone / country / customerType 已下线。
+  // 新建 / 更新线索时由后端原子建档（归一名称匹配既有客户，命中复用否则新建）并回填 customerId；
+  // 读取一律经 customer 关系，避免「同一信息两处权威」。
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   // ---------- 需求（结构化，替代旧版 10 个平铺扩展字段中的同类项）----------
   productInterest String?
-  quantity        Int     @default(1) // 采购数量
   targetPrice     String?
   /// 建档美元汇率快照：**1 USD = usdRate CNY**，于线索建档（createLead）时抓取当日
   /// DailyExchangeRate 中 USD 的 rateToCny 并落库，与线索自身币种无关，固定为美元汇率。

@@ -34,6 +34,7 @@ import {
 } from '../operations/customer.operations';
 import { channelRepository } from '../repositories/channel.repository';
 import { customerRepository } from '../repositories/customer.repository';
+import type { DbClient } from '../repositories';
 import { userRepository } from '../repositories/user.repository';
 import * as XLSX from 'xlsx';
 
@@ -506,7 +507,11 @@ export interface CreateCustomerInput {
 }
 
 /** 创建客户（含去重 409 / 归属授权 / 渠道契约；编号与写入同事务） */
-export async function create(input: CreateCustomerInput, ctx: CustomerActorContext) {
+export async function create(
+  input: CreateCustomerInput,
+  ctx: CustomerActorContext,
+  db?: DbClient,
+) {
   const userId = ctx.userId!;
   const username = ctx.username!;
 
@@ -526,27 +531,31 @@ export async function create(input: CreateCustomerInput, ctx: CustomerActorConte
     throw new DomainConflictError(`客户已存在（公司名称重复）：${existed.companyName}`);
   }
 
-  const customer = await createCustomerAggregate({
-    companyName: input.companyName,
-    contactName: input.contactName ?? null,
-    industry: input.industry ?? null,
-    website: input.website ?? null,
-    email: input.email ?? null,
-    phone: input.phone ?? null,
-    country: input.country ?? null,
-    customerType: input.customerType ?? null,
-    channelId: channelId ?? null,
-    shopId: shopId ?? null,
-    contactMethods: (input.contactMethods ?? null) as Prisma.InputJsonValue | undefined,
-    coverImage: normalizeCoverImage(input) ?? null,
-    // D-SOURCE-2：手工创建由 API 业务语义固定为 MANUAL（既有写入，本轮逐字沿用；是否废弃为独立决策）
-    source: 'MANUAL',
-    notes: input.notes ?? null,
-    ownerId: finalOwnerId,
-    isKeyAccount: input.isKeyAccount ?? false,
-    tags: input.tags ?? [],
-    // D-INTENT v2：intentLevel 由商机读时派生 ⇒ 创建时不写入
-  });
+  const customer = await createCustomerAggregate(
+    {
+      companyName: input.companyName,
+      contactName: input.contactName ?? null,
+      industry: input.industry ?? null,
+      website: input.website ?? null,
+      email: input.email ?? null,
+      phone: input.phone ?? null,
+      country: input.country ?? null,
+      customerType: input.customerType ?? null,
+      channelId: channelId ?? null,
+      shopId: shopId ?? null,
+      contactMethods: (input.contactMethods ?? null) as Prisma.InputJsonValue | undefined,
+      coverImage: normalizeCoverImage(input) ?? null,
+      // D-SOURCE-2：手工创建由 API 业务语义固定为 MANUAL（既有写入，本轮逐字沿用；是否废弃为独立决策）
+      source: 'MANUAL',
+      notes: input.notes ?? null,
+      ownerId: finalOwnerId,
+      isKeyAccount: input.isKeyAccount ?? false,
+      tags: input.tags ?? [],
+      // D-INTENT v2：intentLevel 由商机读时派生 ⇒ 创建时不写入
+    },
+    // V1.1：线索建档传入外部事务客户端（跨聚合单事务）；其余调用不传，保持自开事务
+    db,
+  );
 
   await activityLogger.log({
     userId,

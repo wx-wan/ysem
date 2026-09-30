@@ -3,7 +3,7 @@ import { getNextNumber } from '../lib/numberSequence';
 import { customerRepository } from '../repositories/customer.repository';
 import { opportunityRepository } from '../repositories/opportunity.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
-import { runInTransaction } from '../repositories';
+import { runInTransaction, type DbClient } from '../repositories';
 import { salesOrderRepository } from '../repositories/salesOrder.repository';
 import { sampleOrderRepository } from '../repositories/sampleOrder.repository';
 import { userRepository } from '../repositories/user.repository';
@@ -360,14 +360,24 @@ export function loadCustomerLogs(customerId: string) {
 /**
  * 创建客户（编号分配与业务写入同事务：业务失败 → 计数一并回滚，不产生编号空洞）。
  * 返回新建客户行（无 include，与既有响应一致）。
+ *
+ * V1.1（lead-fk-only）：`db` 允许上层聚合（线索建档）传入**外部事务客户端**，
+ * 使「客户建档 + 产品建档 + 线索写入」落在同一事务内。未传入时保持既有语义（自开事务）。
  */
 export async function createCustomerAggregate(
   data: Omit<Prisma.CustomerUncheckedCreateInput, 'customerNo'>,
+  db?: DbClient,
 ) {
-  return runInTransaction(async (tx) => {
-    const customerNo = await getNextNumber(tx, 'CUS');
-    return customerRepository.create({ data: { ...data, customerNo } }, tx);
-  });
+  if (db) return createCustomerWithNumber(data, db);
+  return runInTransaction((tx) => createCustomerWithNumber(data, tx));
+}
+
+async function createCustomerWithNumber(
+  data: Omit<Prisma.CustomerUncheckedCreateInput, 'customerNo'>,
+  db: DbClient,
+) {
+  const customerNo = await getNextNumber(db, 'CUS');
+  return customerRepository.create({ data: { ...data, customerNo } }, db);
 }
 
 /** Excel 逐行导入：逐行独立事务，保留既有「部分成功」语义 */

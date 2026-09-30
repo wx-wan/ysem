@@ -14,6 +14,8 @@ router.use(authenticate);
 router.get('/options', getProductOptions);
 router.get('/sku-preview', previewProductSku);
 router.get('/mixed', getMixedProducts);
+// 模板下载必须排在 `/:id` 之前，否则会被 `/:id` 捕获（id='template' → 404「产品不存在」）
+router.get('/template', downloadTemplate);
 router.get('/', getProducts);
 router.get('/:id/logs', getProductLogs);
 
@@ -22,8 +24,7 @@ router.post('/', createProduct);
 router.put('/:id', updateProduct);
 router.delete('/:id', deleteProduct);
 
-// Excel 导入 / 模板下载
+// Excel 导入
 router.post('/import', upload.single('file'), importExcel);
-router.get('/template', downloadTemplate);
 
 export default router;

@@ -43,6 +43,7 @@ export function debounce<A extends unknown[]>(
 
   const debounced = function (this: unknown, ...args: A) {
     lastArgs = args;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- 必须保留调用时的 this，供延迟执行时原样回放
     lastThis = this;
     const callNow = leading && timer === null;
     if (timer) clearTimeout(timer);
@@ -89,6 +90,7 @@ export function throttle<A extends unknown[]>(
   const throttled = function (this: unknown, ...args: A) {
     const now = Date.now();
     lastArgs = args;
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- 同上，节流同样需要回放 this
     lastThis = this;
     const remaining = wait - (now - lastInvoke);
     // remaining > wait 说明 lastInvoke 为初值（从未执行过），视为可立即执行

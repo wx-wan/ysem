@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../../stores/useAuthStore';
 import { Product } from '../../../api/products';
-import { SalesItem } from '../../../api/sales';
+import { ProductOpportunityItem } from '../../../api/sales';
 import { leadApi, type Lead } from '../../../api/lead';
 import SalesRecordCard from '../../common/SalesRecordCard';
 import { getProductLogs, type OperationLogItem } from '../../../api/operationLog';
@@ -88,7 +88,7 @@ interface ProductDetailModalProps {
   onEdit: (product: Product) => void;
   onDelete: () => void;
   canDelete?: boolean;
-  salesList: SalesItem[];
+  salesList: ProductOpportunityItem[];
   salesLoading: boolean;
   onSalesRefresh?: () => void;
 }
@@ -309,11 +309,12 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     // 归一为统一记录并按时间倒序
     const unified: Array<
       | { kind: 'related'; ts: string; data: RelatedBusinessDocument }
-      | { kind: 'opportunity'; ts: string; data: SalesItem }
+      | { kind: 'opportunity'; ts: string; data: ProductOpportunityItem }
       | { kind: 'lead'; ts: string; data: Lead }
     > = [
       ...relatedDocs.map((d) => ({ kind: 'related' as const, ts: d.createdAt || '', data: d })),
-      ...salesList.map((s) => ({ kind: 'opportunity' as const, ts: s.createdAt || '', data: s })),
+      // by-product 投影不返回 createdAt，只有 updateTime
+      ...salesList.map((s) => ({ kind: 'opportunity' as const, ts: s.updateTime || '', data: s })),
       ...leads.map((l) => ({ kind: 'lead' as const, ts: l.createdAt || '', data: l })),
     ].sort((a, b) => dayjs(b.ts).valueOf() - dayjs(a.ts).valueOf());
 
@@ -350,25 +351,25 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           // 商机
           if (rec.kind === 'opportunity') {
             const sale = rec.data;
-            const meta = getStageMeta(sale.stage);
-            const saleAmount = sale.stage === 'ORDER' || sale.stage === 'SHIPPED' ? sale.orderAmount : sale.estimatedAmount;
-            const saleLabel = sale.stage === 'ORDER' ? '订单金额' : '预估金额';
+            const meta = getStageMeta(sale.stage ?? '');
+            // 商机只有预估金额（订单金额在关联销售订单上，见上方 relatedDocs）
+            const saleAmount = sale.estimatedAmount == null ? null : Number(sale.estimatedAmount);
             return (
               <SalesRecordCard
                 key={sale.id}
                 typeLabel="商机"
                 typeColor="blue"
-                statusLabel={t(`sales.stage.${getStageI18nKey(sale.stage)}`)}
+                statusLabel={t(`sales.stage.${getStageI18nKey(sale.stage ?? '')}`)}
                 statusColor={meta?.color || 'default'}
                 title={sale.companyName || sale.title || '未知客户'}
-                createdAt={sale.createdAt}
+                createdAt={sale.updateTime || ''}
                 onClick={() => navigate(`/sales/opportunities?pipelineId=${sale.id}`)}
                 detail={(
                   <>
                     {sale.opportunityNo && <span>商机号：{sale.opportunityNo}</span>}
                     {sale.quantity != null && <span>数量：{sale.quantity}</span>}
                     {(sale.assignee?.realName || sale.assignee?.username) && <span>负责人：{sale.assignee?.realName || sale.assignee?.username}</span>}
-                    <span>{saleLabel}：<Price value={saleAmount} /></span>
+                    <span>预估金额：<Price value={saleAmount} /></span>
                   </>
                 )}
               />

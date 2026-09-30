@@ -54,27 +54,13 @@ export interface ConvertOptions {
   openProductForm?: (initial?: { name?: string; description?: string; images?: ProductImageItem[] }) => Promise<{ id: string }>;
 }
 
-/**
- * 在客户列表/产品列表中按名称检索是否已存在
- */
-async function findCustomerByName(name: string): Promise<string | null> {
-  const res: any = await customerApi.listAll({ page: 1, pageSize: 200 });
-  const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
-  const hit = list.find((c) => c.companyName && name && c.companyName.toLowerCase() === name.toLowerCase());
-  return hit?.id ?? null;
-}
-
-async function findProductByName(name: string): Promise<string | null> {
-  const res: any = await productApi.getList({ page: 1, pageSize: 200 });
-  const list: any[] = res?.data?.list ?? res?.data?.data?.list ?? [];
-  const hit = list.find((p) => p.name && name && p.name.toLowerCase() === name.toLowerCase());
-  return hit?.id ?? null;
-}
+// V1.1：线索保存时后端已原子建档并回填外键，前端**不再**按名称在客户/产品列表中兜底检索
+// （旧的 findCustomerByName / findProductByName 依赖线索的冗余文本列，那些列已下线）。
 
 /**
  * 线索确认 → 转化为商机：
- * 1. 检测客户是否已建档（customerId 或按名称在客户列表检索）；不存在则确认后新建客户
- * 2. 检测产品是否已建档（productId 或按名称在产品列表检索）；不存在则确认后新建产品
+ * 1. 客户：取线索已关联的 `customerId`（后端建档时回填）；缺失时按需引导建档
+ * 2. 产品：取 `items[0].productId`；缺失时按需引导建档
  * 3. 新建一条商机记录，关联建档后的客户与产品
  * 4. 线索状态由后端在创建商机时自动推进为「已确认」（前端不写状态）
  */
@@ -85,20 +71,15 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   // 线索参考图（Attachment ownerType=LEAD）转换为产品图片格式，带入新建产品流程
   const productImages = leadAttachmentsToProductImages(lead.attachments);
 
-  // ---- 客户建档检测（先查线索已关联 / 精确同名，判断是否需要新建） ----
-  let customerId: string | null = lead.customerId ?? null;
-  if (!customerId && lead.companyName) {
-    customerId = await findCustomerByName(lead.companyName);
-  }
-  const needCustomer = !customerId && !!lead.companyName;
+  // ---- 客户 / 产品建档检测（V1.1：一律以线索外键为准，名称仅用于建档预填） ----
+  const customerId: string | null = lead.customerId ?? null;
+  const customerName = lead.customer?.companyName ?? undefined;
+  const needCustomer = !customerId;
 
-  // ---- 产品建档检测（V1.0 产品关联落在 items）----
   const firstItem = lead.items?.[0];
-  let productId: string | null = firstItem?.productId ?? null;
-  if (!productId && firstItem?.productName) {
-    productId = await findProductByName(firstItem.productName);
-  }
-  const needProduct = !productId && !!firstItem?.productName;
+  const productId: string | null = firstItem?.productId ?? null;
+  const productName = firstItem?.product?.name ?? undefined;
+  const needProduct = !productId;
 
   let customerCreated = false;
   let productCreated = false;
@@ -106,69 +87,59 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
   // 两项均缺失且调用方支持汇总弹窗：先弹「待建档清单」，用户逐项建档后统一返回 ids
   if ((needCustomer || needProduct) && showCreateSummary) {
     const ids = await showCreateSummary({
-      customerName: needCustomer ? lead.companyName! : undefined,
-      productName: needProduct ? firstItem?.productName! : undefined,
+      customerName: needCustomer ? customerName : undefined,
+      productName: needProduct ? productName : undefined,
       images: needProduct ? productImages : undefined,
     });
     if (needCustomer && ids.customerId) {
-      customerId = ids.customerId;
       customerCreated = true;
-      await leadApi.update(leadId, { customerId });
+      await leadApi.update(leadId, { customerId: ids.customerId });
     }
     if (needProduct && ids.productId) {
-      productId = ids.productId;
       productCreated = true;
-      await leadApi.update(leadId, { productId });
+      await leadApi.update(leadId, { productId: ids.productId });
     }
   } else {
     // 回退：逐项弹出真实新建弹窗（兼容旧调用方）
     if (needCustomer) {
       const created = await openCustomerForm?.({
-        companyName: lead.companyName!,
-        contactName: lead.contactName ?? undefined,
-        email: lead.email ?? undefined,
-        phone: lead.phone ?? undefined,
-        country: lead.country ?? undefined,
+        companyName: customerName,
+        contactName: lead.customer?.contactName ?? undefined,
+        email: lead.customer?.email ?? undefined,
+        phone: lead.customer?.phone ?? undefined,
+        country: lead.customer?.country ?? undefined,
         images: productImages,
       });
-      customerId = created?.id ?? null;
-      if (customerId) {
+      if (created?.id) {
         customerCreated = true;
-        await leadApi.update(leadId, { customerId });
+        await leadApi.update(leadId, { customerId: created.id });
       }
     }
     if (needProduct) {
-      const created = await openProductForm?.({ name: firstItem?.productName!, images: productImages });
-      productId = created?.id ?? null;
-      if (productId) {
+      const created = await openProductForm?.({ name: productName, images: productImages });
+      if (created?.id) {
         productCreated = true;
-        await leadApi.update(leadId, { productId });
+        await leadApi.update(leadId, { productId: created.id });
       }
     }
   }
 
   // ---- 新建商机 ----
-  const title = lead.leadName || [lead.companyName, firstItem?.productName].filter(Boolean).join('-') || '商机';
+  // 后端契约（opportunityCreateSchema）：只接受 customerId / leadId / title / estimatedAmount /
+  // estimatedCloseDate / intentLevel / notes / ownerId / products；渠道与阶段由服务端派生。
+  // 公司名、联系人、邮箱、电话、国家、来源等旧扁平字段服务端不接收，故不再提交。
+  const title = lead.leadName || [customerName, productName].filter(Boolean).join('-') || '商机';
   const pipelineRes: any = await salesApi.create({
+    // 未建档客户保持空串：由后端返回 400「客户不能为空」（与既有错误语义一致）
+    customerId: customerId ?? '',
+    leadId, // 强前置关系：绑定来源线索，后端据此推进线索状态并派生渠道
     title,
-    // 阶段由后端按关联单据派生，创建时不传 stage
-    // 线索可能没有公司名（已关联客户时 companyName 为空）：依次回退客户公司名、商机标题，避免后端必填校验 400
-    companyName: lead.companyName ?? lead.customer?.companyName ?? title,
-    contactName: lead.contactName ?? undefined,
-    email: lead.email ?? undefined,
-    phone: lead.phone ?? undefined,
-    country: lead.country ?? undefined,
-    source: lead.channel?.name || lead.shop?.name || undefined,
-    customerId: customerId ?? undefined,
-    products: productId ? [{ productId, quantity: lead.quantity || 1 }] : undefined,
-    ownerId: lead.ownerId ?? undefined,
-    // 来源渠道 / 平台：原样带入线索的 channelId / shopId，使商机页「渠道/平台」筛选可对齐线索页
-    channelId: (lead as any).channelId ?? lead.channel?.id ?? undefined,
-    shopId: (lead as any).shopId ?? lead.shop?.id ?? undefined,
-    leadId: leadId, // 绑定来源线索，后端会回填线索的 pipelineId，实现双向溯源
+    ownerId: lead.ownerId ?? null,
     // 商机做实：带入线索的预估数据，新商机不再是空壳
     estimatedAmount: lead.targetPrice ? Number(lead.targetPrice) : undefined,
-  } as any);
+    // 数量取线索明细（V1.1：Lead.quantity 标量已下线）
+    products: productId ? [{ productId, quantity: firstItem?.quantity || 1 }] : null,
+  });
   const pipeline = pipelineRes?.data?.data ?? pipelineRes?.data ?? pipelineRes;
 
   // 线索状态不再由前端写入：后端创建商机（Opportunity.leadId 绑定）时自动推进为「已确认」

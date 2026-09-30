@@ -260,7 +260,7 @@ export default function SettingsCustomerType() {
                   open={modalOpen}
                   onCancel={() => setModalOpen(false)}
                   onOk={() => form.submit()}
-                  destroyOnClose
+                  destroyOnHidden
                 >
                   <Form form={form} layout="vertical" onFinish={handleSave}>
                     <Form.Item

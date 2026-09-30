@@ -238,7 +238,7 @@ export default function CommToolManager() {
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={() => form.submit()}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" onFinish={handleSave}>
           <Form.Item name="name" label={t('commTool.name')} rules={[{ required: true, message: t('commTool.nameRequired') }]}>

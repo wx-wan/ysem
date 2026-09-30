@@ -89,9 +89,11 @@ const CustomerCard = memo(function CustomerCard({
     customerApi
       .updateTags(customer.id, next)
       .then(() => {
-        onListUpdate && onListUpdate((prev) =>
-          prev.map((c) => (c.id === customer.id ? { ...c, tags: next } : c))
-        );
+        if (onListUpdate) {
+          onListUpdate((prev) =>
+            prev.map((c) => (c.id === customer.id ? { ...c, tags: next } : c)),
+          );
+        }
       })
       .catch(() => {
         message.error('标签更新失败');
@@ -156,19 +158,23 @@ const CustomerCard = memo(function CustomerCard({
                 onToggle={() => {
                   const nextKey = !customer.isKeyAccount;
                   // 本地乐观更新
-                  onListUpdate && onListUpdate((prev) =>
-                    prev.map((c) =>
-                      c.id === customer.id ? { ...c, isKeyAccount: nextKey } : c
-                    )
-                  );
+                  if (onListUpdate) {
+                    onListUpdate((prev) =>
+                      prev.map((c) =>
+                        c.id === customer.id ? { ...c, isKeyAccount: nextKey } : c
+                      )
+                    );
+                  }
                   // 同步后端持久化
                   customerApi.update(customer.id, { isKeyAccount: nextKey } as any).catch(() => {
                     // 失败回滚：恢复原值
-                    onListUpdate && onListUpdate((prev) =>
-                      prev.map((c) =>
-                        c.id === customer.id ? { ...c, isKeyAccount: !nextKey } : c
-                      )
-                    );
+                    if (onListUpdate) {
+                      onListUpdate((prev) =>
+                        prev.map((c) =>
+                          c.id === customer.id ? { ...c, isKeyAccount: !nextKey } : c
+                        )
+                      );
+                    }
                     message.error('重点客户状态更新失败');
                   });
                 }}

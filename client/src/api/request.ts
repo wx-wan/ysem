@@ -88,9 +88,10 @@ request.interceptors.response.use(
       localStorage.clear();
       window.location.href = '/login';
     }
-    // 429 限流：提示统一文案，不暴露后端原始 message
+    // 429 限流：提示统一文案，不暴露后端原始 message。
+    // 固定 key：页面同时发起多个请求触发限流时复用同一条提示，避免提示刷屏
     if (error.response?.status === 429) {
-      getMessage().error(i18n.t('error.tooManyRequests'));
+      getMessage().error({ key: 'rate-limited', content: i18n.t('error.tooManyRequests') });
       return Promise.reject(error);
     }
     const msg = error.response?.data?.message || i18n.t('error.networkError');

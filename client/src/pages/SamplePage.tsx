@@ -460,7 +460,7 @@ const SamplePage: React.FC = () => {
         onOk={handleSave}
         confirmLoading={saving}
         width={760}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" initialValues={{ quantity: 1, feeCurrency: 'USD', status: 'DRAFT' }}>
           <Row gutter={16}>

@@ -258,7 +258,7 @@ export default function ChannelManagement() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         size={440}
-        destroyOnClose
+        destroyOnHidden
         extra={
           <Space>
             <Button onClick={() => setDrawerOpen(false)}>{t('common.cancel')}</Button>

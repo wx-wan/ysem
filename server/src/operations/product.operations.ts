@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { getNextNumber } from '../lib/numberSequence';
 import { SkuContextError, withSkuRetry } from '../lib/skuCode';
 import { productRepository } from '../repositories/product.repository';
-import { runInTransaction } from '../repositories';
+import { runInTransaction, type DbClient } from '../repositories';
 
 /**
  * Product Operation Layer（Round R-4 · Product Layering）
@@ -25,22 +25,29 @@ import { runInTransaction } from '../repositories';
  * `hasFullContext`（工艺 + 受众齐备）由 Business 判定：齐备时 SKU 必须生成成功，
  * 否则属「分类未配置 code」的业务前置条件不满足 → `SkuContextError`（HTTP 边界映射 400）。
  */
-export function createProductOperation(input: {
-  data: Omit<Prisma.ProductUncheckedCreateInput, 'productNo' | 'sku'>;
-  craftIds: string[];
-  audienceId: string | null;
-  hasFullContext: boolean;
-}) {
-  return withSkuRetry(() =>
-    runInTransaction(async (tx) => {
-      const productNo = await getNextNumber(tx, 'PRD');
-      const sku = await productRepository.nextSku(input.craftIds, input.audienceId, undefined, tx);
-      if (input.hasFullContext && sku === null) {
-        throw new SkuContextError('工艺或受众缺少编码，请先在分类管理中补充代码');
-      }
-      return productRepository.create({ ...input.data, sku, productNo }, tx);
-    }),
-  );
+export function createProductOperation(
+  input: {
+    data: Omit<Prisma.ProductUncheckedCreateInput, 'productNo' | 'sku'>;
+    craftIds: string[];
+    audienceId: string | null;
+    hasFullContext: boolean;
+  },
+  db?: DbClient,
+) {
+  const run = async (tx: DbClient) => {
+    const productNo = await getNextNumber(tx, 'PRD');
+    const sku = await productRepository.nextSku(input.craftIds, input.audienceId, undefined, tx);
+    if (input.hasFullContext && sku === null) {
+      throw new SkuContextError('工艺或受众缺少编码，请先在分类管理中补充代码');
+    }
+    return productRepository.create({ ...input.data, sku, productNo }, tx);
+  };
+
+  // V1.1（lead-fk-only）：由上层聚合传入外部事务（线索建档）时**不启用 SKU 重试** ——
+  // withSkuRetry 的前提是「重试包住整个事务」，在外层事务内重试会残留上一次的写入。
+  // 此时 SKU 唯一冲突交由整个外层事务回滚处理。
+  if (db) return run(db);
+  return withSkuRetry(() => runInTransaction(run));
 }
 
 /**

@@ -81,11 +81,14 @@ export const customerRepository = {
   // Lead 流程专用（R-2 建立，语义与签名保持不变）
   // ============================================================
 
-  /** 按 id + 调用方数据范围取客户（不可见与不存在同结果） */
+  /**
+   * 按 id + 调用方数据范围取客户（不可见与不存在同结果）。
+   * `ownerId` 供「归属可复用」门判定（线索只能关联本人负责或公海客户）—— 唯一调用点为 Lead 流程。
+   */
   findScopedById(id: string, scope: Record<string, unknown>, db: DbClient = prisma) {
     return customerModel(db).findFirst({
       where: { ...(scope as Prisma.CustomerWhereInput), id },
-      select: { id: true },
+      select: { id: true, ownerId: true },
     });
   },
 

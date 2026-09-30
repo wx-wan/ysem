@@ -35,6 +35,12 @@
   --radius-sm: 8px;
   --radius-pill: 6px;
 
+  /* 滚动条：轨道透明，滑块 = slate-500 透明度阶梯（悬停 / 拖动加深） */
+  --scrollbar-size: 6px;
+  --c-scrollbar-thumb: rgba(100, 116, 139, 0.35);
+  --c-scrollbar-thumb-hover: rgba(100, 116, 139, 0.55);
+  --c-scrollbar-thumb-active: rgba(100, 116, 139, 0.72);
+
   /* 阴影：常驻 / 悬停 两级 */
   --shadow-rest: 0 1px 3px rgba(0, 0, 0, 0.04);
   --shadow-hover: 0 8px 24px rgba(0, 0, 0, 0.08);
@@ -1521,26 +1527,43 @@ html, body {
   }
 }
 
-/* ========== 全局滚动条样式（中性灰，低权重更清晰） ========== */
+/* ========== 全局滚动条（窄口 · 透明轨道 · 半透明灰滑块 · 无上下箭头） ==========
+   口径：
+   1) 轨道与交角（横竖交界方块）全透明 —— 滚动条只在需要时留下一条悬浮滑块，
+      不再切出一条灰色地带，内容面保持完整；
+   2) 滑块为 slate-500 的透明度阶梯（0.35 → hover 0.55 → 拖动 0.72），
+      静止时是可读的浅灰、悬停时加深，不抢主色也不至于看不见；
+   3) 隐藏 webkit 滚动条的 button 部件 —— Windows 上那两个上下（左右）小箭头及其
+      占位一并消失，滚动条只剩一条滑块；
+   4) Firefox 用标准属性对齐同一口径（其自身无箭头，thin 已是最窄档）。
+   局部例外（图表横向滚动条、需要彻底隐藏处）仍按各自的类名覆盖即可。 */
 *::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
 }
-*::-webkit-scrollbar-track {
-  background: #f1f5f9;
-  border-radius: 4px;
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-  transition: background 0.2s;
+  background-color: var(--c-scrollbar-thumb);
+  border-radius: var(--radius-pill);
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background-color: var(--c-scrollbar-thumb-hover);
+}
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--c-scrollbar-thumb-active);
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 #f1f5f9;
+  /* Firefox thin 档本身更细，用最深一档补偿观感重量 */
+  scrollbar-color: var(--c-scrollbar-thumb-active) transparent;
 }
 
 /* ========== 客户卡片荣誉层级 ========== */

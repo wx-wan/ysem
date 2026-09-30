@@ -1,4 +1,5 @@
 import request, { type ApiResponse } from './request';
+import { downloadFile } from '../utils/downloadFile';
 
 // ============ 产品分类 Taxonomy ============
 
@@ -253,7 +254,8 @@ export const importProductApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  downloadTemplate: () => window.open('/api/products/template', '_blank'),
+  // 模板为受保护资源：必须带 token 下载（window.open 不带 Authorization 头 → 401）
+  downloadTemplate: () => downloadFile('/products/template', 'product-import-template.xlsx'),
 };
 
 export const productGroupApi = {
