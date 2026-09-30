@@ -14,7 +14,11 @@ export const departmentSchema = z.object({
   name: z.string().min(1).max(50),
   code: z.string().min(1).max(50),
   parentId: z.string().nullable().optional(),
-  leader: z.string().optional().nullable(),
+  // T1-B（已裁定）：原 `leader: z.string()...` 为**死字段** —— `Department` 模型只有
+  // `leaderId`（见 01-system.prisma 的 RENAME COLUMN 注释），无 `leader` 列。
+  // 携带 `leader` 的写请求会通过 zod 后被 Prisma 拒绝（Unknown argument）→ 500。
+  // 依裁定删除该声明：请求若仍携带 `leader`，zod 默认 strip → **200 且该字段被忽略**
+  //（行为变更已记录）。负责人功能另行设计。
   phone: z.string().optional().nullable(),
   email: z.string().email().optional().nullable(),
   sort: z.number().optional().default(0),
