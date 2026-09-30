@@ -332,13 +332,17 @@ export async function writeLeadDraftSnapshotOperation(
   const name = normalizeFilingName(merged.companyName as string | null);
   merged.companyName = name;
 
+  // 【规则】公海**不支持暂存** → 占用键只在「有负责人的暂存线索」上登记：
+  // 无负责人（公海）的线索即使保留客户资料快照，也**不占名**（认领后再重新登记）。
+  const ownerId = (merged.ownerId as string | null | undefined) ?? null;
+
   await leadRepository.update(
     {
       where: { id: leadId },
       data: {
         customerSnapshot: merged as unknown as Prisma.InputJsonValue,
         customerSnapshotAt: new Date(),
-        draftCustomerName: draftCustomerNameKey(name),
+        draftCustomerName: ownerId ? draftCustomerNameKey(name) : null,
       },
     },
     db,
@@ -821,7 +825,12 @@ export async function releaseLeadOwnership(input: {
   releaseProductIds: string[];
 }) {
   await runInTransaction(async (tx) => {
-    await leadRepository.update({ where: { id: input.leadId }, data: { ownerId: null } }, tx);
+    // 【规则】公海**不支持暂存**：释放即释放「暂存客户」占名 —— 公海线索不再持有客户名占用键
+    // （客户资料仍留在快照里；认领时若名称空闲会重新登记占用，见 claimLeadOwnership）。
+    await leadRepository.update(
+      { where: { id: input.leadId }, data: { ownerId: null, draftCustomerName: null } },
+      tx,
+    );
     if (input.releaseCustomerId) {
       await customerRepository.releaseToPool(input.releaseCustomerId, tx);
     }
@@ -837,9 +846,36 @@ export async function claimLeadOwnership(input: {
   claimCustomerId: string | null;
   claimProductIds: string[];
   userId: string;
+  /** 该线索「未建档暂存客户」的公司名占用键：认领时重新登记（公海不占名，认领后才占） */
+  draftNameKey?: string | null;
 }) {
   await runInTransaction(async (tx) => {
     await leadRepository.update({ where: { id: input.leadId }, data: { ownerId: input.userId } }, tx);
+
+    // 【规则】公海不支持暂存 → 公海线索不占名（释放时已清）；认领后重新登记占用键，
+    // 但**仅当名称当前空闲**：若已被他人私海暂存 / 正式客户占用则不登记，
+    // 认领照常成功（公海支持认领），冲突留到建档时按「暂存即阻塞」明确拒绝。
+    if (input.draftNameKey) {
+      const holder = await leadRepository.findFirst(
+        {
+          where: {
+            draftCustomerName: input.draftNameKey,
+            customerId: null,
+            customerLocked: false,
+            ownerId: { not: null },
+            id: { not: input.leadId },
+          },
+          select: { id: true },
+        },
+        tx,
+      );
+      if (!holder) {
+        await leadRepository.update(
+          { where: { id: input.leadId }, data: { draftCustomerName: input.draftNameKey } },
+          tx,
+        );
+      }
+    }
     if (input.claimCustomerId) {
       await customerRepository.updateOwner(input.claimCustomerId, input.userId, tx);
     }

@@ -40,7 +40,6 @@
     },
     "someone": "someone",
     "loadFailed": "Failed to load data",
-    "detail": "Detail",
     "batchDelete": "Batch Delete",
     "filter": "Filter",
     "confirmDelete": "Delete this record?",
@@ -384,7 +383,6 @@
     "totalPlatform": "Total channels"
   },
   "lead": {
-    "name": "Lead Name",
     "product": "Purchase Product",
     "productPlaceholder": "Product name or description, refer to existing SKU",
     "productRequired": "Please enter the purchase product",
@@ -439,11 +437,6 @@
     "leadSourceRequired": "Please select a source channel",
     "filterPlatform": "Channel",
     "filterShop": "Platform",
-    "source": "Source",
-    "sourceManual": "Manual",
-    "sourceExcel": "Excel Import",
-    "sourceRpa": "RPA Sync",
-    "sourceSync": "Platform Sync",
     "status": "Status",
     "statusNew": "New",
     "statusConfirmed": "Confirmed",
@@ -522,7 +515,6 @@
     "scopeAll": "All",
     "scopePool": "Public pool",
     "claim": "Claim",
-    "claimTip": "Claim this lead to take ownership before confirming or invalidating it",
     "claimSuccess": "Lead claimed",
     "claimFailed": "Failed to claim lead",
     "productDescPlaceholder": "Packaging, certification, customization, lead time, etc."

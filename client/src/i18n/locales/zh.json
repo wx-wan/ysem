@@ -40,7 +40,6 @@
     },
     "someone": "他人",
     "loadFailed": "加载失败",
-    "detail": "详情",
     "batchDelete": "批量删除",
     "filter": "筛选",
     "confirmDelete": "确定删除该记录吗？",
@@ -384,7 +383,6 @@
     "editTitle": "编辑渠道"
   },
   "lead": {
-    "name": "线索名称",
     "product": "采购产品",
     "productPlaceholder": "产品名称或描述，可参考现有SKU",
     "productRequired": "请输入采购产品",
@@ -440,11 +438,6 @@
     "leadSourceRequired": "请选择来源渠道",
     "filterPlatform": "渠道",
     "filterShop": "平台",
-    "source": "来源",
-    "sourceManual": "手动录入",
-    "sourceExcel": "Excel 导入",
-    "sourceRpa": "RPA 同步",
-    "sourceSync": "平台同步",
     "status": "状态",
     "statusNew": "新线索",
     "statusConfirmed": "已确认",
@@ -523,7 +516,6 @@
     "scopeAll": "全部",
     "scopePool": "公海",
     "claim": "认领",
-    "claimTip": "认领后该线索归你负责，方可进行确认 / 无效等操作",
     "claimSuccess": "线索已认领",
     "claimFailed": "认领失败"
   },

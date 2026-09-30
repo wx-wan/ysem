@@ -8,6 +8,7 @@ import {
   claimLeadOwnership,
   clearLeadDraftNameOperation,
   createLeadAggregate,
+  draftCustomerNameKey,
   findCustomerNameOccupier,
   findLeadForLogs,
   findReusableCustomerByName,
@@ -676,10 +677,11 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
   await assertChannelShop(channelId, shopId);
 
   const filing: FilingContext = {
-    ownerId: data.ownerId ?? null,
+    // 生效负责人：显式指定优先；**暂存（draft）线索未指定时归创建人**（公海不支持暂存，
+    // 详见 resolveOwnerId 同口径取值）——不占用名键 / 建档主数据归属都以此为准。
+    ownerId: data.ownerId ?? (data.draft ? (ctx.userId ?? null) : null),
     channelId: channelId ?? null,
     shopId: shopId ?? null,
-    // 未建档（customerLocked 非 true）→ 随线索创建的客户为草稿
     customerLocked: data.customerLocked ?? false,
   };
   const pendingLogs: (FilingResult['createdLog'] | undefined)[] = [];
@@ -724,9 +726,16 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
       pendingLogs.push(r?.createdLog);
       return r?.id ?? null;
     },
-    // 归属不变量：客户由谁负责，线索负责人就是谁
+    // 归属不变量：客户由谁负责，线索负责人就是谁。
+    // 另：【规则】公海不支持暂存 → 暂存（draft）线索必须有负责人，未指定时归创建人，
+    // 避免产生「公海里的暂存线索」（那种线索既无人负责、又占着客户名）。
     resolveOwnerId: (tx, customerId) =>
-      resolveOwnerForLeadInTx(tx, customerId, data.ownerId ?? null, ctx),
+      resolveOwnerForLeadInTx(
+        tx,
+        customerId,
+        data.ownerId ?? (data.draft ? (ctx.userId ?? null) : null),
+        ctx,
+      ),
     // 来源不变量：一个客户只有一种来源（线索来源恒等于客户来源）
     resolveSource: (tx, customerId) =>
       resolveSourceForLeadInTx(tx, customerId, { channelId: channelId ?? null, shopId: shopId ?? null }),
@@ -823,6 +832,13 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
 
   // 数据范围门（先于任何写入）；取整行作为 diff 的 before 基准
   const existing = await requireVisibleLead(ctx, id);
+
+  // 【规则】公海线索**只支持认领，不支持暂存 / 编辑**：未认领（ownerId 为空）的线索
+  // 必须先认领成为负责人才能编辑；管理员按既有口径放行。
+  // 注：本规则只针对**公海**；他人私海线索仍沿既有「数据范围可见即可编辑」口径（不改动）。
+  if (!existing.ownerId && !ctx.isStrictAdmin) {
+    throw new DomainValidationError('该线索在公海，请先认领后再编辑或暂存');
+  }
 
   await assertAssignableOwner(leadData.ownerId, ctx);
 
@@ -1179,7 +1195,22 @@ export async function claimLead(id: string, ctx: LeadActorContext): Promise<void
     claimProductIds = products.filter((p) => !p.ownerId).map((p) => p.id);
   }
 
-  await claimLeadOwnership({ leadId: id, claimCustomerId, claimProductIds, userId: actorUserId });
+  // 认领时重新登记「暂存客户」占名键：仅限未建档（客户信息只在线索快照）且有公司名的线索
+  // —— 公海不占名（释放时已清），认领成为负责人后才恢复占名。
+  const draftNameKey =
+    !lead.customerId && !lead.customerLocked
+      ? draftCustomerNameKey(
+          (lead.customerSnapshot as { companyName?: string | null } | null)?.companyName,
+        )
+      : null;
+
+  await claimLeadOwnership({
+    leadId: id,
+    claimCustomerId,
+    claimProductIds,
+    userId: actorUserId,
+    draftNameKey,
+  });
 
   await activityLogger.log({
     userId: actorUserId,

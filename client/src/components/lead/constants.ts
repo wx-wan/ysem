@@ -1,5 +1,5 @@
 import type { Channel } from '../../api/channel';
-import type { LeadSource, LeadStatus } from '../../api/lead';
+import type { LeadStatus } from '../../api/lead';
 
 /** 线索状态元数据（label 为 i18n key） */
 /** 线索状态 4 态：新线索 → 已确认（绑定商机）→ 已打样 → 已成交 */
@@ -8,14 +8,6 @@ export const STATUS_META: Record<LeadStatus, { color: string; label: string }> =
   CONFIRMED: { color: 'gold', label: 'lead.statusConfirmed' },
   SAMPLED: { color: 'cyan', label: 'lead.statusSampled' },
   WON: { color: 'green', label: 'lead.statusWon' },
-};
-
-/** 线索来源元数据（label 为 i18n key） */
-export const SOURCE_META: Record<LeadSource, { color: string; label: string }> = {
-  MANUAL: { color: 'default', label: 'lead.sourceManual' },
-  EXCEL: { color: 'purple', label: 'lead.sourceExcel' },
-  RPA: { color: 'geekblue', label: 'lead.sourceRpa' },
-  SYNC: { color: 'cyan', label: 'lead.sourceSync' },
 };
 
 /** 渠道根节点展平为下拉选项（value = 渠道 ID，与后端 channelId 对齐） */
