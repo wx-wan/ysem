@@ -10,13 +10,13 @@ import type { LeadStatus } from '../../api/lead';
 
 /**
  * 线索状态元数据。
- * - `color`：antd Tag 语义色（新线索=warning 感叹号 / 已确认=success）；
+ * - `color`：antd Tag 语义色（新线索=error，与商机「待处理」一致 / 已确认=success）；
  * - `label`：i18n key；
  * - `icon`：状态标签前缀图标（不依赖颜色也能辨识状态）。
  * 线索状态 4 态：新线索 → 已确认（绑定商机）→ 已打样 → 已成交。
  */
 export const STATUS_META: Record<LeadStatus, { color: string; label: string; icon: ReactNode }> = {
-  NEW: { color: 'warning', label: 'lead.statusNew', icon: createElement(ExclamationCircleOutlined) },
+  NEW: { color: 'error', label: 'lead.statusNew', icon: createElement(ExclamationCircleOutlined) },
   CONFIRMED: { color: 'success', label: 'lead.statusConfirmed', icon: createElement(CheckCircleOutlined) },
   SAMPLED: { color: 'cyan', label: 'lead.statusSampled', icon: createElement(ExperimentOutlined) },
   WON: { color: 'green', label: 'lead.statusWon', icon: createElement(TrophyOutlined) },
