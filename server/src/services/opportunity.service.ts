@@ -392,6 +392,13 @@ export async function createOpportunity(
   if (!customer) throw new DomainValidationError('客户不存在');
 
   // 2) Sales Process 起点：Lead 必须存在且在当前数据范围内（B2 强前置关系）
+  //
+  // R-5 · PHASE 6（收口 PHASE 5 发现 F1）：B2 原本仅在**边界**强制
+  // （`opportunityCreateSchema` 的 POST /api/sales 与 Excel 导入的行级校验）。
+  // 此处补一条**领域函数级**断言作纵深防御，防止未来新增内部调用方绕过边界。
+  // 对现有两个真实入口属**行为不变**的纯加固。
+  if (!body.leadId) throw new DomainValidationError('线索不能为空');
+
   const lead = await resolveScopedLead(body.leadId, ctx);
 
   // 3) 归属人可指派校验（未指定 / null 一律回落当前用户）
