@@ -31,6 +31,7 @@ import { buildSourceKey, buildSourceOptions, sourceKeyLabel } from '../../utils/
 import { customerApi, type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { resolveLeadCustomer } from '../../utils/leadCustomer';
+import { resolveLeadProduct } from '../../utils/leadProduct';
 import { salesApi, type SalesItem } from '../../api/sales';
 import { productApi, type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -52,7 +53,6 @@ import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { parseImages, serializeImages, type ProductImageItem } from '../../utils/productImages';
 // 客户建档/创建后使客户页全局列表缓存失效（与客户页内增删改后 invalidateAll + fetchData 同口径），
 // 保证从线索创建客户后切到客户页能看到最新数据
-import { invalidateAll as invalidateCustomerCache } from '../../utils/customerCache';
 
 export interface LeadFormModalHandle {
   openCreate: () => void;
@@ -127,13 +127,19 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const pendingRejectRef = useRef<((e: Error) => void) | null>(null);
   // 进入「需求详情」步后回填的守卫：每个被编辑线索仅回填一次（避免回退步骤时覆盖用户已改内容）
   const appliedStep1Ref = useRef<string | null>(null);
-  // 需求详情「线索级字段」变更比对基线（客户具体要求 productDesc / 客户期望交期 expectedDelivery / 目标价位 targetPrice），
-  // 相对「线索表」存储值比对；在表单初始化（进入 step1）与每次保存后抓取，保证「有更新」标记在保存后归零
+  // 需求详情「**线索级字段**」变更比对基线（数量需求 quantity / 客户具体要求 productDesc /
+  // 客户期望交期 expectedDelivery / 目标价位 targetPrice），相对「线索表」存储值比对；
+  // 在表单初始化（进入 step1）与每次保存后抓取，保证「有更新」标记在保存后归零。
+  // 字段归属拆分（重要）：这四项**恒为线索级**（落在 Lead / LeadItem，不属于产品档案），
+  // 其「有更新」只看线索存储值、**与产品是否建档无关**；产品级字段（产品名 / 工艺 / 受众品类 /
+  // 长宽高 / 克重 / 图片）另由 productFieldDiff 比对，且仅在**产品已建档**后才有比较意义。
   const step1BaselineRef = useRef<{
+    quantity?: number | null;
     productDesc?: string | null;
     expectedDelivery?: string | null;
     targetPrice?: { currency?: string | null; amount?: number | null } | null;
   }>({
+    quantity: undefined,
     productDesc: undefined,
     expectedDelivery: undefined,
     targetPrice: undefined,
@@ -144,9 +150,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     m && m.amount != null && m.amount !== '' && Number(m.amount) !== 0
       ? { currency: m.currency ?? 'CNY', amount: Number(m.amount) }
       : null;
+  // 数量需求（线索级）：0 / 空视为「无记录」，与目标价位同一口径，避免空值 vs 0 误判有更新
+  const normQty = (v: unknown): number | null =>
+    v == null || v === '' || Number(v) === 0 ? null : Number(v);
   const captureStep1Baseline = () => {
     const v = form.getFieldsValue(true) as Record<string, any>;
     step1BaselineRef.current = {
+      quantity: normQty(v.quantity),
       productDesc: v.productDesc ?? null,
       expectedDelivery: v.expectedDelivery
         ? dayjs.isDayjs(v.expectedDelivery)
@@ -213,8 +223,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const applyStep1Values = (item: Lead) => {
     const first = item.items?.[0];
     form.setFieldsValue({
-      // V1.1：产品名取关联产品（LeadItem 不再存产品名快照）
-      productKey: first?.product?.name || undefined,
+      // 产品名：已建档取产品库产品；**未建档取明细快照**（产品需求此时只存在快照里）
+      productKey: resolveLeadProduct(item)?.name || undefined,
       // 数量需求：取线索明细 quantity（Lead 标量已下线）；0 为落库默认值，回填视为空（占位符展示）
       quantity: Number(first?.quantity) || undefined,
       unit: item.unit ?? '个',
@@ -243,6 +253,9 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           if (p) applyProductSpecs(p);
         })
         .catch(() => undefined);
+    } else if (first?.productSnapshot) {
+      // 未建档：产品规格也只存在于明细快照里，直接回填（建档后以产品档案为权威）
+      applyProductSpecs(first.productSnapshot as unknown as Product);
     }
     // 进入需求详情步时，以线索存储值建立「线索级字段」比对基线（productDesc / 客户期望交期）
     captureStep1Baseline();
@@ -717,9 +730,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       sourceKey: srcChanged,
     };
   })();
-  // 对应字段 label 右侧的「有更新」标记（仅该字段相对客户表基线有改动时显示）
+  // 对应字段 label 右侧的「有更新」标记（仅该字段相对已建档基线有改动时显示）。
+  // 暂存（draft）状态：线索尚未建档，无「已建档基线」可比，故整体不显示「有更新」。
   const UpdatedTag = ({ show }: { show?: boolean }) =>
-    show ? (
+    show && !editing?.draft ? (
       <Tag color="blue" style={{ marginInlineEnd: 0, lineHeight: '18px' }}>
         {t('lead.updatedTag')}
       </Tag>
@@ -776,8 +790,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     };
   })();
 
-  // 需求详情「线索级字段」变更比对（客户具体要求 productDesc / 客户期望交期 expectedDelivery / 目标价位 targetPrice），
-  // 相对「线索表」存储值是否变更（用于对应 label 右侧显示「有更新」）；仅在编辑既有线索时生效。
+  // 需求详情「**线索级字段**」变更比对（数量需求 quantity / 客户具体要求 productDesc /
+  // 客户期望交期 expectedDelivery / 目标价位 targetPrice），相对「线索表」存储值是否变更
+  // （用于对应 label 右侧显示「有更新」）；仅在编辑既有线索时生效。
+  // **不受产品建档状态影响**：这四项恒为线索级，建档前后都按线索存储值比较。
   // 统一口径：空值（null/undefined/纯空白）一律视为「无记录」，两边皆空不标记有更新；
   // 与目标价位 normMoney 同一思路，避免基线/实时值格式（字符串 vs 对象）不一致误判。
   const normText = (v: unknown): string | null =>
@@ -798,6 +814,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const v = liveFormValues();
     const base = step1BaselineRef.current;
     return {
+      quantity: normQty(v.quantity) !== normQty(base.quantity),
       productDesc: normText(v.productDesc) !== normText(base.productDesc),
       expectedDelivery: normExpected(v.expectedDelivery) !== normExpected(base.expectedDelivery),
       targetPrice:
@@ -807,7 +824,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 需求详情「线索级字段」任一发生变更（客户具体要求 / 期望交期 / 目标价位）→ 视为需求详情整体有更新，
   // 与主按钮「更新/锁定」判定共用（产品级字段变更见 productChanged）
   const leadChanged =
-    !!leadFieldDiff && (leadFieldDiff.productDesc || leadFieldDiff.expectedDelivery || leadFieldDiff.targetPrice);
+    !!leadFieldDiff &&
+    (leadFieldDiff.quantity ||
+      leadFieldDiff.productDesc ||
+      leadFieldDiff.expectedDelivery ||
+      leadFieldDiff.targetPrice);
 
   // 关闭拦截：取消 / 遮罩 / ESC / ✕ 关闭前，判定是否有未保存改动。
   // 关键：与「当前步骤」主按钮的「更新/锁定」判定保持一致（step0 看 customerChanged，
@@ -955,7 +976,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         // 历史数据的 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
         sourceKey: buildSourceKey(item.channel?.id, item.shop?.id) ?? undefined,
         // 采购产品：产品名取关联产品（LeadItem 不再存产品名快照）
-        productKey: item.items?.[0]?.product?.name || undefined,
+        productKey: resolveLeadProduct(item)?.name || undefined,
         contactMethods:
           Array.isArray(leadCustomer?.contactMethods) && leadCustomer.contactMethods.length
             ? leadCustomer.contactMethods
@@ -1006,7 +1027,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       setStep0((s) => ({ ...s, locked: item.customerLocked ?? (!!item.customerId && !item.draft) }));
       setStep0((s) => ({ ...s, editing: false }));
       // 已关联产品且非草稿（已正式建档）的线索打开即锁定需求详情的产品级字段
-      const reopenProductName = item.items?.[0]?.product?.name || undefined;
+      const reopenProductName = resolveLeadProduct(item)?.name || undefined;
       const pid = (item.items?.[0]?.productId ?? null) as string | null;
       setStep1((s) => ({ ...s, locked: item.productLocked ?? (!!pid && !item.draft) }));
       setStep1((s) => ({ ...s, editing: false }));
@@ -1304,8 +1325,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         setEditing((prev) => ({ ...(prev as Lead), id: savedId as string, customerId: custId, draft: false, status: 'NEW' }));
       }
       onRefreshCustomers();
-      // 客户建档/更新后使客户页全局列表缓存失效，切到客户页即拉取最新数据
-      invalidateCustomerCache();
       onSaved(savedId);
     } catch (err: any) {
       message.error(err?.response?.data?.message || t('common.saveFailed'));
@@ -1334,8 +1353,6 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
       shopId: editing?.shopId ?? undefined,
     } as any);
     const cust = (res?.data ?? res) as { id: string };
-    // 静默创建客户后使客户页全局列表缓存失效
-    invalidateCustomerCache();
     return { id: cust.id };
   };
 
@@ -1345,7 +1362,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     description?: string;
   }): Promise<{ id: string }> => {
     const res: any = await productApi.create({
-      name: initial?.name ?? editing?.items?.[0]?.product?.name ?? '',
+      name: initial?.name ?? resolveLeadProduct(editing)?.name ?? '',
       // 产品 description 与线索「客户具体要求」(LeadItem.productDesc) 语义分离（见 applyProductFieldValues），
       // 不再从 productDesc 反填产品主数据描述；仅当用户经产品弹窗显式传入 initial.description 时才写入
       description: initial?.description,
@@ -1598,7 +1615,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   // 确认建档：直接用线索信息静默创建产品（不再弹窗）
   const confirmCreateProduct = async () => {
     if (readonly) return;
-    const name = editing?.items?.[0]?.product?.name || watchProductKey;
+    const name = resolveLeadProduct(editing)?.name || watchProductKey;
     if (!name) return;
     try {
       const { id } = await createProductSilently({ name });
@@ -2094,7 +2111,16 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
               <Col span={12}>
                 {/* 数量需求：Input + 单位 Select 用 Space.Compact 组合（antd 6 弃用 addonAfter）。
                     校验规则挂在 noStyle 的内层 Form.Item 上，外层仅负责 label 与布局 */}
-                <Form.Item label={t('lead.quantityRequirement')} required className="lead-quantity-item">
+                <Form.Item
+                  label={
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{t('lead.quantityRequirement')}</span>
+                      <UpdatedTag show={leadFieldDiff?.quantity} />
+                    </span>
+                  }
+                  required
+                  className="lead-quantity-item"
+                >
                   <Space.Compact style={{ width: '100%' }}>
                     <Form.Item
                       name="quantity"

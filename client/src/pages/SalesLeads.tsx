@@ -7,10 +7,10 @@ import CapsuleSwitch from '../components/common/CapsuleSwitch';
 import LeadFormModal, { type LeadFormModalHandle } from '../components/lead/LeadFormModal';
 import LeadCardList from '../components/lead/LeadCardList';
 import LeadDetailPanel from '../components/lead/LeadDetailPanel';
-import { useLeadList } from '../components/lead/useLeadList';
+import { useLeadList, type LeadListTab } from '../components/lead/useLeadList';
 import { useLeadOptions } from '../components/lead/useLeadOptions';
-import { leadApi, type Lead, type LeadStatus } from '../api/lead';
-import { STATUS_META, flattenChannelOptions, flattenPlatformOptions } from '../components/lead/constants';
+import { leadApi, type Lead } from '../api/lead';
+import { flattenChannelOptions, flattenPlatformOptions } from '../components/lead/constants';
 import { useReleaseToPool } from '../hooks/useReleaseToPool';
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
@@ -33,8 +33,8 @@ export default function SalesLeads() {
     fetchUsers();
   }, [fetchUsers]);
 
-  // 列表数据 + 筛选 + 分页
-  const list = useLeadList();
+  // 列表数据 + 筛选 + 分页（切换栏 = 新线索 / 已确认 / 公海）
+  const list = useLeadList(isAdmin);
   // 关键词搜索：本地输入态即时回显，防抖提交到列表 hook，避免逐字触发列表请求
   const [kw, setKw] = useState(list.keyword ?? '');
   const setKeywordRef = useRef(list.setKeyword);
@@ -80,28 +80,37 @@ export default function SalesLeads() {
     refetchDetail();
   }, [refetchDetail]);
 
-  // 列表刷新后：选中项不在列表中则自动选中第一条，保持右侧面板始终有内容
-  useEffect(() => {
-    if (!list.listData.length) {
-      setSelectedId(null);
-      setDetail(null);
-      return;
-    }
-    if (!selectedId || !list.listData.some((l) => l.id === selectedId)) {
-      setSelectedId(list.listData[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list.listData]);
+  // 右侧详情面板只在「主动点击卡片」或「深链定位（?leadId=）」时展开；
+  // 不自动选中第一条 —— 无选中记录时不展示任何详情。
 
-  // 深链：从客户详情「销售记录」点击关联线索时携带 ?leadId= 自动选中并打开详情
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const leadIdParam = searchParams.get('leadId');
+  // 深链：从客户详情「销售记录」点击关联线索时携带 ?leadId= 自动选中并展开详情。
+  // 依据线索归属与状态自动切到正确切换栏（新线索 / 已确认 / 公海），确保左侧列表可见该记录；
+  // 选中不依赖列表分页，详情按 id 直拉，避免切换切换栏或翻页导致定位丢失。
+  const leadResolvedRef = useRef(false);
   useEffect(() => {
-    if (leadIdParam && list.listData.length && list.listData.some((l) => l.id === leadIdParam)) {
-      setSelectedId(leadIdParam);
-    }
+    // 必须等当前用户就绪：否则 isAdmin / 归属判定为 false，会把档位误判成「公海」
+    if (!leadIdParam || !currentUser || leadResolvedRef.current) return;
+    leadResolvedRef.current = true;
+    leadApi
+      .get(leadIdParam)
+      .then((res) => {
+        const lead = res.data;
+        const mine = lead?.ownerId === currentUser?.id;
+        // 非本人且非管理员可见的线索只能在公海找到；其余按状态归入「新线索 / 已确认」
+        list.setTab(!mine && !isAdmin ? 'pool' : lead?.status === 'NEW' ? 'new' : 'confirmed');
+        setSelectedId(leadIdParam);
+        setSearchParams((prev) => {
+          prev.delete('leadId');
+          return prev;
+        }, { replace: true });
+      })
+      .catch(() => {
+        leadResolvedRef.current = false;
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leadIdParam, list.listData]);
+  }, [leadIdParam, currentUser]);
 
   // 删除（详情面板/列表通用）：删除的是当前选中项时清空右侧面板
   const handleRemove = useCallback(
@@ -169,8 +178,8 @@ export default function SalesLeads() {
           searchValue={kw}
           onSearchChange={onSearchChange}
           sortOptions={[
-            { value: 'createdAt:desc', label: t('lead.sortLatest') },
-            { value: 'createdAt:asc', label: t('lead.sortEarliest') },
+            { value: 'createdAt:desc', label: t('common.sortLatest') },
+            { value: 'createdAt:asc', label: t('common.sortEarliest') },
           ]}
           sortValue={list.sort}
           onSortChange={(v) => {
@@ -178,25 +187,27 @@ export default function SalesLeads() {
             list.setPage(1);
           }}
           activeCount={
-            (list.filterChannel ? 1 : 0) + (list.filterPlatform ? 1 : 0) + (list.filterStatus ? 1 : 0)
+            (list.filterChannel ? 1 : 0) + (list.filterPlatform ? 1 : 0)
           }
           onClear={() => {
             list.setFilterChannel(undefined);
             list.setFilterPlatform(undefined);
-            list.setFilterStatus(undefined);
             list.setPage(1);
           }}
           tabs={
-            <CapsuleSwitch<'mine' | 'all' | 'pool'>
-              value={list.scope}
+            // 切换栏 = 线索状态档位（默认「新线索」）：「新线索」= 未确认；「已确认」= 已确认及之后；「公海」= 无负责人
+            <CapsuleSwitch<LeadListTab>
+              value={list.tab}
               onChange={(val) => {
-                list.setScope(val);
+                list.setTab(val);
                 list.setPage(1);
+                // 切换档位默认关闭已打开的详情（深链定位由 ?leadId= 单独展开）
+                setSelectedId(null);
+                setDetail(null);
               }}
               options={[
-                { key: 'mine', label: t('lead.scopeMine') },
-                // 「全部」= 所有已归属（有负责人）的线索；仅管理员可见（业务员只有「我的 / 公海」）
-                ...(isAdmin ? [{ key: 'all' as const, label: t('lead.scopeAll') }] : []),
+                { key: 'new', label: t('lead.statusNew') },
+                { key: 'confirmed', label: t('lead.statusConfirmed') },
                 { key: 'pool', label: t('lead.scopePool') },
               ]}
               activeColor="#1677ff"
@@ -246,21 +257,9 @@ export default function SalesLeads() {
               ...flattenPlatformOptions(channels, list.filterChannel).map((o) => ({ key: o.value, label: o.label })),
             ]}
           />
-          <FilterGroup
-            label={t('lead.status')}
-            value={list.filterStatus ?? ''}
-            onChange={(key) => {
-              list.setFilterStatus((key || undefined) as LeadStatus | undefined);
-              list.setPage(1);
-            }}
-            options={[
-              { key: '', label: t('common.all') },
-              ...Object.entries(STATUS_META).map(([k, m]) => ({ key: k, label: t(m.label) })),
-            ]}
-          />
         </FilterToolbar>
 
-        {/* 卡片列表 + 右侧详情面板（点击卡片联动，参考询盘列表交互） */}
+        {/* 卡片列表默认撑满整宽；点击卡片上的「查看详情」后才展开右侧详情面板 */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginTop: 16 }}>
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
             <LeadCardList
@@ -270,22 +269,24 @@ export default function SalesLeads() {
               onSelect={(r) => setSelectedId((prev) => (prev === r.id ? null : r.id))}
             />
           </div>
-          <div className="lead-detail-col">
-            <LeadDetailPanel
-              detail={detail}
-              loading={detailLoading}
-              isAdmin={isAdmin}
-              onClose={() => {
-                setSelectedId(null);
-                setDetail(null);
-              }}
-              onEdit={(r, s) => formModalRef.current?.openEdit(r, s)}
-              onConvert={handleConvert}
-              onClaim={handleClaim}
-              onRelease={handleRelease}
-              onRemove={handleRemove}
-            />
-          </div>
+          {selectedId && (
+            <div className="lead-detail-col">
+              <LeadDetailPanel
+                detail={detail}
+                loading={detailLoading}
+                isAdmin={isAdmin}
+                onClose={() => {
+                  setSelectedId(null);
+                  setDetail(null);
+                }}
+                onEdit={(r, s) => formModalRef.current?.openEdit(r, s)}
+                onConvert={handleConvert}
+                onClaim={handleClaim}
+                onRelease={handleRelease}
+                onRemove={handleRemove}
+              />
+            </div>
+          )}
         </div>
       </Card>
 

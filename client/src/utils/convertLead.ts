@@ -1,5 +1,6 @@
 import { leadApi, type Lead } from '../api/lead';
 import { resolveLeadCustomer } from './leadCustomer';
+import { resolveLeadProduct } from './leadProduct';
 import { customerApi } from '../api/customers';
 import { productApi } from '../api/products';
 import { type ProductImageItem } from '../utils/productImages';
@@ -80,7 +81,7 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
 
   const firstItem = lead.items?.[0];
   const productId: string | null = firstItem?.productId ?? null;
-  const productName = firstItem?.product?.name ?? undefined;
+  const productName = resolveLeadProduct(lead)?.name ?? undefined;
   const needProduct = !productId;
 
   let customerCreated = false;

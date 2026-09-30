@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Popconfirm, Spin, Tabs, Tag, Timeline, Tooltip } from 'antd';
-import { EllipsisOutlined } from '@ant-design/icons';
+import { CloseOutlined, EllipsisOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import FlagIcon from '../FlagIcon';
@@ -10,6 +10,7 @@ import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { formatMoneyValue, currentRateOf } from '../common/MoneyInput';
 import { STATUS_META } from './constants';
 import { resolveLeadCustomer } from '../../utils/leadCustomer';
+import { resolveLeadProduct } from '../../utils/leadProduct';
 
 /** 操作记录动作 → i18n key + 时间线颜色 */
 const LOG_ACTION_META: Record<string, { key: string; color: string }> = {
@@ -107,7 +108,7 @@ export default function LeadDetailPanel({
   const customer = resolveLeadCustomer(detail);
   const company = customer?.companyName || '—';
   const country = detail.targetMarket || '';
-  const product = detail.items?.[0]?.product?.name || detail.productInterest || '';
+  const product = resolveLeadProduct(detail)?.name || detail.productInterest || '';
   const quantity = detail.items?.[0]?.quantity;
   const ownerName = detail.owner?.realName || detail.owner?.username || '';
   const isPool = !detail.ownerId;
@@ -151,13 +152,23 @@ export default function LeadDetailPanel({
   return (
     <div className="lead-detail-panel">
       <div className="lead-detail-panel__header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontWeight: 600, fontSize: 13 }}>{detail.leadNo || detail.leadName}</span>
-          {statusMeta && (
-            <Tag color={statusMeta.color} style={{ marginInlineEnd: 0 }}>
-              {t(statusMeta.label)}
-            </Tag>
-          )}
+        {/* 头部右上角关闭按钮：与商机详情面板同款交互（关闭即取消选中、收起面板） */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{detail.leadNo || detail.leadName}</span>
+            {statusMeta && (
+              <Tag color={statusMeta.color} style={{ marginInlineEnd: 0 }}>
+                {t(statusMeta.label)}
+              </Tag>
+            )}
+          </div>
+          <Button
+            type="text"
+            size="small"
+            icon={<CloseOutlined />}
+            onClick={onClose}
+            style={{ color: '#fff', flexShrink: 0 }}
+          />
         </div>
         <div style={{ marginTop: 8, fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
           {country && <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2 }} />}

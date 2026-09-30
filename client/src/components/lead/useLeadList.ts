@@ -2,9 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { App } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { leadApi, type Lead, type LeadStatus } from '../../api/lead';
+import { STATUS_META } from './constants';
+
+/** 切换栏：新线索（默认）/ 已确认 / 公海 */
+export type LeadListTab = 'new' | 'confirmed' | 'pool';
+
+/**
+ * 「已确认」= **已确认及之后**（CONFIRMED → SAMPLED → WON）。
+ * 状态只由单据事件自动推进，故除「新线索」外的状态统一归入该档，避免已打样 / 已成交的线索看不到。
+ */
+const CONFIRMED_STATUSES = (Object.keys(STATUS_META) as LeadStatus[]).filter((s) => s !== 'NEW');
 
 /** 线索列表：查询 / 筛选 / 分页 / 删除 / 批量删除 / 刷新 */
-export function useLeadList() {
+export function useLeadList(isAdmin: boolean) {
   const { t } = useTranslation();
   const { message } = App.useApp();
 
@@ -17,9 +27,13 @@ export function useLeadList() {
   const [keyword, setKeyword] = useState('');
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
   const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
-  const [filterStatus, setFilterStatus] = useState<LeadStatus | undefined>();
-  // 列表范围：mine=我的；all=全部已归属线索（仅管理员可选）；pool=公海（无负责人）
-  const [scope, setScope] = useState<'mine' | 'all' | 'pool'>('mine');
+  // 切换栏（默认「新线索」）：新线索 / 已确认 / 公海
+  const [tab, setTab] = useState<LeadListTab>('new');
+  // 切换栏 → 列表范围：公海；其余为我的（管理员看全部已归属）
+  const scope: 'mine' | 'all' | 'pool' = tab === 'pool' ? 'pool' : isAdmin ? 'all' : 'mine';
+  // 切换栏 → 状态条件：新线索 = NEW；已确认 = 已确认及之后；公海不限状态
+  const status: string | undefined =
+    tab === 'new' ? 'NEW' : tab === 'confirmed' ? CONFIRMED_STATUSES.join(',') : undefined;
   // 排序（后端白名单，格式 字段:方向）
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
@@ -35,7 +49,7 @@ export function useLeadList() {
         keyword: keyword || undefined,
         channel: filterChannel,
         platform: filterPlatform,
-        status: filterStatus,
+        status,
         scope,
         sort,
       });
@@ -46,7 +60,7 @@ export function useLeadList() {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterStatus, scope, sort, message, t]);
+  }, [page, pageSize, keyword, filterChannel, filterPlatform, status, scope, sort, message, t]);
 
   useEffect(() => {
     fetchList();
@@ -95,10 +109,8 @@ export function useLeadList() {
     setFilterChannel,
     filterPlatform,
     setFilterPlatform,
-    filterStatus,
-    setFilterStatus,
-    scope,
-    setScope,
+    tab,
+    setTab,
     sort,
     setSort,
     page,

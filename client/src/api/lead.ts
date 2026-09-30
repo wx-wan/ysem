@@ -34,6 +34,25 @@ export interface LeadCustomer {
 }
 
 /**
+ * 产品需求快照（`LeadItem.productSnapshot`）。
+ * · 未建档期：线索里填的产品需求（**唯一载体**，产品库尚无记录）；
+ * · 建档后：由 Product 档案刷新留痕（含 productId / productNo）。
+ */
+export interface LeadProductSnapshot {
+  productId?: string | null;
+  productNo?: string | null;
+  name?: string | null;
+  sku?: string | null;
+  craftIds?: string[];
+  audienceId?: string | null;
+  categoryId?: string | null;
+  sizeL?: number | null;
+  sizeW?: number | null;
+  sizeH?: number | null;
+  weight?: number | null;
+}
+
+/**
  * 线索（V1.1 · lead-fk-only 后的**只读**形状）。
  *
  * 客户信息一律取 `customer.*`（线索不再持有 companyName / contactName / contactMethods /
@@ -66,11 +85,17 @@ export interface Lead {
   channel?: { id: string; name: string } | null;
   shopId?: string | null;
   shop?: { id: string; name: string } | null;
-  /** 采购产品明细（V1.1：只含产品外键 + 意向数量 + 线索级「客户具体要求」） */
+  /** 采购产品明细（V1.2：产品外键 + 意向数量 + 线索级「客户具体要求」+ 未建档产品需求快照） */
   items?: Array<{
     id: string;
     productId?: string | null;
     product?: { id: string; name: string } | null;
+    /**
+     * **产品需求快照**：未建档期产品需求的唯一载体（产品名 / 工艺 craftIds / 受众 audienceId /
+     * 品类 categoryId / 长宽高 / 克重）。已关联产品的明细该字段被后端列表投影剔除。
+     * 取值请统一走 `utils/leadProduct.ts` 的 `resolveLeadProduct(lead)`。
+     */
+    productSnapshot?: LeadProductSnapshot | null;
     quantity?: number;
     productDesc?: string | null;
   }>;
@@ -178,7 +203,10 @@ export interface LeadListParams {
   keyword?: string;
   channel?: string;
   platform?: string;
-  status?: LeadStatus;
+  /**
+   * 状态筛选：单个状态，或**逗号分隔的多状态**（如「已确认及之后」= `CONFIRMED,SAMPLED,WON`）。
+   */
+  status?: LeadStatus | string;
   source?: LeadSource;
   /** 按关联产品过滤（命中 LeadItem.productId） */
   productId?: string;

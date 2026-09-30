@@ -524,6 +524,22 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 国旗后的国家 / 地区文本：与公司名同排，属次要信息（更小、更淡、不加粗） */
+.lead-card__country {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--c-text-secondary, #64748b);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* 客户类型标签（淡色版）：去描边 + 浅底 + 次要文字色，弱于状态标签 */
+.lead-card__tag.lead-card__tag--muted {
+  background: var(--c-bg, #f8fafc);
+  border-color: transparent;
+  color: var(--c-text-secondary, #64748b);
+  font-weight: 400;
+  flex-shrink: 0;
+}
 .lead-card__prod {
   /* 需求摘要组（产品 + 数量/描述）与主标题之间拉开 8px */
   margin-top: 8px;

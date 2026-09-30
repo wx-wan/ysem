@@ -2,9 +2,11 @@ import { Empty, Spin, Tag } from 'antd';
 import { RightCircleOutlined, UpCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import FlagIcon from '../FlagIcon';
+import { findCountry } from '../../data/countries';
 import { type Lead } from '../../api/lead';
 import { STATUS_META } from './constants';
 import { resolveLeadCustomer } from '../../utils/leadCustomer';
+import { resolveLeadProduct } from '../../utils/leadProduct';
 
 /** 头像底色（按 seed 稳定取色，同一负责人颜色不变） */
 export const leadAvatarColor = (seed?: string | null) => {
@@ -39,7 +41,7 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
           const customer = resolveLeadCustomer(r);
           const company = customer?.companyName || '-';
           const country = r.targetMarket || '';
-          const product = r.items?.[0]?.product?.name || r.productInterest || '';
+          const product = resolveLeadProduct(r)?.name || r.productInterest || '';
           const desc = r.items?.[0]?.productDesc || '';
           const quantity = r.items?.[0]?.quantity;
           const statusMeta = STATUS_META[r.status];
@@ -59,11 +61,20 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
                 <div className="lead-card__no-row">
                   <span className="lead-card__no">{r.leadNo || r.leadName}</span>
                   {statusMeta && <Tag color={statusMeta.color} className="lead-card__tag">{t(statusMeta.label)}</Tag>}
-                  {customer?.customerType && <Tag className="lead-card__tag">{customer.customerType}</Tag>}
                 </div>
+                {/* 国旗 + 国家/地区文本 + 公司名 + 客户类型标签（淡色）同排：
+                    除公司名外均不参与收缩，宽度不足时由公司名省略号吸收 */}
                 <div className="lead-card__company">
-                  {country && <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2 }} />}
+                  {country && (
+                    <>
+                      <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2, flexShrink: 0 }} />
+                      <span className="lead-card__country">{findCountry(country)?.zh || country}</span>
+                    </>
+                  )}
                   <span className="lead-card__company-name">{company}</span>
+                  {customer?.customerType && (
+                    <Tag className="lead-card__tag lead-card__tag--muted">{customer.customerType}</Tag>
+                  )}
                 </div>
                 {product && <div className="lead-card__prod">{product}</div>}
                 {(quantity || desc) && (

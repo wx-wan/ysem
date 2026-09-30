@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { App, Button, Card, Pagination, Space } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -23,6 +23,7 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
+  const currentUser = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.user?.role?.code === 'admin');
   const { channels } = useLeadOptions();
 
@@ -64,16 +65,29 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
     refetchDetail();
   }, [refetchDetail]);
 
-  // 深链：?pipelineId= 自动打开详情
+  // 深链：?pipelineId= 自动选中并展开详情（右侧面板）。
+  // 依据商机归属自动切到正确 scope（我的 / 全部），确保左侧列表可见该记录；
+  // 选中不依赖列表分页，详情按 id 直拉，避免切换归属视图导致定位丢失。
+  const oppResolvedRef = useRef(false);
   useEffect(() => {
     const pid = searchParams.get('pipelineId');
-    if (pid) {
-      setSelectedId(pid);
-      searchParams.delete('pipelineId');
-      setSearchParams(searchParams, { replace: true });
-    }
+    if (!pid || oppResolvedRef.current) return;
+    oppResolvedRef.current = true;
+    salesApi
+      .get(pid)
+      .then((res) => {
+        const item = res.data?.data ?? res.data;
+        const mine = item?.ownerId === currentUser?.id;
+        list.setScope(mine ? 'mine' : 'all');
+        setSelectedId(pid);
+        searchParams.delete('pipelineId');
+        setSearchParams(searchParams, { replace: true });
+      })
+      .catch(() => {
+        oppResolvedRef.current = false;
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, currentUser?.id]);
 
   // 客户端按创建时间排序（后端列表暂按更新时间返回，前端对齐线索排序交互）
   const sortedData = useMemo(() => {
@@ -131,8 +145,8 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
           searchValue={kw}
           onSearchChange={onSearchChange}
           sortOptions={[
-            { value: 'createdAt:desc', label: t('lead.sortLatest') },
-            { value: 'createdAt:asc', label: t('lead.sortEarliest') },
+            { value: 'createdAt:desc', label: t('common.sortLatest') },
+            { value: 'createdAt:asc', label: t('common.sortEarliest') },
           ]}
           sortValue={list.sort}
           onSortChange={list.setSort}
@@ -195,29 +209,32 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
           />
         </FilterToolbar>
 
-        {/* 卡片列表 + 右侧详情面板（点击卡片联动，与线索列表交互一致） */}
+        {/* 卡片列表默认撑满整宽；点击卡片上的「查看详情」后才展开右侧详情面板 */}
         <div style={{ display: 'flex', gap: 16, alignItems: 'stretch', marginTop: 16 }}>
           <div style={{ flex: '1 1 auto', minWidth: 0 }}>
             <OpportunityCardList
               dataSource={sortedData}
               loading={list.loading}
               selectedId={selectedId}
-              onSelect={(r) => setSelectedId(r.id)}
+              // 与线索列表一致：再次点击已展开的记录即收起
+              onSelect={(r) => setSelectedId((prev) => (prev === r.id ? null : r.id))}
             />
           </div>
-          <div className="lead-detail-col">
-            <OpportunityDetailPanel
-              detail={detail}
-              loading={detailLoading}
-              isAdmin={isAdmin}
-              onClose={() => {
-                setSelectedId(null);
-                setDetail(null);
-              }}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          </div>
+          {selectedId && (
+            <div className="lead-detail-col">
+              <OpportunityDetailPanel
+                detail={detail}
+                loading={detailLoading}
+                isAdmin={isAdmin}
+                onClose={() => {
+                  setSelectedId(null);
+                  setDetail(null);
+                }}
+                onEdit={handleEdit}
+                onDelete={handleDelete}
+              />
+            </div>
+          )}
         </div>
       </Card>
 
