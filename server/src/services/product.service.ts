@@ -2,10 +2,14 @@ import { z } from 'zod';
 import type { $Enums, Prisma } from '@prisma/client';
 import { activityLogger } from '../lib/activity-logger';
 import { BUSINESS_TYPE } from '../lib/business-type';
-import { DomainForbiddenError, DomainNotFoundError } from '../lib/errors';
+import { DomainForbiddenError, DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import { computeDiff, type DiffItem, type FieldFormatter } from '../lib/operation-diff';
 import { SkuConcurrencyError, SkuContextError } from '../lib/skuCode';
-import { createProductOperation, updateProductOperation } from '../operations/product.operations';
+import {
+  checkProductNameOwnershipOperation,
+  createProductOperation,
+  updateProductOperation,
+} from '../operations/product.operations';
 import type { DbClient } from '../repositories';
 import { certificateRepository } from '../repositories/certificate.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
@@ -13,6 +17,7 @@ import { productGroupRepository } from '../repositories/productGroup.repository'
 import { productRepository } from '../repositories/product.repository';
 import { productTaxonomyRepository } from '../repositories/productTaxonomy.repository';
 import { userRepository } from '../repositories/user.repository';
+import { canEditProduct } from '../scope/scope';
 
 /**
  * Product Business Layer（Round R-4 · Product Layering）
@@ -132,6 +137,8 @@ export interface ProductMixedFilters {
   craftIds?: string;
   audienceId?: string;
   visibility?: string;
+  /** 排序：createdAt:desc（默认）| createdAt:asc */
+  sort?: string;
 }
 
 // ============================================================
@@ -402,6 +409,22 @@ export function listProductOptions(actor: ProductActorContext) {
   return productRepository.findOptions(actor.visibilityWhere);
 }
 
+/**
+ * 产品名占用检查（`GET /api/products/ownership?name=`）。
+ *
+ * 只读、轻量：不落库、不写操作日志；可见性条件由 HTTP 边界注入（Business 不构造权限条件）。
+ * 供产品表单在**产品名 label 行**实时渲染状态 Tag（与线索表单的客户名归属提示同款交互）。
+ */
+export async function checkProductNameOwnership(
+  name: string | undefined,
+  excludeId: string | null,
+  actor: ProductActorContext,
+) {
+  const keyword = name?.trim();
+  if (!keyword) throw new DomainValidationError('name required');
+  return checkProductNameOwnershipOperation(keyword, excludeId, actor.visibilityWhere);
+}
+
 /** 产品分页列表（关键词 / 工艺 / 受众 / 品类 / 可见性 + 统一可见性过滤） */
 export async function listProducts(filters: ProductListFilters, actor: ProductActorContext) {
   const page = Math.max(1, Number(filters.page) || 1);
@@ -456,7 +479,8 @@ export async function getProductDetail(id: string, actor: ProductActorContext) {
 
   // crafts 摊平为工艺实体数组，保持旧响应形状
   const { crafts, ...rest } = product;
-  return withImages({ ...rest, crafts: crafts.map((l) => l.productCraft) });
+  // 前端据此控制「编辑产品」按钮显隐；不泄露 createdBy / visibleUsers 原始授权字段
+  return withImages({ ...rest, crafts: crafts.map((l) => l.productCraft), canEdit: canEditProduct(actor, product) });
 }
 
 /**
@@ -539,7 +563,12 @@ export async function updateProduct(
   const existing = await productRepository.findScopedForWrite(id, actor.visibilityWhere);
   if (!existing) throw new DomainNotFoundError('产品不存在');
 
-  // 可见即可编辑：授权门已上移至上方 scoped 读取，与列表/详情可见性口径一致。
+  // 编辑授权：仅创建人 + 指定可见人可编辑（管理员恒可），与详情 canEdit 口径一致。
+  // PRIVATE 且非授权者已被上方 scoped 读取挡为 404；此处再对 PUBLIC 产品收口，
+  // 杜绝「可见即可编辑」——非创建人/非指定人即便可见也不得编辑。
+  if (!canEditProduct(actor, existing)) {
+    throw new DomainForbiddenError('无权编辑该产品');
+  }
   // 工艺/受众变化判定为纯计算（事务外）；SKU 生成与 Product update 必须同事务。
   let skuNeedsRegen = false;
   let finalCraftIds: string[] = [];
@@ -583,10 +612,14 @@ export async function updateProduct(
   return product;
 }
 
+/**
+ * 删除产品。
+ *
+ * 授权口径：**按钮级权限**（路由 `DELETE /api/products/:id` → `requirePerm('product:delete')`，
+ * admin 由 requirePerm 内置放行），故本层不再硬编码「仅管理员」——
+ * 管理员可在「系统设置 → 权限管理」把「产品删除」授予任意角色（如业务员）。
+ */
 export async function deleteProduct(id: string, actor: ProductActorContext) {
-  if (!actor.isAdmin) {
-    throw new DomainForbiddenError('仅管理员可删除产品');
-  }
   const product = await productRepository.findById(id);
   if (!product) throw new DomainNotFoundError('产品不存在');
   await productRepository.deleteById(id);
@@ -671,175 +704,14 @@ export async function listMixedProducts(filters: ProductMixedFilters, actor: Pro
     groups.forEach((g) => entries.push({ type: 'GROUP', data: g as unknown as Record<string, unknown> }));
   }
 
-  // 合并排序 + 分页（按创建时间倒序混合）
-  entries.sort((a, b) => new Date(b.data.createdAt as string).getTime() - new Date(a.data.createdAt as string).getTime());
+  // 合并排序 + 分页（按创建时间混排：默认倒序，sort=createdAt:asc 时正序）
+  const asc = String(filters.sort ?? '').split(':')[1] === 'asc';
+  entries.sort((a, b) => {
+    const ta = new Date(a.data.createdAt as string).getTime();
+    const tb = new Date(b.data.createdAt as string).getTime();
+    return asc ? ta - tb : tb - ta;
+  });
   const total = entries.length;
   const list = entries.slice((page - 1) * pageSize, page * pageSize);
   return { list, total, page, pageSize };
-}
-
-// ============================================================
-// 4. Excel 导入
-// ============================================================
-
-const PRODUCT_FIELD_MAP: Record<string, string> = {
-  产品名称: 'name',
-  name: 'name',
-  产品简称: 'shortName',
-  工艺: 'craftNames',
-  受众: 'audienceName',
-  品类: 'categoryName',
-  尺寸长: 'sizeL',
-  尺寸宽: 'sizeW',
-  尺寸高: 'sizeH',
-  克重: 'weight',
-  供货模式: 'supplyModes',
-  认证资质: 'certificationNames',
-  描述: 'description',
-  价格: 'price',
-  币种: 'currency',
-  税率: 'taxRate',
-  库存: 'stock',
-  低库存预警: 'lowStockAlert',
-  来源: 'source',
-  可见性: 'visibility',
-  可见人员: 'visibleUsernames',
-};
-
-/** 单行失败原因（与既有实现逐字一致） */
-function importFailureReason(err: unknown): string {
-  if (err instanceof z.ZodError) return err.errors.map((e) => e.message).join(', ');
-  if (err instanceof SkuContextError) return err.message;
-  if (err instanceof SkuConcurrencyError) return err.message;
-  return '服务器错误';
-}
-
-/**
- * Excel 导入产品（逐行独立事务，保留既有「部分成功」语义）。
- *
- * 入参 `rows` 为 Controller 解析出的原始行对象（表头 → 值），
- * **表头 → 字段名的映射规则属导入契约，留在 Business 层**。
- */
-export async function importProducts(
-  rows: Record<string, unknown>[],
-  actor: ProductActorContext,
-) {
-  // 预加载名称→ID 映射
-  const [crafts, audiences, categories, certs, users] = await Promise.all([
-    productTaxonomyRepository.findCraftNameIdPairs(),
-    productTaxonomyRepository.findAudienceNameIdPairs(),
-    productTaxonomyRepository.findCategoryNameIdPairs(),
-    certificateRepository.findNameIdPairs(),
-    userRepository.findIdentityPairs(),
-  ]);
-  const craftMap = new Map(crafts.map((c) => [c.name, c.id]));
-  const audienceMap = new Map(audiences.map((a) => [a.name, a.id]));
-  const categoryMap = new Map(categories.map((c) => [c.name, c.id]));
-  const certMap = new Map(certs.map((c) => [c.name, c.id]));
-  const userMap = new Map<string, string>();
-  users.forEach((u) => {
-    if (u.realName) userMap.set(u.realName, u.id);
-    if (u.username) userMap.set(u.username, u.id);
-  });
-
-  const created: Record<string, unknown>[] = [];
-  const failed: { index: number; name?: string; reason: string }[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const raw = rows[i];
-    const data: Record<string, any> = {};
-    for (const [key, value] of Object.entries(raw)) {
-      const mapped = PRODUCT_FIELD_MAP[key] || PRODUCT_FIELD_MAP[key.toLowerCase()] || null;
-      if (mapped && value !== undefined && value !== null && value !== '') data[mapped] = value;
-    }
-    if (!data.name) {
-      failed.push({ index: i, reason: '缺少产品名称' });
-      continue;
-    }
-    try {
-      // 名称 → ID 解析
-      const craftIds: string[] = [];
-      if (data.craftNames) {
-        String(data.craftNames).split(/[、,，]/).forEach((n) => {
-          const id = craftMap.get(n.trim());
-          if (id) craftIds.push(id);
-        });
-      }
-      const audienceId = data.audienceName ? audienceMap.get(String(data.audienceName).trim()) : undefined;
-      const categoryId = data.categoryName ? categoryMap.get(String(data.categoryName).trim()) : undefined;
-      const certificationIds: string[] = [];
-      if (data.certificationNames) {
-        String(data.certificationNames).split(/[、,，]/).forEach((n) => {
-          const id = certMap.get(n.trim());
-          if (id) certificationIds.push(id);
-        });
-      }
-      const visibleUserIds: string[] = [];
-      if (data.visibleUsernames) {
-        String(data.visibleUsernames).split(/[、,，]/).forEach((n) => {
-          const id = userMap.get(n.trim());
-          if (id) visibleUserIds.push(id);
-        });
-      }
-
-      const payload: Record<string, any> = {
-        name: data.name,
-        sku: undefined,
-        craftIds,
-        audienceId,
-        categoryId,
-        sizeL: data.sizeL,
-        sizeW: data.sizeW,
-        sizeH: data.sizeH,
-        weight: data.weight,
-        supplyModes: data.supplyModes ? String(data.supplyModes).split(/[、,，]/)[0] : undefined,
-        certificationIds: certificationIds.join(','),
-        description: data.description,
-        price: data.price === undefined ? undefined : Number(data.price),
-        currency: data.currency,
-        taxRate: data.taxRate === undefined ? undefined : Number(data.taxRate),
-        stock: data.stock === undefined ? undefined : Number(data.stock),
-        lowStockAlert: data.lowStockAlert === undefined ? undefined : Number(data.lowStockAlert),
-        source: data.source,
-        visibility: data.visibility === '私有' || data.visibility === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
-        visibleUserIds,
-      };
-
-      const parsed = productSchema.parse(payload);
-      const pdata = await buildProductCreateData(parsed, {
-        userId: actor.userId,
-        roleCode: actor.roleCode,
-      });
-      const hasFullContext = Boolean(parsed.craftIds?.length && parsed.audienceId);
-      // 编号分配、SKU 生成与业务写入同事务：逐行独立事务，保留导入的部分成功语义
-      const product = await createProductOperation({
-        data: pdata,
-        craftIds: parsed.craftIds ?? [],
-        audienceId: parsed.audienceId ?? null,
-        hasFullContext,
-      });
-      void activityLogger.log({
-        userId: actor.userId || '',
-        username: actor.username || '',
-        realName: actor.realName,
-        action: 'CREATE',
-        module: 'product',
-        businessType: BUSINESS_TYPE.PRODUCT,
-        businessId: product.id,
-        businessNo: product.productNo,
-        summary: `通过 Excel 导入创建了产品「${product.name}」`,
-      });
-      created.push(product as unknown as Record<string, unknown>);
-    } catch (err) {
-      failed.push({ index: i, name: data.name, reason: importFailureReason(err) });
-    }
-  }
-
-  return {
-    total: rows.length,
-    successCount: created.length,
-    failCount: failed.length,
-    created,
-    failed,
-  };
 }

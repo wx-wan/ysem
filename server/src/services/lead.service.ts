@@ -9,6 +9,8 @@ import {
   clearLeadDraftNameOperation,
   createLeadAggregate,
   draftCustomerNameKey,
+  findAnyCustomerByName,
+  findAnyProductByName,
   findCustomerNameOccupier,
   findLeadForLogs,
   findReusableCustomerByName,
@@ -29,6 +31,7 @@ import {
   writeLeadDraftSnapshotOperation,
   type LeadCaller,
   type LeadDraftCustomerPatch,
+  type LeadProductSnapshotInput,
   type LeadListFilters,
   type LeadScopeProvider,
   type AttachmentCreateInput,
@@ -38,8 +41,14 @@ import {
   type OpportunityConfirmInput,
   type OpportunityWithInclude,
 } from './opportunity.service';
-import { createCustomerAggregate } from '../operations/customer.operations';
-import { createProductOperation } from '../operations/product.operations';
+import {
+  createCustomerAggregate,
+  updateCustomerFromLeadOperation,
+} from '../operations/customer.operations';
+import {
+  createProductOperation,
+  updateProductFromLeadOperation,
+} from '../operations/product.operations';
 import { buildProductCreateData } from './product.service';
 import { attachmentRepository } from '../repositories/attachment.repository';
 import { channelRepository } from '../repositories/channel.repository';
@@ -48,7 +57,7 @@ import { leadRepository } from '../repositories/lead.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
 import { productRepository } from '../repositories/product.repository';
 import type { TxClient } from '../repositories';
-import { applyScope } from '../scope';
+import { applyScope, includePublicSea } from '../scope';
 
 /**
  * Lead Business Layer（Round R-2 · Lead Pilot）
@@ -96,6 +105,23 @@ function toCaller(ctx: LeadActorContext): LeadCaller {
 /** 「当前用户数据范围 + id」条件（与既有 scopedWhere 逐字一致；不并入公海） */
 async function scopedWhere(ctx: LeadActorContext, id: string): Promise<Record<string, unknown>> {
   return applyScope({ id }, await ctx.scope.owner());
+}
+
+/**
+ * **读取用**可见性：数据范围 ∪ **公海**（`ownerId` 为空）。
+ *
+ * 公海是共享池（列表「公海」筛选对全员可见、且认领入口就在详情面板），故详情 / 操作记录
+ * 必须同样可读 —— 否则「释放到公海后刷新详情」会返回 404「线索不存在」（错误提示）。
+ * 注意：**写操作不走本函数**（公海线索只能认领，不能暂存 / 编辑，见 updateLead 的公海门）。
+ */
+async function scopedWhereReadable(
+  ctx: LeadActorContext,
+  id: string,
+): Promise<Record<string, unknown>> {
+  // ⚠️ 必须走 includePublicSea：它会在数据范围为空（管理员 / dataScope=ALL）时**原样返回**，
+  //    即不施加归属限制。若写成 `{ OR: [ownerScope, { ownerId: null }] }`，空对象在 OR 中会被
+  //    Prisma 丢弃，等价于「只可见公海」，导致管理员打开已归属（如已确认）线索详情返回 404。
+  return applyScope({ id }, includePublicSea(await ctx.scope.owner()));
 }
 
 /** 通过数据范围门后仍不存在 ⇒ 与越权同响应（404，「线索不存在」） */
@@ -312,7 +338,8 @@ export async function listLeads(filters: LeadListFilters, ctx: LeadActorContext)
 
 /** 详情：数据范围门后返回线索 + 参考图片（不存在与越权同结果 404） */
 export async function getLeadDetail(id: string, ctx: LeadActorContext) {
-  const detail = await loadLeadDetail(await scopedWhere(ctx, id));
+  // 读取可见性含公海：释放后线索归公海仍可查看（否则前端刷新详情会误报「线索不存在」）
+  const detail = await loadLeadDetail(await scopedWhereReadable(ctx, id));
   if (!detail) throw new DomainNotFoundError('线索不存在');
   return detail;
 }
@@ -322,7 +349,7 @@ export async function getLeadDetail(id: string, ctx: LeadActorContext) {
  * 按时间倒序返回。线索不可见与不存在同响应 404。
  */
 export async function getLeadLogs(id: string, ctx: LeadActorContext) {
-  const lead = await findLeadForLogs(await scopedWhere(ctx, id));
+  const lead = await findLeadForLogs(await scopedWhereReadable(ctx, id));
   if (!lead) throw new DomainNotFoundError('线索不存在');
 
   const productId = lead.items?.[0]?.productId ?? null;
@@ -408,6 +435,14 @@ interface FilingContext {
    * **建档**（true）：才真正在客户库创建正式客户并绑定 `customerId`。
    */
   customerLocked: boolean;
+  /**
+   * 本次是否「产品信息建档」（`productLocked`）。
+   *
+   * **未建档**（false）：**不创建产品库记录** —— 产品需求（产品名 / 工艺 / 受众 / 品类 /
+   * 长宽高 / 克重）只写进明细快照 `LeadItem.productSnapshot`；
+   * **建档**（true）：才真正在产品库创建 / 复用产品并绑定明细的 `productId`。
+   */
+  productLocked: boolean;
 }
 
 /** 参考图片取首张 URL（产品主图 coverImage 为单值列） */
@@ -488,6 +523,172 @@ async function resolveCustomerIdInTx(
   };
 }
 
+/** 本次提交是否包含客户信息字段（用于「已关联客户 → 按 id 更新」判定） */
+function hasAnyCustomerField(input: {
+  companyName?: string | null;
+  contactName?: string | null;
+  contactMethods?: unknown;
+  email?: string | null;
+  phone?: string | null;
+  country?: string | null;
+  targetMarket?: string | null;
+  customerType?: string | null;
+}): boolean {
+  return [
+    input.companyName,
+    input.contactName,
+    input.contactMethods,
+    input.email,
+    input.phone,
+    input.country,
+    input.targetMarket,
+    input.customerType,
+  ].some((v) => v !== undefined);
+}
+
+/** 本次提交是否包含产品信息字段（用于「已关联产品 → 按 id 更新」判定） */
+function hasAnyProductField(input: {
+  productName?: string | null;
+  craftIds?: string[] | null;
+  audienceId?: string | null;
+  categoryId?: string | null;
+  sizeL?: number | null;
+  sizeW?: number | null;
+  sizeH?: number | null;
+  weight?: number | null;
+}): boolean {
+  return [
+    input.productName,
+    input.craftIds,
+    input.audienceId,
+    input.categoryId,
+    input.sizeL,
+    input.sizeW,
+    input.sizeH,
+    input.weight,
+  ].some((v) => v !== undefined);
+}
+
+/**
+ * 【规则】**已关联客户 → 按 id 更新同一条客户记录**。
+ *
+ * 建档后线索里改「公司名称 / 联系人 / 联系方式 / 邮箱 / 电话 / 国家地区 / 客户类型」，
+ * 都是**修改当前这条客户记录**，绝不再按名复用或新建（避免改名就多出一个客户）。
+ * 改名保留重名保护：撞到**其他**客户 → 400（不产生重名客户、不静默合并）。
+ * 来源（channelId / shopId）不改动 —— 客户来源为唯一权威，首次确立后不可篡改。
+ */
+async function syncLinkedCustomerInTx(
+  tx: TxClient,
+  customerId: string,
+  input: {
+    companyName?: string | null;
+    contactName?: string | null;
+    contactMethods?: unknown;
+    email?: string | null;
+    phone?: string | null;
+    country?: string | null;
+    targetMarket?: string | null;
+    customerType?: string | null;
+  },
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (input.companyName !== undefined) {
+    const nextName = normalizeFilingName(input.companyName);
+    if (!nextName) throw new DomainValidationError('公司名称不能为空');
+    const occupied = await findAnyCustomerByName(nextName, tx);
+    if (occupied && occupied.id !== customerId) {
+      throw new DomainValidationError(
+        `客户「${occupied.companyName}」已存在，不能重名；请更换公司名称`,
+      );
+    }
+    patch.companyName = nextName;
+  }
+  if (input.contactName !== undefined) patch.contactName = input.contactName ?? null;
+  if (input.customerType !== undefined) patch.customerType = input.customerType ?? null;
+  if (input.contactMethods !== undefined) {
+    patch.contactMethods = (input.contactMethods ?? null) as Prisma.InputJsonValue | undefined;
+  }
+  if (input.email !== undefined) patch.email = input.email ?? null;
+  if (input.phone !== undefined) patch.phone = input.phone ?? null;
+  // 线索侧「国家/地区」= targetMarket；客户侧同义字段为 country
+  const country = input.country !== undefined ? input.country : input.targetMarket;
+  if (country !== undefined) patch.country = country ?? null;
+
+  if (Object.keys(patch).length) await updateCustomerFromLeadOperation(customerId, patch, tx);
+}
+
+/**
+ * 【规则】**已关联产品 → 按 id 更新同一条产品记录**。
+ *
+ * 建档后线索里改「产品名称 / 尺寸 / 克重」都是修改当前这条产品记录，绝不再新建
+ * （避免改名就多出一个产品）。工艺 / 受众 / 品类属产品主数据（影响 SKU 派生），
+ * 由产品库维护，不在线索侧改写。
+ */
+async function syncLinkedProductInTx(
+  tx: TxClient,
+  productId: string,
+  input: {
+    productName?: string | null;
+    sizeL?: number | null;
+    sizeW?: number | null;
+    sizeH?: number | null;
+    weight?: number | null;
+  },
+): Promise<void> {
+  const patch: {
+    name?: string | null;
+    sizeL?: number | null;
+    sizeW?: number | null;
+    sizeH?: number | null;
+    weight?: number | null;
+  } = {};
+  if (input.productName !== undefined) {
+    const nextName = normalizeFilingName(input.productName);
+    if (!nextName) throw new DomainValidationError('产品名称不能为空');
+    // 改名重名保护（与客户同口径）：撞到**其他**产品 → 400，不产生重名产品、不静默合并
+    const occupied = await findAnyProductByName(nextName, tx);
+    if (occupied && occupied.id !== productId) {
+      throw new DomainValidationError(
+        `产品「${occupied.name}」已存在，不能重名；请更换产品名称`,
+      );
+    }
+    patch.name = nextName;
+  }
+  if (input.sizeL !== undefined) patch.sizeL = input.sizeL;
+  if (input.sizeW !== undefined) patch.sizeW = input.sizeW;
+  if (input.sizeH !== undefined) patch.sizeH = input.sizeH;
+  if (input.weight !== undefined) patch.weight = input.weight;
+
+  await updateProductFromLeadOperation(productId, patch, tx);
+}
+
+/**
+ * 未建档期**产品需求补丁**：只取「本次提交」的产品字段；
+ * 全部未提交 → `undefined`（不写空快照、不产生空明细）。
+ */
+function productSnapshotFromLeadInput(input: {
+  productName?: string | null;
+  craftIds?: string[] | null;
+  audienceId?: string | null;
+  categoryId?: string | null;
+  sizeL?: number | null;
+  sizeW?: number | null;
+  sizeH?: number | null;
+  weight?: number | null;
+}): LeadProductSnapshotInput | undefined {
+  const patch: LeadProductSnapshotInput = {
+    name: input.productName,
+    craftIds: input.craftIds,
+    audienceId: input.audienceId,
+    categoryId: input.categoryId,
+    sizeL: input.sizeL,
+    sizeW: input.sizeW,
+    sizeH: input.sizeH,
+    weight: input.weight,
+  };
+  return Object.values(patch).some((v) => v !== undefined) ? patch : undefined;
+}
+
 /** 暂存期客户信息补丁（由线索输入折算「国家/地区」= country ?? targetMarket） */
 function draftPatchFromLeadInput(input: {
   companyName?: string | null;
@@ -531,6 +732,19 @@ async function resolveProductIdInTx(
 
   const reusable = await findReusableProductByName(name, ctx.scope, tx);
   if (reusable) return { id: reusable.id };
+
+  // 同名占用（与客户同口径）：不在可复用范围内的同名产品（他人负责）→ 拒绝，
+  // 杜绝产生仅大小写 / 空白差异的重名产品（既不新建，也不静默合并到他人的产品）。
+  const occupied = await findAnyProductByName(name, tx);
+  if (occupied) {
+    throw new DomainValidationError(
+      `产品「${occupied.name}」已由其他业务员负责，不能用于当前线索；如需使用请先由负责人在产品页释放或转交`,
+    );
+  }
+
+  // 【规则】产品未建档 → **不创建产品库记录**：产品需求以明细快照承载
+  // （见 `updateLeadRecord` / `createLeadAggregate` 的 productSnapshot 写入），建档时才落产品库。
+  if (!filing.productLocked) return null;
 
   const craftIds = Array.isArray(input.craftIds) ? input.craftIds : [];
   const audienceId = input.audienceId ?? null;
@@ -683,6 +897,7 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     channelId: channelId ?? null,
     shopId: shopId ?? null,
     customerLocked: data.customerLocked ?? false,
+    productLocked: data.productLocked ?? false,
   };
   const pendingLogs: (FilingResult['createdLog'] | undefined)[] = [];
 
@@ -714,6 +929,8 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     quantity: data.quantity || 1,
     // 线索级「客户具体要求」（非产品主数据副本）
     productDesc: data.productDesc ?? null,
+    // 未建档期的产品需求（有产品外键时操作层忽略，改以产品档案留痕）
+    productSnapshot: productSnapshotFromLeadInput(data),
     attachments: normalizeAttachments(data.images),
     actorUserId: ctx.userId ?? null,
     resolveCustomerId: async (tx) => {
@@ -869,12 +1086,23 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
     (leadData as Record<string, unknown>).customerLocked !== undefined
       ? Boolean((leadData as Record<string, unknown>).customerLocked)
       : existing.customerLocked;
+  // 本次生效的「产品信息是否已建档」：未提交则沿用既有值
+  const effProductLocked =
+    (leadData as Record<string, unknown>).productLocked !== undefined
+      ? Boolean((leadData as Record<string, unknown>).productLocked)
+      : existing.productLocked;
   const filing: FilingContext = {
     ownerId: effOwnerId ?? null,
     channelId: effChannelId ?? null,
     shopId: effShopId ?? null,
     customerLocked: effCustomerLocked,
+    productLocked: effProductLocked,
   };
+  // 快照可写性：线索仍处于「未确认」（NEW）才继续刷新客户 / 产品快照，确认后冻结
+  const snapshotMutable =
+    existing.status === 'NEW' &&
+    (((leadData as Record<string, unknown>).status as LeadStatus | undefined) ?? existing.status) ===
+      'NEW';
 
   // 客户关联：显式 customerId 优先（null = 解除关联）；否则按公司名归一匹配 / 建档；两者皆无 → 不改动
   const hasExplicitCustomer = (leadData as Record<string, unknown>).customerId !== undefined;
@@ -891,6 +1119,10 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
     update,
     productDesc,
     quantity: data.quantity,
+    // 未建档期的产品需求：本次提交的字段合并进明细快照（有产品外键时改以产品档案刷新）
+    productSnapshotPatch: productSnapshotFromLeadInput(data),
+    // 与客户快照同口径：线索**已确认**（CONFIRMED 及之后）后快照冻结，不再刷新
+    productSnapshotMutable: snapshotMutable,
     // 仅在显式传入 images 时执行「整组替换」；未传则不动附件
     attachmentRows: data.images !== undefined ? normalizeAttachments(data.images) : undefined,
     actorUserId: ctx.userId ?? null,
@@ -905,6 +1137,13 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
         if (explicit) await clearLeadDraftNameOperation(existing.id, tx);
         return explicit ?? null;
       }
+      // 【规则】已关联客户 → **按 id 更新同一条客户记录**（改公司名 / 联系人 / 联系方式都是改这一条），
+      // 不再走「按名复用 / 新建」，避免改名就多出一个客户。
+      if (existing.customerId && hasAnyCustomerField(data)) {
+        await syncLinkedCustomerInTx(tx, existing.customerId, data);
+        return existing.customerId;
+      }
+
       // 暂存期客户信息的唯一载体是快照：建档（或本次提交部分客户字段）时，
       // 本次未提交的字段一律回退取快照，避免建出一个「只有公司名」的空客户。
       const snapshotDraft = (existing.customerSnapshot ?? null) as Record<string, unknown> | null;
@@ -990,18 +1229,40 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
         if (productId && !visible) throw new DomainValidationError('产品不存在');
         return productId ?? null;
       }
-      if (!hasProductName) return undefined;
+      // 当前明细（含已关联产品外键与未建档产品需求快照）
+      const currentItem = await leadRepository.items.findFirstByLead(existing.id, tx);
+
+      // 【规则】已关联产品 → **按 id 更新同一条产品记录**（改产品名 / 尺寸 / 克重都是改这一条），
+      // 不再走「按名复用 / 新建」，避免改名就多出一个产品。
+      if (currentItem?.productId && hasAnyProductField(data)) {
+        await syncLinkedProductInTx(tx, currentItem.productId, data);
+        return currentItem.productId;
+      }
+
+      // 产品需求在未建档期**只存在明细快照里**：建档（或本次提交部分产品字段）时，
+      // 本次未提交的字段一律回退取快照，避免建出一个「只有产品名」的空产品。
+      const snapshotProduct = (currentItem?.productSnapshot ?? null) as Record<string, unknown> | null;
+      const fromSnapshot = <T>(submitted: T | undefined, key: string): T | undefined =>
+        submitted !== undefined ? submitted : ((snapshotProduct?.[key] ?? undefined) as T | undefined);
+
+      const effProductName = hasProductName
+        ? productName
+        : (snapshotProduct?.name as string | null | undefined);
+      // 本次未提交产品名：仅当「由未建档转为建档」且快照里带着产品需求时才继续（用快照建档）
+      if (!hasProductName && !(effProductLocked && !currentItem?.productId)) return undefined;
+      if (!normalizeFilingName(effProductName)) return undefined;
+
       const r = await resolveProductIdInTx(
         tx,
         {
-          productName,
-          craftIds: data.craftIds,
-          audienceId: data.audienceId,
-          categoryId: data.categoryId,
-          sizeL: data.sizeL,
-          sizeW: data.sizeW,
-          sizeH: data.sizeH,
-          weight: data.weight,
+          productName: effProductName,
+          craftIds: fromSnapshot(data.craftIds, 'craftIds'),
+          audienceId: fromSnapshot(data.audienceId, 'audienceId'),
+          categoryId: fromSnapshot(data.categoryId, 'categoryId'),
+          sizeL: fromSnapshot(data.sizeL, 'sizeL'),
+          sizeW: fromSnapshot(data.sizeW, 'sizeW'),
+          sizeH: fromSnapshot(data.sizeH, 'sizeH'),
+          weight: fromSnapshot(data.weight, 'weight'),
         },
         filing,
         ctx,

@@ -82,6 +82,10 @@ const PERMISSIONS: PermissionSeed[] = [
   // ---------- 客户中心 ----------
   { code: 'customer-center', name: '客户中心', type: 'MENU', path: '/data/customers', icon: 'TeamOutlined', sort: 1 },
   { code: 'customers', name: '客户管理', type: 'MENU', path: '/data/customers', icon: 'TeamOutlined', sort: 1, parent: 'customer-center' },
+  // 客户管理（/data/customers）按钮级权限：可在「系统设置 → 权限管理」按角色勾选
+  { code: 'customer:create', name: '客户新增', type: 'BUTTON', sort: 1, parent: 'customers' },
+  { code: 'customer:update', name: '客户编辑', type: 'BUTTON', sort: 2, parent: 'customers' },
+  { code: 'customer:delete', name: '客户删除', type: 'BUTTON', sort: 3, parent: 'customers' },
 
   // ---------- 产品中心 ----------
   { code: 'product-center', name: '产品中心', type: 'MENU', path: '/data/products', icon: 'AppstoreOutlined', sort: 2 },
@@ -94,6 +98,10 @@ const PERMISSIONS: PermissionSeed[] = [
   { code: 'product:taxonomy:create', name: '产品档案新增', type: 'BUTTON', sort: 1, parent: 'product:taxonomy:view' },
   { code: 'product:taxonomy:update', name: '产品档案编辑', type: 'BUTTON', sort: 2, parent: 'product:taxonomy:view' },
   { code: 'product:taxonomy:delete', name: '产品档案删除', type: 'BUTTON', sort: 3, parent: 'product:taxonomy:view' },
+  // 产品管理（/data/products）按钮级权限：可在「系统设置 → 权限管理」按角色勾选
+  { code: 'product:create', name: '产品新增', type: 'BUTTON', sort: 1, parent: 'products' },
+  { code: 'product:update', name: '产品编辑', type: 'BUTTON', sort: 2, parent: 'products' },
+  { code: 'product:delete', name: '产品删除', type: 'BUTTON', sort: 3, parent: 'products' },
   { code: 'certificate:create', name: '证书新增', type: 'BUTTON', sort: 7, parent: 'product-center' },
   { code: 'certificate:update', name: '证书编辑', type: 'BUTTON', sort: 8, parent: 'product-center' },
   { code: 'certificate:delete', name: '证书删除', type: 'BUTTON', sort: 9, parent: 'product-center' },
@@ -176,7 +184,16 @@ const ROLE_PERMISSION_CODES: Record<string, string[]> = {
   business: [
     'dashboard',
     'customers',
+    // 客户写权限：默认与「归属人 / 管理员」既有可达能力对齐（不扩大权限）；
+    // 需要收紧或放开，都在「系统设置 → 权限管理」按角色勾选。
+    'customer:create',
+    'customer:update',
+    'customer:delete',
     'products',
+    // 产品写权限：默认给「新增 / 编辑」（与既有可用能力一致）；**「产品删除」不默认授予**，
+    // 由管理员在「系统设置 → 权限管理」按需勾选。
+    'product:create',
+    'product:update',
     'craft',
     'product:taxonomy:view',
     'sales',
@@ -195,6 +212,8 @@ const ROLE_PERMISSION_CODES: Record<string, string[]> = {
   purchaser: [
     'dashboard',
     'products',
+    'product:create',
+    'product:update',
     'materials',
     'bom',
     'craft',
@@ -205,7 +224,7 @@ const ROLE_PERMISSION_CODES: Record<string, string[]> = {
     'shipment',
     'sales:orders',
   ],
-  user: ['dashboard', 'customers'],
+  user: ['dashboard', 'customers', 'customer:create', 'customer:update', 'customer:delete'],
 };
 
 interface DepartmentSeed {

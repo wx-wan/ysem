@@ -132,6 +132,12 @@ model LeadItem {
   /// D2（F-8L）：**线索级**「客户具体要求」（材质 / 规格 / 工艺 / 用途等），非产品主数据副本。
   /// 严禁写入或反填 Product.description（两者语义严格分离，用户 2026-09-27 明确约定）。
   productDesc String?
+  /// **产品需求快照**（V1.2，与客户快照同构）：
+  ///   · **未建档**（`productId` 为空）→ 线索里填的产品需求（产品名 / 工艺 craftIds / 受众 audienceId /
+  ///     品类 categoryId / 长宽高 / 克重 / 参考图片）**只存在这里**：暂存期**不创建产品库记录**；
+  ///   · **建档**（关联 `productId`）→ 本字段改由 Product 档案刷新留痕，产品主数据唯一权威仍是 Product。
+  /// 目标价位 / 客户期望交期属**线索级**字段（落在 Lead 上），不进本快照。
+  productSnapshot Json?
   quantity    Int      @default(1) // 意向数量，保留 Int（04 §12#7）
   sort        Int      @default(0)
   createdAt   DateTime @default(now())

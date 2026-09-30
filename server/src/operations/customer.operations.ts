@@ -86,6 +86,20 @@ export function loadCustomerOptions(where: Prisma.CustomerWhereInput) {
 }
 
 /** 归属查询（跨全员，不套数据范围）：按公司名精确匹配，仅取主键 + 负责人 */
+/**
+ * **按 id 更新客户字段**（线索侧专用：线索已关联客户后再改公司名 / 联系方式）。
+ *
+ * 语义：修改**同一条**客户记录（不做建档、不产生新客户、不改编号与来源）。
+ * 重名保护由 Business 侧负责（改名撞名 → 400），本操作只管写入。
+ */
+export async function updateCustomerFromLeadOperation(
+  customerId: string,
+  patch: Record<string, unknown>,
+  db?: DbClient,
+): Promise<void> {
+  await customerRepository.updateFields(customerId, patch as Prisma.CustomerUpdateInput, db);
+}
+
 export function findCustomerByCompanyName(companyName: string) {
   return customerRepository.findFirst({
     where: { companyName },
@@ -213,37 +227,47 @@ export async function loadCustomerStats(input: {
 /** 子筛选计数（未成交 A/B/C/D/无商机 + 已成交 新/老），口径与既有逐条一致 */
 export async function loadSubFilterCounts(baseWhere: Prisma.CustomerWhereInput) {
   const year = new Date().getFullYear();
-  const noOrderWhere: Prisma.CustomerWhereInput = { ...baseWhere, salesOrders: { none: {} } };
-  const doneWhere: Prisma.CustomerWhereInput = { ...baseWhere, salesOrders: { some: {} } };
+
+  // ⚠️ 数据范围必须并入 AND 列表，**不能**以同级 `AND` 覆盖入参的 AND——
+  //    否则入参携带的数据范围（本人 / 部门 / 全公司 + 非公海）会被静默丢弃，
+  //    导致子筛选计数泄漏到全库，与列表条数口径不一致。
+  const { AND: baseAnd, ...baseRest } = baseWhere as Prisma.CustomerWhereInput & {
+    AND?: Prisma.CustomerWhereInput | Prisma.CustomerWhereInput[];
+  };
+  const baseList: Prisma.CustomerWhereInput[] = [
+    ...(Array.isArray(baseAnd) ? baseAnd : baseAnd ? [baseAnd] : []),
+    ...(Object.keys(baseRest).length ? [baseRest as Prisma.CustomerWhereInput] : []),
+  ];
+  /** 在基础数据范围之上追加条件（始终以 AND 合并） */
+  const scoped = (...extra: Prisma.CustomerWhereInput[]): Prisma.CustomerWhereInput => ({
+    AND: [...baseList, ...extra],
+  });
+  const noOrder: Prisma.CustomerWhereInput = { salesOrders: { none: {} } };
+  const done: Prisma.CustomerWhereInput = { salesOrders: { some: {} } };
+
   const [A, B, C, D, none, newC, oldC] = await Promise.all([
-    customerRepository.count({ ...noOrderWhere, opportunities: { some: { intentLevel: 'READY' } } }),
-    customerRepository.count({
-      ...noOrderWhere,
-      AND: [
-        { opportunities: { some: { intentLevel: 'HIGH' } } },
-        { opportunities: { none: { intentLevel: 'READY' } } },
-      ],
-    }),
-    customerRepository.count({
-      ...noOrderWhere,
-      AND: [
-        { opportunities: { some: { intentLevel: 'MEDIUM' } } },
-        { opportunities: { none: { intentLevel: 'READY' } } },
-        { opportunities: { none: { intentLevel: 'HIGH' } } },
-      ],
-    }),
-    customerRepository.count({
-      ...noOrderWhere,
-      opportunities: { some: {} },
-      AND: [
-        { opportunities: { none: { intentLevel: 'READY' } } },
-        { opportunities: { none: { intentLevel: 'HIGH' } } },
-        { opportunities: { none: { intentLevel: 'MEDIUM' } } },
-      ],
-    }),
-    customerRepository.count({ ...noOrderWhere, opportunities: { none: {} } }),
-    customerRepository.count({ ...doneWhere, firstOrderAt: firstOrderAtInYear(year) }),
-    customerRepository.count({ ...doneWhere, firstOrderAt: firstOrderAtBeforeYear(year) }),
+    customerRepository.count(scoped(noOrder, { opportunities: { some: { intentLevel: 'READY' } } })),
+    customerRepository.count(scoped(
+      noOrder,
+      { opportunities: { some: { intentLevel: 'HIGH' } } },
+      { opportunities: { none: { intentLevel: 'READY' } } },
+    )),
+    customerRepository.count(scoped(
+      noOrder,
+      { opportunities: { some: { intentLevel: 'MEDIUM' } } },
+      { opportunities: { none: { intentLevel: 'READY' } } },
+      { opportunities: { none: { intentLevel: 'HIGH' } } },
+    )),
+    customerRepository.count(scoped(
+      noOrder,
+      { opportunities: { some: {} } },
+      { opportunities: { none: { intentLevel: 'READY' } } },
+      { opportunities: { none: { intentLevel: 'HIGH' } } },
+      { opportunities: { none: { intentLevel: 'MEDIUM' } } },
+    )),
+    customerRepository.count(scoped(noOrder, { opportunities: { none: {} } })),
+    customerRepository.count(scoped(done, { firstOrderAt: firstOrderAtInYear(year) })),
+    customerRepository.count(scoped(done, { firstOrderAt: firstOrderAtBeforeYear(year) })),
   ]);
   return {
     noOrderBreakdown: { '': A + B + C + D + none, A, B, C, D, none },
@@ -289,25 +313,28 @@ export function loadAssignees() {
   return userRepository.findActiveAssignees();
 }
 
-/** 管理员视图统计：公海数 + 全库 4 计数 */
-export async function loadAdminCounts(year: number) {
+/**
+ * 管理员视图统计：公海数 + **当前视图范围**的 4 项计数。
+ *
+ * 数据范围由调用方以 `scopeWhere` 传入，且一律按**负责人（ownerId）**判定：
+ *   · 团队视图   → { ownerId: { not: null } }
+ *   · 指定业务员 → { ownerId }
+ *   · 公海视图   → { ownerId: null }
+ * 保证统计与列表、子筛选计数（`listAllScope`）口径完全一致。
+ */
+export async function loadAdminCounts(year: number, scopeWhere: Prisma.CustomerWhereInput) {
   const publicCount = await customerRepository.count({ ownerId: null });
-  const withOwnerWhere: Prisma.CustomerWhereInput = { ownerId: { not: null } };
-  const [totalAll, newAll, oldAll, keyAll] = await Promise.all([
-    customerRepository.count(),
+  const [total, newCount, oldCount, keyCount] = await Promise.all([
+    customerRepository.count(scopeWhere),
     customerRepository.count({
-      firstOrderAt: firstOrderAtInYear(year),
-      isKeyAccount: false,
-      ...withOwnerWhere,
+      AND: [scopeWhere, { firstOrderAt: firstOrderAtInYear(year) }, { isKeyAccount: false }],
     }),
     customerRepository.count({
-      isKeyAccount: false,
-      ...withOwnerWhere,
-      firstOrderAt: firstOrderAtBeforeYear(year),
+      AND: [scopeWhere, { isKeyAccount: false }, { firstOrderAt: firstOrderAtBeforeYear(year) }],
     }),
-    customerRepository.count({ isKeyAccount: true }),
+    customerRepository.count({ AND: [scopeWhere, { isKeyAccount: true }] }),
   ]);
-  return { publicCount, totalAll, newAll, oldAll, keyAll };
+  return { publicCount, total, newCount, oldCount, keyCount };
 }
 
 /** 报表统计原始输入（7 查询并行；阶段/B 转化率的计算在 Business 层） */

@@ -1,5 +1,4 @@
-import { Response, NextFunction } from 'express';
-import * as XLSX from 'xlsx';
+import { Response } from 'express';
 import { z } from 'zod';
 import { DomainError } from '../lib/errors';
 import { SkuConcurrencyError, SkuContextError } from '../lib/skuCode';
@@ -103,6 +102,28 @@ export const getProducts = async (req: AuthRequest, res: Response): Promise<void
   } catch { fail(res, 500, '服务器错误'); }
 };
 
+/**
+ * GET /api/products/ownership?name=xxx[&excludeId=yyy] —— 产品名占用 / 可见性检查（轻量只读）。
+ *
+ * 供产品表单在**产品名 label 行**实时渲染状态 Tag（与线索表单客户名同款交互）：
+ * 无同名 → 名称可用；同名且可见 → 可直接复用；同名但不可见 → 提示避免重复建档。
+ * 注意：本路由必须注册在 `/:id` **之前**，否则会被 `getProductById` 遮蔽（同 /template 的历史教训）。
+ */
+export const checkProductNameOwnership = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const name = typeof req.query.name === 'string' ? req.query.name : undefined;
+    const excludeId = typeof req.query.excludeId === 'string' ? req.query.excludeId : null;
+    const result = await productService.checkProductNameOwnership(
+      name,
+      excludeId,
+      buildActorContext(req),
+    );
+    success(res, result);
+  } catch (err) {
+    respondError(res, err, '服务器错误');
+  }
+};
+
 export const getProductById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const detail = await productService.getProductDetail(req.params.id, buildActorContext(req));
@@ -139,6 +160,7 @@ export const getMixedProducts = async (req: AuthRequest, res: Response): Promise
         craftIds: req.query.craftIds as string,
         audienceId: req.query.audienceId as string | undefined,
         visibility: req.query.visibility as string | undefined,
+        sort: req.query.sort as string | undefined,
       },
       buildActorContext(req),
     );
@@ -202,39 +224,6 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
 // Excel 导入 / 模板下载
 // ============================================================
 
-export const importExcel = async (req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const file = req.file;
-    if (!file) return fail(res, 400, '请上传文件');
-
-    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const rows: Record<string, unknown>[] = XLSX.utils.sheet_to_json(sheet);
-
-    // 逐行解析与建档（含表头映射、名称→ID 解析、逐行独立事务）在 Business 层
-    const result = await productService.importProducts(rows, buildActorContext(req));
-    success(res, result);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const downloadTemplate = async (_req: AuthRequest, res: Response, next: NextFunction) => {
-  try {
-    const header = [
-      '产品名称', '工艺', '受众', '品类', '尺寸长', '尺寸宽', '尺寸高', '克重',
-      '供货模式', '认证资质', '描述', '价格', '币种', '税率', '库存', '低库存预警',
-      '来源', '可见性', '可见人员', '备注',
-    ];
-    const ws = XLSX.utils.aoa_to_sheet([header]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '产品导入模板');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-    res.setHeader('Content-Disposition', 'attachment; filename="product-import-template.xlsx"');
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.send(buf);
-  } catch (err) {
-    next(err);
-  }
-};
+// 【已下线】Excel 导入 / 模板下载：产品**不支持导入**（也不支持独立创建）。
+// 原 `importExcel`（XLSX 解析 → productService.importProducts）与
+// `downloadTemplate`（生成导入模板）已随规则冻结一并移除，路由同步删除。

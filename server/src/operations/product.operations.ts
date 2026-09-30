@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { getNextNumber } from '../lib/numberSequence';
 import { SkuContextError, withSkuRetry } from '../lib/skuCode';
 import { productRepository } from '../repositories/product.repository';
+import { userRepository } from '../repositories/user.repository';
 import { runInTransaction, type DbClient } from '../repositories';
 
 /**
@@ -56,6 +57,35 @@ export function createProductOperation(
  * `skuNeedsRegen` / `finalCraftIds` / `finalAudienceId` 由 Business 依据「变更前后比对」判定。
  * `excludeId` 为自身 id（不得把自身 SKU 当作冲突候选）。
  */
+/**
+ * **按 id 更新产品字段**（线索侧专用：线索已关联产品后再改产品名 / 尺寸克重）。
+ *
+ * 语义：修改**同一条**产品记录（不建档、不新建、不改编号）。
+ * 只写**不影响 SKU 派生**的字段（名称与尺寸克重）——工艺 / 受众 / 品类属产品主数据，
+ * 由产品库维护（改动会影响 SKU 派生，须走产品模块的更新流程）。
+ */
+export async function updateProductFromLeadOperation(
+  productId: string,
+  patch: {
+    name?: string | null;
+    sizeL?: number | null;
+    sizeW?: number | null;
+    sizeH?: number | null;
+    weight?: number | null;
+  },
+  db?: DbClient,
+): Promise<void> {
+  const data: Record<string, unknown> = {};
+  if (patch.name !== undefined) data.name = patch.name;
+  if (patch.sizeL !== undefined) data.sizeL = patch.sizeL;
+  if (patch.sizeW !== undefined) data.sizeW = patch.sizeW;
+  if (patch.sizeH !== undefined) data.sizeH = patch.sizeH;
+  if (patch.weight !== undefined) data.weight = patch.weight;
+  if (Object.keys(data).length) {
+    await productRepository.update(productId, data as Prisma.ProductUpdateInput, db);
+  }
+}
+
 export function updateProductOperation(input: {
   id: string;
   data: Record<string, unknown>;
@@ -81,4 +111,66 @@ export function updateProductOperation(input: {
       return productRepository.update(input.id, data as unknown as Prisma.ProductUpdateInput, tx);
     }),
   );
+}
+
+// ============================================================
+// 产品名占用检查（轻量只读：GET /api/products/ownership）
+// ============================================================
+
+/**
+ * 产品名占用检查结果。
+ *
+ * 产品**没有归属概念**（`Product.ownerId` 列未被任何业务读写），故「占用」只有两个维度：
+ * 同名产品是否存在、以及它是否在当前调用者的可见范围内。
+ */
+export interface ProductNameOwnershipResult {
+  /** NOT_FOUND=无同名（名称可用）；OWNED_BY_ME=同名且在可见范围内；OWNED_BY_OTHER=同名但不可见 */
+  code: 'NOT_FOUND' | 'OWNED_BY_ME' | 'OWNED_BY_OTHER';
+  productId?: string;
+  productNo?: string;
+  /** 仅 `OWNED_BY_OTHER` 返回：创建人显示名（与客户名归属提示口径一致，不泄露其它细节） */
+  ownerName?: string;
+}
+
+/**
+ * 产品名占用检查（`GET /api/products/ownership?name=` 的唯一数据来源）。
+ *
+ * 口径：
+ *   · 名称匹配 = `trim` + **大小写不敏感**（产品名本身不唯一，这里只判「是否存在同名」）；
+ *   · 软删产品（`deletedAt` 非空）**不计占用**；
+ *   · `excludeId` 供**编辑态排除自身**（否则改其它字段也会把自己判成「已有同名」）；
+ *   · 同名且在调用者可见范围内 → `OWNED_BY_ME`（可直接复用）；
+ *     同名但不可见 → `OWNED_BY_OTHER`（提示避免重复建档，并回创建人显示名）。
+ */
+export async function checkProductNameOwnershipOperation(
+  name: string,
+  excludeId: string | null,
+  visibilityWhere: Record<string, unknown>,
+  db?: DbClient,
+): Promise<ProductNameOwnershipResult> {
+  const keyword = name.trim();
+  if (!keyword) return { code: 'NOT_FOUND' };
+
+  const hit = await productRepository.findFirst(
+    {
+      where: {
+        name: { equals: keyword, mode: 'insensitive' },
+        deletedAt: null,
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+      },
+      select: { id: true, productNo: true, createdBy: true },
+    },
+    db,
+  );
+  if (!hit) return { code: 'NOT_FOUND' };
+
+  const visible = await productRepository.findVisibleById(hit.id, visibilityWhere, db);
+  if (visible) return { code: 'OWNED_BY_ME', productId: hit.id, productNo: hit.productNo };
+
+  let ownerName: string | undefined;
+  if (hit.createdBy) {
+    const creators = await userRepository.findNamesByIds([hit.createdBy], db);
+    ownerName = creators[0]?.realName || creators[0]?.username || undefined;
+  }
+  return { code: 'OWNED_BY_OTHER', productId: hit.id, productNo: hit.productNo, ownerName };
 }

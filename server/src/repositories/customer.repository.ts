@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import type { DbClient } from './types';
 
@@ -47,6 +47,28 @@ export const customerRepository = {
 
   count(where?: Prisma.CustomerWhereInput, db: DbClient = prisma): Promise<number> {
     return customerModel(db).count(where ? { where } : undefined);
+  },
+
+  /**
+   * 按标签关键词模糊匹配客户 id（大小写不敏感的子串匹配）。
+   *
+   * `Customer.tags` 为 PostgreSQL `text[]`，Prisma 的 `has` / `hasSome` 只支持元素**精确**匹配，
+   * 无法表达「元素包含子串」；故此处用一条只取 id 的原生查询完成模糊匹配，
+   * 调用方再把 id 列表并入常规 where ——数据范围 / 其它筛选 / 分页仍由 Prisma 查询负责。
+   *
+   * `limit` 为安全上限（匹配结果集过大时不至于拖垮查询）。
+   */
+  async findIdsByTagKeyword(keyword: string, limit = 5000): Promise<string[]> {
+    // 转义 LIKE 通配符，避免用户输入的 % / _ 被当作模式
+    const escaped = keyword.replace(/[\\%_]/g, (m) => `\\${m}`);
+    const rows = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
+      SELECT "id" FROM "Customer"
+      WHERE EXISTS (
+        SELECT 1 FROM unnest("tags") AS t WHERE t ILIKE ${`%${escaped}%`}
+      )
+      LIMIT ${limit}
+    `);
+    return rows.map((r) => r.id);
   },
 
   create<T extends Prisma.CustomerCreateArgs>(args: T, db: DbClient = prisma): Promise<Prisma.CustomerGetPayload<T>> {
@@ -145,6 +167,14 @@ export const customerRepository = {
   /** 写入来源渠道：仅在客户**尚无来源**时由线索确立（既有来源不可被覆盖） */
   updateChannel(id: string, channelId: string | null, shopId: string | null, db: DbClient = prisma) {
     return db.customer.update({ where: { id }, data: { channelId, shopId } });
+  },
+
+  /**
+   * 按 id 更新客户字段（线索侧「已关联客户 → 改名 / 改联系方式」专用）。
+   * 语义：**修改同一条客户记录**，不做建档、不改编号、不改来源。
+   */
+  updateFields(id: string, data: Prisma.CustomerUpdateInput, db: DbClient = prisma) {
+    return db.customer.update({ where: { id }, data });
   },
 
   updateOwner(id: string, ownerId: string, db: DbClient = prisma) {

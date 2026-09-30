@@ -50,6 +50,29 @@ export const productRepository = {
     });
   },
 
+  /**
+   * 按 id 取「产品快照」所需字段（已关联产品时，线索明细快照以产品档案为权威）。
+   * 只读主数据字段 + 工艺 ID 列表，不含图片附件（参考图另存线索附件）。
+   */
+  findSnapshotById(id: string, db: DbClient = prisma) {
+    return db.product.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        productNo: true,
+        name: true,
+        sku: true,
+        audienceId: true,
+        categoryId: true,
+        sizeL: true,
+        sizeW: true,
+        sizeH: true,
+        weight: true,
+        crafts: { select: { productCraftId: true } },
+      },
+    });
+  },
+
   /** 按 id 集合 + 可见性取 id（mutation 时刻重新授权，关闭 TOCTOU） */
   findVisibleIds(ids: string[], visibilityWhere: Record<string, unknown>, db: DbClient = prisma) {
     return db.product.findMany({

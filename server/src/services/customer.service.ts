@@ -11,7 +11,7 @@ import {
   deriveCustomerIntentLevels,
   withCustomerIntent,
 } from '../state';
-import { applyScope, includePublicSea, publicSeaScope } from '../scope';
+import { applyScope, publicSeaScope } from '../scope';
 import { draftCustomerNameKey, findDraftNameHolder } from '../operations/lead.operations';
 import {
   createCustomerAggregate,
@@ -220,6 +220,25 @@ export interface CustomerListInput {
   page?: string | number;
   pageSize?: string | number;
   ownerId?: string;
+  /** 范围开关：'1' = 仅公海（负责人为空）。与 type（成交状态）正交，可组合筛选 */
+  publicSea?: string;
+  /** 筛选开关：'1' = 仅重点客户（isKeyAccount）。与 type / publicSea 正交，可组合筛选 */
+  keyAccount?: string;
+  /** 标签关键词：对客户标签做**模糊匹配**（元素子串，大小写不敏感） */
+  tags?: string;
+}
+
+/** query 布尔参数：'1' / 'true' 视为真 */
+const isQueryTrue = (v?: string | number | boolean): boolean => v === '1' || v === 'true' || v === true;
+
+/**
+ * 标签关键词 → 命中的客户 id 列表（模糊匹配）。
+ * 未传关键词时返回 null（表示「不施加标签条件」）；传了但无命中时返回空数组（列表将为空）。
+ */
+async function tagKeywordIds(tags?: string): Promise<string[] | null> {
+  const keyword = String(tags ?? '').trim();
+  if (!keyword) return null;
+  return customerRepository.findIdsByTagKeyword(keyword);
 }
 
 /** 我的私海客户列表（含统计 / 子筛选计数 / 全量聚合 / enrichment） */
@@ -231,10 +250,18 @@ export async function listMy(input: CustomerListInput, ctx: CustomerActorContext
   const take = Number(pageSize);
   const year = new Date().getFullYear();
 
-  // 数据范围：公海视图仅无负责人客户；其余视图 = 范围数据 + 公海（公海对集团开放）
-  const isPublic = input.type === 'public';
-  const scope = isPublic ? publicSeaScope() : includePublicSea(await ctx.scope.customer());
-  const andConditions: Prisma.CustomerWhereInput[] = scope && Object.keys(scope).length > 0 ? [scope as Prisma.CustomerWhereInput] : [];
+  // 数据范围：
+  //  - 公海视图（publicSea=1，兼容旧的 type=public）：仅无负责人客户（publicSeaScope）
+  //  - 其余「我的客户」视图：调用方数据范围（本人 / 部门 / 全公司）内、且**排除公海**的已分配客户
+  //    —— 公海仅能在公海视图查看，避免混入「我的客户」（无论 dataScope 是 SELF / DEPT / ALL）
+  const isPublic = isQueryTrue(input.publicSea) || input.type === 'public';
+  const scope = isPublic ? publicSeaScope() : await ctx.scope.customer();
+  // 非公海视图的硬约束：已分配（ownerId 非空）。与 dataScope 无关，确保任何角色下「我的客户」都不含公海
+  const assignedOnly = isPublic ? null : { ownerId: { not: null } };
+  const scopeConditions: Prisma.CustomerWhereInput[] = [scope, assignedOnly].filter(
+    (c): c is Prisma.CustomerWhereInput => !!c && Object.keys(c).length > 0,
+  );
+  const andConditions: Prisma.CustomerWhereInput[] = scopeConditions;
 
   if (input.keyword) {
     andConditions.push({
@@ -248,8 +275,18 @@ export async function listMy(input: CustomerListInput, ctx: CustomerActorContext
   }
   if (input.country) andConditions.push({ country: String(input.country) });
   andConditions.push(...typeConditions(input.type, year));
+  // 重点客户为独立维度（isKeyAccount），与成交状态 / 公海范围可叠加
+  if (isQueryTrue(input.keyAccount)) andConditions.push({ isKeyAccount: true });
+  // 标签关键词：先取模糊匹配的 id，再并入常规 where（范围 / 分页仍由本查询负责）
+  const tagIds = await tagKeywordIds(input.tags);
+  if (tagIds) andConditions.push({ id: { in: tagIds } });
 
   const where: Prisma.CustomerWhereInput = { AND: andConditions };
+
+  // 统计与子筛选计数与列表共用同一范围（含「非公海」约束），保证口径一致
+  const statsScope: Prisma.CustomerWhereInput = isPublic
+    ? publicSeaScope()
+    : { AND: scopeConditions };
 
   const [pageResult, statsRaw, subFilterCounts] = await Promise.all([
     loadCustomerListPage({
@@ -262,8 +299,8 @@ export async function listMy(input: CustomerListInput, ctx: CustomerActorContext
         opportunities: { select: { intentLevel: true } },
       },
     }),
-    loadCustomerStats({ where: statsWhere(userId), totalWhere: statsTotalWhere(userId), year }),
-    loadSubFilterCounts({ ownerId: userId }),
+    loadCustomerStats({ where: statsScope, totalWhere: statsScope, year }),
+    loadSubFilterCounts(statsScope),
   ]);
 
   const aggregates = await loadListAggregates({
@@ -411,7 +448,8 @@ export async function listAll(input: CustomerListInput, ctx: CustomerActorContex
   }
   if (input.country) andConditions.push({ country: String(input.country) });
 
-  if (input.type === 'public') {
+  const isPublic = isQueryTrue(input.publicSea) || input.type === 'public';
+  if (isPublic) {
     andConditions.push({ ownerId: null });
   } else if (input.ownerId) {
     andConditions.push({ ownerId: String(input.ownerId) });
@@ -419,11 +457,18 @@ export async function listAll(input: CustomerListInput, ctx: CustomerActorContex
     andConditions.push({ ownerId: { not: null } });
   }
   andConditions.push(...typeConditions(input.type, year));
+  // 重点客户为独立维度（isKeyAccount），与成交状态 / 归属人 / 公海可叠加
+  if (isQueryTrue(input.keyAccount)) andConditions.push({ isKeyAccount: true });
+  // 标签关键词：先取模糊匹配的 id，再并入常规 where（范围 / 分页仍由本查询负责）
+  const tagIds = await tagKeywordIds(input.tags);
+  if (tagIds) andConditions.push({ id: { in: tagIds } });
 
   const where: Prisma.CustomerWhereInput = andConditions.length > 0 ? { AND: andConditions } : {};
-  const listAllScope: Prisma.CustomerWhereInput = input.ownerId
-    ? { ownerId: String(input.ownerId) }
-    : { ownerId: { not: null } };
+  const listAllScope: Prisma.CustomerWhereInput = isPublic
+    ? { ownerId: null }
+    : input.ownerId
+      ? { ownerId: String(input.ownerId) }
+      : { ownerId: { not: null } };
 
   const [pageResult, assignees, subFilterCounts] = await Promise.all([
     loadCustomerListPage({
@@ -466,7 +511,8 @@ export async function listAll(input: CustomerListInput, ctx: CustomerActorContex
     keyCount: u.ownedCustomers.length,
   }));
 
-  const counts = await loadAdminCounts(year);
+  // 统计与列表 / 子筛选计数共用同一范围（按负责人判定：团队 / 指定业务员 / 公海）
+  const counts = await loadAdminCounts(year, listAllScope);
 
   return {
     list: enriched,
@@ -476,7 +522,7 @@ export async function listAll(input: CustomerListInput, ctx: CustomerActorContex
     ownerStats,
     publicCount: counts.publicCount,
     ...subFilterCounts,
-    stats: { total: counts.totalAll, newCount: counts.newAll, oldCount: counts.oldAll, keyCount: counts.keyAll },
+    stats: { total: counts.total, newCount: counts.newCount, oldCount: counts.oldCount, keyCount: counts.keyCount },
     estimatedAmount: aggregates.estimatedAgg._sum.estimatedAmount || 0,
     totalContractAmount: Number(aggregates.totalAmountAgg._sum.totalAmountCny ?? 0),
     estimatedBreakdown: aggregates.estimatedBreakdown,
@@ -1088,13 +1134,6 @@ function typeConditions(type: string | undefined, year: number): Prisma.Customer
   return [];
 }
 
-/** 统计口径的 where（管理员视图排除公海；ownerId 存在时按归属人） */
-function statsWhere(ownerId?: string): Prisma.CustomerWhereInput {
-  return ownerId ? { ownerId } : { ownerId: { not: null } };
-}
-function statsTotalWhere(ownerId?: string): Prisma.CustomerWhereInput {
-  return ownerId ? { ownerId } : {};
-}
 
 type OrderAggRow = { customerId: string; _sum: { totalAmountCny: unknown }; _max: { orderDate: Date | null } };
 

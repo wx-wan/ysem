@@ -139,7 +139,13 @@ export async function buildLeadListWhere(
   } else if (filters.platform) {
     where.shopId = filters.platform;
   }
-  if (filters.status) where.status = filters.status;
+  if (filters.status) {
+    // 状态支持多值（逗号分隔，如「已确认及之后」= CONFIRMED,SAMPLED,WON）：
+    // 单值时保持既有精确匹配语义，多值转 `in`。
+    const statuses = String(filters.status).split(',').map((s) => s.trim()).filter(Boolean);
+    if (statuses.length === 1) where.status = statuses[0];
+    else if (statuses.length > 1) where.status = { in: statuses };
+  }
   if (filters.source) where.source = filters.source;
   if (filters.productId) where.items = { some: { productId: String(filters.productId) } };
 
@@ -382,9 +388,9 @@ export async function loadLeadsPage(input: {
       const { customerSnapshot: _snap, customerSnapshotAt: _snapAt, ...withoutSnap } = rest;
       void _snap;
       void _snapAt;
-      return withoutSnap;
+      return { ...withoutSnap, items: stripFiledItemSnapshots(rest.items) };
     }
-    return rest;
+    return { ...rest, items: stripFiledItemSnapshots(rest.items) };
   });
 
   return { list: rows, total, page, pageSize, attachmentMap };
@@ -398,7 +404,27 @@ export async function loadLeadDetail(where: Record<string, unknown>) {
   const { draftCustomerName: _draftName, ...rest } = item as Record<string, unknown>;
   void _draftName;
   const attachmentMap = await loadLeadAttachments([item.id]);
-  return { item: rest, attachments: attachmentMap[item.id] ?? [] };
+  return {
+    item: { ...rest, items: stripFiledItemSnapshots(rest.items) },
+    attachments: attachmentMap[item.id] ?? [],
+  };
+}
+
+/**
+ * 明细快照投影：**已关联产品**的明细剔除 `productSnapshot`（产品档案已完整返回，省流量）；
+ * **未建档明细**（`productId` 为空）的快照是产品需求的唯一载体，必须保留。
+ */
+function stripFiledItemSnapshots(items: unknown): unknown {
+  if (!Array.isArray(items)) return items;
+  return items.map((it) => {
+    if (!it || typeof it !== 'object') return it;
+    if ((it as { productId?: string | null }).productId) {
+      const { productSnapshot: _ps, ...rest } = it as Record<string, unknown>;
+      void _ps;
+      return rest;
+    }
+    return it;
+  });
 }
 
 /** 批量拉取线索参考图片附件（ownerType=LEAD），按 ownerId 分组 */
@@ -509,6 +535,21 @@ export async function findAnyCustomerByName(name: string, db?: DbClient) {
   );
 }
 
+/**
+ * 全库按归一名称匹配产品（忽略可见性）。
+ * 用途：区分「可复用」与「他人已建档」——避免产生仅大小写 / 空白差异的**重名产品**；
+ * 只返回主键与名称，不返回归属人信息，不构成归属信息泄露。
+ */
+export async function findAnyProductByName(name: string, db?: DbClient) {
+  return productRepository.findFirst(
+    {
+      where: { name: { equals: name, mode: 'insensitive' } },
+      select: { id: true, name: true },
+    },
+    db,
+  );
+}
+
 /** 可见性范围内按归一名称匹配产品（命中即复用） */
 export async function findReusableProductByName(
   name: string,
@@ -537,6 +578,56 @@ export interface LeadItemCreateInput {
   productId: string | null;
   quantity: number;
   productDesc: string | null;
+  /** 产品需求快照（未建档期 = 线索需求；建档后 = 产品档案留痕）；无快照时整字段省略 */
+  productSnapshot?: Prisma.InputJsonValue;
+}
+
+/**
+ * **产品需求快照补丁**（未建档期）：线索表单里的产品需求。
+ * 只有 `undefined` 才表示「本次不动」，故可支持「只改一处也刷新快照」。
+ * 注：目标价位 / 客户期望交期 / 客户具体要求各有线索级列，不属本快照。
+ */
+export interface LeadProductSnapshotInput {
+  name?: string | null;
+  craftIds?: string[] | null;
+  audienceId?: string | null;
+  categoryId?: string | null;
+  sizeL?: number | null;
+  sizeW?: number | null;
+  sizeH?: number | null;
+  weight?: number | null;
+}
+
+/** 按产品档案组装产品快照（已关联产品时以产品库为权威；工艺取 ProductCraftLink 的工艺 ID） */
+export async function buildLeadProductSnapshotFromRecord(
+  productId: string,
+  db?: DbClient,
+): Promise<Record<string, unknown> | null> {
+  const p = await productRepository.findSnapshotById(productId, db);
+  if (!p) return null;
+  return {
+    productId: p.id,
+    productNo: p.productNo,
+    name: p.name,
+    sku: p.sku,
+    craftIds: p.crafts.map((c) => c.productCraftId),
+    audienceId: p.audienceId,
+    categoryId: p.categoryId,
+    sizeL: p.sizeL,
+    sizeW: p.sizeW,
+    sizeH: p.sizeH,
+    weight: p.weight,
+  };
+}
+
+/** 合并产品需求补丁到既有快照（`undefined` 不动；原快照为空则从零开始） */
+export function mergeLeadProductSnapshot(
+  prev: unknown,
+  patch: LeadProductSnapshotInput,
+): Record<string, unknown> {
+  const base = (prev ?? null) as Record<string, unknown> | null;
+  const defined = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
+  return { ...(base ?? {}), ...defined };
 }
 
 export interface AttachmentCreateInput {
@@ -561,6 +652,8 @@ export async function createLeadAggregate(input: {
   resolveUsdRate: () => Promise<number>;
   quantity: number;
   productDesc: string | null;
+  /** 未建档期的产品需求（无产品外键时写入明细快照；有产品外键时忽略，改以产品档案留痕） */
+  productSnapshot?: LeadProductSnapshotInput | null;
   attachments: AttachmentCreateInput[];
   actorUserId: string | null;
   /** 事务内客户建档 / 复用（不传 = 本次不关联客户） */
@@ -591,10 +684,24 @@ export async function createLeadAggregate(input: {
     // 来源推导同样在客户关联确定之后、写入之前（客户尚无来源时由本次线索确立 → 必须同事务）
     const source = input.resolveSource ? await input.resolveSource(tx, customerId) : undefined;
 
-    // 明细：有产品外键、或有线索级「客户具体要求」时建立一条意向明细
+    // 产品快照：已关联产品 → 以产品档案留痕；未建档（无产品外键）→ 线索提交的产品需求
+    const itemSnapshot = productId
+      ? await buildLeadProductSnapshotFromRecord(productId, tx)
+      : input.productSnapshot
+        ? mergeLeadProductSnapshot(null, input.productSnapshot)
+        : null;
+
+    // 明细：有产品外键、或有线索级「客户具体要求」、或有未建档产品需求快照时建立一条意向明细
     const items: LeadItemCreateInput[] =
-      productId || input.productDesc
-        ? [{ productId, quantity: input.quantity, productDesc: input.productDesc }]
+      productId || input.productDesc || itemSnapshot
+        ? [
+          {
+            productId,
+            quantity: input.quantity,
+            productDesc: input.productDesc,
+            ...(itemSnapshot ? { productSnapshot: itemSnapshot as Prisma.InputJsonValue } : {}),
+          },
+        ]
         : [];
 
     const leadNo = await getNextNumber(tx, 'LEAD');
@@ -658,6 +765,10 @@ export async function updateLeadRecord(input: {
   /** 线索级「客户具体要求」，与 Product.description 无关 */
   productDesc?: string | null;
   quantity?: number;
+  /** 未建档期的产品需求补丁（undefined = 本次不动快照；有产品外键时忽略） */
+  productSnapshotPatch?: LeadProductSnapshotInput;
+  /** 产品快照是否可写（线索已确认 → false：快照冻结，不再随产品档案刷新） */
+  productSnapshotMutable?: boolean;
   attachmentRows?: AttachmentCreateInput[];
   actorUserId: string | null;
   /** 事务客户端（由 updateLeadAggregate 传入） */
@@ -689,17 +800,34 @@ export async function updateLeadRecord(input: {
     }
   }
 
-  // LeadItem 明细维护（V1.1：明细只有 productId / quantity / productDesc 三列）
-  // 沿用既有「显式传 productId 则整组替换 / 否则增量更新」语义
+  // LeadItem 明细维护（V1.2：明细 = productId / quantity / productDesc / productSnapshot）
+  // 语义不变：显式传 productId 则「整组替换」，否则「增量更新」。
+  // 产品快照口径：已关联产品 → 以**产品档案**为权威刷新（留痕）；未建档 → 合并本次提交的产品需求。
+  const existingItem = await leadRepository.items.findFirstByLead(input.leadId, input.db);
+  // 生效产品外键：显式传入优先（undefined = 本次不改关联 → 沿用既有）
+  const effProductId =
+    input.productId !== undefined ? input.productId : (existingItem?.productId ?? null);
+  // 线索已确认（只读）后快照冻结，不再刷新
+  const snapshotMutable = input.productSnapshotMutable !== false;
+  const snapshot = !snapshotMutable
+    ? undefined
+    : effProductId
+      ? ((await buildLeadProductSnapshotFromRecord(effProductId, input.db)) ?? undefined)
+      : input.productSnapshotPatch
+        ? mergeLeadProductSnapshot(existingItem?.productSnapshot, input.productSnapshotPatch)
+        : undefined;
+
   if (input.productId !== undefined) {
     await leadRepository.items.deleteManyByLead(input.leadId, input.db);
-    if (input.productId) {
+    // 有产品外键、有客户具体要求、或有未建档产品需求 → 保留一条意向明细
+    if (input.productId || input.productDesc || snapshot) {
       await leadRepository.items.create(
         {
           leadId: input.leadId,
-          productId: input.productId,
+          productId: input.productId ?? null,
           productDesc: input.productDesc ?? null,
           quantity: input.quantity || 1,
+          ...(snapshot ? { productSnapshot: snapshot as Prisma.InputJsonValue } : {}),
         },
         input.db,
       );
@@ -708,8 +836,8 @@ export async function updateLeadRecord(input: {
     const patch: Record<string, unknown> = {};
     if (input.productDesc !== undefined) patch.productDesc = input.productDesc ?? null;
     if (input.quantity !== undefined) patch.quantity = input.quantity || 1;
+    if (snapshot) patch.productSnapshot = snapshot as Prisma.InputJsonValue;
     if (Object.keys(patch).length) {
-      const existingItem = await leadRepository.items.findFirstByLead(input.leadId, input.db);
       if (existingItem) {
         await leadRepository.items.updateById(
           existingItem.id,
@@ -723,6 +851,7 @@ export async function updateLeadRecord(input: {
             productId: null,
             productDesc: input.productDesc ?? null,
             quantity: input.quantity || 1,
+            ...(snapshot ? { productSnapshot: snapshot as Prisma.InputJsonValue } : {}),
           },
           input.db,
         );
@@ -743,6 +872,10 @@ export async function updateLeadAggregate(input: {
   update: Record<string, unknown>;
   productDesc?: string | null;
   quantity?: number;
+  /** 未建档期的产品需求补丁（undefined = 本次不动明细快照；有产品外键时忽略） */
+  productSnapshotPatch?: LeadProductSnapshotInput;
+  /** 产品快照是否可写（线索已确认 → false：快照冻结，不再随产品档案刷新） */
+  productSnapshotMutable?: boolean;
   attachmentRows?: AttachmentCreateInput[];
   actorUserId: string | null;
   resolveCustomerId?: (tx: TxClient) => Promise<string | null | undefined>;
@@ -801,6 +934,8 @@ export async function updateLeadAggregate(input: {
       productId,
       productDesc: input.productDesc,
       quantity: input.quantity,
+      productSnapshotPatch: input.productSnapshotPatch,
+      productSnapshotMutable: input.productSnapshotMutable,
       attachmentRows: input.attachmentRows,
       actorUserId: input.actorUserId,
       db: tx,

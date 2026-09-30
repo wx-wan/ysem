@@ -108,8 +108,12 @@ export const leadRepository = {
     },
 
     /** 取该线索的第一条明细（既有语义：仅取首条做增量更新） */
+    /** 取明细（含产品需求快照：未建档期更新时用于合并，已建档时仅取 id 亦可） */
     findFirstByLead(leadId: string, db: DbClient = prisma) {
-      return db.leadItem.findFirst({ where: { leadId }, select: { id: true } });
+      return db.leadItem.findFirst({
+        where: { leadId },
+        select: { id: true, productId: true, productSnapshot: true },
+      });
     },
 
     updateById(id: string, data: Prisma.LeadItemUncheckedUpdateInput, db: DbClient = prisma) {

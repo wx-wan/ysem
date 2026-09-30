@@ -192,6 +192,32 @@ export const canReadProduct = (
 };
 
 /**
+ * 写入侧判定：谁可编辑产品。
+ *
+ * 规则（对象级授权，与「可见即可编辑」解耦）：
+ *   可编辑 ⟺ 调用者为管理员（roleCode admin|ADMIN）
+ *          OR 调用者为创建人（createdBy === uid）
+ *          OR 调用人 ∈ 指定可见人（visibleUsers）
+ *
+ * 说明：
+ *  - 「指定人」即产品的 `visibleUsers`，与可见性同口径；即便产品为 PUBLIC，
+ *    只要未把某人列为可见人、也非创建人，亦不可编辑（仅创建人可编辑）。
+ *  - 沿用 `isAdmin` 放行（管理员恒可编辑任意产品）。
+ *  - 仅依赖 `createdBy` / `visibleUsers`，不读取 `visibility` 字段。
+ */
+export const canEditProduct = (
+  actor: { userId?: string | null; isAdmin: boolean },
+  product: { createdBy?: string | null; visibleUsers?: { userId: string }[] | null } | null | undefined,
+): boolean => {
+  if (!product) return false;
+  if (actor.isAdmin) return true;
+  const uid = actor.userId;
+  if (!uid) return false;
+  if (product.createdBy === uid) return true;
+  return (product.visibleUsers ?? []).some((v) => v.userId === uid);
+};
+
+/**
  * 读取侧投影：对「带 `product` 关联（+ 历史 Snapshot 字段）」的单行做可见性投影。
  *
  * 【冻结原则 —— Round R-5.2 · D14：权限不改变历史事实】

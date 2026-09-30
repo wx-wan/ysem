@@ -151,6 +151,9 @@ function listInput(req: AuthRequest): customerService.CustomerListInput {
     page: req.query.page as string | undefined,
     pageSize: req.query.pageSize as string | undefined,
     ownerId: req.query.ownerId as string | undefined,
+    publicSea: req.query.publicSea as string | undefined,
+    keyAccount: req.query.keyAccount as string | undefined,
+    tags: req.query.tags as string | undefined,
   };
 }
 

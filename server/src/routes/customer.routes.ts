@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../middleware/auth";
+import { authenticate, requirePerm } from "../middleware/auth";
 import multer from "multer";
 import * as ctrl from "../controllers/customer.controller";
 
@@ -256,7 +256,7 @@ router.get("/:id", ctrl.getById);
  *       200:
  *         description: 创建成功
  */
-router.post("/", ctrl.create);
+router.post("/", requirePerm("customer:create"), ctrl.create);
 
 /**
  * @swagger
@@ -273,7 +273,7 @@ router.post("/", ctrl.create);
  *       200:
  *         description: 更新成功
  */
-router.put("/:id", ctrl.update);
+router.put("/:id", requirePerm("customer:update"), ctrl.update);
 
 /**
  * @swagger
@@ -290,6 +290,8 @@ router.put("/:id", ctrl.update);
  *       200:
  *         description: 删除成功
  */
-router.delete("/:id", ctrl.remove);
+// 客户写操作按**按钮级权限**判定（系统设置 → 权限管理 → 客户管理 → 客户新增/编辑/删除）；
+// admin 全量放行（requirePerm 内置）。权限码见 prisma/seed.ts。
+router.delete("/:id", requirePerm("customer:delete"), ctrl.remove);
 
 export default router;
