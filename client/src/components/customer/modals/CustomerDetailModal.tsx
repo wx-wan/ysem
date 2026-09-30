@@ -21,8 +21,8 @@ import { Customer, customerApi, type SalesOrderSummary, type OpportunitySummary,
 import { getCustomerLogs, LOG_ACTION_LABELS, type OperationLogItem } from '../../../api/operationLog';
 import { SALES_ORDER_STATUS_TEXT, type SalesOrderStatus } from '../../../api/salesOrders';
 import { useNavigate } from 'react-router-dom';
-import { fetchCustomerDetail, setDetailCache } from '../../../utils/customerCache';
 import { useAuthStore } from '../../../stores/useAuthStore';
+import { usePermission } from '../../../hooks/usePermission';
 import Price from '../../common/Price';
 import { getCustomerLogicLabel, getDisplayContactMethods } from '../shared/utils';
 import { CommToolIcon } from '../../common/CommToolIcon';
@@ -113,6 +113,12 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const currentUser = useAuthStore((s) => s.user);
   const isAdmin = currentUser?.role?.code === 'admin';
   const canAct = !!customer && (customer.ownerId === currentUser?.id || isAdmin);
+  // 编辑 / 删除按钮：**归属（canAct）+ 按钮级权限**双门禁 ——
+  // 权限码见 prisma/seed.ts，可在「系统设置 → 权限管理 → 客户管理」按角色勾选；admin 内置放行。
+  // 修掉「按钮人人可见、点了才报『客户不存在』」的误导性交互。
+  const { hasPerm } = usePermission();
+  const canEdit = canAct && hasPerm('customer:update');
+  const canDelete = canAct && hasPerm('customer:delete');
 
   // 头像/标签主题色：与卡片视图（CustomerCard）保持一致
   const avatarBg = getAvatarColor(ct.tier, token);
@@ -149,7 +155,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // 列表项不含 owner/pipelines，打开后用 getById 异步补充完整数据。
   // 放在 Modal 内部 effect，使父组件的点击处理保持同步、零 async 阻塞，点击即弹窗。
-  // 经前端缓存 fetchCustomerDetail：命中则直接复用，避免重复请求。
   useEffect(() => {
     // 仅在弹窗打开且客户存在时拉取；依赖加入 open，
     // 保证「同一客户二次打开」也会重新补充完整数据（列表项不含 orders/activities）
@@ -159,7 +164,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     }
     let cancelled = false;
     setDetailLoaded(false);
-    fetchCustomerDetail(customer.id).then((data) => {
+    customerApi.getById(customer.id).then((res) => {
+      const data = res.data.data;
       if (!cancelled && data) {
         onDetailLoaded?.(data);
         setDetailLoaded(true);
@@ -479,6 +485,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     )}
                   </span>
                   <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    {canEdit && (
                     <button
                       type="button"
                       title="编辑"
@@ -493,6 +500,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     >
                       <EditOutlined />
                     </button>
+                    )}
+                    {canDelete && (
                     <button
                       type="button"
                       title="删除"
@@ -507,6 +516,7 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                     >
                       <DeleteOutlined />
                     </button>
+                    )}
                   </div>
                 </div>
 
@@ -554,7 +564,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       .then((res: any) => {
                         const updated = res?.data?.data;
                         if (!updated) return;
-                        setDetailCache({ ...customer, id, tags: updated.tags });
                         onTagsChanged?.(id, updated.tags);
                       })
                       .catch(() => {
@@ -720,7 +729,6 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         onSaved={(updated) => {
           // 用当前 customer 兜底补全所有字段，仅更新 updated 实际包含的字段，避免关联信息丢失
           const merged = { ...customer, ...updated };
-          setDetailCache(merged);
           onSaved?.(merged);
           setEditDrawerOpen(false);
         }}

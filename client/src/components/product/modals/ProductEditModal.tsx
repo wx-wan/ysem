@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '../../../stores/useAuthStore';
 import productApi, {
   Product, ProductCraft, ProductAudience, ProductCategory, ProductGroupItemInput, productGroupApi, taxonomyApi,
+  type ProductNameOwnershipResult,
 } from '../../../api/products';
 import { certificateApi, Certificate } from '../../../api/certificates';
 import { userApi } from '../../../api/users';
@@ -134,6 +135,44 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
     }, [onClose]);
 
     const isEdit = !!editing;
+
+    /**
+     * 产品名占用状态：作为「同款 Tag」渲染在**产品名 label 行**（与线索表单客户名一致，仅颜色区分）。
+     *
+     * 触发：输入即查询（防抖 350ms），调用轻量只读接口 `GET /api/products/ownership`；
+     * 编辑态且名称未变 → 不查询（否则自己会被判成「已有同名」）；查询失败静默不显示，不阻断输入。
+     */
+    const watchedName = Form.useWatch('name', form) as string | undefined;
+    const [nameState, setNameState] = useState<'idle' | 'free' | 'mine' | 'other'>('idle');
+    const [nameOwner, setNameOwner] = useState<string | undefined>();
+    const [nameChecking, setNameChecking] = useState(false);
+
+    useEffect(() => {
+      if (!open) { setNameState('idle'); setNameChecking(false); return; }
+      const keyword = (watchedName || '').trim();
+      if (!keyword || (isEdit && keyword === (editing?.name || '').trim())) {
+        setNameState('idle');
+        setNameChecking(false);
+        return;
+      }
+      let alive = true;
+      setNameChecking(true);
+      const timer = setTimeout(async () => {
+        try {
+          const res = await productApi.nameOwnership(keyword, editing?.id ?? null);
+          if (!alive) return;
+          const data: ProductNameOwnershipResult | undefined = res?.data?.data;
+          if (data?.code === 'NOT_FOUND') setNameState('free');
+          else if (data?.code === 'OWNED_BY_OTHER') { setNameState('other'); setNameOwner(data?.ownerName); }
+          else setNameState('mine');
+        } catch {
+          if (alive) setNameState('idle'); // 查询失败不阻断输入
+        } finally {
+          if (alive) setNameChecking(false);
+        }
+      }, 350);
+      return () => { alive = false; clearTimeout(timer); };
+    }, [open, watchedName, isEdit, editing]);
 
     const watchedCraftIds = Form.useWatch('craftIds', form) as string[] | undefined;
     const watchedAudienceId = Form.useWatch('audienceId', form) as string | undefined;
@@ -553,7 +592,31 @@ export const ProductEditModal = forwardRef<ProductEditModalHandle, ProductEditMo
                   </Form.Item>
                 </div>
                 <div className="pm-product-card__body">
-                  <Form.Item name="name" label={t('product.name')} rules={[{ required: true, message: t('product.nameRequired') }]} style={{ marginBottom: 14 }}>
+                  <Form.Item
+                    name="name"
+                    label={
+                      // 名称占用状态一律作为「同款 Tag」排布在 label 行（仅颜色区分），不挂在输入框右侧
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span>{t('product.name')}</span>
+                        {nameChecking && (
+                          <Tag style={{ marginInlineEnd: 0 }}>{t('common.loading')}</Tag>
+                        )}
+                        {!nameChecking && nameState === 'free' && (
+                          <Tag color="green" style={{ marginInlineEnd: 0 }}>{t('product.nameAvailable')}</Tag>
+                        )}
+                        {!nameChecking && nameState === 'mine' && (
+                          <Tag color="blue" style={{ marginInlineEnd: 0 }}>{t('product.nameExistsVisible')}</Tag>
+                        )}
+                        {!nameChecking && nameState === 'other' && (
+                          <Tag color="orange" style={{ marginInlineEnd: 0 }}>
+                            {t('product.nameExistsOther', { name: nameOwner || t('common.someone') })}
+                          </Tag>
+                        )}
+                      </span>
+                    }
+                    rules={[{ required: true, message: t('product.nameRequired') }]}
+                    style={{ marginBottom: 14 }}
+                  >
                     <Input placeholder={t('product.namePlaceholder')} allowClear />
                   </Form.Item>
 

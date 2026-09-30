@@ -1,22 +1,24 @@
 import { Input, Select } from 'antd';
-import {
-  SearchOutlined,
-} from '@ant-design/icons';
-import TagSelector from '../../TagSelector';
 import { INTENT_LABEL } from '../shared/intentLevel';
-import ViewModeSwitch from '../../common/ViewModeSwitch';
-import PageToolbar from '../../common/page/PageToolbar';
+import FilterToolbar, { FilterGroup } from '../../common/FilterToolbar';
 import CapsuleSwitch from '../../common/CapsuleSwitch';
 import type { UserSelectItem } from '../../../api/users';
 
-type FilterType = 'all' | 'noOrder' | 'done' | 'key' | 'public';
+/** 数据范围（切换栏）：我的 / 团队（管理员）/ 公海 */
+export type CustomerScopeTab = 'mine' | 'team' | 'public';
+/** 成交状态筛选：'' = 不限 */
+export type CustomerDealStatus = '' | 'noOrder' | 'done';
 
-const MAIN_FILTERS: { key: FilterType; label: string }[] = [
-  { key: 'all', label: '我的客户' },
-  { key: 'key', label: '重点客户' },
-  { key: 'public', label: '公海客户' },
+const DEAL_STATUS_OPTIONS: { key: string; label: string }[] = [
+  { key: '', label: '全部' },
   { key: 'noOrder', label: '未成交' },
   { key: 'done', label: '已成交' },
+];
+
+/** 客户级别（isKeyAccount）：与成交状态正交，可叠加 */
+const KEY_LEVEL_OPTIONS: { key: string; label: string }[] = [
+  { key: '', label: '全部' },
+  { key: 'key', label: '重点客户' },
 ];
 
 const NO_ORDER_SUB_FILTERS: { key: string; label: string }[] = [
@@ -34,22 +36,43 @@ const DONE_SUB_FILTERS: { key: string; label: string }[] = [
   { key: 'old', label: '往年老客' },
 ];
 
+/** 排序方式：默认智能排序（业务优先级），可切换为按创建时间升 / 降序 */
+const SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: 'smart', label: '智能排序' },
+  { value: 'createdAt:desc', label: '按创建时间降序' },
+  { value: 'createdAt:asc', label: '按创建时间升序' },
+];
+
 interface CustomerToolbarProps {
-  token: any;
-  keyword: string;
-  setKeyword: (v: string) => void;
-  fetchData: () => void;
+  /** 搜索框输入值（本地态，由页面持有并防抖提交） */
+  searchValue: string;
+  onSearchChange: (v: string) => void;
+  /** 回车立即提交搜索 */
+  onSearchSubmit?: () => void;
   setPage: (v: number) => void;
-  viewMode: 'card' | 'list';
-  setViewMode: (v: 'card' | 'list') => void;
-  filterTags: string;
-  setFilterTags: (v: string) => void;
-  filterType: FilterType;
-  setFilterType: (v: FilterType) => void;
-  subFilterType: string;
-  setSubFilterType: (v: string) => void;
+  /** 结果总数（第二行「共 N 条结果」） */
+  total: number;
+  /** 排序方式（smart / createdAt:desc / createdAt:asc） */
+  sortValue: string;
+  onSortChange: (v: string) => void;
+  /** 范围切换（常驻第二行）：我的 / 团队（管理员）/ 公海 */
+  scopeTab: CustomerScopeTab;
+  onScopeChange: (v: CustomerScopeTab) => void;
+  /** 筛选条件（展开面板） */
+  dealStatus: CustomerDealStatus;
+  onDealStatusChange: (v: string) => void;
+  intentSub: string;
+  onIntentSubChange: (v: string) => void;
+  keyOnly: boolean;
+  onKeyOnlyChange: (v: boolean) => void;
   isAdmin: boolean;
-  filterTypePublic: boolean;
+  /** 标签关键词（本地输入态，由页面持有并防抖提交；对客户标签做模糊匹配） */
+  tagValue: string;
+  onTagChange: (v: string) => void;
+  /** 回车立即提交标签筛选 */
+  onTagSubmit?: () => void;
+  /** 清除全部筛选条件（数据范围切换保留） */
+  onClearFilters: () => void;
   selectedOwnerId: string;
   setSelectedOwnerId: (v: string) => void;
   userList: UserSelectItem[];
@@ -57,99 +80,114 @@ interface CustomerToolbarProps {
   doneBreakdown?: Record<string, number>;
 }
 
+/**
+ * 客户列表筛选栏：交互方式与线索页保持一致（搜索 + 「筛选」展开面板 + 范围切换 + 结果数 + 清除筛选）。
+ * 第二行只保留数据范围（我的 / 团队 / 公海）；客户分类（成交状态、采购意向 / 客户类型、重点客户）
+ * 统一收进「筛选」展开面板作为筛选条件。
+ */
 export default function CustomerToolbar({
-  token, keyword, setKeyword, fetchData, setPage,
-  viewMode, setViewMode, filterTags, setFilterTags,
-  filterType, setFilterType, subFilterType, setSubFilterType,
-  isAdmin, filterTypePublic, selectedOwnerId, setSelectedOwnerId, userList,
+  searchValue, onSearchChange, onSearchSubmit, setPage, total,
+  sortValue, onSortChange,
+  scopeTab, onScopeChange,
+  dealStatus, onDealStatusChange, intentSub, onIntentSubChange,
+  keyOnly, onKeyOnlyChange, isAdmin,
+  tagValue, onTagChange, onTagSubmit, onClearFilters,
+  selectedOwnerId, setSelectedOwnerId, userList,
   noOrderBreakdown, doneBreakdown,
 }: CustomerToolbarProps) {
-  const showNoOrderSub = filterType === 'noOrder';
-  const showDoneSub = filterType === 'done';
-
-  const handleFilterChange = (next: FilterType) => {
-    setFilterType(next);
-    setSubFilterType('');
-    setPage(1);
-  };
-
-  const handleSubFilterChange = (next: string) => {
-    setSubFilterType(next);
-    setPage(1);
-  };
+  // 业务员筛选仅在管理员「团队」范围下有意义（「我的」已锁定本人、公海无归属人）
+  const showOwnerFilter = isAdmin && scopeTab === 'team';
+  const subOptions = dealStatus === 'done' ? DONE_SUB_FILTERS : NO_ORDER_SUB_FILTERS;
+  const subCounts = dealStatus === 'done' ? doneBreakdown : noOrderBreakdown;
+  // 角标 / 清除筛选统计展开面板内的条件（范围切换常驻可见，不计入）
+  const activeCount =
+    (dealStatus ? 1 : 0) + (intentSub ? 1 : 0) + (keyOnly ? 1 : 0) +
+    (tagValue ? 1 : 0) + (showOwnerFilter && selectedOwnerId ? 1 : 0);
 
   return (
-    <PageToolbar
-      actions={
-        <>
-          <ViewModeSwitch value={viewMode} onChange={setViewMode} />
-        </>
-      }
-      extra={
-        (showNoOrderSub || showDoneSub) ? (
-          <CapsuleSwitch
-            value={subFilterType}
-            onChange={handleSubFilterChange}
-            activeColor="#1677ff"
-            options={(showNoOrderSub ? NO_ORDER_SUB_FILTERS : DONE_SUB_FILTERS).map((opt) => ({
-              key: opt.key,
-              label: opt.label,
-              count: showNoOrderSub
-                ? (noOrderBreakdown?.[opt.key] ?? 0)
-                : (doneBreakdown?.[opt.key] ?? 0),
-            }))}
-          />
-        ) : undefined
+    <FilterToolbar
+      searchPlaceholder="搜索客户名、国家、联系人..."
+      searchValue={searchValue}
+      onSearchChange={onSearchChange}
+      onSearchSubmit={onSearchSubmit}
+      sortOptions={SORT_OPTIONS}
+      sortValue={sortValue}
+      onSortChange={onSortChange}
+      activeCount={activeCount}
+      onClear={onClearFilters}
+      total={total}
+      tabs={
+        <CapsuleSwitch<CustomerScopeTab>
+          value={scopeTab}
+          onChange={onScopeChange}
+          activeColor="#1677ff"
+          showCount={false}
+          options={[
+            { key: 'mine', label: '我的' },
+            // 「团队」= 全公司已分配客户；仅管理员可见
+            ...(isAdmin ? [{ key: 'team' as const, label: '团队' }] : []),
+            { key: 'public', label: '公海' },
+          ]}
+        />
       }
     >
-      <Input
-        prefix={<SearchOutlined style={{ color: token.colorTextQuaternary }} />}
-        placeholder="搜索客户名、国家、联系人..."
-        style={{ flex: '1 1 220px', minWidth: 160, maxWidth: 280, borderRadius: 8, height: 36 }}
-        value={keyword}
-        onChange={(e) => setKeyword(e.target.value)}
-        onPressEnter={() => { setPage(1); fetchData(); }}
-        allowClear
+      <FilterGroup
+        label="成交状态"
+        value={dealStatus}
+        onChange={onDealStatusChange}
+        options={DEAL_STATUS_OPTIONS}
       />
 
-      <CapsuleSwitch<FilterType>
-        value={filterType}
-        onChange={handleFilterChange}
-        activeColor="#1677ff"
-        showCount={false}
-        options={MAIN_FILTERS.map((opt) => ({
-          key: opt.key,
-          label: opt.key === 'all' && isAdmin ? '团队客户' : opt.label,
-        }))}
+      {(dealStatus === 'noOrder' || dealStatus === 'done') && (
+        <FilterGroup
+          label={dealStatus === 'noOrder' ? '采购意向' : '客户类型'}
+          value={intentSub}
+          onChange={onIntentSubChange}
+          options={subOptions.map((opt) => ({
+            key: opt.key,
+            label: opt.label,
+            count: subCounts?.[opt.key] ?? 0,
+          }))}
+        />
+      )}
+
+      <FilterGroup
+        label="客户级别"
+        value={keyOnly ? 'key' : ''}
+        onChange={(key) => onKeyOnlyChange(key === 'key')}
+        options={KEY_LEVEL_OPTIONS}
       />
 
-      {/* 边界适配：此处的 TagSelector 承载的是「标签筛选字符串」（非 Customer.tags 数据），
-          因此在组件边界完成 string[] ↔ 逗号字符串转换；TagSelector 自身保持严格 string[] 契约。
-          （筛选 state 仍为 string：Customers.tsx 的 params.tags 语义未变，见 FOLLOW-UP） */}
-      <TagSelector
-        value={filterTags ? filterTags.split(',').filter(Boolean) : []}
-        onChange={(v) => { setFilterTags(v.join(',')); setPage(1); }}
-        placeholder="输入标签名称"
-        showAddButton={false}
-      />
-
-      {isAdmin && !filterTypePublic && (
-        <Select
-          placeholder="筛选业务员"
-          value={selectedOwnerId || undefined}
-          onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
+      {/* 标签筛选：输入关键词即对客户标签做模糊匹配（大小写不敏感的子串） */}
+      <FilterGroup label="客户标签">
+        <Input
           allowClear
-          style={{ flex: '0 1 160px', minWidth: 140, borderRadius: 8 }}
-          showSearch
-          filterOption={(input: string, option: any) =>
-            (option?.label?.toLowerCase() ?? '').includes((input ?? '').toLowerCase())
-          }
-          options={userList.map((u: UserSelectItem) => ({
+          placeholder="输入标签关键词"
+          value={tagValue}
+          onChange={(e) => onTagChange(e.target.value)}
+          onPressEnter={onTagSubmit}
+        />
+      </FilterGroup>
+
+      {showOwnerFilter && (
+        <FilterGroup label="业务员">
+          <Select
+            placeholder="筛选业务员"
+            value={selectedOwnerId || undefined}
+            onChange={(v) => { setSelectedOwnerId(v || ''); setPage(1); }}
+            allowClear
+            style={{ width: '100%' }}
+            showSearch
+            filterOption={(input: string, option: any) =>
+              (option?.label?.toLowerCase() ?? '').includes((input ?? '').toLowerCase())
+            }
+            options={userList.map((u: UserSelectItem) => ({
               value: u.id,
               label: u.realName || u.username,
             }))}
-        />
+          />
+        </FilterGroup>
       )}
-    </PageToolbar>
+    </FilterToolbar>
   );
 }

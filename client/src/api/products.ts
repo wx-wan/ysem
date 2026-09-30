@@ -1,5 +1,4 @@
 import request, { type ApiResponse } from './request';
-import { downloadFile } from '../utils/downloadFile';
 
 // ============ 产品分类 Taxonomy ============
 
@@ -127,10 +126,14 @@ export interface Product {
   visibility?: 'PUBLIC' | 'PRIVATE';
   visibleUserIds?: string[];
   visibleUsers?: { userId: string }[];
+  /** 创建人 id（后端标量返回）；销售记录可见性规则据此判断「创建人本人的记录」 */
+  createdBy?: string | null;
   activities?: ProductActivity[];
   remark?: string | null;
   createdAt: string;
   updatedAt: string;
+  /** 后端按当前用户计算：创建人 / 指定可见人 / 管理员可编辑；前端据此控制「编辑产品」按钮 */
+  canEdit?: boolean;
 }
 
 interface ProductListParams {
@@ -141,6 +144,8 @@ interface ProductListParams {
   audienceId?: string;
   categoryId?: string;
   visibility?: string;
+  /** 排序：createdAt:desc（默认）| createdAt:asc */
+  sort?: string;
 }
 
 /** 产品 / 组合 混合列表条目 */
@@ -155,6 +160,20 @@ export interface ProductOption {
   sku?: string | null;
 }
 
+/**
+ * 产品名占用检查结果（`GET /api/products/ownership`）。
+ *
+ * 产品无归属概念，故只有「是否同名 + 是否可见」两个维度：
+ * `NOT_FOUND` = 名称可用；`OWNED_BY_ME` = 同名产品在你可见范围内（可直接复用）；
+ * `OWNED_BY_OTHER` = 存在同名但不在你可见范围（仅回创建人显示名，提示避免重复建档）。
+ */
+export interface ProductNameOwnershipResult {
+  code: 'NOT_FOUND' | 'OWNED_BY_ME' | 'OWNED_BY_OTHER';
+  productId?: string;
+  productNo?: string;
+  ownerName?: string;
+}
+
 const productApi = {
   getList: (params?: ProductListParams) =>
     request.get<ApiResponse<{ list: Product[]; total: number; page: number; pageSize: number }>>('/products', { params }),
@@ -167,6 +186,12 @@ const productApi = {
   // SKU 预览：按 工艺-受众 返回下一个自动生成的 SKU（不落库）
   skuPreview: (params: { craftIds?: string; audienceId?: string; excludeId?: string }) =>
     request.get<ApiResponse<{ sku: string | null }>>('/products/sku-preview', { params }),
+  // 产品名占用检查（轻量只读）：产品表单在产品名 label 行实时渲染状态 Tag；
+  // excludeId 供编辑态排除自身（否则改其它字段也会把自己判成「已有同名」）
+  nameOwnership: (name: string, excludeId?: string | null) =>
+    request.get<ApiResponse<ProductNameOwnershipResult>>('/products/ownership', {
+      params: { name, excludeId: excludeId ?? undefined },
+    }),
   create: (data: Partial<Product>) => request.post('/products', data),
   update: (id: string, data: Partial<Product>) => request.put(`/products/${id}`, data),
   delete: (id: string) => request.delete(`/products/${id}`),
@@ -175,13 +200,7 @@ const productApi = {
 export { productApi };
 export default productApi;
 
-export interface BatchCreateResult {
-  total: number;
-  successCount: number;
-  failCount: number;
-  created: Product[];
-  failed: { index: number; name?: string; reason: string }[];
-}
+// （原 `BatchCreateResult` 为 Excel 导入结果类型，随导入下线一并移除）
 
 // ============ 组合 ComboProduct ============
 export interface ProductGroupItemInput {
@@ -246,17 +265,8 @@ export interface Quote {
 }
 
 // ---- 接口封装 ----
-export const importProductApi = {
-  importExcel: (file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return request.post<ApiResponse<BatchCreateResult>>('/products/import', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-  },
-  // 模板为受保护资源：必须带 token 下载（window.open 不带 Authorization 头 → 401）
-  downloadTemplate: () => downloadFile('/products/template', 'product-import-template.xlsx'),
-};
+// 【已下线】`importProductApi`（Excel 导入 / 模板下载）已随「产品不支持导入」规则移除，
+// 对应后端 `POST /api/products/import`、`GET /api/products/template` 同步下线。
 
 export const productGroupApi = {
   getList: (params?: { page?: number; pageSize?: number; keyword?: string }) =>

@@ -1,24 +1,20 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty,
+  App, Spin, theme, Row, Col, Pagination, Modal, Radio, Empty, Card,
 } from 'antd';
 import { customerApi, Customer, type OpportunitySummary } from '../api/customers';
 import { userApi, User, UserSelectItem } from '../api/users';
 import { useAuthStore } from '../stores/useAuthStore';
 import { compareCustomers } from '../components/customer/shared/utils';
-import { diffList } from '../utils/diff';
-import {
-  listCacheKey, getListCache, setListCache, invalidateAll, invalidateDetail, setDetailCache, installCacheLifecycle,
-} from '../utils/customerCache';
 import CustomerStats from '../components/customer/cards/CustomerStats';
 import CustomerToolbar from '../components/customer/list/CustomerToolbar';
 import CustomerCard from '../components/customer/cards/CustomerCard';
-import CustomerList from '../components/customer/list/CustomerList';
 import CustomerDetailModal from '../components/customer/modals/CustomerDetailModal';
 import TransferOwnerModal from '../components/common/TransferOwnerModal';
 
 import { buildTablePagination } from '../components/common/tablePagination';
 import { useReleaseToPool } from '../hooks/useReleaseToPool';
+import { debounce } from '../utils/rateLimit';
 
 export default function CustomersPage() {
   const { token } = theme.useToken();
@@ -38,10 +34,16 @@ export default function CustomersPage() {
   const [page, setPage] = useState(1);
   const [keyword, setKeyword] = useState('');
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'card' | 'list'>('card');
-  const [filterTags, setFilterTags] = useState('');
-  const [filterType, setFilterType] = useState<'all' | 'noOrder' | 'done' | 'key' | 'public'>('all');
-  const [subFilterType, setSubFilterType] = useState<string>(''); // 未成交: 'A'|'B'|'C'|'D'，已成交: 'new'|'old'
+  // 标签筛选：已提交的标签关键词（对客户标签做模糊匹配）+ 输入框本地态
+  const [tagKeyword, setTagKeyword] = useState('');
+  const [tagInput, setTagInput] = useState('');
+  const [sort, setSort] = useState<'smart' | 'createdAt:desc' | 'createdAt:asc'>('smart');
+  // 数据范围（切换栏）：我的 / 团队（管理员）/ 公海；角色就绪后确定默认值
+  const [scopeTab, setScopeTab] = useState<'mine' | 'team' | 'public' | null>(null);
+  // 筛选条件（展开面板）：成交状态 + 采购意向/客户类型子筛选 + 重点客户
+  const [dealStatus, setDealStatus] = useState<'' | 'noOrder' | 'done'>('');
+  const [intentSub, setIntentSub] = useState<string>(''); // 未成交: 'A'|'B'|'C'|'D'|'none'，已成交: 'new'|'old'
+  const [keyOnly, setKeyOnly] = useState(false);
 
   // 详情弹窗（居中大弹窗，替代抽屉）
   const [detailModalOpen, setDetailModalOpen] = useState(false);
@@ -75,51 +77,48 @@ export default function CustomersPage() {
     setList((prev) => sortCustomers(updater(prev)));
   }, [sortCustomers]);
 
-  // 当前页展示列表
+  // 成交状态 + 子筛选 → 接口 type（'' = 不限）
+  const dealType = dealStatus ? (intentSub ? `${dealStatus}-${intentSub}` : dealStatus) : '';
+
+  // 是否存在搜索 / 筛选条件（仅用于空态文案区分；数据范围切换不算筛选）
+  const hasActiveFilter = !!(keyword || tagKeyword || selectedOwnerId || dealType || keyOnly);
+
+  // 排序方式：smart = 默认智能排序（compareCustomers）；其余为按创建时间升 / 降序
+  const sortList = useCallback((customers: Customer[]): Customer[] => {
+    if (sort === 'createdAt:desc') {
+      return [...customers].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    }
+    if (sort === 'createdAt:asc') {
+      return [...customers].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }
+    return customers; // 智能排序：list 本身已按 compareCustomers 有序
+  }, [sort]);
+
+  // 当前页展示列表（先按所选排序方式排列，再取当前页）
   const displayList = useMemo(() => {
-    return list.slice((page - 1) * pageSize, page * pageSize);
-  }, [list, page]);
+    return sortList(list).slice((page - 1) * pageSize, page * pageSize);
+  }, [list, page, sortList]);
 
   // ========== 加载数据 ==========
-  // 用 ref 读取最新 list 值，避免将 list 加入 useCallback 依赖导致无限循环：
-  //   fetchData → setList → list 变化 → useCallback 重创建 → useEffect 触发 → fetchData ...
-  const listRef = useRef(list);
-  listRef.current = list;
-
   // 防止 StrictMode 双重挂载 / useEffect 双次触发导致重复请求
   const fetchingRef = useRef(false);
 
   const fetchData = useCallback(async () => {
     if (fetchingRef.current) return;
+    if (!scopeTab) return; // 角色未就绪（默认范围未确定）前不请求，避免以错误范围取数
     fetchingRef.current = true;
 
-    const currentList = listRef.current;
     const params: any = { page: 1, pageSize: API_PAGE_SIZE, keyword: keyword || undefined };
 
-    let apiType: string = filterType;
-    if (filterType === 'noOrder' && subFilterType) apiType = `noOrder-${subFilterType}`;
-    else if (filterType === 'done' && subFilterType) apiType = `done-${subFilterType}`;
-    if (apiType !== 'all') params.type = apiType;
-    if (isAdmin && selectedOwnerId && filterType !== 'public') params.ownerId = selectedOwnerId;
-    if (filterTags) params.tags = filterTags;
-
-    const cacheKey = listCacheKey(params);
-
-    // 1) 命中前端缓存：直接复用，跳过网络请求
-    const cached = getListCache(cacheKey);
-    if (cached) {
-      fetchingRef.current = false;
-      const { mergedList } = diffList(currentList, cached.list);
-      setList(sortCustomers(mergedList));
-      setTotal(cached.total);
-      setEstimatedAmount(cached.estimatedAmount);
-      setTotalContractAmount(cached.totalContractAmount);
-      setEstimatedBreakdown(cached.estimatedBreakdown);
-      setContractBreakdown(cached.contractBreakdown);
-      setNoOrderBreakdown(cached.noOrderBreakdown || {});
-      setDoneBreakdown(cached.doneBreakdown || {});
-      return;
-    }
+    // 范围（正交参数）：公海 = 仅无负责人客户；与成交状态 / 重点客户可组合
+    if (scopeTab === 'public') params.publicSea = '1';
+    // 成交状态 + 子筛选 → type
+    if (dealType) params.type = dealType;
+    if (keyOnly) params.keyAccount = '1';
+    // 归属人：管理员「我的」锁定本人；「团队」可按业务员筛选
+    if (isAdmin && scopeTab === 'mine') params.ownerId = user?.id;
+    else if (isAdmin && scopeTab === 'team' && selectedOwnerId) params.ownerId = selectedOwnerId;
+    if (tagKeyword) params.tags = tagKeyword;
 
     setLoading(true);
     try {
@@ -128,34 +127,15 @@ export default function CustomersPage() {
         : await customerApi.listMy(params);
       const d = res.data.data;
 
-      const rawList: Customer[] = d.list;
-      const estAmount = d.estimatedAmount || 0;
-      const cntTotal = d.totalContractAmount || 0;
-      const estBreakdown = d.estimatedBreakdown || [];
-      const cntBreakdown = d.contractBreakdown || [];
-      const noOrderBd = d.noOrderBreakdown || {};
-      const doneBd = d.doneBreakdown || {};
-
-      const sorted = sortCustomers(rawList);
-      setListCache(cacheKey, {
-        list: sorted,
-        total: sorted.length,
-        estimatedAmount: estAmount,
-        totalContractAmount: cntTotal,
-        estimatedBreakdown: estBreakdown,
-        contractBreakdown: cntBreakdown,
-        noOrderBreakdown: noOrderBd,
-        doneBreakdown: doneBd,
-      });
-      const { mergedList } = diffList(currentList, sorted);
-      setList(sortCustomers(mergedList));
+      const sorted = sortCustomers(d.list);
+      setList(sorted);
       setTotal(sorted.length);
-      setEstimatedAmount(estAmount);
-      setTotalContractAmount(cntTotal);
-      setEstimatedBreakdown(estBreakdown);
-      setContractBreakdown(cntBreakdown);
-      setNoOrderBreakdown(noOrderBd);
-      setDoneBreakdown(doneBd);
+      setEstimatedAmount(d.estimatedAmount || 0);
+      setTotalContractAmount(d.totalContractAmount || 0);
+      setEstimatedBreakdown(d.estimatedBreakdown || []);
+      setContractBreakdown(d.contractBreakdown || []);
+      setNoOrderBreakdown(d.noOrderBreakdown || {});
+      setDoneBreakdown(d.doneBreakdown || {});
       setPage(1);
     } catch (err: any) {
       message.error(err?.message || '加载失败');
@@ -163,15 +143,27 @@ export default function CustomersPage() {
       setLoading(false);
       fetchingRef.current = false;
     }
-  }, [keyword, isAdmin, selectedOwnerId, filterType, subFilterType, filterTags, sortCustomers]);
+  }, [keyword, isAdmin, selectedOwnerId, scopeTab, dealType, keyOnly, tagKeyword, sortCustomers, user?.id]);
+
+  // 角色就绪后确定默认数据范围：管理员默认「团队」，其余默认「我的」
+  useEffect(() => {
+    if (!user || scopeTab !== null) return;
+    setScopeTab(isAdmin ? 'team' : 'mine');
+  }, [user, isAdmin, scopeTab]);
+
+  // 范围切换：切换后清掉只对原范围有意义的业务员筛选，并回到第 1 页
+  const handleScopeChange = useCallback((next: 'mine' | 'team' | 'public') => {
+    setScopeTab(next);
+    setSelectedOwnerId('');
+    setPage(1);
+  }, []);
 
   useEffect(() => {
-    installCacheLifecycle(); // 注册「离开视图即失效」缓存生命周期（幂等）
     // 先确定角色再发起列表请求：user 未加载（role 未知）时暂不请求，
     // 避免以错误的角色（非管理员）发起 listMy，拿到不完整数据
-    if (!user) return;
+    if (!user || !scopeTab) return;
     fetchData();
-  }, [fetchData, user]);
+  }, [fetchData, user, scopeTab]);
 
   const openTransfer = useCallback((customerId: string) => {
     const found = list.find((c) => c.id === customerId);
@@ -208,7 +200,6 @@ export default function CustomersPage() {
     setList((prev) =>
       prev.map((item) => (item.id === updated.id ? mergeKeepAgg(item, updated) : item))
     );
-    invalidateDetail(updated.id); // 该客户详情缓存已过期，下次打开回源；列表缓存保留
   }, [mergeKeepAgg]);
 
   // ===== 标签变更：最小化同步，只改 tags 字段，不重建整个对象（避免关联信息丢失） =====
@@ -234,18 +225,16 @@ export default function CustomersPage() {
       action: () => customerApi.release(c.id),
       onSuccess: () => {
         setDetailModalOpen(false);
-        invalidateAll();
         fetchData();
       },
     });
-  }, [releaseToPool, invalidateAll, fetchData]);
+  }, [releaseToPool, fetchData]);
 
   const handleDeleteFromModal = useCallback(async (c: Customer) => {
     setDetailModalOpen(false);
     try {
       await customerApi.remove(c.id);
       message.success(`已删除客户 ${c.companyName || c.contactName || ''}`);
-      invalidateAll();
       fetchData();
     } catch {
       message.error('删除客户失败');
@@ -262,6 +251,40 @@ export default function CustomersPage() {
     }).catch(() => {});
   }, []);
 
+  // ========== 关键词搜索 ==========
+  // 与线索页一致：本地输入态即时回显，防抖后才提交到 keyword（避免逐字触发全量列表请求）
+  const [kw, setKw] = useState('');
+  const commitKeyword = useMemo(
+    () => debounce((v: string) => { setKeyword(v); setPage(1); }, 400),
+    [],
+  );
+  const handleSearchChange = useCallback((v: string) => {
+    setKw(v);
+    commitKeyword(v);
+  }, [commitKeyword]);
+
+  // ========== 标签筛选（模糊匹配） ==========
+  // 同为「本地输入态 + 防抖提交」，避免逐字触发列表请求
+  const commitTagKeyword = useMemo(
+    () => debounce((v: string) => { setTagKeyword(v); setPage(1); }, 400),
+    [],
+  );
+  const handleTagChange = useCallback((v: string) => {
+    setTagInput(v);
+    commitTagKeyword(v);
+  }, [commitTagKeyword]);
+
+  // 清除全部筛选条件（数据范围切换保留）
+  const handleClearFilters = useCallback(() => {
+    setDealStatus('');
+    setIntentSub('');
+    setKeyOnly(false);
+    setSelectedOwnerId('');
+    setTagInput('');
+    setTagKeyword('');
+    setPage(1);
+  }, []);
+
   // ========== 打开详情 ==========
   // 同步打开：仅设置本地数据与显示弹窗，完整详情（owner/opportunities）由 Modal 内部
   // 通过 getById 异步补充。这样点击卡片时父组件零 async 阻塞，弹窗即时出现。
@@ -270,7 +293,7 @@ export default function CustomersPage() {
     setDetailModalOpen(true);
   }, []);
 
-  // ========== 渲染卡片视图 ==========
+  // ========== 渲染卡片视图（与线索页一致：仅卡片列表，不再提供列表/卡片切换） ==========
   const renderCardView = useMemo(() => (
     <Row gutter={[16, 16]}>
       {displayList.map((customer) => (
@@ -284,16 +307,6 @@ export default function CustomersPage() {
         </Col>
       ))}
     </Row>
-  ), [displayList, token, openDetail, handleListUpdate]);
-
-  // ========== 渲染列表视图 ==========
-  const renderListView = useMemo(() => (
-    <CustomerList
-      list={displayList}
-      token={token}
-      onOpenDetail={openDetail}
-      onListUpdate={handleListUpdate}
-    />
   ), [displayList, token, openDetail, handleListUpdate]);
 
   // 转交弹窗用户列表 memo
@@ -321,43 +334,72 @@ export default function CustomersPage() {
 
   return (
     <div style={{ padding: '0 0 24px' }}>
-      <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={filterType} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
+      {/* 统计模块 + 筛选栏 + 客户卡片：同一张白色底卡片包裹（层级与线索页一致） */}
+      <Card
+        variant="borderless"
+        style={{
+          borderRadius: token.borderRadiusLG,
+          border: `1px solid ${token.colorBorderSecondary}`,
+          boxShadow: token.boxShadowSecondary,
+        }}
+      >
+        <CustomerStats total={total} estimatedAmount={estimatedAmount} totalContractAmount={totalContractAmount} list={list} token={token} filterType={dealType || 'all'} estimatedBreakdown={estimatedBreakdown} contractBreakdown={contractBreakdown} />
 
-      {/* 工具栏 */}
-      <CustomerToolbar
-        token={token}
-        keyword={keyword}
-        setKeyword={setKeyword}
-        fetchData={fetchData}
-        setPage={setPage}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        filterTags={filterTags}
-        setFilterTags={setFilterTags}
-        filterType={filterType}
-        setFilterType={setFilterType}
-        subFilterType={subFilterType}
-        setSubFilterType={setSubFilterType}
-        isAdmin={isAdmin}
-        filterTypePublic={filterType === 'public'}
-        selectedOwnerId={selectedOwnerId}
-        setSelectedOwnerId={setSelectedOwnerId}
-        userList={userList}
-        noOrderBreakdown={noOrderBreakdown}
-        doneBreakdown={doneBreakdown}
-      />
+        {/* 工具栏（筛选栏交互与线索页一致；第二行仅保留数据范围，分类移入筛选面板） */}
+        <CustomerToolbar
+          searchValue={kw}
+          onSearchChange={handleSearchChange}
+          onSearchSubmit={() => { setKeyword(kw); setPage(1); }}
+          setPage={setPage}
+          total={total}
+          tagValue={tagInput}
+          onTagChange={handleTagChange}
+          onTagSubmit={() => { setTagKeyword(tagInput.trim()); setPage(1); }}
+          onClearFilters={handleClearFilters}
+          scopeTab={scopeTab ?? 'mine'}
+          onScopeChange={handleScopeChange}
+          dealStatus={dealStatus}
+          onDealStatusChange={(v) => {
+            setDealStatus(v as typeof dealStatus);
+            setIntentSub(''); // 成交状态变化后，子筛选（采购意向 / 客户类型）不再适用
+            setPage(1);
+          }}
+          intentSub={intentSub}
+          onIntentSubChange={(v) => { setIntentSub(v); setPage(1); }}
+          keyOnly={keyOnly}
+          onKeyOnlyChange={(v) => { setKeyOnly(v); setPage(1); }}
+          isAdmin={isAdmin}
+          selectedOwnerId={selectedOwnerId}
+          setSelectedOwnerId={setSelectedOwnerId}
+          userList={userList}
+          noOrderBreakdown={noOrderBreakdown}
+          doneBreakdown={doneBreakdown}
+          sortValue={sort}
+          onSortChange={(v) => { setSort(v as typeof sort); setPage(1); }}
+        />
 
-      {/* 内容区 */}
-      <Spin spinning={loading}>
-        {viewMode === 'card' ? renderCardView : renderListView}
-        {list.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: '48px 0' }}>
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无客户数据" />
-          </div>
-        )}
-      </Spin>
+        {/* 内容区 */}
+        <div style={{ marginTop: 16 }}>
+          <Spin spinning={loading}>
+            {list.length === 0 && !loading ? (
+              <div style={{ textAlign: 'center', padding: '48px 0' }}>
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={
+                    <span style={{ fontSize: 13, color: token.colorTextTertiary }}>
+                      {hasActiveFilter ? '没有找到符合条件的客户，试试调整筛选条件' : '暂无客户数据'}
+                    </span>
+                  }
+                />
+              </div>
+            ) : (
+              renderCardView
+            )}
+          </Spin>
+        </div>
+      </Card>
 
-      {/* 分页 */}
+      {/* 分页（超出单页记录时出现；位于白卡之外，与线索页一致） */}
       {renderPagination}
 
       {/* ===== 转交弹窗（与线索共用同一组件 / 逻辑） ===== */}
@@ -375,7 +417,6 @@ export default function CustomersPage() {
           setTransferCustomer(null);
           // 详情弹窗保持打开：递增版本号触发详情重新拉取，即时展示新负责人
           setDetailVersion((v) => v + 1);
-          invalidateAll();
           fetchData();
         }}
       />
@@ -401,7 +442,6 @@ export default function CustomersPage() {
           setList((prev) => sortCustomers(prev.map(applyLocal)));
           try {
             await customerApi.update(c.id, { isKeyAccount: nextKey });
-            invalidateDetail(c.id); // 详情缓存失效，下次打开回源最新值
           } catch {
             // 失败回滚
             setDetailCustomer((prev) => (prev?.id === c.id ? { ...prev, isKeyAccount: c.isKeyAccount } : prev));

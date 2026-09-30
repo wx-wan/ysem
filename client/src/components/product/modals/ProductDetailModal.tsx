@@ -23,7 +23,6 @@ import ProductOverview from './ProductOverview';
 import Price from '../../common/Price';
 import SegmentedTabBar from '../../common/SegmentedTabBar';
 import ProductImagesStack from '../../common/ProductImagesStack';
-import CreateOrderFromProductModal from './CreateOrderFromProductModal';
 import dayjs from 'dayjs';
 import './ProductDetailModal.css';
 
@@ -46,6 +45,8 @@ interface RelatedBusinessDocument {
   currency?: string | null;
   customerName?: string;
   createdAt?: string;
+  /** 归属人（后端 ownerId 标量）；用于「仅查看本人销售记录」过滤 */
+  ownerId?: string | null;
 }
 
 const RELATED_BUSINESS_LABEL: Record<RelatedBusinessType, string> = {
@@ -96,7 +97,6 @@ interface ProductDetailModalProps {
 const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   product, open, onClose, onEdit,
   salesList, salesLoading,
-  onSalesRefresh,
 }) => {
   // 操作记录：从 OperationLog 按 businessType=PRODUCT 捞取（单一日志库，不重复建记录）
   const [logs, setLogs] = useState<OperationLogItem[]>([]);
@@ -114,10 +114,11 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       .finally(() => { if (!cancelled) setLogsLoading(false); });
     return () => { cancelled = true; };
   }, [open, product?.id]);
-  const [createOpen, setCreateOpen] = useState<null | 'QUOTE' | 'SAMPLE'>(null);
   const { t } = useTranslation();
   const { token } = theme.useToken();
   const { user } = useAuthStore();
+  const currentUserId = user?.id;
+  const isAdmin = user?.role?.code === 'admin' || user?.role?.code === 'ADMIN';
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabKey>('overview');
   const [relatedDocs, setRelatedDocs] = useState<RelatedBusinessDocument[]>([]);
@@ -159,6 +160,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               currency: r.currency,
               customerName: r.customer?.companyName,
               createdAt: r.createdAt,
+              ownerId: r.ownerId ?? null,
             });
           }
         } else {
@@ -178,6 +180,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               currency: r.feeCurrency,
               customerName: r.customer?.companyName,
               createdAt: r.createdAt,
+              ownerId: r.ownerId ?? null,
             });
           }
         } else {
@@ -197,6 +200,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               currency: r.currency,
               customerName: r.customer?.companyName,
               createdAt: r.createdAt,
+              ownerId: r.ownerId ?? null,
             });
           }
         } else {
@@ -232,11 +236,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
-
-  const handleOrderCreated = () => {
-    loadRelatedOrders();
-    onSalesRefresh?.();
-  };
 
   const creator = useMemo(() => {
     const createAct = logs
@@ -303,9 +302,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     if (relatedLoading || salesLoading || leadsLoading) {
       return <div className="pdm-empty-state">加载中…</div>;
     }
-    if (!relatedDocs.length && !salesList.length && !leads.length) {
-      return <Empty description="暂无销售记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
-    }
     // 归一为统一记录并按时间倒序
     const unified: Array<
       | { kind: 'related'; ts: string; data: RelatedBusinessDocument }
@@ -318,9 +314,34 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       ...leads.map((l) => ({ kind: 'lead' as const, ts: l.createdAt || '', data: l })),
     ].sort((a, b) => dayjs(b.ts).valueOf() - dayjs(a.ts).valueOf());
 
+    // 仅展示本人销售记录；但若当前用户是产品的「指定人」，可额外查看「创建人」的销售记录
+    const recordOwnerId = (rec: (typeof unified)[number]): string | undefined => {
+      if (rec.kind === 'related') return rec.data.ownerId ?? undefined;
+      if (rec.kind === 'opportunity') return rec.data.assignee?.id;
+      return rec.data.owner?.id; // lead
+    };
+    const designatedIds = product?.visibleUserIds
+      ?? product?.visibleUsers?.map((v) => v.userId)
+      ?? [];
+    const isDesignated = !!currentUserId && designatedIds.includes(currentUserId);
+    const creatorId = product?.createdBy ?? undefined;
+    const visible = !currentUserId || isAdmin
+      ? unified
+      : unified.filter((rec) => {
+          const ownerId = recordOwnerId(rec);
+          if (ownerId === currentUserId) return true; // 本人记录恒可见
+          // 指定人额外可见创建人的记录
+          if (isDesignated && creatorId && ownerId === creatorId) return true;
+          return false;
+        });
+
+    if (!visible.length) {
+      return <Empty description="暂无销售记录" style={{ padding: '48px 0' }} image={Empty.PRESENTED_IMAGE_SIMPLE} />;
+    }
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {unified.map((rec) => {
+        {visible.map((rec) => {
           if (rec.kind === 'related') {
             const doc = rec.data;
             const navTo =
@@ -489,17 +510,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               ))}
             </div>
 
-            {/* 操作栏：位于模式下方（层级/位置不变，仅重做按钮样式） */}
-            <div className="pdm-op-bar">
-              <Button
-                block
-                className="pdm-op-primary"
-                onClick={() => product && setCreateOpen('QUOTE')}
-                icon={<FileTextOutlined />}
-              >
-                基于此产品创建报价
-              </Button>
-              <div style={{ display: 'flex', gap: 10 }}>
+            {/* 操作栏：仅保留编辑（基于产品创建报价 / 申请打样 已从产品详情移除） */}
+            {/* 编辑权限：仅创建人 + 指定可见人 + 管理员（后端 canEdit 计算） */}
+            {product.canEdit === true && (
+              <div className="pdm-op-bar">
                 <Button
                   block
                   className="pdm-op-ghost"
@@ -508,16 +522,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 >
                   编辑产品
                 </Button>
-                <Button
-                  block
-                  className="pdm-op-ghost"
-                  onClick={() => product && setCreateOpen('SAMPLE')}
-                  icon={<HomeOutlined />}
-                >
-                  申请打样
-                </Button>
               </div>
-            </div>
+            )}
 
           </div>
 
@@ -645,30 +651,6 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </div>
         </div>
       </div>
-
-      <CreateOrderFromProductModal
-        open={createOpen !== null}
-        type={createOpen || 'QUOTE'}
-        targetType="PRODUCT"
-        targetId={product?.id || ''}
-        productName={product?.name}
-        initialItems={
-          product
-            ? [
-                {
-                  productId: product.id,
-                  name: product.name,
-                  spec: [product.sizeL, product.sizeW, product.sizeH, product.weight]
-                    .filter((v) => v)
-                    .join(' × '),
-                  quantity: 1,
-                },
-              ]
-            : []
-        }
-        onCreated={handleOrderCreated}
-        onCancel={() => setCreateOpen(null)}
-      />
     </AppModal>
   );
 };
