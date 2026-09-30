@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import * as opportunityService from '../services/opportunity.service';
 import type { SalesActorContext } from '../services/salesProcess.shared';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, projectProductRows, roleScope } from '../utils/scope';
+import { productVisibilityWhere, projectProductRows, roleScope } from '../scope';
 
 /**
  * Sales（Opportunity）Controller —— Round R-5 · Phase 1 · Sales Process Domain

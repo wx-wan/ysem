@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import * as salesOrderService from '../services/salesOrder.service';
 import type { SalesActorContext } from '../services/salesProcess.shared';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, roleScope } from '../utils/scope';
+import { productVisibilityWhere, roleScope } from '../scope';
 
 /**
  * SalesOrder Controller —— Round R-5 · Phase 1 · Sales Process Domain

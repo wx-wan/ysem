@@ -9,7 +9,7 @@ import type { DbClient } from './types';
  * - R-2 · Lead Pilot：Lead 流程实际需要的读取与归属/可见性联动写入
  * - **R-4 · Product Layering：迁移 Product 模块自身的 CRUD 与列表/详情读取**
  *
- * 所有「可见性」判定都由调用方传入 `visibilityWhere`（来自 utils/scope.productVisibilityWhere），
+ * 所有「可见性」判定都由调用方传入 `visibilityWhere`（来自 scope.productVisibilityWhere），
  * 仓储不自行决定可见性政策。
  *
  * 不负责：业务规则、状态判断、HTTP、用户提示。

@@ -10,7 +10,7 @@ import {
 } from '../operations/sales.operations';
 import { customerRepository, opportunityRepository, sampleOrderRepository } from '../repositories';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import { advanceLeadStatusByOpportunityOperation } from '../operations/state.operations';
 import {
   assertAssignableOwner,

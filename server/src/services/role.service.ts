@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { DomainConflictError, DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import { assignPermissionsAggregate } from '../operations/role.operations';
 import { roleRepository, userRepository } from '../repositories';
-import { DEFAULT_DATA_SCOPE } from '../utils/scope';
-import { pushNotification } from '../utils/notify';
+import { DEFAULT_DATA_SCOPE } from '../scope';
+import { pushNotification } from '../notification';
 
 /**
  * Role Business Layer —— Round R-5 · Phase 4 · D4-a2 账号与角色域

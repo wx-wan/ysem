@@ -4,7 +4,7 @@ import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
 import * as leadService from '../services/lead.service';
 import { created, fail, success } from '../utils/response';
-import { includePublicSea, productVisibilityWhere, projectProductRows, roleScope } from '../utils/scope';
+import { includePublicSea, productVisibilityWhere, projectProductRows, roleScope } from '../scope';
 
 /**
  * Lead Controller（Round R-2 · Lead Pilot）

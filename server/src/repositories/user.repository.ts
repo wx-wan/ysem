@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { DbClient } from './types';
 
 /**
@@ -9,7 +9,7 @@ import type { DbClient } from './types';
  * 范围限制：只提供 Lead 流程实际需要的「归属人 / 目标转交人」校验读取，
  * 不迁移 User 模块 CRUD。
  *
- * 注意：数据范围（dataScope）条件的构造在调用方完成（`utils/scope.roleScope`），
+ * 注意：数据范围（dataScope）条件的构造在调用方完成（`scope.roleScope`），
  * 仓储只负责把条件合进查询，不决定权限政策。
  */
 /** 当前 DbClient 上的 `user` 委托（兼容 prisma 单例与事务客户端） */

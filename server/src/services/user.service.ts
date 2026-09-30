@@ -2,7 +2,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { DomainConflictError, DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import { userRepository } from '../repositories';
-import { pushNotification } from '../utils/notify';
+import { pushNotification } from '../notification';
 
 /**
  * User Business Layer —— Round R-5 · Phase 4 · D4-a2 账号与角色域

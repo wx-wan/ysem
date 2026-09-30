@@ -24,7 +24,7 @@ import {
 } from '../repositories';
 import { checkShipmentStatusTransition } from '../state';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { SalesActorContext } from './salesProcess.shared';
 
 /**

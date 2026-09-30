@@ -6,7 +6,7 @@ import { DomainNotFoundError, DomainValidationError } from '../lib/errors';
 import { createQuotationAggregate } from '../operations/sales.operations';
 import { opportunityRepository, quotationRepository } from '../repositories';
 import { DECIMAL_PRECISION, round, toCny, toDecimal } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import {
   assertAssignableOwner,
   resolveExchangeRate,

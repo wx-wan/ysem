@@ -56,6 +56,12 @@ export { profitRepository } from './profit.repository';
 // ---- Auth & Audit Domain（R-5 · Phase 4 · D4-b）----
 export { loginLogRepository } from './loginLog.repository';
 
+// ---- R-5 · T2 能力归位的 Data 出口 ----
+// 注意：`departmentScope.repository` 被 `src/scope/deptTree.ts` **按文件直连**引用
+//（不经本 barrel），以避免 `scope → deptTree → repositories/index → … → scope` 的循环依赖。
+export { departmentScopeRepository } from './departmentScope.repository';
+export { notificationRepository } from './notification.repository';
+
 // ---- Account & Role Domain（R-5 · Phase 4 · D4-a2）----
 export { roleRepository } from './role.repository';
 

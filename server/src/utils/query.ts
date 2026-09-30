@@ -22,7 +22,7 @@ export interface PaginateResult<T> {
  * 避免在各控制器中重复编写 findMany + count 的样板代码。
  *
  * 数据范围（当前用户可见范围）由调用方在传入的 where 中通过
- * `ownerScope` / `applyScope`（见 utils/scope.ts）合并，本方法只负责
+ * `ownerScope` / `applyScope`（见 scope.ts）合并，本方法只负责
  * 分页、排序与返回结构统一。
  */
 export async function paginateList<T = unknown>(

@@ -14,7 +14,7 @@ import type { DbClient } from './types';
 /**
  * 成员产品关联 select —— **含内部授权字段**（visibility / createdBy / visibleUsers）。
  *
- * 这些字段只用于可见性判定，**必须**由调用方在响应前经 `utils/scope.projectProductRows` 投影剔除。
+ * 这些字段只用于可见性判定，**必须**由调用方在响应前经 `scope.projectProductRows` 投影剔除。
  * 组合列表 / 混排列表 / 组合详情三处原本各自复制了一份相同 select（含增补 `weight` 的变体），
  * 今收敛到此常量，避免再出现第四份。
  */

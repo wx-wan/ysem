@@ -36,7 +36,7 @@ export function list() {
  * 部门树。
  *
  * 【既有契约，逐字保留】本端点当前返回的是与「部门列表」**完全相同**的**扁平列表**
- * （含 `_count.users`），层级由前端组装（`utils/deptTree.ts` 的组织树推导属 Scope 能力，
+ * （含 `_count.users`），层级由前端组装（`scope/deptTree.ts` 的组织树推导属 Scope 能力，
  * 不用于本端点）。本轮**不改变该行为** —— 若需改为服务端建树，属独立 API 变更轮次。
  */
 export function tree() {

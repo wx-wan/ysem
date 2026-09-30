@@ -18,7 +18,7 @@ import {
 } from '../repositories';
 import { advanceLeadStatusOperation, deriveOpportunityStagesOperation } from '../operations/state.operations';
 import { PIPELINE_STAGES } from '../state';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import {
   findVisibleProductNames,
   salesScopedWhere,

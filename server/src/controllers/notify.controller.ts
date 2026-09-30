@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import { addConnection, removeConnection, fetchUnread } from '../utils/notify';
+import { addConnection, removeConnection, fetchUnread } from '../notification';
 
 interface JwtPayload {
   userId: string;

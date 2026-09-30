@@ -31,7 +31,7 @@ import { customerRepository } from '../repositories/customer.repository';
 import { leadRepository } from '../repositories/lead.repository';
 import { operationLogRepository } from '../repositories/operationLog.repository';
 import { productRepository } from '../repositories/product.repository';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 
 /**
  * Lead Business Layer（Round R-2 · Lead Pilot）

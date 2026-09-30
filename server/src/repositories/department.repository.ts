@@ -10,8 +10,8 @@ import type { DbClient } from './types';
  * 【注意】`include: { _count: { users: true } }` 为**既有 API 契约的一部分**
  * （列表 / 详情 / 树三个端点均携带该计数），不得删除。
  *
- * 组织树的**层级推导**（`utils/deptTree.ts` 的 `collectDepartmentIds` /
- * `getDepartmentScopeUserIds`）属 **Scope 能力**，被 `utils/scope.ts` 消费，
+ * 组织树的**层级推导**（`scope/deptTree.ts` 的 `collectDepartmentIds` /
+ * `getDepartmentScopeUserIds`）属 **Scope 能力**，被 `scope.ts` 消费，
  * 不在本轮范围（列为 Phase 6 归位审计项）。
  */
 const model = (db: DbClient) => (db as typeof prisma).department;

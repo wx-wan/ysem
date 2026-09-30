@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import * as approvalRecordService from '../services/approvalRecord.service';
 import type { ApprovalActorContext } from '../services/approvalRecord.service';
 import { created, fail, success } from '../utils/response';
-import { roleScope } from '../utils/scope';
+import { roleScope } from '../scope';
 
 /**
  * ApprovalRecord Controller —— Round R-5 · Phase 4 · D3 审批域

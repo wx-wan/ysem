@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import type { SalesActorContext } from '../services/salesProcess.shared';
 import * as purchaseOrderService from '../services/purchaseOrder.service';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, roleScope } from '../utils/scope';
+import { productVisibilityWhere, roleScope } from '../scope';
 
 /**
  * PurchaseOrder Controller —— Round R-5 · Phase 4 · D1-a 采购域

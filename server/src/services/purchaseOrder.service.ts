@@ -18,7 +18,7 @@ import {
   userRepository,
 } from '../repositories';
 import { DECIMAL_PRECISION, round, toCny, toDecimal } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import { resolveExchangeRate, type SalesActorContext } from './salesProcess.shared';
 
 /**

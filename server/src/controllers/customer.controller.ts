@@ -4,7 +4,7 @@ import { CustomerLevel } from "@prisma/client";
 import { error, success } from "../utils/response";
 import { AuthRequest } from "../middleware/auth";
 import * as customerService from "../services/customer.service";
-import { includePublicSea, roleScope } from "../utils/scope";
+import { includePublicSea, roleScope } from "../scope";
 
 /**
  * Customer Controller（Round R-3 · Customer Pilot）

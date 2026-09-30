@@ -1,4 +1,4 @@
-import prisma from '../lib/prisma';
+import { departmentScopeRepository } from '../repositories/departmentScope.repository';
 
 /**
  * 部门树（Department Tree）通用工具
@@ -14,6 +14,11 @@ import prisma from '../lib/prisma';
  * 实现要求：
  *  - 一次 `findMany()` 加载全部部门，在内存中构建父子索引；**不得**逐层 `findMany(parentId=...)`
  *    递归查库（N+1）。
+ *
+ * 【R-5 · T2（D-P6-A）归位】本文件原位于 `utils/` 并直接 `import '../lib/prisma'`
+ *（shared 层中的 Prisma leakage）。现随 Scope 能力迁入 `src/scope/`，
+ * 数据访问经 `repositories/departmentScope.repository.ts`；本文件只保留
+ * **与存储无关的树算法**（父索引构建 / BFS 收集 / 防环）。
  *  - 遍历时用 visited 集合去重，防止 `parentId` 成环导致死循环。
  */
 
@@ -36,9 +41,7 @@ export interface DepartmentTree {
  * 部门总量为个位数~几十量级，全量加载成本可忽略。
  */
 export const loadDepartmentTree = async (): Promise<DepartmentTree> => {
-  const departments = await prisma.department.findMany({
-    select: { id: true, parentId: true },
-  });
+  const departments = await departmentScopeRepository.findDeptParents();
 
   const parentOf = new Map<string, string | null>();
   const childrenOf = new Map<string, string[]>();
@@ -100,17 +103,11 @@ export const getDepartmentAndDescendantIds = async (
  * - 部门下无其他用户时同样兜底包含本人。
  */
 export const getDepartmentScopeUserIds = async (userId: string): Promise<string[]> => {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { departmentId: true },
-  });
+  const user = await departmentScopeRepository.findUserDepartmentId(userId);
   if (!user?.departmentId) return [userId];
 
   const departmentIds = await getDepartmentAndDescendantIds(user.departmentId);
-  const users = await prisma.user.findMany({
-    where: { departmentId: { in: departmentIds } },
-    select: { id: true },
-  });
+  const users = await departmentScopeRepository.findUserIdsByDepartmentIds(departmentIds);
 
   const userIds = users.map((u) => u.id);
   return userIds.length > 0 ? Array.from(new Set(userIds)) : [userId];

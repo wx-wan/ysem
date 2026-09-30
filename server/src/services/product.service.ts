@@ -26,7 +26,7 @@ import { userRepository } from '../repositories/user.repository';
  *   仅迁出 Controller（属业务映射，不属 HTTP 职责）。
  *
  * 【可见性投影为何由 Controller 注入】
- *   `utils/scope.projectProductRows` 需要 `AuthRequest`。为使 Business 层不接触 HTTP 对象，
+ *   `scope.projectProductRows` 需要 `AuthRequest`。为使 Business 层不接触 HTTP 对象，
  *   沿用 R-2 Lead 的 `LeadScopeProvider` 先例：由 HTTP 边界把「可见性条件」与「读取侧投影」
  *   两个函数注入 `ProductActorContext`，Business 只调用、不实现权限政策。
  */

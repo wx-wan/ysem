@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { DbClient } from './types';
 
 /**

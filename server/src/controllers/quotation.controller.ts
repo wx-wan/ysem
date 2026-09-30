@@ -6,7 +6,7 @@ import { AuthRequest } from '../middleware/auth';
 import * as quotationService from '../services/quotation.service';
 import type { SalesActorContext } from '../services/salesProcess.shared';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, projectProductRows, roleScope } from '../utils/scope';
+import { productVisibilityWhere, projectProductRows, roleScope } from '../scope';
 
 /**
  * Quotation Controller —— Round R-5 · Phase 1 · Sales Process Domain

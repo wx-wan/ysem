@@ -11,7 +11,7 @@ import {
   deriveCustomerIntentLevels,
   withCustomerIntent,
 } from '../state';
-import { applyScope, includePublicSea, publicSeaScope } from '../utils/scope';
+import { applyScope, includePublicSea, publicSeaScope } from '../scope';
 import {
   createCustomerAggregate,
   createImportedCustomer,
@@ -54,7 +54,7 @@ import * as XLSX from 'xlsx';
 // 上下文
 // ============================================================
 
-/** 数据范围提供者（由 Controller 用 utils/scope + req 组装；Business 只调用，不实现权限政策） */
+/** 数据范围提供者（由 Controller 用 scope + req 组装；Business 只调用，不实现权限政策） */
 export interface CustomerScopeProvider {
   /** includePublicSea(await roleScope(req))：客户读取边界（owner ∪ 公海 ∪ admin/ALL） */
   customer(): Promise<Record<string, unknown>>;

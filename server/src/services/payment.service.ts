@@ -10,7 +10,7 @@ import {
 } from '../operations/finance.operations';
 import { paymentRepository, purchaseOrderRepository, salesOrderRepository } from '../repositories';
 import { DECIMAL_PRECISION, round, toCny, toDecimal } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { FinanceActorContext } from './finance.shared';
 import { resolveExchangeRate, type AmountInput } from './salesProcess.shared';
 

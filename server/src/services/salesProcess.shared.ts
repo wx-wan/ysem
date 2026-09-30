@@ -2,7 +2,7 @@ import { Currency, Prisma } from '@prisma/client';
 import { DomainValidationError } from '../lib/errors';
 import { dailyExchangeRateRepository, opportunityRepository, userRepository } from '../repositories';
 import { BASE_CURRENCY, normalizeRate, toDecimal, type DecimalInput } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 
 /**
  * Sales Process Domain · 共享业务上下文（Round R-5 · Phase 1）

@@ -6,7 +6,7 @@ import { SkuConcurrencyError, SkuContextError } from '../lib/skuCode';
 import { AuthRequest } from '../middleware/auth';
 import * as productService from '../services/product.service';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, projectProductRows } from '../utils/scope';
+import { productVisibilityWhere, projectProductRows } from '../scope';
 
 /**
  * Product Controller（Round R-4 · Product Layering）

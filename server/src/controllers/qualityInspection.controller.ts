@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import type { SalesActorContext } from '../services/salesProcess.shared';
 import * as qualityInspectionService from '../services/qualityInspection.service';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, roleScope } from '../utils/scope';
+import { productVisibilityWhere, roleScope } from '../scope';
 
 /**
  * QualityInspection Controller —— Round R-5 · Phase 4 · D1-b 生产质量域

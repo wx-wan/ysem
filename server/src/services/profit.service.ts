@@ -11,7 +11,7 @@ import {
 } from '../operations/finance.operations';
 import { profitRepository, salesOrderRepository } from '../repositories';
 import { DECIMAL_PRECISION, round, toCny, toDecimal, type DecimalInput } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { FinanceActorContext } from './finance.shared';
 import { resolveExchangeRate } from './salesProcess.shared';
 

@@ -10,7 +10,7 @@ import {
   shipmentRepository,
 } from '../repositories';
 import { DECIMAL_PRECISION, round } from '../utils/currency';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 import type { SalesActorContext } from './salesProcess.shared';
 
 /**
@@ -105,7 +105,7 @@ interface ResolvedOwner {
  * 数据范围（ALL / DEPT / SELF）—— 双宿主 OR 继承，不新增 ownerId、不使用公海：
  *   OR [ { productionOrder: { ownerId: <scope> } }, { shipment: { salesOrder: { ownerId: <scope> } } } ]
  * 复用 `scope.owner()`（field 级 scope）再 rebase 到各自 relation 路径，
- * 因此**无需**修改 `utils/scope.ts`，也无需多级 relation 支持。
+ * 因此**无需**修改 `scope.ts`，也无需多级 relation 支持。
  */
 async function scopedWhere(
   ctx: SalesActorContext,

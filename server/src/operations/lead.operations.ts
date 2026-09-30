@@ -7,7 +7,7 @@ import { leadRepository } from '../repositories/lead.repository';
 import { productRepository } from '../repositories/product.repository';
 import { userRepository } from '../repositories/user.repository';
 import { runInTransaction, type DbClient, type TxClient } from '../repositories';
-import { applyScope } from '../utils/scope';
+import { applyScope } from '../scope';
 
 /**
  * Lead Operation Layer（Round R-2 · Lead Pilot）
@@ -30,7 +30,7 @@ export interface LeadCaller {
   isAdmin: boolean;
 }
 
-/** 数据范围提供者（由 Controller 用 utils/scope + req 组装；Operation 只调用，不实现权限政策） */
+/** 数据范围提供者（由 Controller 用 scope + req 组装；Operation 只调用，不实现权限政策） */
 export interface LeadScopeProvider {
   /** 按 ownerId 过滤（roleScope(req, { field: 'ownerId' })） */
   owner(): Promise<Record<string, unknown>>;

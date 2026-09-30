@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import type { FinanceActorContext } from '../services/finance.shared';
 import * as profitService from '../services/profit.service';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, roleScope } from '../utils/scope';
+import { productVisibilityWhere, roleScope } from '../scope';
 
 /**
  * Profit Controller —— Round R-5 · Phase 4 · D2 财务域

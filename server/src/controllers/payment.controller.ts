@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import type { FinanceActorContext } from '../services/finance.shared';
 import * as paymentService from '../services/payment.service';
 import { created, fail, success } from '../utils/response';
-import { productVisibilityWhere, roleScope } from '../utils/scope';
+import { productVisibilityWhere, roleScope } from '../scope';
 
 /**
  * Payment Controller —— Round R-5 · Phase 4 · D2 财务域

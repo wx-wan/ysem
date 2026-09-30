@@ -5,7 +5,7 @@ import { SkuConcurrencyError } from '../lib/skuCode';
 import { AuthRequest } from '../middleware/auth';
 import * as productGroupService from '../services/productGroup.service';
 import { success, created, fail } from '../utils/response';
-import { projectProductRows } from '../utils/scope';
+import { projectProductRows } from '../scope';
 
 /**
  * ComboProduct（产品组合）Controller（Round R-4 · Product Layering）

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import prisma from '../lib/prisma';
+import { notificationRepository } from '../repositories/notification.repository';
 
 /**
  * 轻量通知服务（基于 SSE）
@@ -10,6 +10,11 @@ import prisma from '../lib/prisma';
  *
  * 单实例：在线连接维护在内存 Map<userId, Set<Response>>。
  * 多实例扩展：仅把 sendTo 的广播改为 Redis pub/sub 即可，写库/读取接口不变。
+ *
+ * 【R-5 · T2（D-P6-B）归位】本文件原位于 `utils/` 并直接 `import '../lib/prisma'`。
+ * 现随 Notification 能力迁入 `src/notification/`；**Data 部分**已归位到
+ * `repositories/notification.repository.ts`，SSE 连接表与编排保留在此
+ *（Express `Response` 依赖属传输层事实，不属越界）。
  */
 
 export interface NotificationInput {
@@ -53,14 +58,12 @@ const sendTo = (userId: string, data: unknown): void => {
  * 返回创建的通知记录（供调用方需要 id 时）；推送失败不影响落库。
  */
 export const pushNotification = async (input: NotificationInput) => {
-  const record = await prisma.notification.create({
-    data: {
-      userId: input.userId,
-      type: input.type,
-      title: input.title,
-      body: input.body,
-      payload: (input.payload ?? undefined) as object | undefined,
-    },
+  const record = await notificationRepository.create({
+    userId: input.userId,
+    type: input.type,
+    title: input.title,
+    body: input.body,
+    payload: (input.payload ?? undefined) as object | undefined,
   });
   sendTo(input.userId, { event: 'NOTIFICATION', data: record });
   return record;
@@ -80,16 +83,9 @@ export const notifyOnline = (type: string, title: string, body?: string, payload
 
 /** 拉取用户未读通知（SSE 首连时使用），可选一并标记已读 */
 export const fetchUnread = async (userId: string, markRead = false) => {
-  const list = await prisma.notification.findMany({
-    where: { userId, read: false },
-    orderBy: { createdAt: 'desc' },
-    take: 50,
-  });
+  const list = await notificationRepository.findUnread(userId);
   if (markRead && list.length > 0) {
-    await prisma.notification.updateMany({
-      where: { userId, read: false },
-      data: { read: true },
-    });
+    await notificationRepository.markAllRead(userId);
   }
   return list;
 };
