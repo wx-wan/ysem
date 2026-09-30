@@ -130,22 +130,25 @@ export default function SalesLeads() {
     formModalRef.current?.openEdit(record, 2);
   };
 
-  // 认领公海线索：归到自己名下后才可确认 / 无效
+  // 认领公海线索：归到自己名下后才可确认 / 无效。
+  // 认领成功后**关闭详情**（该线索已归属当前用户，不再停留在只读的公海详情态）
   const handleClaim = useCallback(
     async (r: Lead) => {
       try {
         await leadApi.claim(r.id);
         message.success(t('lead.claimSuccess'));
         list.refresh();
-        refetchDetail();
+        setSelectedId(null);
+        setDetail(null);
       } catch (err: any) {
         message.error(err?.response?.data?.message || t('lead.claimFailed'));
       }
     },
-    [list, message, t, refetchDetail],
+    [list, message, t],
   );
 
-  // 释放线索到公海（私海 → 公海）：复用统一确认弹窗（useReleaseToPool）
+  // 释放线索到公海（私海 → 公海）：复用统一确认弹窗（useReleaseToPool）。
+  // 释放成功后与「认领」同一逻辑：**关闭详情**（记录已不归当前用户，不再停留在详情态）
   const handleRelease = useCallback(
     (r: Lead) => {
       releaseToPool({
@@ -155,11 +158,12 @@ export default function SalesLeads() {
         action: () => leadApi.release(r.id),
         onSuccess: () => {
           list.refresh();
-          refetchDetail();
+          setSelectedId(null);
+          setDetail(null);
         },
       });
     },
-    [releaseToPool, list, refetchDetail],
+    [releaseToPool, list],
   );
 
   return (
