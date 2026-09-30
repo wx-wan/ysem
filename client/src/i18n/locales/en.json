@@ -311,6 +311,7 @@
     "stage": {
       "label": "Stage",
       "opportunity": "Pending",
+      "following": "Following up",
       "quoted": "Quoted",
       "sample": "Sampling",
       "production": "Production",

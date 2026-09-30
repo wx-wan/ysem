@@ -33,6 +33,24 @@ export const operationLogRepository = {
     return model(db).count({ where });
   },
 
+  /**
+   * 按业务对象聚合「指定动作」的记录数（批量，避免 N+1）。
+   *
+   * 用于派生类判定：如商机「字段是否被编辑过」（存在 OPPORTUNITY_UPDATED 记录即视为跟进中）。
+   */
+  groupCountByBusinessIds(
+    businessIds: string[],
+    actions: string[],
+    businessType: string,
+    db: DbClient = prisma,
+  ): Promise<{ businessId: string | null; _count: number }[]> {
+    return model(db).groupBy({
+      by: ['businessId'],
+      where: { businessType, action: { in: actions }, businessId: { in: businessIds } },
+      _count: true,
+    }) as unknown as Promise<{ businessId: string | null; _count: number }[]>;
+  },
+
   findMany<T extends Prisma.OperationLogFindManyArgs>(
     args: T,
     db: DbClient = prisma,

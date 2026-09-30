@@ -1,7 +1,11 @@
 import type { LeadStatus } from '@prisma/client';
-import { leadRepository, opportunityRepository, quotationRepository, salesOrderRepository, sampleOrderRepository } from '../repositories';
+import { leadRepository, operationLogRepository, opportunityRepository, quotationRepository, salesOrderRepository, sampleOrderRepository } from '../repositories';
 import { deriveStage, shouldAdvanceLeadStatus, type PipelineStage } from '../state';
+import { BUSINESS_TYPE } from '../lib/business-type';
 import { refreshLeadCustomerSnapshotOperation } from './lead.operations';
+
+/** 「商机字段被编辑过」的日志动作（现行动作 + 旧版动作，兼容历史数据） */
+const OPPORTUNITY_EDIT_ACTIONS = ['OPPORTUNITY_UPDATED', 'PIPELINE_UPDATED'];
 
 /**
  * State 相关的数据操作流程 —— Round R-5 · Phase 3 · Operation Layer
@@ -80,7 +84,8 @@ export async function advanceLeadStatusByOpportunityOperation(
  * 批量推导商机阶段。
  *
  * 只读取 V1.0 实体：Quotation / SampleOrder / SalesOrder（及其 ProductionOrder、Shipment），
- * 不再依赖已删除的旧 Order 模型。三个信号查询并发执行（保持既有查询形态，无 N+1）。
+ * 不再依赖已删除的旧 Order 模型。另读 OperationLog 判断「商机字段是否被编辑过」
+ * （编辑过 ⇒ FOLLOWING / 跟进中，见 pipelineStage.state.ts）。四个信号查询并发执行，无 N+1。
  */
 export async function deriveOpportunityStagesOperation(
   opportunities: { id: string; leadId?: string | null }[],
@@ -90,11 +95,17 @@ export async function deriveOpportunityStagesOperation(
 
   const ids = opportunities.map((o) => o.id);
 
-  const [quotations, sampleOrders, salesOrders] = await Promise.all([
+  const [quotations, sampleOrders, salesOrders, editLogs] = await Promise.all([
     quotationRepository.groupCountByOpportunityIds(ids),
     sampleOrderRepository.groupCountByOpportunityIds(ids),
     salesOrderRepository.findStageSignalsByOpportunityIds(ids),
+    // 商机字段是否被编辑过（OperationLog 中 OPPORTUNITY_UPDATED / PIPELINE_UPDATED）
+    operationLogRepository.groupCountByBusinessIds(ids, OPPORTUNITY_EDIT_ACTIONS, BUSINESS_TYPE.OPPORTUNITY),
   ]);
+
+  const editedIds = new Set(
+    editLogs.filter((row) => row._count > 0 && !!row.businessId).map((row) => row.businessId as string),
+  );
 
   const quoteCount = new Map<string, number>();
   for (const q of quotations) {
@@ -126,6 +137,7 @@ export async function deriveOpportunityStagesOperation(
         hasSalesOrder: so !== undefined,
         hasProductionOrder: so?.hasProductionOrder ?? false,
         hasShipment: so?.hasShipment ?? false,
+        hasEditLog: editedIds.has(o.id),
       }),
     );
   }

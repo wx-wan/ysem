@@ -1,9 +1,10 @@
 // 商机阶段：不再落库，由后端按关联单据推导（server/src/utils/pipelineStage.ts）
 // 阶段只读展示，不支持手动切换。
-export type SalesStage = 'OPPORTUNITY' | 'QUOTED' | 'SAMPLE' | 'PRODUCTION' | 'SHIPPED' | 'ORDER';
+export type SalesStage = 'OPPORTUNITY' | 'FOLLOWING' | 'QUOTED' | 'SAMPLE' | 'PRODUCTION' | 'SHIPPED' | 'ORDER';
 
 export const SALES_STAGES: SalesStage[] = [
   'OPPORTUNITY',
+  'FOLLOWING',
   'QUOTED',
   'SAMPLE',
   'PRODUCTION',
@@ -14,6 +15,7 @@ export const SALES_STAGES: SalesStage[] = [
 /** i18n key 后缀，配合 t(`sales.stage.${x}`) 使用 */
 export const STAGE_I18N: Record<SalesStage, string> = {
   OPPORTUNITY: 'opportunity',
+  FOLLOWING: 'following',
   QUOTED: 'quoted',
   SAMPLE: 'sample',
   PRODUCTION: 'production',
@@ -26,6 +28,7 @@ export const STAGE_META: Record<
   { color: string; bg: string; border: string }
 > = {
   OPPORTUNITY: { color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
+  FOLLOWING: { color: '#eb2f96', bg: '#fff0f6', border: '#ffadd2' },
   QUOTED: { color: '#08979c', bg: '#e6fffb', border: '#87e8de' },
   SAMPLE: { color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
   PRODUCTION: { color: '#d46b08', bg: '#fff7e6', border: '#ffd591' },

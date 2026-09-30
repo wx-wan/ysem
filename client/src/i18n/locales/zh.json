@@ -311,6 +311,7 @@
     "stage": {
       "label": "阶段",
       "opportunity": "待处理",
+      "following": "跟进中",
       "quoted": "已报价",
       "sample": "打样",
       "production": "生产",

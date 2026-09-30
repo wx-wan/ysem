@@ -16,18 +16,16 @@ import { flattenChannelOptions, flattenPlatformOptions } from '../components/lea
 import { buildTablePagination } from '../components/common/tablePagination';
 import { salesApi, type SalesItem } from '../api/sales';
 import { useAuthStore } from '../stores/useAuthStore';
-import type { SalesStage } from '../components/sales/stages';
 
-export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
+export default function Sales() {
   const { token } = theme.useToken();
   const { t } = useTranslation();
   const { message } = App.useApp();
   const [searchParams, setSearchParams] = useSearchParams();
-  const currentUser = useAuthStore((s) => s.user);
   const isAdmin = useAuthStore((s) => s.user?.role?.code === 'admin');
   const { channels } = useLeadOptions();
 
-  const list = useOpportunityList(fixedStage);
+  const list = useOpportunityList();
 
   // 搜索（防抖）
   const [kw, setKw] = useState('');
@@ -66,8 +64,8 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   }, [refetchDetail]);
 
   // 深链：?pipelineId= 自动选中并展开详情（右侧面板）。
-  // 依据商机归属自动切到正确 scope（我的 / 全部），确保左侧列表可见该记录；
-  // 选中不依赖列表分页，详情按 id 直拉，避免切换归属视图导致定位丢失。
+  // 状态栏切回「全部」，确保该记录在左侧列表中可见（其余状态的记录不在当前 tab 结果集内）；
+  // 选中不依赖列表分页，详情按 id 直拉，避免切换状态视图导致定位丢失。
   const oppResolvedRef = useRef(false);
   useEffect(() => {
     const pid = searchParams.get('pipelineId');
@@ -75,10 +73,8 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
     oppResolvedRef.current = true;
     salesApi
       .get(pid)
-      .then((res) => {
-        const item = res.data?.data ?? res.data;
-        const mine = item?.ownerId === currentUser?.id;
-        list.setScope(mine ? 'mine' : 'all');
+      .then(() => {
+        list.setStage('all');
         setSelectedId(pid);
         searchParams.delete('pipelineId');
         setSearchParams(searchParams, { replace: true });
@@ -87,7 +83,7 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
         oppResolvedRef.current = false;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, currentUser?.id]);
+  }, [searchParams]);
 
   // 客户端按创建时间排序（后端列表暂按更新时间返回，前端对齐线索排序交互）
   const sortedData = useMemo(() => {
@@ -101,14 +97,13 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
   const activeCount =
     (list.filterChannel ? 1 : 0) +
     (list.filterPlatform ? 1 : 0) +
-    (list.filterOwner ? 1 : 0) +
-    (list.scope === 'mine' ? 1 : 0);
+    (list.filterOwner ? 1 : 0);
 
   const handleClear = () => {
     list.setFilterChannel(undefined);
     list.setFilterPlatform(undefined);
     list.setFilterOwner(undefined);
-    list.setScope('all');
+    list.setStage('all');
     setKw('');
     list.setKeyword('');
   };
@@ -153,12 +148,18 @@ export default function Sales({ fixedStage }: { fixedStage?: SalesStage }) {
           activeCount={activeCount}
           onClear={handleClear}
           tabs={
-            <CapsuleSwitch<'mine' | 'all'>
-              value={list.scope}
-              onChange={list.setScope}
+            // 商机状态切换（派生的商机阶段）：全部不做状态过滤，数据范围按角色分配
+            <CapsuleSwitch<string>
+              value={list.stage}
+              onChange={(key) => {
+                list.setStage(key);
+                list.setPage(1);
+              }}
               options={[
-                { key: 'mine', label: t('sales.scopeMine') },
-                { key: 'all', label: t('sales.scopeAll') },
+                { key: 'all', label: t('common.all') },
+                { key: 'OPPORTUNITY', label: t('sales.stage.opportunity') },
+                { key: 'FOLLOWING', label: t('sales.stage.following') },
+                { key: 'QUOTED', label: t('sales.stage.quoted') },
               ]}
             />
           }

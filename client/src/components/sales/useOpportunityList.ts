@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { App } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { salesApi, type SalesItem } from '../../api/sales';
-import { useAuthStore } from '../../stores/useAuthStore';
 
 export interface AssignUser {
   id: string;
@@ -10,11 +9,10 @@ export interface AssignUser {
   username: string;
 }
 
-/** 商机列表：查询 / 筛选（渠道·平台·负责人·范围）/ 分页 / 删除 / 批量删除 / 刷新 */
-export function useOpportunityList(initialStage?: string) {
+/** 商机列表：查询 / 筛选（渠道·平台·负责人·状态）/ 分页 / 删除 / 批量删除 / 刷新 */
+export function useOpportunityList() {
   const { t } = useTranslation();
   const { message } = App.useApp();
-  const currentUser = useAuthStore((s) => s.user);
 
   const [listData, setListData] = useState<SalesItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -26,8 +24,8 @@ export function useOpportunityList(initialStage?: string) {
   const [filterChannel, setFilterChannel] = useState<string | undefined>();
   const [filterPlatform, setFilterPlatform] = useState<string | undefined>();
   const [filterOwner, setFilterOwner] = useState<string | undefined>();
-  // 范围：mine=我的（ownerId=当前用户）；all=全部（受角色数据范围约束）
-  const [scope, setScope] = useState<'mine' | 'all'>('all');
+  // 商机状态（派生阶段）切换：all=全部（数据范围按角色分配，不做状态过滤）
+  const [stage, setStage] = useState<string>('all');
   const [sort, setSort] = useState('createdAt:desc');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(8);
@@ -54,10 +52,9 @@ export function useOpportunityList(initialStage?: string) {
       if (keyword) params.keyword = keyword;
       if (filterChannel) params.channel = filterChannel;
       if (filterPlatform) params.platform = filterPlatform;
-      // 负责人：显式选择优先；否则「我的」范围回落到当前用户
-      const ownerId = filterOwner ?? (scope === 'mine' ? currentUser?.id : undefined);
-      if (ownerId) params.ownerId = ownerId;
-      if (initialStage) params.stage = initialStage;
+      if (filterOwner) params.ownerId = filterOwner;
+      // 状态筛选：阶段为派生值，后端先取全量再过滤（详见 opportunity.service.listOpportunities）
+      if (stage && stage !== 'all') params.stage = stage;
       const res = await salesApi.list(params);
       setListData(res.data.data.list);
       setTotal(res.data.data.total);
@@ -66,7 +63,7 @@ export function useOpportunityList(initialStage?: string) {
     } finally {
       setLoading(false);
     }
-  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterOwner, scope, initialStage, currentUser?.id, message, t]);
+  }, [page, pageSize, keyword, filterChannel, filterPlatform, filterOwner, stage, message, t]);
 
   useEffect(() => {
     fetchList();
@@ -118,8 +115,8 @@ export function useOpportunityList(initialStage?: string) {
     filterOwner,
     setFilterOwner,
     ownerOptions,
-    scope,
-    setScope,
+    stage,
+    setStage,
     sort,
     setSort,
     page,
