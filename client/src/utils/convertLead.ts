@@ -1,4 +1,5 @@
 import { leadApi, type Lead } from '../api/lead';
+import { resolveLeadCustomer } from './leadCustomer';
 import { customerApi } from '../api/customers';
 import { productApi } from '../api/products';
 import { type ProductImageItem } from '../utils/productImages';
@@ -72,7 +73,9 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
 
   // ---- 客户 / 产品建档检测（V1.1：一律以线索外键为准，名称仅用于建档预填） ----
   const customerId: string | null = lead.customerId ?? null;
-  const customerName = lead.customer?.companyName ?? undefined;
+  // 客户信息：已建档取客户库关系；**暂存取线索快照**（暂存客户不在客户库，建档时用它预填）
+  const customerInfo = resolveLeadCustomer(lead);
+  const customerName = customerInfo?.companyName ?? undefined;
   const needCustomer = !customerId;
 
   const firstItem = lead.items?.[0];
@@ -103,10 +106,10 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     if (needCustomer) {
       const created = await openCustomerForm?.({
         companyName: customerName,
-        contactName: lead.customer?.contactName ?? undefined,
-        email: lead.customer?.email ?? undefined,
-        phone: lead.customer?.phone ?? undefined,
-        country: lead.customer?.country ?? undefined,
+        contactName: customerInfo?.contactName ?? undefined,
+        email: customerInfo?.email ?? undefined,
+        phone: customerInfo?.phone ?? undefined,
+        country: customerInfo?.country ?? undefined,
         images: productImages,
       });
       if (created?.id) {

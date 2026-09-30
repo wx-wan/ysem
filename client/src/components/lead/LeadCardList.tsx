@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import FlagIcon from '../FlagIcon';
 import { type Lead } from '../../api/lead';
 import { STATUS_META } from './constants';
+import { resolveLeadCustomer } from '../../utils/leadCustomer';
 
 /** 头像底色（按 seed 稳定取色，同一负责人颜色不变） */
 export const leadAvatarColor = (seed?: string | null) => {
@@ -34,8 +35,9 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
         {dataSource.map((r) => {
           const ownerName = r.owner?.realName || r.owner?.username || '';
           const ownerSeed = r.ownerId || r.id;
-          // V1.1：客户 / 产品信息一律取关联主数据（线索不再冗余持有）
-          const company = r.customer?.companyName || '-';
+          // 客户信息：已建档取客户关系，**暂存取线索快照**（暂存客户不在客户库）
+          const customer = resolveLeadCustomer(r);
+          const company = customer?.companyName || '-';
           const country = r.targetMarket || '';
           const product = r.items?.[0]?.product?.name || r.productInterest || '';
           const desc = r.items?.[0]?.productDesc || '';
@@ -57,7 +59,7 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
                 <div className="lead-card__no-row">
                   <span className="lead-card__no">{r.leadNo || r.leadName}</span>
                   {statusMeta && <Tag color={statusMeta.color} className="lead-card__tag">{t(statusMeta.label)}</Tag>}
-                  {r.customer?.customerType && <Tag className="lead-card__tag">{r.customer.customerType}</Tag>}
+                  {customer?.customerType && <Tag className="lead-card__tag">{customer.customerType}</Tag>}
                 </div>
                 <div className="lead-card__company">
                   {country && <FlagIcon country={country} style={{ width: 20, height: 15, borderRadius: 2 }} />}

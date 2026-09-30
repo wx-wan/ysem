@@ -30,6 +30,7 @@ import { type Channel } from '../../api/channel';
 import { buildSourceKey, buildSourceOptions, sourceKeyLabel } from '../../utils/sourceChannel';
 import { customerApi, type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
+import { resolveLeadCustomer } from '../../utils/leadCustomer';
 import { salesApi, type SalesItem } from '../../api/sales';
 import { productApi, type Product, type ProductAudience, type ProductCraft, type ProductOption } from '../../api/products';
 import { useAuthStore } from '../../stores/useAuthStore';
@@ -166,8 +167,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     publicSea?: boolean;
     /** 命中客户的负责人姓名（阻断弹窗文案用） */
     ownerName?: string;
-    /** 阻断态：命中客户「他人负责且非公海」→ 该选择不可用于任何后续操作 */
+    /** 阻断态：命中客户「他人负责且非公海」，或名称已被他人暂存占用 → 不可用于任何后续操作 */
     blocked?: boolean;
+    /** 名称已被**他人私海暂存线索**占用（尚未建档但已占名，暂存即阻塞） */
+    drafting?: boolean;
   }>({
     status: 'idle',
     locked: false,
@@ -279,16 +282,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     customerId?: string;
     ownerName?: string;
     publicSea?: boolean;
+    drafting?: boolean;
   }) => {
     // 「他人负责且非公海」的客户不可用于本线索：弹窗阻断（选择后即弹出），且不得关联其 customerId。
     // 管理员放行（数据范围为全部，下拉本就提供全部客户）；线索**已关联**同一客户时放行（既有数据合法）。
+    // 另：名称已被**他人暂存**（未建档）占用同样阻断（暂存即阻塞，后端亦会拒绝）。
     const blocked =
-      info.status === 'other' && !info.publicSea && !isAdmin && info.customerId !== editing?.customerId;
+      (info.status === 'other' && !info.publicSea && !isAdmin && info.customerId !== editing?.customerId) ||
+      !!info.drafting;
     setStep0((s) => ({
       ...s,
       status: info.status,
       publicSea: !!info.publicSea,
       ownerName: info.ownerName,
+      drafting: !!info.drafting,
       blocked,
     }));
     setMatchedCustomerId(blocked ? null : (info.customerId ?? null));
@@ -915,9 +922,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setMatchedCustomerId(null);
     setMatchedCompanyName(null);
     // 来源不变量：先按线索详情的客户来源判定只读（随后的归属查询会用最新客户档案再校正一次）
+    const recordCustomer = resolveLeadCustomer(record);
     setCustomerSource({
-      channelId: record.customer?.channelId ?? null,
-      shopId: record.customer?.shopId ?? null,
+      channelId: recordCustomer?.channelId ?? null,
+      shopId: recordCustomer?.shopId ?? null,
     });
     setStep0((s) => ({ ...s, status: 'idle' }));
     setMatchedProduct(null);
@@ -932,23 +940,25 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     try {
       const res = await leadApi.get(record.id);
       const item = res.data;
+      // 客户信息：已建档取客户库关系；**暂存取线索快照**（暂存客户不在客户库）
+      const leadCustomer = resolveLeadCustomer(item);
       // 用详情接口的权威数据更新 editing（确保 status 等字段最新、完整）
       setEditing(item);
       // 重置 step1 回填守卫，确保进入「需求详情」步时按本条线索重新回填
       appliedStep1Ref.current = null;
       form.setFieldsValue({
-        // V1.1：客户信息唯一权威在客户库 —— 公司名 / 联系人 / 联系方式 / 客户类型全部取 customer 关系
-        customerKey: item.customer?.companyName || undefined,
-        contactName: item.customer?.contactName || undefined,
-        customerType: item.customer?.customerType || undefined,
+        // 客户信息：已建档取客户库关系；**暂存取线索快照**（暂存客户不在客户库）
+        customerKey: leadCustomer?.companyName || undefined,
+        contactName: leadCustomer?.contactName || undefined,
+        customerType: leadCustomer?.customerType || undefined,
         // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON；
         // 历史数据的 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
         sourceKey: buildSourceKey(item.channel?.id, item.shop?.id) ?? undefined,
         // 采购产品：产品名取关联产品（LeadItem 不再存产品名快照）
         productKey: item.items?.[0]?.product?.name || undefined,
         contactMethods:
-          Array.isArray(item.customer?.contactMethods) && item.customer.contactMethods.length
-            ? item.customer.contactMethods
+          Array.isArray(leadCustomer?.contactMethods) && leadCustomer.contactMethods.length
+            ? leadCustomer.contactMethods
             : [{ tool: '', account: '' }],
         // 数量需求：取线索明细 quantity（Lead 标量已下线）；0 为落库默认值，回填视为空（占位符展示）
         quantity: Number(item.items?.[0]?.quantity) || undefined,
@@ -1846,11 +1856,15 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                         )}
                         {!companyQuerying && !step0.locked && step0.status === 'other' && (
                           <Tag color={step0.blocked ? 'red' : 'blue'} style={{ marginInlineEnd: 0 }}>
-                            {step0.publicSea
-                              ? t('lead.customerInPublicSea')
-                              : t('lead.customerOwnedByOther', {
+                            {step0.drafting
+                              ? t('lead.customerDraftingByOther', {
                                   name: step0.ownerName || t('common.someone'),
-                                })}
+                                })
+                              : step0.publicSea
+                                ? t('lead.customerInPublicSea')
+                                : t('lead.customerOwnedByOther', {
+                                    name: step0.ownerName || t('common.someone'),
+                                  })}
                           </Tag>
                         )}
                       </span>

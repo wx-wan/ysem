@@ -68,9 +68,9 @@ model Customer {
   payments      Payment[] // Payment.customerId 的反向（辅助主体，非宿主，04 §8）
 
   status MasterStatus @default(ACTIVE)
-  /// 草稿客户：线索「暂存 / 未建档」时随线索创建，建档（锁定客户信息）后置 false。
-  /// 草稿态允许来源线索同步修改公司名与客户信息（见 lead.service 的更新逻辑）。
-  draft     Boolean      @default(false)
+  // 注：原 `draft`（草稿客户）列已删除（V1.2）—— 暂存线索不再创建客户，
+  //     客户信息只存在线索快照（`Lead.customerSnapshot` / `Lead.draftCustomerName`），
+  //     只有建档时才在此表创建正式客户。见 prisma/scripts/migrate-draft-customers.ts。
   createdBy String?
   createdAt DateTime     @default(now())
   updatedBy String?
@@ -225,19 +225,26 @@ model Lead {
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
-  // ---------- 客户快照（未确认期间随线索更新刷新，确认后冻结）----------
-  /// 客户信息的留痕快照。
+  // ---------- 客户快照（暂存期承载客户草稿；未确认期间随线索更新刷新，确认后冻结）----------
+  /// 客户信息的留痕快照，**暂存期即客户信息的唯一载体**。
   /// 规则：
-  ///   · 客户建档（`customerLocked` 置 true）时写入首版；
+  ///   · **暂存**（`customerLocked = false` 且未关联客户）：不创建 Customer 行，
+  ///     客户信息（公司名 / 联系人 / 联系方式 / 邮箱 / 电话 / 国家地区 / 客户类型 / 来源）
+  ///     全部存在本快照里 —— 暂存客户**不进客户库**；
+  ///   · 客户建档（`customerLocked` 置 true）时才创建正式 Customer 并绑定 `customerId`，
+  ///     随后快照改由客户档案刷新（内含 customerId / customerNo / 渠道平台名称）；
   ///   · 线索**未确认**（status = NEW）期间，**每次线索更新都会同步刷新**；
   ///   · 线索**确认**（NEW → CONFIRMED）时固化最后一版，此后**冻结、不再改动**；
   ///   · 单纯修改客户档案（不更新线索）不会刷新快照 —— 快照跟随线索更新节奏；
   ///   · 不可由接口修改：不在 `LEAD_WRITABLE_FIELDS` / 不在请求 schema 中。
-  /// 内容：customerId / 公司名 / 联系人 / 联系方式 / 邮箱 / 电话 / 国家地区 / 客户类型 /
-  ///       负责人 / 来源渠道与平台（含名称）。
   customerSnapshot   Json?
-  /// 快照写入时点（建档时刻）
+  /// 快照写入时点
   customerSnapshotAt DateTime?
+  /// **暂存客户名匹配键**（仅暂存期有值，建档 / 关联既有客户后清空）。
+  /// 取值 = 归一化（trim + 小写）后的公司名，用于「**暂存即阻塞**」的跨线索占用检查：
+  /// 他人已暂存同名 → 拒绝，避免两条线索各自暂存同一客户名、建档时才发现冲突。
+  /// 注意：仅统计**私海暂存线索**（`ownerId` 非空）；公海暂存线索不占名（谁都可认领后再建档）。
+  draftCustomerName String?
 
   // ---------- 需求（结构化，替代旧版 10 个平铺扩展字段中的同类项）----------
   productInterest String?
@@ -289,4 +296,5 @@ model Lead {
   @@index([channelId])
   @@index([source])
   @@index([createdAt])
+  @@index([draftCustomerName])
 }

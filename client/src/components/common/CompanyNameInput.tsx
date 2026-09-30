@@ -34,6 +34,8 @@ interface Props {
     customerId?: string;
     ownerName?: string;
     publicSea?: boolean;
+    /** 名称已被**他人私海暂存线索**占用（尚未建档但已占名 → 暂存即阻塞） */
+    drafting?: boolean;
   }) => void;
   /**
    * 查询中状态回调：归属查询开始 true、结束 false。
@@ -69,7 +71,11 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [querySignal]);
 
-  const resolve = (name: string, next: CompanyStatus, extra: { customerId?: string; ownerName?: string; publicSea?: boolean } = {}) => {
+  const resolve = (
+    name: string,
+    next: CompanyStatus,
+    extra: { customerId?: string; ownerName?: string; publicSea?: boolean; drafting?: boolean } = {},
+  ) => {
     setStatus(next);
     onResolved?.({ status: next, companyName: name, ...extra });
   };
@@ -98,6 +104,10 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
           break;
         case 'IN_PUBLIC_SEA':
           resolve(name, 'other', { customerId: data.customerId, publicSea: true });
+          break;
+        case 'DRAFTING':
+          // 名称已被他人私海暂存线索占用（尚未建档但已占名）→ 父级按阻断态处理
+          resolve(name, 'other', { ownerName: data.ownerName, drafting: true });
           break;
         case 'OWNED_BY_OTHER':
         default:

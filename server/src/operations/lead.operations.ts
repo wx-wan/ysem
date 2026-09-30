@@ -211,6 +211,145 @@ export async function refreshLeadCustomerSnapshotOperation(
   return true;
 }
 
+/** 暂存客户名匹配键：归一化（trim + 小写），与正式客户「大小写不敏感同名」口径一致 */
+export function draftCustomerNameKey(raw?: string | null): string | null {
+  const v = normalizeFilingName(raw);
+  return v ? v.toLowerCase() : null;
+}
+
+/**
+ * 他人**私海暂存**线索按名字占用查询。
+ *
+ * 口径：仅统计「暂存中」= `customerLocked = false` 且未关联客户、且**有负责人**的线索；
+ * 公海暂存线索不占名（谁都可先认领再建档，符合公海语义）。
+ */
+export async function findDraftNameHolder(
+  nameKey: string,
+  excludeLeadId: string | null,
+  db?: DbClient,
+) {
+  return leadRepository.findFirst(
+    {
+      where: {
+        draftCustomerName: nameKey,
+        customerId: null,
+        customerLocked: false,
+        ownerId: { not: null },
+        ...(excludeLeadId ? { id: { not: excludeLeadId } } : {}),
+      },
+      select: {
+        id: true,
+        ownerId: true,
+        owner: { select: { realName: true, username: true } },
+      },
+    },
+    db,
+  );
+}
+
+/**
+ * **客户名占用判定**（跨全员、忽略数据范围）：正式客户 ∪ 他人私海暂存线索。
+ *
+ * 用途 = 「**暂存即阻塞**」：暂存阶段就拒绝撞名，避免两条线索各自暂存同一客户名、
+ * 到建档那一刻才失败（也避免产生仅大小写 / 空白差异的重名客户）。
+ */
+export async function findCustomerNameOccupier(
+  name: string,
+  excludeLeadId: string | null,
+  db?: DbClient,
+): Promise<{ kind: 'CUSTOMER' | 'DRAFT'; companyName: string; ownerName?: string } | null> {
+  const customerHit = await findAnyCustomerByName(name, db);
+  if (customerHit) return { kind: 'CUSTOMER', companyName: customerHit.companyName };
+
+  const key = draftCustomerNameKey(name);
+  if (!key) return null;
+  const holder = await findDraftNameHolder(key, excludeLeadId, db);
+  if (!holder) return null;
+  return {
+    kind: 'DRAFT',
+    companyName: normalizeFilingName(name) ?? name,
+    ownerName: holder.owner?.realName || holder.owner?.username || undefined,
+  };
+}
+
+/**
+ * 暂存期客户信息（**不落客户库**，只登记在线索快照 + 占用键）。
+ * 未提交的字段（`undefined`）保留既有快照值 —— 支持「只改一条备注也刷新快照」。
+ */
+export interface LeadDraftCustomerPatch {
+  companyName?: string | null;
+  contactName?: string | null;
+  contactMethods?: unknown;
+  email?: string | null;
+  phone?: string | null;
+  /** 线索侧「国家/地区」= `country`（显式）或 `targetMarket`，调用方已折算 */
+  country?: string | null;
+  customerType?: string | null;
+  ownerId?: string | null;
+  channelId?: string | null;
+  shopId?: string | null;
+}
+
+/**
+ * 写入 / 刷新**暂存期**客户快照：把本次提交的客户信息合并进既有快照，
+ * 同步维护占用键 `draftCustomerName`（取合并后公司名的归一键；无公司名 → null）。
+ * `customerId` 恒为 null —— 暂存客户不在客户库，无主键。
+ */
+export async function writeLeadDraftSnapshotOperation(
+  leadId: string,
+  patch: LeadDraftCustomerPatch,
+  db?: DbClient,
+): Promise<void> {
+  const row = await leadRepository.findFirst(
+    { where: { id: leadId }, select: { customerSnapshot: true } },
+    db,
+  );
+  const prev = (row?.customerSnapshot ?? null) as Record<string, unknown> | null;
+  const defined = Object.fromEntries(
+    Object.entries(patch).filter(([, v]) => v !== undefined),
+  ) as Record<string, unknown>;
+
+  const merged: Record<string, unknown> = {
+    customerNo: null,
+    companyName: null,
+    contactName: null,
+    contactMethods: null,
+    email: null,
+    phone: null,
+    country: null,
+    customerType: null,
+    ownerId: null,
+    channelId: null,
+    shopId: null,
+    // 暂存期不解析渠道 / 平台名称（建档后由客户档案刷新补齐）
+    channelName: null,
+    shopName: null,
+    ...(prev ?? {}),
+    ...defined,
+  };
+  // 暂存期恒无客户主键（覆盖历史快照可能携带的旧 customerId，避免误读为已建档）
+  merged.customerId = null;
+  const name = normalizeFilingName(merged.companyName as string | null);
+  merged.companyName = name;
+
+  await leadRepository.update(
+    {
+      where: { id: leadId },
+      data: {
+        customerSnapshot: merged as unknown as Prisma.InputJsonValue,
+        customerSnapshotAt: new Date(),
+        draftCustomerName: draftCustomerNameKey(name),
+      },
+    },
+    db,
+  );
+}
+
+/** 清空暂存占用键（建档 / 关联既有客户后调用：占用改由正式客户承载） */
+export async function clearLeadDraftNameOperation(leadId: string, db?: DbClient): Promise<void> {
+  await leadRepository.update({ where: { id: leadId }, data: { draftCustomerName: null } }, db);
+}
+
 /** 列表：分页查询 + 批量拉取参考图片附件（避免 N+1） */
 export async function loadLeadsPage(input: {
   where: Record<string, unknown>;
@@ -228,12 +367,19 @@ export async function loadLeadsPage(input: {
   const leadIds = (list as { id: string }[]).map((l) => l.id);
   const attachmentMap = await loadLeadAttachments(leadIds);
 
-  // 客户快照为详情级留痕（建档时一次性写入的 JSON），列表不需要 →
-  // 从列表投影中剔除，避免每行携带大字段（详情仍完整返回）
+  // 客户快照投影：
+  //   · 已关联客户 → 列表无需快照（客户关系已完整返回），剔除以免每行携带大字段；
+  //   · **暂存线索（无客户）→ 客户信息只存在快照里，必须保留**，否则列表/卡片/表格客户列为空。
+  //   · `draftCustomerName` 为占用检查的内部匹配键，一律不外泄。
   const rows = (list as Record<string, unknown>[]).map((row) => {
-    const { customerSnapshot: _snap, customerSnapshotAt: _snapAt, ...rest } = row;
-    void _snap;
-    void _snapAt;
+    const { draftCustomerName: _draftName, ...rest } = row;
+    void _draftName;
+    if (rest.customerId) {
+      const { customerSnapshot: _snap, customerSnapshotAt: _snapAt, ...withoutSnap } = rest;
+      void _snap;
+      void _snapAt;
+      return withoutSnap;
+    }
     return rest;
   });
 
@@ -244,8 +390,11 @@ export async function loadLeadsPage(input: {
 export async function loadLeadDetail(where: Record<string, unknown>) {
   const item = await leadRepository.findFirst({ where, include: LEAD_INCLUDE });
   if (!item) return null;
+  // `draftCustomerName` 为暂存占用检查的内部匹配键，不外泄
+  const { draftCustomerName: _draftName, ...rest } = item as Record<string, unknown>;
+  void _draftName;
   const attachmentMap = await loadLeadAttachments([item.id]);
-  return { item: item as Record<string, unknown>, attachments: attachmentMap[item.id] ?? [] };
+  return { item: rest, attachments: attachmentMap[item.id] ?? [] };
 }
 
 /** 批量拉取线索参考图片附件（ownerType=LEAD），按 ownerId 分组 */
@@ -346,7 +495,7 @@ export async function findReusableCustomerByName(
  * 用途：区分「可建档」与「他人已建档」——避免产生仅大小写/空白差异的重名客户；
  * 只返回主键与公司名，不返回归属人信息，不构成归属信息泄露。
  */
-export async function findAnyCustomerByName(name: string, db: DbClient) {
+export async function findAnyCustomerByName(name: string, db?: DbClient) {
   return customerRepository.findFirst(
     {
       where: { companyName: { equals: name, mode: 'insensitive' } },

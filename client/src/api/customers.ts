@@ -187,7 +187,13 @@ export interface AllCustomersRes extends CustomerListRes {
 
 
 // 归属查询返回结果（仅 code + 命中客户主键 + 负责人姓名，无具体客户资料）
-export type OwnershipCode = 'NOT_FOUND' | 'OWNED_BY_ME' | 'OWNED_BY_OTHER' | 'IN_PUBLIC_SEA';
+export type OwnershipCode =
+  | 'NOT_FOUND'
+  | 'OWNED_BY_ME'
+  | 'OWNED_BY_OTHER'
+  | 'IN_PUBLIC_SEA'
+  /** 该名称已被**他人私海暂存线索**占用（暂存即阻塞：尚未建档但已占名） */
+  | 'DRAFTING';
 export interface OwnershipResult {
   code: OwnershipCode;
   customerId?: string;

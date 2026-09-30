@@ -134,19 +134,6 @@ export const customerRepository = {
     });
   },
 
-  /** 草稿态判定（线索未建档前的客户允许被线索同步改名 / 更新信息） */
-  findDraftById(id: string, db: DbClient = prisma) {
-    return db.customer.findUnique({
-      where: { id },
-      select: { id: true, draft: true, companyName: true, channelId: true, shopId: true },
-    });
-  },
-
-  /** 按 id 局部更新（草稿客户同步 / 建档置正式用） */
-  updateById(id: string, data: Prisma.CustomerUpdateInput, db: DbClient = prisma) {
-    return db.customer.update({ where: { id }, data });
-  },
-
   /** 来源渠道（来源不变量的判据：一个客户只有一种来源） */
   findChannelById(id: string, db: DbClient = prisma) {
     return db.customer.findUnique({

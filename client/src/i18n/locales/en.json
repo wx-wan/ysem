@@ -409,6 +409,7 @@
     "pendingTag": "Unfiled",
     "updatedTag": "Updated",
     "customerOwnedByOther": "This customer is already handled by {{name}}",
+    "customerDraftingByOther": "This customer is being filed by {{name}}",
     "customerBlockedTitle": "Customer unavailable",
     "releaseCustomerNote": "The linked customer will also be released to the customer pool.",
     "customerBlockedContent": "Customer \"{{company}}\" is already handled by {{name}} and cannot be used for this lead. Please use another company name; to use this customer, ask the owner to release or transfer it first.",

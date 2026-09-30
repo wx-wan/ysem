@@ -16,6 +16,7 @@ import { buildTablePagination } from '../components/common/tablePagination';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useUserStore } from '../stores/useUserStore';
 import { debounce } from '../utils/rateLimit';
+import { resolveLeadCustomer } from '../utils/leadCustomer';
 import { useSearchParams } from 'react-router-dom';
 
 export default function SalesLeads() {
@@ -139,7 +140,7 @@ export default function SalesLeads() {
   const handleRelease = useCallback(
     (r: Lead) => {
       releaseToPool({
-        name: r.leadName || r.customer?.companyName || '',
+        name: r.leadName || resolveLeadCustomer(r)?.companyName || '',
         // 规则：线索放弃到公海 ⇒ 关联客户必然一并放归公海（后端强制联动）
         note: r.customerId ? t('lead.releaseCustomerNote') : undefined,
         action: () => leadApi.release(r.id),

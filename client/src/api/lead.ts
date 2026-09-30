@@ -14,7 +14,9 @@ export type LeadStatus = 'NEW' | 'CONFIRMED' | 'SAMPLED' | 'WON';
  * 注意：只有这 6 个字段；`contactMethods` / `customerType` 等需经 `customerApi.getById` 取完整档案。
  */
 export interface LeadCustomer {
-  id: string;
+  /** 客户主键；**暂存期（快照）为 null** —— 暂存客户不在客户库，尚无客户主数据 */
+  id?: string | null;
+  customerNo?: string | null;
   companyName?: string | null;
   contactName?: string | null;
   email?: string | null;
@@ -22,9 +24,13 @@ export interface LeadCustomer {
   country?: string | null;
   customerType?: string | null;
   contactMethods?: { tool: string; account: string }[] | null;
+  ownerId?: string | null;
   // 来源不变量：一个客户只有一种来源 —— 线索来源以其客户来源为唯一权威
   channelId?: string | null;
   shopId?: string | null;
+  /** 建档后由客户档案刷新补入；暂存期为 null */
+  channelName?: string | null;
+  shopName?: string | null;
 }
 
 /**
@@ -41,6 +47,12 @@ export interface Lead {
   leadName: string;
   customerId?: string | null;
   customer?: LeadCustomer | null;
+  /**
+   * 客户快照：**暂存期客户信息的唯一载体**（未建档时线索不建客户、不关联 `customer`）。
+   * 已关联客户的线索（`customerId` 非空）列表投影会剔除该字段以省流量。
+   * 取值请统一走 `utils/leadCustomer.ts` 的 `resolveLeadCustomer(lead)`。
+   */
+  customerSnapshot?: LeadCustomer | null;
   source: LeadSource;
   status: LeadStatus;
   productInterest?: string | null;

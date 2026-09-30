@@ -409,6 +409,7 @@
     "pendingTag": "未建档",
     "updatedTag": "有更新",
     "customerOwnedByOther": "该客户已由【{{name}}】负责",
+    "customerDraftingByOther": "该客户正在由【{{name}}】建档中",
     "customerBlockedTitle": "无法使用该客户",
     "releaseCustomerNote": "该线索关联的客户将一并放归客户公海。",
     "customerBlockedContent": "客户「{{company}}」已由【{{name}}】负责，不能用于当前线索。请更换公司名称；如需使用该客户，请先由负责人在客户页释放或转交后再录入。",

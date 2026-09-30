@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { type Lead, type LeadSource, type LeadStatus } from '../../api/lead';
 import { useUserStore } from '../../stores/useUserStore';
 import { SOURCE_META, STATUS_META } from './constants';
+import { resolveLeadCustomer } from '../../utils/leadCustomer';
 
 interface Props {
   dataSource: Lead[];
@@ -76,8 +77,9 @@ export default function LeadTable({
         title: t('lead.customer'),
         width: 160,
         render: (_: unknown, r: Lead) => {
-          const name = r.customer?.companyName || '';
-          const contact = r.customer?.contactName || '';
+          const customer = resolveLeadCustomer(r);
+          const name = customer?.companyName || '';
+          const contact = customer?.contactName || '';
           if (!name && !contact) return '-';
           return (
             <Space size={4}>

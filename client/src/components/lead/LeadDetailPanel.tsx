@@ -9,6 +9,7 @@ import { leadApi, type Lead, type LeadOperationLog } from '../../api/lead';
 import { useCurrencyStore } from '../../stores/useCurrencyStore';
 import { formatMoneyValue, currentRateOf } from '../common/MoneyInput';
 import { STATUS_META } from './constants';
+import { resolveLeadCustomer } from '../../utils/leadCustomer';
 
 /** 操作记录动作 → i18n key + 时间线颜色 */
 const LOG_ACTION_META: Record<string, { key: string; color: string }> = {
@@ -102,8 +103,9 @@ export default function LeadDetailPanel({
 
   const statusMeta = STATUS_META[detail.status];
 
-  // V1.1：客户 / 产品信息一律取关联主数据（线索不再冗余持有）
-  const company = detail.customer?.companyName || '—';
+  // 客户信息：已建档取客户关系，**暂存取线索快照**（暂存客户不在客户库）
+  const customer = resolveLeadCustomer(detail);
+  const company = customer?.companyName || '—';
   const country = detail.targetMarket || '';
   const product = detail.items?.[0]?.product?.name || detail.productInterest || '';
   const quantity = detail.items?.[0]?.quantity;
@@ -115,7 +117,7 @@ export default function LeadDetailPanel({
   // 据此决定底部主按钮显示「编辑」（回到暂存阶段继续）还是「确认」（转商机）
   const reachedConfirm = detail.stage == null ? true : detail.stage >= 2;
   // 头部联系方式：取客户档案的 contactMethods，行内展示首条「icon + 账号」，多条时以 icon 悬停查看全部
-  const contactList = Array.isArray(detail.customer?.contactMethods) ? detail.customer.contactMethods : [];
+  const contactList = Array.isArray(customer?.contactMethods) ? customer.contactMethods : [];
   const primaryContact = contactList[0];
   const hasMoreContacts = contactList.length > 1;
 
@@ -163,7 +165,7 @@ export default function LeadDetailPanel({
         </div>
         {/* 联系人 + 首条联系方式（沟通工具：账号）；多条时 icon 悬停查看全部 */}
         <div style={{ marginTop: 4, fontSize: 13, color: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          {detail.customer?.contactName ? <span>{detail.customer.contactName}</span> : null}
+          {customer?.contactName ? <span>{customer.contactName}</span> : null}
           {primaryContact && (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <CommToolIcon name={primaryContact.tool} style={{ fontSize: 13, color: 'rgba(255,255,255,0.9)' }} />

@@ -6,8 +6,9 @@ import { computeDiff, type FieldFormatter } from '../lib/operation-diff';
 import {
   buildLeadListWhere,
   claimLeadOwnership,
+  clearLeadDraftNameOperation,
   createLeadAggregate,
-  findAnyCustomerByName,
+  findCustomerNameOccupier,
   findLeadForLogs,
   findReusableCustomerByName,
   findReusableProductByName,
@@ -24,7 +25,9 @@ import {
   resolveVisibleProduct,
   transferLeadOwnership,
   updateLeadAggregate,
+  writeLeadDraftSnapshotOperation,
   type LeadCaller,
+  type LeadDraftCustomerPatch,
   type LeadListFilters,
   type LeadScopeProvider,
   type AttachmentCreateInput,
@@ -391,16 +394,19 @@ interface FilingResult {
   };
 }
 
-/** 建档所需的线索级上下文（负责人 + 来源渠道 / 平台 + 客户是否处于草稿态） */
+/** 建档所需的线索级上下文（负责人 + 来源渠道 / 平台 + 本次是否建档） */
 interface FilingContext {
   ownerId: string | null;
   channelId: string | null;
   shopId: string | null;
   /**
-   * 客户草稿态：线索尚未建档（`customerLocked !== true`）时随线索创建的客户标记为草稿，
-   * 允许该线索在其建档前继续同步修改公司名与客户信息；建档（`customerLocked = true`）后置 false。
+   * 本次是否「客户信息建档」（`customerLocked`）。
+   *
+   * **暂存**（false）：**不创建 Customer 行** —— 客户信息只写入线索快照
+   * （`customerSnapshot` + `draftCustomerName`），因此**暂存客户不进客户库**；
+   * **建档**（true）：才真正在客户库创建正式客户并绑定 `customerId`。
    */
-  draftCustomer: boolean;
+  customerLocked: boolean;
 }
 
 /** 参考图片取首张 URL（产品主图 coverImage 为单值列） */
@@ -413,17 +419,19 @@ function firstImageUrl(
 }
 
 /**
- * 事务内确保客户存在（客户主数据唯一权威 = Customer）：
+ * 事务内解析线索的客户关联（客户主数据唯一权威 = Customer）：
  *  1) 显式 `customerId` → 授权校验（owner ∪ 公海 ∪ admin）后直接关联；
- *  2) 归一（trim + 大小写不敏感）命中**可见范围内**既有客户 → 复用；
- *  3) 名称已被**不可见**客户占用 → 拒绝（既不产生同名客户，也不泄露归属人信息）；
- *  4) 否则在同一事务内建档（编号与写入同事务，任一失败全部回滚）。
+ *  2) 归一（trim + 大小写不敏感）命中**可见范围内**既有客户 → 复用（关联既有客户，不新增客户）；
+ *  3) 名称已被占用 → 拒绝：正式客户由他人负责，**或他人私海暂存线索已占该名**（暂存即阻塞）；
+ *  4) **暂存（未建档）→ 不创建客户**，返回 null，客户信息由调用方写入线索快照（不入客户库）；
+ *  5) 建档 → 在同一事务内创建**正式**客户（编号与写入同事务，任一失败全部回滚）。
  */
 async function resolveCustomerIdInTx(
   tx: TxClient,
   input: CreateLeadInput,
   filing: FilingContext,
   ctx: LeadActorContext,
+  excludeLeadId: string | null,
 ): Promise<FilingResult | null> {
   if (input.customerId) {
     await assertReusableCustomer(input.customerId, ctx);
@@ -436,12 +444,18 @@ async function resolveCustomerIdInTx(
   const reusable = await findReusableCustomerByName(name, reusableCustomerScope(ctx), tx);
   if (reusable) return { id: reusable.id };
 
-  const occupied = await findAnyCustomerByName(name, tx);
-  if (occupied) {
+  // 占用判定：正式客户 ∪ 他人私海暂存线索（暂存即阻塞）
+  const occupier = await findCustomerNameOccupier(name, excludeLeadId, tx);
+  if (occupier) {
     throw new DomainValidationError(
-      `客户「${occupied.companyName}」已由其他业务员负责，不能用于当前线索；如需使用请先由负责人在客户页释放或转交`,
+      occupier.kind === 'DRAFT'
+        ? `客户「${occupier.companyName}」正在由${occupier.ownerName ? `【${occupier.ownerName}】` : '其他业务员'}建档中，该名称已被暂存占用；请更换公司名称或先与对方对齐`
+        : `客户「${occupier.companyName}」已由其他业务员负责，不能用于当前线索；如需使用请先由负责人在客户页释放或转交`,
     );
   }
+
+  // 暂存：不建客户（暂存客户不进客户库），客户信息落线索快照
+  if (!filing.customerLocked) return null;
 
   const customer = await createCustomerAggregate(
     {
@@ -451,15 +465,13 @@ async function resolveCustomerIdInTx(
       email: input.email ?? null,
       phone: input.phone ?? null,
       // 线索「国家/地区」= targetMarket；客户同义字段为 country。
-      // 优先显式 country（前端会按国家表转换后提交），缺失时回退 targetMarket —— 与草稿期同步口径一致
+      // 优先显式 country（前端会按国家表转换后提交），缺失时回退 targetMarket
       country: input.country ?? input.targetMarket ?? null,
       customerType: input.customerType ?? null,
       channelId: filing.channelId,
       shopId: filing.shopId,
       source: 'MANUAL',
       ownerId: filing.ownerId,
-      // 草稿客户：线索未建档前随线索创建，建档后置为正式
-      draft: filing.draftCustomer,
     },
     tx,
   );
@@ -475,50 +487,26 @@ async function resolveCustomerIdInTx(
   };
 }
 
-/**
- * 草稿客户（线索未建档前）同步：允许来源线索改名与更新客户信息。
- *
- *  - 仅在客户 `draft = true` 时生效（建档后客户主数据不再由线索改动）→ 非草稿返回 null，
- *    调用方继续走既有「显式关联 / 归一匹配 / 建档」逻辑
- *  - 改名带重名检测（同名客户已存在 → 400；不产生同名客户，也不静默合并）
- *  - 联系人 / 联系方式 / 国家地区 / 客户类型 等按线索表单**已提供**的值同步
- *  - 来源（channelId/shopId）不在此改动：客户来源为唯一权威（首次确立后不可篡改）
- */
-async function syncDraftCustomerFromLeadInTx(
-  tx: TxClient,
-  customerId: string | null,
-  input: UpdateLeadInput,
-): Promise<string | null> {
-  if (!customerId) return null;
-  const customer = await customerRepository.findDraftById(customerId, tx);
-  if (!customer?.draft) return null;
-
-  const patch: Record<string, unknown> = {};
-  const nextName = normalizeFilingName(input.companyName);
-  if (input.companyName !== undefined && nextName && nextName !== normalizeFilingName(customer.companyName)) {
-    const occupied = await findAnyCustomerByName(nextName, tx);
-    if (occupied && occupied.id !== customerId) {
-      throw new DomainValidationError(
-        `客户「${occupied.companyName}」已存在，不能重复建档；请更换公司名称`,
-      );
-    }
-    patch.companyName = nextName;
-  }
-  if (input.contactName !== undefined) patch.contactName = input.contactName ?? null;
-  if (input.customerType !== undefined) patch.customerType = input.customerType ?? null;
-  if (input.contactMethods !== undefined) {
-    patch.contactMethods = (input.contactMethods ?? null) as Prisma.InputJsonValue | undefined;
-  }
-  if (input.email !== undefined) patch.email = input.email ?? null;
-  if (input.phone !== undefined) patch.phone = input.phone ?? null;
-  // 线索侧「国家/地区」为 targetMarket；客户侧同义字段为 country
-  const country = input.country !== undefined ? input.country : input.targetMarket;
-  if (country !== undefined) patch.country = country ?? null;
-
-  if (Object.keys(patch).length) {
-    await customerRepository.updateById(customerId, patch as Prisma.CustomerUpdateInput, tx);
-  }
-  return customerId;
+/** 暂存期客户信息补丁（由线索输入折算「国家/地区」= country ?? targetMarket） */
+function draftPatchFromLeadInput(input: {
+  companyName?: string | null;
+  contactName?: string | null;
+  contactMethods?: unknown;
+  email?: string | null;
+  phone?: string | null;
+  country?: string | null;
+  targetMarket?: string | null;
+  customerType?: string | null;
+}): LeadDraftCustomerPatch {
+  return {
+    companyName: input.companyName,
+    contactName: input.contactName,
+    contactMethods: input.contactMethods,
+    email: input.email,
+    phone: input.phone,
+    country: input.country ?? input.targetMarket ?? undefined,
+    customerType: input.customerType,
+  };
 }
 
 /**
@@ -692,7 +680,7 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     channelId: channelId ?? null,
     shopId: shopId ?? null,
     // 未建档（customerLocked 非 true）→ 随线索创建的客户为草稿
-    draftCustomer: !(data.customerLocked ?? false),
+    customerLocked: data.customerLocked ?? false,
   };
   const pendingLogs: (FilingResult['createdLog'] | undefined)[] = [];
 
@@ -727,7 +715,7 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     attachments: normalizeAttachments(data.images),
     actorUserId: ctx.userId ?? null,
     resolveCustomerId: async (tx) => {
-      const r = await resolveCustomerIdInTx(tx, data, filing, ctx);
+      const r = await resolveCustomerIdInTx(tx, data, filing, ctx, null);
       pendingLogs.push(r?.createdLog);
       return r?.id ?? null;
     },
@@ -742,9 +730,25 @@ export async function createLead(data: CreateLeadInput, ctx: LeadActorContext) {
     // 来源不变量：一个客户只有一种来源（线索来源恒等于客户来源）
     resolveSource: (tx, customerId) =>
       resolveSourceForLeadInTx(tx, customerId, { channelId: channelId ?? null, shopId: shopId ?? null }),
-    // 建档即写一次客户快照（仅「创建即建档」的路径会走到；后续由更新 / 确认刷新）
+    // 客户快照：有关联客户 → 以客户档案为源；暂存（无客户）→ 以线索输入为源
+    // （暂存期客户信息的**唯一载体**就是快照，故暂存创建也必须写）
     afterWrite: async (tx, leadId, customerId) => {
-      if (data.customerLocked) await refreshLeadCustomerSnapshotOperation(leadId, customerId, tx);
+      if (customerId) {
+        await refreshLeadCustomerSnapshotOperation(leadId, customerId, tx);
+        return;
+      }
+      if (!filing.customerLocked) {
+        await writeLeadDraftSnapshotOperation(
+          leadId,
+          {
+            ...draftPatchFromLeadInput(data),
+            ownerId: filing.ownerId,
+            channelId: filing.channelId,
+            shopId: filing.shopId,
+          },
+          tx,
+        );
+      }
     },
   });
 
@@ -853,7 +857,7 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
     ownerId: effOwnerId ?? null,
     channelId: effChannelId ?? null,
     shopId: effShopId ?? null,
-    draftCustomer: !effCustomerLocked,
+    customerLocked: effCustomerLocked,
   };
 
   // 客户关联：显式 customerId 优先（null = 解除关联）；否则按公司名归一匹配 / 建档；两者皆无 → 不改动
@@ -875,38 +879,49 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
     attachmentRows: data.images !== undefined ? normalizeAttachments(data.images) : undefined,
     actorUserId: ctx.userId ?? null,
     resolveCustomerId: async (tx) => {
-      // 草稿客户（线索未建档前）：允许本线索同步改名 / 更新客户信息，并保持同一客户关联
-      const draftSynced = await syncDraftCustomerFromLeadInTx(
-        tx,
-        hasExplicitCustomer
-          ? (((leadData as Record<string, unknown>).customerId as string | null) ?? null)
-          : existing.customerId,
-        data,
-      );
-      if (draftSynced) {
-        // 建档（锁定客户信息）时把草稿客户置为正式
-        if (effCustomerLocked) {
-          await customerRepository.updateById(draftSynced, { draft: false }, tx);
-        }
-        return draftSynced;
-      }
       if (hasExplicitCustomer) {
         const explicit = (leadData as Record<string, unknown>).customerId as string | null;
         // 已关联**同一**客户 → 沿用既有可见性口径（避免重开旧线索被新规则卡死）；
         // 改为关联**其他**客户 → 必须满足「本人 / 公海 / 管理员」
         if (explicit && explicit !== existing.customerId) await assertReusableCustomer(explicit, ctx);
         else await assertVisibleCustomer(explicit, ctx);
+        // 关联既有客户 → 不再占用暂存名（占用改由正式客户承载）
+        if (explicit) await clearLeadDraftNameOperation(existing.id, tx);
         return explicit ?? null;
       }
-      if (!hasCompanyName) return undefined;
+      // 暂存期客户信息的唯一载体是快照：建档（或本次提交部分客户字段）时，
+      // 本次未提交的字段一律回退取快照，避免建出一个「只有公司名」的空客户。
+      const snapshotDraft = (existing.customerSnapshot ?? null) as Record<string, unknown> | null;
+      const fromSnapshotOr = <T>(submitted: T | undefined, key: string): T | undefined =>
+        submitted !== undefined ? submitted : ((snapshotDraft?.[key] ?? undefined) as T | undefined);
+
+      if (!hasCompanyName) {
+        // 本次未提交公司名：仅当「由暂存转为建档」且快照里带着客户信息时才继续（用快照建档）
+        const draftName = normalizeFilingName(snapshotDraft?.companyName as string | null | undefined);
+        if (!(effCustomerLocked && !existing.customerId && draftName)) return undefined;
+      }
+
+      // 暂存 → 不建客户（信息落快照）；建档 → 创建正式客户；
+      // 两种情况都执行「暂存即阻塞」占用检查（正式客户 ∪ 他人私海暂存名）
       const r = await resolveCustomerIdInTx(
         tx,
-        { companyName: data.companyName, contactName: data.contactName, contactMethods: data.contactMethods,
-          email: data.email, phone: data.phone, country: data.country, customerType: data.customerType },
+        {
+          companyName: hasCompanyName
+            ? data.companyName
+            : (snapshotDraft?.companyName as string | null | undefined),
+          contactName: fromSnapshotOr(data.contactName, 'contactName'),
+          contactMethods: fromSnapshotOr(data.contactMethods, 'contactMethods'),
+          email: fromSnapshotOr(data.email, 'email'),
+          phone: fromSnapshotOr(data.phone, 'phone'),
+          country: fromSnapshotOr(data.country, 'country'),
+          customerType: fromSnapshotOr(data.customerType, 'customerType'),
+        },
         filing,
         ctx,
+        existing.id,
       );
       pendingLogs.push(r?.createdLog);
+      if (r?.id) await clearLeadDraftNameOperation(existing.id, tx);
       return r?.id ?? null;
     },
     // 归属不变量：客户由谁负责，线索负责人就是谁（本次未改动客户时按既有客户回退）
@@ -927,14 +942,31 @@ export async function updateLead(id: string, data: UpdateLeadInput, ctx: LeadAct
     /**
      * 客户快照：**未确认期间每次线索更新同步刷新**；**确认（CONFIRMED 及之后）后冻结**。
      * 生效状态取「本次提交的 status ?? 既有 status」——一旦任一侧已确认即不再改动。
-     * 注意：单纯修改客户档案（不更新线索）不会刷新快照；快照跟随线索更新节奏。
+     * 来源随阶段切换：有关联客户 → 客户档案；暂存（无客户）→ 线索输入（合并既有快照）。
      */
     afterResolve: async (tx, customerId) => {
-      const effCustomerId = customerId === undefined ? (existing.customerId ?? null) : customerId;
       const effStatus =
         ((leadData as Record<string, unknown>).status as LeadStatus | undefined) ?? existing.status;
       if (existing.status !== 'NEW' || effStatus !== 'NEW') return;
-      await refreshLeadCustomerSnapshotOperation(existing.id, effCustomerId, tx);
+
+      const effCustomerId = customerId === undefined ? (existing.customerId ?? null) : customerId;
+      if (effCustomerId) {
+        await refreshLeadCustomerSnapshotOperation(existing.id, effCustomerId, tx);
+        return;
+      }
+      // 暂存期：以线索输入刷新草稿快照，并同步维护暂存占用键
+      if (!effCustomerLocked) {
+        await writeLeadDraftSnapshotOperation(
+          existing.id,
+          {
+            ...draftPatchFromLeadInput(data),
+            ownerId: effOwnerId ?? null,
+            channelId: effChannelId ?? null,
+            shopId: effShopId ?? null,
+          },
+          tx,
+        );
+      }
     },
     resolveProductId: async (tx) => {
       if (hasExplicitProduct) {

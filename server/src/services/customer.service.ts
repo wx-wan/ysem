@@ -12,6 +12,7 @@ import {
   withCustomerIntent,
 } from '../state';
 import { applyScope, includePublicSea, publicSeaScope } from '../scope';
+import { draftCustomerNameKey, findDraftNameHolder } from '../operations/lead.operations';
 import {
   createCustomerAggregate,
   createImportedCustomer,
@@ -361,7 +362,18 @@ export async function checkOwnership(companyName: string | undefined, ctx: Custo
   if (!name) throw new DomainValidationError('companyName required');
 
   const hit = await findCustomerByCompanyName(name);
-  if (!hit) return { code: 'NOT_FOUND' as const };
+  if (!hit) {
+    // 暂存线索占用（**暂存即阻塞**）：他人私海暂存线索已占该名 → 不可用；
+    // 本人自己的暂存 → 视为本人占用（可继续用）；无人占用 → 未建档可用
+    const key = draftCustomerNameKey(name);
+    const holder = key ? await findDraftNameHolder(key, null) : null;
+    if (!holder) return { code: 'NOT_FOUND' as const };
+    if (holder.ownerId === ctx.userId) return { code: 'OWNED_BY_ME' as const };
+    return {
+      code: 'DRAFTING' as const,
+      ownerName: holder.owner?.realName || holder.owner?.username,
+    };
+  }
 
   let code: 'OWNED_BY_ME' | 'OWNED_BY_OTHER' | 'IN_PUBLIC_SEA';
   let ownerName: string | undefined;
