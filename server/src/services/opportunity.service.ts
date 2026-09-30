@@ -83,6 +83,19 @@ export const opportunityCreateSchema = z.object({
     .nullable(),
 });
 
+/**
+ * 「确认线索」入参（`POST /api/leads/:id/confirm`）。
+ *
+ * **规则：商机不支持创建，只可由线索创建。** 故客户与来源线索一律由**线索自身**派生
+ * （客户 = 线索已关联客户、线索 = 路径 id），客户端**不传也不可指定**，杜绝张冠李戴。
+ */
+export const opportunityConfirmSchema = opportunityCreateSchema.omit({
+  leadId: true,
+  customerId: true,
+});
+
+export type OpportunityConfirmInput = z.infer<typeof opportunityConfirmSchema>;
+
 export const opportunityUpdateSchema = opportunityCreateSchema.partial();
 
 export type OpportunityCreateInput = z.infer<typeof opportunityCreateSchema>;
@@ -342,6 +355,10 @@ export function getAssignUsers() {
 
 // ============================================================
 // 创建（B2 / D7：leadId 强前置 + 渠道服务端派生）
+//
+// 【唯一入口】线索确认（`lead.service.confirmLeadToOpportunity` ← `POST /api/leads/:id/confirm`）。
+// 商机**不支持直接创建**：HTTP 层已下线 `POST /api/sales`，本函数仅供线索确认路径调用，
+// 函数内的 `leadId` 强前置断言保留作纵深防御。
 // ============================================================
 
 export async function createOpportunity(
@@ -358,7 +375,7 @@ export async function createOpportunity(
   // 2) Sales Process 起点：Lead 必须存在且在当前数据范围内（B2 强前置关系）
   //
   // R-5 · PHASE 6（收口 PHASE 5 发现 F1）：B2 原本仅在**边界**强制
-  // （`opportunityCreateSchema` 的 POST /api/sales 与 Excel 导入的行级校验）。
+  // （`opportunityCreateSchema` 的确认入参与 Excel 导入的行级校验）。
   // 此处补一条**领域函数级**断言作纵深防御，防止未来新增内部调用方绕过边界。
   // 对现有两个真实入口属**行为不变**的纯加固。
   if (!body.leadId) throw new DomainValidationError('线索不能为空');
@@ -424,7 +441,7 @@ export async function createOpportunity(
   return opportunity;
 }
 
-type OpportunityWithInclude = Prisma.OpportunityGetPayload<{ include: typeof OPPORTUNITY_INCLUDE }>;
+export type OpportunityWithInclude = Prisma.OpportunityGetPayload<{ include: typeof OPPORTUNITY_INCLUDE }>;
 
 // ============================================================
 // 更新（D7：Starting Fact 不可修改）

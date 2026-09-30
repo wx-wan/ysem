@@ -34,6 +34,7 @@ import {
 } from '../operations/customer.operations';
 import { channelRepository } from '../repositories/channel.repository';
 import { customerRepository } from '../repositories/customer.repository';
+import { leadRepository } from '../repositories/lead.repository';
 import type { DbClient } from '../repositories';
 import { userRepository } from '../repositories/user.repository';
 import * as XLSX from 'xlsx';
@@ -631,19 +632,36 @@ export async function update(id: string, body: UpdateCustomerInput, ctx: Custome
   // D-INTENT v2：Customer.intentLevel 已非人工字段 ⇒ 不再记录「意向等级变更」日志
   if (tags !== undefined && !sameTags(tags, existing.tags)) changes.push('标签已更新');
 
-  // ---- Round R-5 · Phase 1 · B3（业务冻结）：Customer First Acquisition Fact 建档后锁定 ----
+  // ---- 来源渠道（V1.1 调整）：客户来源**可编辑**，且为客户唯一权威 ----
   //
-  // `Customer.channelId / shopId` 是**客户第一次进入销售体系时的来源事实**，
-  // 只在**首次建档（create）**时确定；建档完成后：
-  //   · 后续 Lead / Opportunity / Quotation / SampleOrder / SalesOrder 均**不得**覆盖；
-  //   · 客户编辑接口**不再采信** `sourceKey` / `channelId` / `shopId` 入参，
-  //     一律沿用已落库的首次获客事实（后端为最终业务权威）。
+  // 规则：一个客户只有一种来源。
+  //   · 客户编辑接口**采信** `sourceKey`（优先）/ `channelId`+`shopId`；
+  //   · 未提供来源 → 沿用既有值（不因未传而清空）；
+  //   · 来源发生变化 → 写入客户，并**级联同步该客户名下线索的来源**（线索来源恒等于客户来源）。
   //
-  // 入参形状保持不变（API Contract 稳定）；既有前端「线索转客户时同步来源」的
-  // 旧调用可以继续发出，但**不再产生任何写入效果**（行为变化已在 Phase 1 报告记录）。
-  const effChannelId = existing.channelId;
-  const effShopId = existing.shopId;
-  await assertChannelShop(effChannelId, effShopId);
+  // 变更说明：原「建档后不可覆盖」的冻结口径按业务要求放开为可编辑；
+  // 校验（渠道存在 / 父子一致性）与写入事务保持不变。
+  const fromSourceKey = splitSourceKey(body.sourceKey);
+  const reqChannelId =
+    fromSourceKey.channelId !== undefined ? fromSourceKey.channelId : (body.channelId ?? undefined);
+  const reqShopId =
+    fromSourceKey.shopId !== undefined ? fromSourceKey.shopId : (body.shopId ?? undefined);
+  const sourceProvided = reqChannelId !== undefined || reqShopId !== undefined;
+  let effChannelId = existing.channelId;
+  let effShopId = existing.shopId;
+  let sourceChanged = false;
+  if (sourceProvided) {
+    const nextChannelId = reqChannelId ?? null;
+    const nextShopId = reqShopId ?? null;
+    await assertChannelShop(nextChannelId, nextShopId);
+    if (nextChannelId !== existing.channelId || nextShopId !== existing.shopId) {
+      effChannelId = nextChannelId;
+      effShopId = nextShopId;
+      sourceChanged = true;
+    }
+  } else {
+    await assertChannelShop(effChannelId ?? null, effShopId ?? null);
+  }
 
   const customer = await customerRepository.update({
     where: { id },
@@ -676,6 +694,12 @@ export async function update(id: string, body: UpdateCustomerInput, ctx: Custome
       ...(firstOrderAt !== undefined ? { firstOrderAt } : {}),
     },
   });
+
+  // 来源不变量级联：客户来源变更后，其名下线索来源同步跟随
+  // （一个客户只有一种来源：客户是权威，线索恒取客户来源）
+  if (sourceChanged) {
+    await leadRepository.updateSourceByCustomerId(id, effChannelId ?? null, effShopId ?? null);
+  }
 
   if (changes.length > 0) {
     await activityLogger.log({

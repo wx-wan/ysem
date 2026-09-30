@@ -435,6 +435,7 @@
     "customerTypePlaceholder": "请选择客户类型",
     "channel": "来源渠道",
     "leadSource": "来源渠道",
+    "sourceByCustomer": "来源渠道随客户档案：一个客户只有一种来源",
     "leadSourceRequired": "请选择来源渠道",
     "filterPlatform": "渠道",
     "filterShop": "平台",

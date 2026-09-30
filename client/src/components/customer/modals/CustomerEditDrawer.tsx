@@ -1,13 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Input, DatePicker, App, theme, Form } from 'antd';
-import { CloseOutlined, SaveOutlined } from '@ant-design/icons';
+import { Input, DatePicker, App, theme, Form, Tooltip } from 'antd';
+import { CloseOutlined, SaveOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import { Customer, customerApi } from '../../../api/customers';
 import CountrySelect from '../../CountrySelect';
+import CustomerTypeSelect from '../../CustomerTypeSelect';
 import ProductImageList from '../../common/ProductImageList';
 import ContactMethodInput from '../../common/ContactMethodInput';
+import ChipSelect from '../../common/ChipSelect';
 import { useCommToolOptions } from '../../../stores/useCommToolStore';
+import { useChannelTree } from '../../../hooks/useChannelTree';
+import { buildSourceKey, buildSourceOptions, sourceKeyLabel } from '../../../utils/sourceChannel';
 import { Z_INDEX, createPopupContainer } from '../../../zIndex';
 import { useDs } from '../shared/ds';
 
@@ -28,6 +32,8 @@ interface CustomerEditablePayload {
   contactName: string;
   position: string;
   country: string;
+  /** 客户类型（与线索表单一致的必填项） */
+  customerType: string;
   images: string;
   /** 沟通方式（与线索一致：[{tool, account}]）；删除旧的邮箱/电话/微信独立字段，统一用该组件录入 */
   contactMethods?: { tool: string; account: string }[] | null;
@@ -38,6 +44,11 @@ interface CustomerEditablePayload {
   /** 首次合作日期 'YYYY-MM-DD'；清空 → null（服务端 dateField 接受 null） */
   firstOrderAt: string | null;
   notes: string;
+  /**
+   * 来源渠道组合值（JSON `{channelId, shopId}`）。
+   * 服务端仅在客户**尚无来源**时采纳（首次确立唯一来源）；已有来源时忽略该入参。
+   */
+  sourceKey?: string | null;
 }
 
 interface CustomerEditDrawerProps {
@@ -66,6 +77,18 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
   const [saving, setSaving] = useState(false);
   // 沟通工具下拉（取自系统设置 → 沟通工具维护，与线索录入一致）
   const { options: commToolOptions } = useCommToolOptions();
+  // 来源渠道（与线索同款 chip 单选、「渠道 · 平台」展示）
+  const { channels } = useChannelTree();
+  const currentSourceKey = customer ? buildSourceKey(customer.channelId, customer.shopId) : null;
+  const sourceOptions = useMemo(() => {
+    const list = buildSourceOptions(channels);
+    // 兜底：客户来源为「渠道 + 无平台」时无对应候选，按渠道树解析名称补一项，避免 chip 全不高亮
+    if (currentSourceKey && !list.some((o) => o.value === currentSourceKey)) {
+      const label = sourceKeyLabel(currentSourceKey, channels);
+      if (label) list.unshift({ label, value: currentSourceKey });
+    }
+    return list;
+  }, [channels, currentSourceKey]);
 
   // 内容容器 ref，用于让 antd 浮层挂载在抽屉内、避免被层级遮挡
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -81,12 +104,15 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         // 沟通方式：优先用 contactMethods；旧数据无该字段时回退空（组件内默认一条空行）
         contactMethods: customer.contactMethods ?? undefined,
         country: customer.country,
+        customerType: customer.customerType,
         region: customer.region,
         notes: customer.notes,
         // V1.0 canonical：tags 为 string[]（该字段本抽屉不渲染、payload 白名单亦不提交，仅保持类型一致）
         tags: customer.tags ?? [],
         // V1.0 canonical：firstOrderAt 为 ISO 字符串，DatePicker 需 dayjs 对象
         firstOrderAt: customer.firstOrderAt ? dayjs(customer.firstOrderAt) : undefined,
+        // 来源渠道：组合值回填（客户已有来源时控件只读，值保持与档案一致）
+        sourceKey: buildSourceKey(customer.channelId, customer.shopId) ?? undefined,
       });
     }
   }, [open, customer, antForm]);
@@ -102,6 +128,7 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
         contactName: values.contactName ?? '',
         position: values.position ?? '',
         country: values.country ?? '',
+        customerType: values.customerType ?? '',
         images: values.images ?? '',
         // 沟通方式：过滤掉「工具/账号均为空」的占位行，避免写入空数据；无有效项则置 null
         contactMethods: (() => {
@@ -120,6 +147,8 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
           ? (values.firstOrderAt as Dayjs).format('YYYY-MM-DD')
           : null,
         notes: values.notes ?? '',
+        // 来源渠道：客户已有来源时服务端忽略（不可篡改）；无来源时确立唯一来源
+        sourceKey: values.sourceKey ?? null,
       };
       setSaving(true);
       const { data } = await customerApi.update(customer.id, payload);
@@ -216,12 +245,13 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
             layout="vertical"
             style={{ width: '100%' }}
           >
-            <Form.Item key="company" name="companyName" label="公司" rules={[{ required: true, message: '请输入公司' }]}>
+            {/* 必填项与线索表单保持一致（公司名称 / 联系人 / 国家地区 / 客户类型 / 联系方式 / 来源渠道） */}
+            <Form.Item key="company" name="companyName" label="公司" rules={[{ required: true, message: '请输入公司名称' }]}>
               <Input size="large" placeholder="请输入公司名称" style={{ borderRadius: ds.radius }} />
             </Form.Item>
 
             <FormRow>
-              <Form.Item key="contact" name="contactName" label="联系人">
+              <Form.Item key="contact" name="contactName" label="联系人" rules={[{ required: true, message: '请输入联系人姓名' }]}>
                 <Input size="large" placeholder="请输入联系人姓名" style={{ borderRadius: ds.radius }} />
               </Form.Item>
               <Form.Item key="position" name="position" label="职位">
@@ -229,9 +259,14 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
               </Form.Item>
             </FormRow>
 
-            <Form.Item name="country" label="所在地区">
-              <CountrySelect size="large" placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
-            </Form.Item>
+            <FormRow>
+              <Form.Item name="country" label="所在地区" rules={[{ required: true, message: '请选择国家/地区' }]}>
+                <CountrySelect size="large" placeholder="请选择国家/地区" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
+              </Form.Item>
+              <Form.Item name="customerType" label="客户类型" rules={[{ required: true, message: '请选择客户类型' }]}>
+                <CustomerTypeSelect size="large" placeholder="请选择客户类型" style={{ borderRadius: ds.radius }} getPopupContainer={createPopupContainer(contentRef)} />
+              </Form.Item>
+            </FormRow>
 
             <Form.Item name="images" label="名片" valuePropName="value">
               <ProductImageList uploadUrl="/upload" />
@@ -243,6 +278,27 @@ const CustomerEditDrawer: React.FC<CustomerEditDrawerProps> = ({ open, customer,
               rules={[{ required: true, message: '请至少填写一条联系方式' }]}
             >
               <ContactMethodInput options={commToolOptions} size="large" />
+            </Form.Item>
+
+            {/* 来源渠道：显示形式与线索一致（chip 单选，「渠道 · 平台」）；可编辑，
+                修改后由服务端同步该客户名下线索的来源（一个客户只有一种来源） */}
+            <Form.Item
+              name="sourceKey"
+              label={
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <span>来源渠道</span>
+                  <Tooltip
+                    title="一个客户只有一种来源；修改后该客户名下线索的来源会一并同步"
+                    // 抽屉为自定义 portal（层级高于 antd 默认浮层），提示必须挂到抽屉内，否则会被抽屉遮住
+                    getPopupContainer={createPopupContainer(contentRef)}
+                  >
+                    <InfoCircleOutlined style={{ color: token.colorTextTertiary }} />
+                  </Tooltip>
+                </span>
+              }
+              rules={[{ required: true, message: '请选择来源渠道' }]}
+            >
+              <ChipSelect options={sourceOptions} size="large" />
             </Form.Item>
 
             <Form.Item name="firstOrderAt" label="首次合作日期">

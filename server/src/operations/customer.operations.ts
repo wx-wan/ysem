@@ -75,6 +75,9 @@ export function loadCustomerOptions(where: Prisma.CustomerWhereInput) {
       customerType: true,
       channelId: true,
       shopId: true,
+      // 来源渠道 / 平台名称：前端「来源渠道」与线索表单同款展示（一个客户只有一种来源）
+      channel: { select: { id: true, name: true } },
+      shop: { select: { id: true, name: true } },
       contactMethods: true,
       ownerId: true,
     },
@@ -146,6 +149,9 @@ export function loadCustomerDetail(where: Prisma.CustomerWhereInput) {
         orderBy: { createdAt: 'desc' },
         select: { id: true, leadNo: true, leadName: true, status: true, source: true, createdAt: true },
       },
+      // 来源渠道 / 平台名称：详情展示「来源渠道」文本用（标量 channelId/shopId 随行已返回）
+      channel: { select: { id: true, name: true } },
+      shop: { select: { id: true, name: true } },
     },
   });
 }

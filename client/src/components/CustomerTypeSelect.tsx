@@ -15,9 +15,16 @@ interface Props {
   variant?: 'outlined' | 'filled' | 'borderless' | 'underlined';
   /** 透传给内部 Select 的 size（small / middle / large） */
   size?: 'small' | 'middle' | 'large';
+  /** 透传给内部 Select 的样式（宽度 / 圆角等，与所在表单统一） */
+  style?: React.CSSProperties;
+  /**
+   * 透传给内部 Select 的浮层容器。抽屉等自定义 portal 层级高于 antd 默认浮层（body），
+   * 必须挂到容器内，否则下拉会被遮住。
+   */
+  getPopupContainer?: (node: HTMLElement) => HTMLElement;
 }
 
-export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id, variant, size }: Props) {
+export default function CustomerTypeSelect({ value, onChange, placeholder, allowClear = true, disabled, id, variant, size, style, getPopupContainer }: Props) {
   const { t } = useTranslation();
   const types = useCustomerTypeStore((s) => s.types);
   const loading = useCustomerTypeStore((s) => s.loading);
@@ -42,6 +49,8 @@ export default function CustomerTypeSelect({ value, onChange, placeholder, allow
       showSearch
       optionFilterProp="label"
       notFoundContent={t('customerType.noData')}
+      style={style}
+      getPopupContainer={getPopupContainer}
     />
   );
 }

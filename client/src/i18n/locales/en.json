@@ -434,6 +434,7 @@
     "customerTypePlaceholder": "Select customer type",
     "channel": "Source Channel",
     "leadSource": "Source Channel",
+    "sourceByCustomer": "The source channel follows the customer profile: one customer has exactly one source",
     "leadSourceRequired": "Please select a source channel",
     "filterPlatform": "Channel",
     "filterShop": "Platform",

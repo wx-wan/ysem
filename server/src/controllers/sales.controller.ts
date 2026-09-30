@@ -22,8 +22,9 @@ import { productVisibilityWhere, projectProductRows, roleScope } from '../scope'
  *   ① `leadId` 成为创建必填（B2）；
  *   ② `channelId / shopId / leadId` 更新不可变（D7）。
  *
- * 【规则冻结】商机**不支持新建、不支持导入**：唯一创建路径是「线索转商机」
- * （`leadId` 强前置）——故无独立 create/import 业务入口，`POST /api/sales` 仅供转化调用。
+ * 【规则冻结】商机**不支持创建、不支持导入**：唯一创建入口是「线索确认」
+ * （`POST /api/leads/:id/confirm` ← `lead.service.confirmLeadToOpportunity`）。
+ * `POST /api/sales` 与 `POST /api/sales/import` 均已下线，本层只提供读 / 改 / 删。
  */
 
 /** 明细关联产品的公开字段（DQ-3=C 投影白名单；内部授权字段不得进入响应） */
@@ -147,17 +148,7 @@ export const getByCustomer = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
-// ============ 创建 ============
-
-export const createOpportunity = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const data = opportunityService.opportunityCreateSchema.parse(req.body);
-    const opportunity = await opportunityService.createOpportunity(data, buildActorContext(req));
-    created(res, withProductVisibility(req, opportunity), '创建成功');
-  } catch (err) {
-    respondError(res, err, '参数校验失败：');
-  }
-};
+// ============ 创建（已下线：商机不支持创建，唯一入口为 POST /api/leads/:id/confirm）============
 
 // ============ 更新 ============
 

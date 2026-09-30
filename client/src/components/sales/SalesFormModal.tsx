@@ -47,8 +47,8 @@ interface Props {
 /**
  * 商机表单弹窗 —— **仅编辑**。
  *
- * 规则（冻结）：商机不支持新建、不支持导入，唯一来源是「线索转商机」
- * （见 `utils/convertLead.ts`，走 `salesApi.create` + `leadId` 强前置）。
+ * 规则（冻结）：商机不支持创建、不支持导入，唯一来源是「线索确认」
+ * （见 `utils/convertLead.ts`，走 `leadApi.confirm` ← `POST /api/leads/:id/confirm`）。
  * 故本弹窗不提供 create 分支；来源线索为起始事实，编辑时只读。
  */
 const SalesFormModal: React.FC<Props> = ({ open, editingItem, onClose, onSaved }) => {

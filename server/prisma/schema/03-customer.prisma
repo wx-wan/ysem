@@ -67,7 +67,10 @@ model Customer {
   shipments     Shipment[] // Shipment.customerId 的反向（04 §6）
   payments      Payment[] // Payment.customerId 的反向（辅助主体，非宿主，04 §8）
 
-  status    MasterStatus @default(ACTIVE)
+  status MasterStatus @default(ACTIVE)
+  /// 草稿客户：线索「暂存 / 未建档」时随线索创建，建档（锁定客户信息）后置 false。
+  /// 草稿态允许来源线索同步修改公司名与客户信息（见 lead.service 的更新逻辑）。
+  draft     Boolean      @default(false)
   createdBy String?
   createdAt DateTime     @default(now())
   updatedBy String?
@@ -221,6 +224,20 @@ model Lead {
   // 读取一律经 customer 关系，避免「同一信息两处权威」。
   customerId String?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  // ---------- 客户快照（未确认期间随线索更新刷新，确认后冻结）----------
+  /// 客户信息的留痕快照。
+  /// 规则：
+  ///   · 客户建档（`customerLocked` 置 true）时写入首版；
+  ///   · 线索**未确认**（status = NEW）期间，**每次线索更新都会同步刷新**；
+  ///   · 线索**确认**（NEW → CONFIRMED）时固化最后一版，此后**冻结、不再改动**；
+  ///   · 单纯修改客户档案（不更新线索）不会刷新快照 —— 快照跟随线索更新节奏；
+  ///   · 不可由接口修改：不在 `LEAD_WRITABLE_FIELDS` / 不在请求 schema 中。
+  /// 内容：customerId / 公司名 / 联系人 / 联系方式 / 邮箱 / 电话 / 国家地区 / 客户类型 /
+  ///       负责人 / 来源渠道与平台（含名称）。
+  customerSnapshot   Json?
+  /// 快照写入时点（建档时刻）
+  customerSnapshotAt DateTime?
 
   // ---------- 需求（结构化，替代旧版 10 个平铺扩展字段中的同类项）----------
   productInterest String?

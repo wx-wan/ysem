@@ -22,6 +22,9 @@ export interface LeadCustomer {
   country?: string | null;
   customerType?: string | null;
   contactMethods?: { tool: string; account: string }[] | null;
+  // 来源不变量：一个客户只有一种来源 —— 线索来源以其客户来源为唯一权威
+  channelId?: string | null;
+  shopId?: string | null;
 }
 
 /**
@@ -178,6 +181,20 @@ export interface LeadListParams {
   sort?: string;
 }
 
+/**
+ * 「确认线索」入参（`POST /api/leads/:id/confirm`）。
+ * 客户与来源线索由服务端从线索派生，**客户端不传也不可指定**。
+ */
+export interface LeadConfirmPayload {
+  title: string;
+  estimatedAmount?: number | null;
+  estimatedCloseDate?: string | null;
+  intentLevel?: string | null;
+  notes?: string | null;
+  ownerId?: string | null;
+  products?: { productId: string; quantity?: number }[] | null;
+}
+
 export const leadApi = {
   list: (params: LeadListParams = {}) =>
     axios
@@ -201,4 +218,11 @@ export const leadApi = {
     axios.post<{ code: number; data: null }>(`/leads/${id}/release`).then((r) => r.data),
   claim: (id: string) =>
     axios.post<{ code: number; data: null }>(`/leads/${id}/claim`).then((r) => r.data),
+  /**
+   * 确认线索 → 创建商机（**商机唯一创建入口**）。
+   * 规则：商机不支持创建，只可由线索创建 —— 客户与来源线索由服务端从线索派生，
+   * 故入参不含 `customerId` / `leadId`；成功后后端自动把线索推进为「已确认」。
+   */
+  confirm: (id: string, payload: LeadConfirmPayload) =>
+    axios.post<{ code: number; data: unknown }>(`/leads/${id}/confirm`, payload).then((r) => r.data),
 };

@@ -19,7 +19,7 @@ import {
   Modal,
 } from 'antd';
 import dayjs from 'dayjs';
-import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ExclamationCircleFilled, RightOutlined } from '@ant-design/icons';
+import { CheckOutlined, CloseOutlined, UserAddOutlined, ArrowLeftOutlined, CheckCircleOutlined, CloseCircleOutlined, ExclamationCircleOutlined, ExclamationCircleFilled, InfoCircleOutlined, RightOutlined } from '@ant-design/icons';
 import { useTranslation } from 'react-i18next';
 import AppModal from '../AppModal';
 import CountrySelect, { findCountry, getCountryCode } from '../CountrySelect';
@@ -27,6 +27,7 @@ import CountrySelect, { findCountry, getCountryCode } from '../CountrySelect';
 import { ProductEditModal, type ProductEditModalHandle } from '../product/modals/ProductEditModal';
 import ConvertCreateSummaryModal from './ConvertCreateSummaryModal';
 import { type Channel } from '../../api/channel';
+import { buildSourceKey, buildSourceOptions, sourceKeyLabel } from '../../utils/sourceChannel';
 import { customerApi, type Customer } from '../../api/customers';
 import { leadApi, type Lead, type LeadPayload } from '../../api/lead';
 import { salesApi, type SalesItem } from '../../api/sales';
@@ -71,6 +72,10 @@ const safeParseSource = (raw?: string): { channelId?: string; shopId?: string } 
     return null;
   }
 };
+
+// 线索来源：组合值 / 选项 / 名称解析统一走公共工具（线索与客户共用同一口径）
+// - buildSourceKey：渠道 + 平台 → JSON 组合值（无子平台仅 channelId）
+// - sourceKeyLabel：组合值 → 「渠道 · 平台」文本（含「有渠道无平台」兜底）
 
 interface Props {
   channels: Channel[];
@@ -173,6 +178,13 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const [matchedCompanyName, setMatchedCompanyName] = useState<string | null>(null);
   // mine（本人已建档）时拉取完整客户对象，用于转商机时比对信息变更并同步更新
   const [matchedCustomer, setMatchedCustomer] = useState<Customer | null>(null);
+  // 来源不变量：一个客户只有一种来源 —— 已关联客户的来源即线索来源，客户已有来源时字段只读
+  const [customerSource, setCustomerSource] = useState<{
+    channelId?: string | null;
+    shopId?: string | null;
+  } | null>(null);
+  /** 客户已有来源 → 来源渠道只读（跟随客户档案）；客户无来源 / 未关联客户 → 可编辑 */
+  const sourceLocked = !!customerSource?.channelId;
   // 公司名称归属「实时查询」信号：每次打开弹窗自增，驱动 CompanyNameInput 用 /ownership 重新查询（而非派生）
   const [companyQuerySeq, setCompanyQuerySeq] = useState(0);
   // 公司名称归属查询中：状态提示统一在 label 行渲染（与「未建档 / 已建档」同款 Tag），故由父级持有
@@ -306,7 +318,14 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
           // 仅「新建线索」自动带入命中客户的默认值（国家/类型/来源/联系人等）；
           // 编辑既有线索（含暂存草稿）时，线索自带的联系人/联系方式才是权威数据，
           // 不能用客户档案覆盖（否则暂存的联系人回显会被客户旧数据顶掉）。
-          if (c && !editing?.id) applyCustomerFieldValues(c);
+          if (c && !editing?.id) {
+            applyCustomerFieldValues(c);
+          } else if (c) {
+            // 编辑既有线索：联系人/联系方式以线索自带数据为准，但**来源**仍以客户档案为权威 ——
+            // 客户已有来源时按客户校正回显（否则展示与后端保存结果不一致）；客户无来源时保留线索现值
+            setCustomerSource({ channelId: c.channelId ?? null, shopId: c.shopId ?? null });
+            if (c.channelId) form.setFieldsValue({ sourceKey: buildSourceKey(c.channelId, c.shopId) });
+          }
           // 归属不变量：客户由谁负责，线索负责人就是谁（与后端同口径）。
           // 客户在公海（无 ownerId）时保持当前登录用户，后端会随线索一并认领该客户；
           // 管理员为他人客户建线索时，线索负责人同样取该客户负责人（后端派生，前端先行回显）。
@@ -316,6 +335,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         .catch(() => setMatchedCustomer(null));
     } else {
       setMatchedCustomer(null);
+      // 未关联客户（新公司名 / 命中被阻断）→ 来源由用户选择，解除只读
+      setCustomerSource(null);
     }
   };
 
@@ -331,13 +352,10 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     const patch: Record<string, any> = {};
     if (c.country) patch.targetMarket = c.country;
     if (c.customerType) patch.customerType = c.customerType;
-    if (c.channelId) {
-      // 历史数据 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
-      patch.sourceKey =
-        c.shopId && c.shopId !== c.channelId
-          ? JSON.stringify({ channelId: c.channelId, shopId: c.shopId })
-          : JSON.stringify({ channelId: c.channelId });
-    }
+    // 来源不变量：一个客户只有一种来源 —— 来源渠道**始终**以客户档案为准：
+    // 客户有来源 → 带入客户来源；客户无来源 → 清空（否则会残留上一个客户的来源，落库后与客户不一致）
+    patch.sourceKey = buildSourceKey(c.channelId, c.shopId);
+    setCustomerSource({ channelId: c.channelId ?? null, shopId: c.shopId ?? null });
     if (c.contactName) patch.contactName = c.contactName;
     if (c.contactMethods && c.contactMethods.length) patch.contactMethods = c.contactMethods;
     if (Object.keys(patch).length) form.setFieldsValue(patch);
@@ -573,23 +591,20 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
   const watchQuantity = Form.useWatch('quantity', form);
   const watchCustomerKey = Form.useWatch('customerKey', form);
   const watchUnit = Form.useWatch('unit', form);
+  const watchSourceKey = Form.useWatch('sourceKey', form);
 
   // 线索来源选项：来源渠道 + 来源平台由前端拼接为一个 JSON（{ channelId, shopId }）作为选项值；
   // 无子平台的渠道仅传 channelId（不兜底 shopId = 渠道自身），否则后端父子一致性校验必然 400
   const sourceOptions = useMemo(() => {
-    const list: { label: string; value: string }[] = [];
-    channels.forEach((c) => {
-      const children = c.children || [];
-      if (!children.length) {
-        list.push({ label: c.name, value: JSON.stringify({ channelId: c.id }) });
-      } else {
-        children.forEach((child) => {
-          list.push({ label: `${c.name} · ${child.name}`, value: JSON.stringify({ channelId: c.id, shopId: child.id }) });
-        });
-      }
-    });
+    const list = buildSourceOptions(channels);
+    // 兜底：当前值没有对应候选（典型：客户来源为「渠道 + 无平台」，而有子平台的渠道只展开为「渠道 · 平台」）
+    // 时按渠道树解析出名称补一个选项，否则 chip 全不高亮 —— 表现为「来源渠道没有正确回显」
+    if (watchSourceKey && !list.some((o) => o.value === watchSourceKey)) {
+      const label = sourceKeyLabel(watchSourceKey, channels);
+      if (label) list.unshift({ label, value: watchSourceKey });
+    }
     return list;
-  }, [channels]);
+  }, [channels, watchSourceKey]);
 
   // 线索名称：目标国家 + 产品名称 + 数量，自动生成
   const leadNamePreview = useMemo(() => {
@@ -886,6 +901,8 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setStep1((s) => ({ ...s, status: 'idle' }));
     setMatchedProductId(null);
     setMatchedProduct(null);
+    // 新建：未关联客户 → 来源由用户选择（解除只读）
+    setCustomerSource(null);
     // 新建：无公司名，querySignal 自增仅作一致性（空名查询无操作）
     setCompanyQuerySeq((n) => n + 1);
   };
@@ -897,6 +914,11 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
     setMatchedCustomer(null);
     setMatchedCustomerId(null);
     setMatchedCompanyName(null);
+    // 来源不变量：先按线索详情的客户来源判定只读（随后的归属查询会用最新客户档案再校正一次）
+    setCustomerSource({
+      channelId: record.customer?.channelId ?? null,
+      shopId: record.customer?.shopId ?? null,
+    });
     setStep0((s) => ({ ...s, status: 'idle' }));
     setMatchedProduct(null);
     setMatchedProductId(null);
@@ -921,13 +943,7 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
         customerType: item.customer?.customerType || undefined,
         // 线索来源：后端 channel/shop 关系（ID）拼接回 JSON；
         // 历史数据的 shopId 兜底为渠道自身（shopId === channelId）时归一为仅 channelId，避免保存时父子校验 400
-        sourceKey: item.channel?.id
-          ? JSON.stringify(
-              item.shop?.id && item.shop.id !== item.channel.id
-                ? { channelId: item.channel.id, shopId: item.shop.id }
-                : { channelId: item.channel.id },
-            )
-          : undefined,
+        sourceKey: buildSourceKey(item.channel?.id, item.shop?.id) ?? undefined,
         // 采购产品：产品名取关联产品（LeadItem 不再存产品名快照）
         productKey: item.items?.[0]?.product?.name || undefined,
         contactMethods:
@@ -1892,8 +1908,23 @@ const LeadFormModal = forwardRef<LeadFormModalHandle, Props>((props, ref) => {
                 </Col>
                 {/* 右：来源渠道 */}
                 <Col span={12}>
-                  <Form.Item name="sourceKey" label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span>{t('lead.leadSource')}</span><UpdatedTag show={customerFieldDiff?.sourceKey} /></span>} rules={[{ required: true, message: t('lead.leadSourceRequired') }]}>
-                    <ChipSelect options={sourceOptions} size="large" disabled={step0.locked} />
+                  <Form.Item
+                    name="sourceKey"
+                    label={
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <span>{t('lead.leadSource')}</span>
+                        {sourceLocked && (
+                          <Tooltip title={t('lead.sourceByCustomer')}>
+                            <InfoCircleOutlined style={{ color: 'var(--c-text-tertiary, #94a3b8)' }} />
+                          </Tooltip>
+                        )}
+                        <UpdatedTag show={customerFieldDiff?.sourceKey} />
+                      </span>
+                    }
+                    rules={[{ required: true, message: t('lead.leadSourceRequired') }]}
+                  >
+                    {/* 客户已有来源 → 只读跟随客户档案（一个客户只有一种来源）；客户无来源 → 可选，保存时写回客户 */}
+                    <ChipSelect options={sourceOptions} size="large" disabled={step0.locked || sourceLocked} />
                   </Form.Item>
                 </Col>
               </Row>

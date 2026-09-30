@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import {
-  getOpportunities, getOpportunity, createOpportunity,
+  getOpportunities, getOpportunity,
   updateOpportunity, deleteOpportunity, batchDelete,
   getAssignUsers, getByCustomer, getByProduct, getSalesLogs,
 } from '../controllers/sales.controller';
@@ -49,37 +49,9 @@ router.get('/:id/logs', getSalesLogs);
 
 router.get('/:id', getOpportunity);
 
-/**
- * @swagger
- * /api/sales:
- *   post:
- *     tags: [销售管理]
- *     summary: 由线索转化创建商机
- *     description: |
- *       商机**不提供独立新建入口**，唯一创建路径是「线索转商机」：
- *       `leadId` 为强前置必填，渠道 / 平台由来源线索派生。
- *       商机不支持 Excel 导入（`POST /api/sales/import` 已下线）。
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [leadId, customerId, name]
- *             properties:
- *               leadId: { type: string }
- *               customerId: { type: integer }
- *               name: { type: string }
- *               amount: { type: number }
- *               stage: { type: string }
- *               probability: { type: integer }
- *               expectedCloseDate: { type: string, format: date }
- *               assigneeId: { type: integer }
- *     responses:
- *       200:
- *         description: 创建成功
- */
-router.post('/', createOpportunity);
+// 商机**不支持创建**：`POST /api/sales` 已下线，唯一创建入口是「线索确认」
+// `POST /api/leads/:id/confirm`（客户与来源线索由线索派生）。
+// 商机同样不支持 Excel 导入（`POST /api/sales/import` 已下线）。
 
 router.put('/:id', updateOpportunity);
 

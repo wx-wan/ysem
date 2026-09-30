@@ -20,8 +20,10 @@ export interface Customer {
   source?: string;
   channelId?: string | null; // 获客渠道（与 Lead.channelId 同义）
   shopId?: string | null; // 获客平台（与 Lead.shopId 同义）
+  channel?: { id: string; name: string } | null; // 渠道名称（详情 / 选项接口均返回）
+  shop?: { id: string; name: string } | null; // 平台名称
   contactMethods?: { tool: string; account: string }[] | null; // 联系方式（与 Lead.contactMethods 一致：[{tool, account}]）
-  sourceKey?: string; // 来源组合值（JSON {channelId, shopId}），建档时拆分落库
+  sourceKey?: string | null; // 来源组合值（JSON {channelId, shopId}），建档时拆分落库
   notes?: string;
   ownerId?: string;
   isKeyAccount: boolean;

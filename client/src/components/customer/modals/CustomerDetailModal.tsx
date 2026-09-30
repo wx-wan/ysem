@@ -14,6 +14,7 @@ import {
   NumberOutlined,
   MoneyCollectOutlined,
   FileTextOutlined,
+  ApiOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { Customer, customerApi, type SalesOrderSummary, type OpportunitySummary, type CustomerLeadSummary } from '../../../api/customers';
@@ -521,6 +522,11 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       value={m.account || undefined}
                     />
                   ))}
+                  {/* 来源渠道：客户第一次进入销售体系时的来源事实（渠道 · 平台）；一个客户只有一种来源 */}
+                  <InfoRow
+                    icon={<ApiOutlined style={{ fontSize: 14 }} />}
+                    value={[customer.channel?.name, customer.shop?.name].filter(Boolean).join(' · ')}
+                  />
                   <InfoRow icon={<MoneyCollectOutlined style={{ fontSize: 14 }} />} value={customer.firstOrderAt ? dayjs(customer.firstOrderAt).format('YYYY-MM-DD') : undefined} />
                   <InfoRow icon={<FileTextOutlined style={{ fontSize: 14 }} />} value={customer.notes} />
                 </div>

@@ -111,6 +111,55 @@ export const customerRepository = {
   },
 
   /** 改归属人 */
+  /** 客户快照数据源（建档时一次性留痕）：客户本体字段 + 渠道 / 平台名称 */
+  findSnapshotById(id: string, db: DbClient = prisma) {
+    return db.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        customerNo: true,
+        companyName: true,
+        contactName: true,
+        contactMethods: true,
+        email: true,
+        phone: true,
+        country: true,
+        customerType: true,
+        ownerId: true,
+        channelId: true,
+        shopId: true,
+        channel: { select: { id: true, name: true } },
+        shop: { select: { id: true, name: true } },
+      },
+    });
+  },
+
+  /** 草稿态判定（线索未建档前的客户允许被线索同步改名 / 更新信息） */
+  findDraftById(id: string, db: DbClient = prisma) {
+    return db.customer.findUnique({
+      where: { id },
+      select: { id: true, draft: true, companyName: true, channelId: true, shopId: true },
+    });
+  },
+
+  /** 按 id 局部更新（草稿客户同步 / 建档置正式用） */
+  updateById(id: string, data: Prisma.CustomerUpdateInput, db: DbClient = prisma) {
+    return db.customer.update({ where: { id }, data });
+  },
+
+  /** 来源渠道（来源不变量的判据：一个客户只有一种来源） */
+  findChannelById(id: string, db: DbClient = prisma) {
+    return db.customer.findUnique({
+      where: { id },
+      select: { channelId: true, shopId: true },
+    });
+  },
+
+  /** 写入来源渠道：仅在客户**尚无来源**时由线索确立（既有来源不可被覆盖） */
+  updateChannel(id: string, channelId: string | null, shopId: string | null, db: DbClient = prisma) {
+    return db.customer.update({ where: { id }, data: { channelId, shopId } });
+  },
+
   updateOwner(id: string, ownerId: string, db: DbClient = prisma) {
     return customerModel(db).update({ where: { id }, data: { ownerId } });
   },

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { DomainError } from '../lib/errors';
 import { AuthRequest } from '../middleware/auth';
 import * as leadService from '../services/lead.service';
+import { opportunityConfirmSchema } from '../services/opportunity.service';
 import { created, fail, success } from '../utils/response';
 import { includePublicSea, productVisibilityWhere, projectProductRows, roleScope } from '../scope';
 
@@ -289,6 +290,21 @@ export const claimLead = async (req: AuthRequest, res: Response): Promise<void> 
   try {
     await leadService.claimLead(req.params.id, buildActorContext(req));
     success(res, null, '认领成功');
+  } catch (err) {
+    respondError(res, err, false);
+  }
+};
+
+// ========== 确认线索 → 创建商机（商机唯一创建入口） ==========
+export const confirmLead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const data = opportunityConfirmSchema.parse(req.body);
+    const opportunity = await leadService.confirmLeadToOpportunity(
+      req.params.id,
+      data,
+      buildActorContext(req),
+    );
+    created(res, opportunity, '确认成功');
   } catch (err) {
     respondError(res, err, false);
   }

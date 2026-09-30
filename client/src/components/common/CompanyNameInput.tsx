@@ -1,6 +1,7 @@
 import { AutoComplete } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { customerApi, type OwnershipResult } from '../../api/customers';
+import { debounce } from '../../utils/rateLimit';
 
 /** 公司名称归属状态（onBlur 查询归属接口后得出） */
 export type CompanyStatus = 'idle' | 'loading' | 'none' | 'other' | 'mine';
@@ -111,7 +112,18 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
     }
   };
 
+  // 输入过程即查询（防抖 400ms）：不再要求用户先失焦才看到归属 / 建档状态；
+  // 用 ref 持有最新 runQuery，避免防抖闭包捕获旧 props（onResolved 等）
+  const runQueryRef = useRef(runQuery);
+  runQueryRef.current = runQuery;
+  const debouncedQuery = useMemo(
+    () => debounce((v: string) => void runQueryRef.current(v), 400),
+    [],
+  );
+  useEffect(() => () => debouncedQuery.cancel(), [debouncedQuery]);
+
   const handleBlur = () => {
+    debouncedQuery.cancel();
     void runQuery(value ?? '');
   };
 
@@ -125,9 +137,11 @@ export default function CompanyNameInput({ value, onChange, disabled, placeholde
       allowClear
       style={{ width: '100%' }}
       onChange={(v) => {
-        // 输入变化（含清空）即清空上一次的归属判定，待下次 blur / 选中重新查询
+        // 输入变化（含清空）即清空上一次的归属判定，并防抖触发一次归属查询
         if (status !== 'idle') setStatus('idle');
         onChange?.(v);
+        if ((v ?? '').trim()) debouncedQuery(v);
+        else debouncedQuery.cancel();
       }}
       onSelect={(v, option) => {
         // 选中既有客户：通知父级带入国家/地区·客户类型·来源渠道，并触发归属查询（校正 mine/other 状态）

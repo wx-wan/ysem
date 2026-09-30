@@ -91,6 +91,9 @@ const LEAD_CUSTOMER_SELECT = {
   country: true,
   customerType: true,
   contactMethods: true,
+  // 来源不变量：一个客户只有一种来源 —— 线索来源恒等于其客户来源，故详情需带出客户来源
+  channelId: true,
+  shopId: true,
 } as const;
 
 const LEAD_INCLUDE = {
@@ -160,6 +163,54 @@ export function resolveLeadListOrderBy(sort?: string) {
   return SORT_WHITELIST[sort ?? ''];
 }
 
+/**
+ * 写入 / 刷新线索的客户快照（建档与确认前可刷新；写入内容 = 客户**当前**档案 + 渠道平台名称）。
+ *
+ * 规则（业务侧）：
+ *   · 线索**未确认**（status = NEW）期间，每次线索更新都会刷新快照；
+ *   · 线索**确认**（CONFIRMED 及之后）时固化最后一版，此后冻结不再改动；
+ *   · 客户档案单独变更、但未更新线索时，快照不动（快照跟随线索更新节奏）。
+ * 返回是否实际写入。`customerId` 为空（未关联客户）时不写。
+ */
+export async function refreshLeadCustomerSnapshotOperation(
+  leadId: string,
+  customerId: string | null | undefined,
+  db?: DbClient,
+): Promise<boolean> {
+  if (!customerId) return false;
+  const customer = await customerRepository.findSnapshotById(customerId, db);
+  if (!customer) return false;
+
+  const snapshot = {
+    customerId: customer.id,
+    customerNo: customer.customerNo,
+    companyName: customer.companyName,
+    contactName: customer.contactName,
+    contactMethods: customer.contactMethods ?? null,
+    email: customer.email,
+    phone: customer.phone,
+    country: customer.country,
+    customerType: customer.customerType,
+    ownerId: customer.ownerId,
+    channelId: customer.channelId,
+    shopId: customer.shopId,
+    channelName: customer.channel?.name ?? null,
+    shopName: customer.shop?.name ?? null,
+  };
+
+  await leadRepository.update(
+    {
+      where: { id: leadId },
+      data: {
+        customerSnapshot: snapshot as unknown as Prisma.InputJsonValue,
+        customerSnapshotAt: new Date(),
+      },
+    },
+    db,
+  );
+  return true;
+}
+
 /** 列表：分页查询 + 批量拉取参考图片附件（避免 N+1） */
 export async function loadLeadsPage(input: {
   where: Record<string, unknown>;
@@ -177,7 +228,16 @@ export async function loadLeadsPage(input: {
   const leadIds = (list as { id: string }[]).map((l) => l.id);
   const attachmentMap = await loadLeadAttachments(leadIds);
 
-  return { list: list as Record<string, unknown>[], total, page, pageSize, attachmentMap };
+  // 客户快照为详情级留痕（建档时一次性写入的 JSON），列表不需要 →
+  // 从列表投影中剔除，避免每行携带大字段（详情仍完整返回）
+  const rows = (list as Record<string, unknown>[]).map((row) => {
+    const { customerSnapshot: _snap, customerSnapshotAt: _snapAt, ...rest } = row;
+    void _snap;
+    void _snapAt;
+    return rest;
+  });
+
+  return { list: rows, total, page, pageSize, attachmentMap };
 }
 
 /** 详情：单条线索 + 参考图片 */
@@ -359,12 +419,24 @@ export async function createLeadAggregate(input: {
    * 返回 `undefined` = 不改动（沿用请求值）。
    */
   resolveOwnerId?: (tx: TxClient, customerId: string | null) => Promise<string | null | undefined>;
+  /**
+   * 事务内推导线索来源（来源不变量：**一个客户只有一种来源** —— 线索来源恒等于其客户的来源）。
+   * 返回 `undefined` = 不改动（沿用 `leadData` 的 channelId/shopId）。
+   */
+  resolveSource?: (
+    tx: TxClient,
+    customerId: string | null,
+  ) => Promise<{ channelId: string | null; shopId: string | null } | undefined>;
+  /** 事务内收尾（如「建档写入客户快照」）：主表写入之后调用，仍在同一事务内 */
+  afterWrite?: (tx: TxClient, leadId: string, customerId: string | null) => Promise<void>;
 }) {
   return runInTransaction(async (tx: TxClient) => {
     const customerId = input.resolveCustomerId ? await input.resolveCustomerId(tx) : null;
     const productId = input.resolveProductId ? await input.resolveProductId(tx) : null;
     // 归属推导在客户关联确定之后、写入之前（可能同时认领公海客户 → 必须同事务）
     const ownerId = input.resolveOwnerId ? await input.resolveOwnerId(tx, customerId) : undefined;
+    // 来源推导同样在客户关联确定之后、写入之前（客户尚无来源时由本次线索确立 → 必须同事务）
+    const source = input.resolveSource ? await input.resolveSource(tx, customerId) : undefined;
 
     // 明细：有产品外键、或有线索级「客户具体要求」时建立一条意向明细
     const items: LeadItemCreateInput[] =
@@ -381,6 +453,8 @@ export async function createLeadAggregate(input: {
           customerId,
           // 归属不变量优先于请求值（客户负责人 → 线索负责人）
           ...(ownerId !== undefined ? { ownerId } : {}),
+          // 来源不变量优先于请求值（客户来源 → 线索来源）
+          ...(source ? { channelId: source.channelId, shopId: source.shopId } : {}),
           leadNo,
           usdRate: await input.resolveUsdRate(),
           ...(items.length ? { items: { create: items } } : {}),
@@ -388,6 +462,8 @@ export async function createLeadAggregate(input: {
       },
       tx,
     );
+
+    if (input.afterWrite) await input.afterWrite(tx, lead.id, customerId);
 
     if (input.attachments.length) {
       await attachmentRepository.createMany(
@@ -527,6 +603,19 @@ export async function updateLeadAggregate(input: {
     tx: TxClient,
     customerId: string | null | undefined,
   ) => Promise<string | null | undefined>;
+  /**
+   * 事务内推导线索来源（来源不变量：**一个客户只有一种来源** —— 线索来源恒等于其客户的来源）。
+   * 返回 `undefined` = 不改动来源。
+   */
+  resolveSource?: (
+    tx: TxClient,
+    customerId: string | null | undefined,
+  ) => Promise<{ channelId: string | null; shopId: string | null } | undefined>;
+  /**
+   * 事务内收尾（如「建档写入客户快照」）：在客户关联 / 归属 / 来源推导完成之后、
+   * 主表写入之前调用，仍在同一事务内。
+   */
+  afterResolve?: (tx: TxClient, customerId: string | null | undefined) => Promise<void>;
 }) {
   return runInTransaction(async (tx: TxClient) => {
     const customerId = input.resolveCustomerId ? await input.resolveCustomerId(tx) : undefined;
@@ -537,6 +626,18 @@ export async function updateLeadAggregate(input: {
       const ownerId = await input.resolveOwnerId(tx, customerId);
       if (ownerId !== undefined) input.update.ownerId = ownerId;
     }
+
+    // 来源不变量：来源随客户（undefined = 本次不改动来源）
+    if (input.resolveSource) {
+      const source = await input.resolveSource(tx, customerId);
+      if (source) {
+        input.update.channelId = source.channelId;
+        input.update.shopId = source.shopId;
+      }
+    }
+
+    // 收尾（建档快照）：客户关联已确定、主表尚未写入 —— 同事务内一次性留痕
+    if (input.afterResolve) await input.afterResolve(tx, customerId);
 
     // undefined = 本次不改动明细的产品关联；string | null = 整组替换 / 清空
     const productId = input.resolveProductId ? await input.resolveProductId(tx) : undefined;

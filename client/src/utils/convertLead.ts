@@ -1,7 +1,6 @@
 import { leadApi, type Lead } from '../api/lead';
 import { customerApi } from '../api/customers';
 import { productApi } from '../api/products';
-import { salesApi } from '../api/sales';
 import { type ProductImageItem } from '../utils/productImages';
 
 /**
@@ -124,15 +123,12 @@ export async function convertLeadToOpportunity(leadId: string, options: ConvertO
     }
   }
 
-  // ---- 新建商机 ----
-  // 后端契约（opportunityCreateSchema）：只接受 customerId / leadId / title / estimatedAmount /
-  // estimatedCloseDate / intentLevel / notes / ownerId / products；渠道与阶段由服务端派生。
-  // 公司名、联系人、邮箱、电话、国家、来源等旧扁平字段服务端不接收，故不再提交。
+  // ---- 确认线索（服务端在此刻创建商机）----
+  // 规则：商机不支持创建，只可由线索创建 —— 唯一入口是 `POST /api/leads/:id/confirm`，
+  // 客户与来源线索由**服务端从线索派生**（故不提交 customerId / leadId）；
+  // 渠道与阶段同样由服务端派生。创建成功后后端自动把线索推进为「已确认」。
   const title = lead.leadName || [customerName, productName].filter(Boolean).join('-') || '商机';
-  const pipelineRes: any = await salesApi.create({
-    // 未建档客户保持空串：由后端返回 400「客户不能为空」（与既有错误语义一致）
-    customerId: customerId ?? '',
-    leadId, // 强前置关系：绑定来源线索，后端据此推进线索状态并派生渠道
+  const pipelineRes: any = await leadApi.confirm(leadId, {
     title,
     ownerId: lead.ownerId ?? null,
     // 商机做实：带入线索的预估数据，新商机不再是空壳

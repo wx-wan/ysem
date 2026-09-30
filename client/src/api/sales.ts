@@ -68,7 +68,10 @@ export interface SalesItem {
   updatedAt: string;
 }
 
-/** 创建入参：`customerId` / `leadId` / `title` 为后端强前置必填（B2：商机必须来自线索） */
+/**
+ * 商机可写字段形状（作为更新入参的基类）。
+ * 注：商机**已无独立创建入口** —— 创建只发生在「线索确认」（`leadApi.confirm`）。
+ */
 export interface OpportunityCreatePayload {
   customerId: string;
   leadId: string;
@@ -126,8 +129,8 @@ export const salesApi = {
   // 详情
   get: (id: string) => axios.get<{ data: SalesItem }>(`/sales/${id}`),
 
-  // 创建（唯一调用方为「线索转商机」，见 utils/convertLead.ts；商机无独立新建入口）
-  create: (data: OpportunityCreatePayload) => axios.post<{ data: SalesItem }>('/sales', data),
+  // 商机**不支持创建**：`POST /api/sales` 已下线，唯一创建入口是「线索确认」
+  // （`leadApi.confirm` ← `POST /api/leads/:id/confirm`，见 utils/convertLead.ts）。
 
   // 更新
   update: (id: string, data: OpportunityUpdatePayload) => axios.put<{ data: SalesItem }>(`/sales/${id}`, data),

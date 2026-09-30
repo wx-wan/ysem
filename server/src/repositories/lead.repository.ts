@@ -32,6 +32,22 @@ export const leadRepository = {
   // Lead
   // ============================================================
 
+  /**
+   * 来源不变量级联：客户来源（首次）确立后，其名下线索来源同步跟随。
+   * 一个客户只有一种来源 —— 线索来源恒等于客户来源，故客户侧变更需回写其线索。
+   */
+  updateSourceByCustomerId(
+    customerId: string,
+    channelId: string | null,
+    shopId: string | null,
+    db: DbClient = prisma,
+  ) {
+    return db.lead.updateMany({
+      where: { customerId },
+      data: { channelId, shopId },
+    });
+  },
+
   /** 列表分页（复用既有 utils/query.paginateList，未引入第二套分页机制） */
   paginate<T = unknown>(
     where: Record<string, unknown>,

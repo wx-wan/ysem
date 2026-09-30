@@ -1,6 +1,7 @@
 import type { LeadStatus } from '@prisma/client';
 import { leadRepository, opportunityRepository, quotationRepository, salesOrderRepository, sampleOrderRepository } from '../repositories';
 import { deriveStage, shouldAdvanceLeadStatus, type PipelineStage } from '../state';
+import { refreshLeadCustomerSnapshotOperation } from './lead.operations';
 
 /**
  * State 相关的数据操作流程 —— Round R-5 · Phase 3 · Operation Layer
@@ -34,6 +35,16 @@ export async function advanceLeadStatusOperation(
     if (!lead) return;
     if (!shouldAdvanceLeadStatus(lead.status, next)) return;
     await leadRepository.update({ where: { id: leadId }, data: { status: next } });
+
+    // 【客户快照】线索**确认**（NEW → CONFIRMED）时固化最后一版：
+    // 确认前每次线索更新都会刷新快照，确认这一版即为最终留痕，之后不再改动。
+    if (next === 'CONFIRMED') {
+      const row = await leadRepository.findUnique({
+        where: { id: leadId },
+        select: { customerId: true },
+      });
+      await refreshLeadCustomerSnapshotOperation(leadId, row?.customerId ?? null);
+    }
   } catch (err) {
     console.error('[leadStatus] advance failed', { leadId, next, err });
   }

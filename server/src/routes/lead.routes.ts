@@ -11,6 +11,7 @@ import {
   releaseLead,
   claimLead,
   transferLead,
+  confirmLead,
 } from '../controllers/lead.controller';
 
 const router = Router();
@@ -24,6 +25,8 @@ router.post('/', authenticate, createLead);
 router.post('/:id/release', authenticate, releaseLead);
 router.post('/:id/claim', authenticate, claimLead);
 router.post('/:id/transfer', authenticate, transferLead);
+// 确认线索 → 创建商机：商机**不支持直接创建**（POST /api/sales 已下线），此处为唯一创建入口
+router.post('/:id/confirm', authenticate, confirmLead);
 router.put('/:id', authenticate, updateLead);
 router.delete('/:id', authenticate, authorize('admin'), deleteLead);
 // D1：线索参考图片附件（ownerType=LEAD）删除
