@@ -12,8 +12,10 @@ export interface SalesRecordCardProps {
   typeColor?: string;
   /** 状态标签文字（可选） */
   statusLabel?: string;
-  /** 状态标签颜色 */
+  /** 状态标签颜色（antd Tag 语义色或十六进制） */
   statusColor?: string;
+  /** 状态标签前缀图标（可选，与线索 / 商机状态标签口径一致） */
+  statusIcon?: React.ReactNode;
   /** 主标题（名称 / 单据号 / 客户名） */
   title: string;
   /** 第二行详情（建议用若干 <span> 拼接） */
@@ -34,6 +36,7 @@ const SalesRecordCard: React.FC<SalesRecordCardProps> = ({
   typeColor = 'blue',
   statusLabel,
   statusColor,
+  statusIcon,
   title,
   detail,
   createdAt,
@@ -73,7 +76,7 @@ const SalesRecordCard: React.FC<SalesRecordCardProps> = ({
           {typeLabel}
         </Tag>
         {statusLabel ? (
-          <Tag color={statusColor} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
+          <Tag color={statusColor} icon={statusIcon} style={{ margin: 0, fontSize: 11, padding: '0 8px', lineHeight: '20px', borderRadius: 10, border: 'none', fontWeight: 500 }}>
             {statusLabel}
           </Tag>
         ) : null}

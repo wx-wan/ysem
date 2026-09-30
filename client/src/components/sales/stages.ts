@@ -1,6 +1,24 @@
-// 商机阶段：不再落库，由后端按关联单据推导（server/src/utils/pipelineStage.ts）
+import { createElement, type ReactNode } from 'react';
+import {
+  CarOutlined,
+  ClockCircleOutlined,
+  ExperimentOutlined,
+  FileDoneOutlined,
+  ShoppingCartOutlined,
+  SyncOutlined,
+  ToolOutlined,
+} from '@ant-design/icons';
+
+// 商机阶段：不再落库，由后端按关联单据 + 编辑留痕推导（server/src/state/pipelineStage.state.ts）
 // 阶段只读展示，不支持手动切换。
-export type SalesStage = 'OPPORTUNITY' | 'FOLLOWING' | 'QUOTED' | 'SAMPLE' | 'PRODUCTION' | 'SHIPPED' | 'ORDER';
+export type SalesStage =
+  | 'OPPORTUNITY'
+  | 'FOLLOWING'
+  | 'QUOTED'
+  | 'SAMPLE'
+  | 'PRODUCTION'
+  | 'SHIPPED'
+  | 'ORDER';
 
 export const SALES_STAGES: SalesStage[] = [
   'OPPORTUNITY',
@@ -23,20 +41,29 @@ export const STAGE_I18N: Record<SalesStage, string> = {
   ORDER: 'order',
 };
 
+/**
+ * 阶段展示元数据。
+ * - `color`：antd Tag 语义色（待处理=error / 跟进中=processing / 已报价=success）；
+ * - `chartColor`：同色系十六进制值 —— 语义色名不是合法图表颜色，阶段分布图专用；
+ * - `icon`：状态标签前缀图标（不依赖颜色也能辨识状态）。
+ */
 export const STAGE_META: Record<
   SalesStage,
-  { color: string; bg: string; border: string }
+  { color: string; chartColor: string; icon: ReactNode }
 > = {
-  OPPORTUNITY: { color: '#1677ff', bg: '#e6f4ff', border: '#91caff' },
-  FOLLOWING: { color: '#eb2f96', bg: '#fff0f6', border: '#ffadd2' },
-  QUOTED: { color: '#08979c', bg: '#e6fffb', border: '#87e8de' },
-  SAMPLE: { color: '#722ed1', bg: '#f9f0ff', border: '#d3adf7' },
-  PRODUCTION: { color: '#d46b08', bg: '#fff7e6', border: '#ffd591' },
-  SHIPPED: { color: '#096dd9', bg: '#e6f7ff', border: '#91d5ff' },
-  ORDER: { color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f' },
+  // 待处理
+  OPPORTUNITY: { color: 'error', chartColor: '#ff4d4f', icon: createElement(ClockCircleOutlined) },
+  // 跟进中
+  FOLLOWING: { color: 'processing', chartColor: '#1677ff', icon: createElement(SyncOutlined) },
+  // 已报价
+  QUOTED: { color: 'success', chartColor: '#52c41a', icon: createElement(FileDoneOutlined) },
+  SAMPLE: { color: 'purple', chartColor: '#722ed1', icon: createElement(ExperimentOutlined) },
+  PRODUCTION: { color: 'orange', chartColor: '#d46b08', icon: createElement(ToolOutlined) },
+  SHIPPED: { color: 'blue', chartColor: '#096dd9', icon: createElement(CarOutlined) },
+  ORDER: { color: 'green', chartColor: '#52c41a', icon: createElement(ShoppingCartOutlined) },
 };
 
-export function getStageMeta(stage: string): { color: string; bg: string; border: string } {
+export function getStageMeta(stage: string): { color: string; chartColor: string; icon: ReactNode } {
   return STAGE_META[(stage as SalesStage)] ?? STAGE_META.OPPORTUNITY;
 }
 

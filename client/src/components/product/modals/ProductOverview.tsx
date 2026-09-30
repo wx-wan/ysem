@@ -79,7 +79,8 @@ const ProductOverview: React.FC<ProductOverviewProps> = ({ product, salesList, l
     return SALES_STAGES.map((stage) => ({
       name: t(`sales.stage.${getStageI18nKey(stage)}`),
       value: salesList.filter((s) => s.stage === stage).length,
-      color: getStageMeta(stage).color,
+      // 图表用十六进制色（Tag 语义色名不是合法图表颜色，故走 chartColor）
+      color: getStageMeta(stage).chartColor,
     }));
   }, [salesList, t]);
 

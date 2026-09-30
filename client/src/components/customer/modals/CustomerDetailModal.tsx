@@ -29,6 +29,8 @@ import { CommToolIcon } from '../../common/CommToolIcon';
 import { intentLevelToPipelineLevel } from '../shared/intentLevel';
 import PurchaseIntentTag from '../shared/PurchaseIntentTag';
 import { getCustomerTier, getAvatarColor } from '../shared/customerTier';
+import { STATUS_META } from '../../lead/constants';
+import type { LeadStatus } from '../../../api/lead';
 import CountrySelect from '../../CountrySelect';
 import TagSelector from '../../TagSelector';
 import CustomerEditDrawer from './CustomerEditDrawer';
@@ -346,7 +348,8 @@ const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
         typeLabel="线索"
         typeColor="blue"
         statusLabel={statusLabel}
-        statusColor="gold"
+        statusColor={STATUS_META[item.status as LeadStatus]?.color ?? 'default'}
+        statusIcon={STATUS_META[item.status as LeadStatus]?.icon}
         title={item.leadName || '-'}
         createdAt={item.createdAt}
         onClick={() => navigate(`/sales/leads?leadId=${item.id}`)}

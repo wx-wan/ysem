@@ -157,7 +157,7 @@ export default function LeadDetailPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
             <span style={{ fontWeight: 600, fontSize: 13 }}>{detail.leadNo || detail.leadName}</span>
             {statusMeta && (
-              <Tag color={statusMeta.color} style={{ marginInlineEnd: 0 }}>
+              <Tag color={statusMeta.color} icon={statusMeta.icon} style={{ marginInlineEnd: 0 }}>
                 {t(statusMeta.label)}
               </Tag>
             )}

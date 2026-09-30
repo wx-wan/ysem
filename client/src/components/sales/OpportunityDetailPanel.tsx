@@ -89,7 +89,7 @@ export default function OpportunityDetailPanel({ detail, loading, isAdmin, onClo
     {
       label: t('sales.stage.label'),
       value: detail.stage ? (
-        <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
+        <Tag color={meta.color} icon={meta.icon} style={{ marginInlineEnd: 0 }}>
           {stageText}
         </Tag>
       ) : (
@@ -152,7 +152,7 @@ export default function OpportunityDetailPanel({ detail, loading, isAdmin, onClo
               {detail.opportunityNo || detail.title}
             </span>
             {detail.stage && (
-              <Tag color={meta.color} style={{ marginInlineEnd: 0 }}>
+              <Tag color={meta.color} icon={meta.icon} style={{ marginInlineEnd: 0 }}>
                 {stageText}
               </Tag>
             )}

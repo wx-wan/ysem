@@ -43,7 +43,7 @@ export default function OpportunityCardList({ dataSource, loading, selectedId, o
                 <div className="lead-card__no-row">
                   <span className="lead-card__no">{r.opportunityNo || r.title}</span>
                   {stageMeta && (
-                    <Tag color={stageMeta.color} className="lead-card__tag">
+                    <Tag color={stageMeta.color} icon={stageMeta.icon} className="lead-card__tag">
                       {t(`sales.stage.${getStageI18nKey(stage)}`)}
                     </Tag>
                   )}

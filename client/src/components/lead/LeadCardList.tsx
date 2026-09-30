@@ -60,7 +60,11 @@ export default function LeadCardList({ dataSource, loading, selectedId, onSelect
               <div className="lead-card__main">
                 <div className="lead-card__no-row">
                   <span className="lead-card__no">{r.leadNo || r.leadName}</span>
-                  {statusMeta && <Tag color={statusMeta.color} className="lead-card__tag">{t(statusMeta.label)}</Tag>}
+                  {statusMeta && (
+                    <Tag color={statusMeta.color} icon={statusMeta.icon} className="lead-card__tag">
+                      {t(statusMeta.label)}
+                    </Tag>
+                  )}
                 </div>
                 {/* 国旗 + 国家/地区文本 + 公司名 + 客户类型标签（淡色）同排：
                     除公司名外均不参与收缩，宽度不足时由公司名省略号吸收 */}

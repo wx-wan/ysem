@@ -16,6 +16,7 @@ import SalesRecordCard from '../../common/SalesRecordCard';
 import { getProductLogs, type OperationLogItem } from '../../../api/operationLog';
 import OperationLogTimeline from '../../common/OperationLogTimeline';
 import { getStageMeta, getStageI18nKey } from '../../sales/stages';
+import { STATUS_META } from '../../lead/constants';
 import { quotationApi, QUOTATION_STATUS_TEXT, QUOTATION_STATUS_COLOR } from '../../../api/quotations';
 import { sampleOrderApi, SAMPLE_STATUS_TEXT, SAMPLE_STATUS_COLOR } from '../../../api/sampleOrders';
 import { salesOrderApi, SALES_ORDER_STATUS_TEXT, SALES_ORDER_STATUS_COLOR } from '../../../api/salesOrders';
@@ -382,6 +383,7 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 typeColor="blue"
                 statusLabel={t(`sales.stage.${getStageI18nKey(sale.stage ?? '')}`)}
                 statusColor={meta?.color || 'default'}
+                statusIcon={meta?.icon}
                 title={sale.companyName || sale.title || '未知客户'}
                 createdAt={sale.updateTime || ''}
                 onClick={() => navigate(`/sales/opportunities?pipelineId=${sale.id}`)}
@@ -398,7 +400,10 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           }
           // 线索（已转化商机的线索已在「商机」中展示，此处不再重复）
           const lead = rec.data;
-          const leadStatusLabel = LEAD_STATUS_LABEL[lead.status] || '新线索';
+          const leadStatusMeta = STATUS_META[lead.status];
+          const leadStatusLabel = leadStatusMeta
+            ? t(leadStatusMeta.label, { defaultValue: LEAD_STATUS_LABEL[lead.status] || '新线索' })
+            : LEAD_STATUS_LABEL[lead.status] || '新线索';
           const leadSourceLabel = LEAD_SOURCE_LABEL[lead.source || 'MANUAL'] || '手动录入';
           return (
             <SalesRecordCard
@@ -406,7 +411,8 @@ const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
               typeLabel="线索"
               typeColor="blue"
               statusLabel={leadStatusLabel}
-              statusColor="gold"
+              statusColor={leadStatusMeta?.color ?? 'default'}
+              statusIcon={leadStatusMeta?.icon}
               title={lead.leadName || '-'}
               createdAt={lead.createdAt}
               onClick={() => navigate(`/sales/leads?leadId=${lead.id}`)}
