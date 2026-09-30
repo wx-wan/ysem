@@ -11,7 +11,9 @@ interface DeptRecord {
   id: string;
   name: string;
   code: string;
-  leader: string;
+  /** T1-B 配套：负责人以 userId 承载；`leaderName` 为后端派生的显示名 */
+  leaderId: string | null;
+  leaderName?: string | null;
   phone: string;
   email: string;
   sort: number;
@@ -76,7 +78,7 @@ export default function DeptPage() {
   const columns: ColumnsType<DeptRecord> = useMemo(() => [
     { title: t('dept.name'), dataIndex: 'name', width: 180 },
     { title: t('dept.code'), dataIndex: 'code', width: 120, render: (v: string) => <Tag color="purple">{v}</Tag> },
-    { title: t('dept.leader'), dataIndex: 'leader', width: 100, render: (v: string) => v || t('common.noData') },
+    { title: t('dept.leader'), dataIndex: 'leaderName', width: 100, render: (v: string) => v || t('common.noData') },
     { title: t('dept.phone'), dataIndex: 'phone', width: 130, render: (v: string) => v || t('common.noData') },
     { title: t('dept.sort'), dataIndex: 'sort', width: 80 },
     {

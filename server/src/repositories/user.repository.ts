@@ -75,6 +75,25 @@ export const userRepository = {
       select: { realName: true, username: true },
     });
   },
+
+  /**
+   * （T1-B 配套 · 部门负责人）按 id 集合取「id + 显示名」。
+   *
+   * 与 `findNamesByIds` 的区别：**本方法返回 `id`**，可用于 id → 姓名的映射；
+   * 上层 `findNamesByIds` 只取姓名（供操作日志 diff 展示），不能用于映射，故不合并。
+   *
+   * 存在的原因：`Department.leaderId` 是**无外键的裸标量**（schema 无 `leader` 关联），
+   * Prisma 无法 `include`，只能手工联查。
+   */
+  findIdNamePairsByIds(ids: string[], db: DbClient = prisma) {
+    if (ids.length === 0) {
+      return Promise.resolve([] as Array<{ id: string; realName: string | null; username: string }>);
+    }
+    return db.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, realName: true, username: true },
+    });
+  },
   // ============================================================
   // Round R-5 · Phase 4 · D4-a2 账号与角色域：管理侧 CRUD
   // ============================================================

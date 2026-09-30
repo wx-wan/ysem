@@ -1,12 +1,15 @@
 import React from 'react';
 import { Modal, Form, Input, Select, InputNumber, App } from 'antd';
 import { Z_INDEX } from '../../zIndex';
+import { userApi, type UserSelectItem } from '../../api/users';
 
 interface DeptRecord {
   id: string;
   name: string;
   code: string;
-  leader: string;
+  /** T1-B 配套：负责人改以 userId 承载（后端为 `Department.leaderId`，非姓名） */
+  leaderId: string | null;
+  leaderName?: string | null;
   phone: string;
   email: string;
   sort: number;
@@ -32,16 +35,42 @@ const DeptFormModal: React.FC<Props> = React.memo(({ open, editingDept, parentOp
   const { message } = App.useApp();
   const [form] = Form.useForm();
   const [saving, setSaving] = React.useState(false);
+  const [userOptions, setUserOptions] = React.useState<Array<{ label: string; value: string }>>([]);
+
+  /**
+   * 负责人候选：每次打开时拉取「轻量用户列表」（`/users/select`，对所有登录用户开放）。
+   * 拉取失败**不阻断**部门表单（仅候选为空），避免因选人接口异常导致无法维护部门。
+   */
+  React.useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    userApi
+      .listForSelect()
+      .then((res) => {
+        if (!alive) return;
+        const items: UserSelectItem[] = res.data.data ?? [];
+        setUserOptions(items.map((u) => ({ label: u.realName || u.username, value: u.id })));
+      })
+      .catch(() => {
+        /* 静默：不阻断表单 */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [open]);
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
+      // 清空语义：antd Select 清空后为 `undefined`，而 Prisma 把 `undefined` 视为「不更新」，
+      // 会导致**无法解除负责人**。故统一规整为 `null`（后端 `leaderId` 可空）。
+      const payload = { ...values, leaderId: values.leaderId ?? null };
       if (editingDept) {
-        await api.update(editingDept.id, values);
+        await api.update(editingDept.id, payload);
         message.success(t('dept.updateSuccess'));
       } else {
-        await api.create(values);
+        await api.create(payload);
         message.success(t('dept.createSuccess'));
       }
       onClose();
@@ -84,8 +113,15 @@ const DeptFormModal: React.FC<Props> = React.memo(({ open, editingDept, parentOp
         <Form.Item name="parentId" label={t('dept.parentDept')}>
           <Select placeholder={t('dept.parentPlaceholder')} allowClear options={parentOptions} />
         </Form.Item>
-        <Form.Item name="leader" label={t('dept.leader')}>
-          <Input placeholder={t('dept.leaderPlaceholder')} />
+        {/* T1-B 配套：负责人改为「从用户中选择」（提交 leaderId），不再是自由文本姓名 */}
+        <Form.Item name="leaderId" label={t('dept.leader')}>
+          <Select
+            placeholder={t('dept.leaderPlaceholder')}
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            options={userOptions}
+          />
         </Form.Item>
         <Form.Item name="phone" label={t('dept.phone')}>
           <Input placeholder={t('dept.phonePlaceholder')} />

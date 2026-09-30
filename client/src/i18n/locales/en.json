@@ -258,7 +258,7 @@
     "addChild": "Add Sub-department",
     "namePlaceholder": "Please enter department name",
     "codePlaceholder": "Please enter department code",
-    "leaderPlaceholder": "Please enter leader name",
+    "leaderPlaceholder": "Select a leader",
     "phonePlaceholder": "Please enter phone number",
     "emailPlaceholder": "Please enter email",
     "parentPlaceholder": "Select parent department (leave empty for top-level)",

@@ -258,7 +258,7 @@
     "addChild": "添加子部门",
     "namePlaceholder": "请输入部门名称",
     "codePlaceholder": "请输入部门编码",
-    "leaderPlaceholder": "请输入负责人",
+    "leaderPlaceholder": "请选择负责人",
     "phonePlaceholder": "请输入联系电话",
     "emailPlaceholder": "请输入邮箱",
     "parentPlaceholder": "请选择上级部门（留空为顶级部门）",
