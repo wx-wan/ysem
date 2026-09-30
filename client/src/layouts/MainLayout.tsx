@@ -65,7 +65,7 @@ const routeTitles: Record<string, string> = {
   '/data/suppliers': '供应商',
   '/setting/user': '用户管理',
   '/setting/perm': '权限管理',
-  '/setting/archive': '产品档案',
+  '/setting/archive': '档案管理',
   '/setting/channel': '渠道管理',
   '/setting/customer-type': '客户类型',
   '/setting/data': '数据管理',
@@ -134,7 +134,8 @@ export default function MainLayout() {
 
   const { hasPerm } = usePermission();
 
-  // 是否为设置模式：右上角「设置」进入，点击 logo 返回业务模式
+  // 是否为设置模式：右上角「设置」进入，点击 logo 返回业务模式。
+  // 「档案管理」路径为 /setting/archive，归属系统设置，进入该页即为设置模式。
   const isSettingMode = location.pathname.startsWith('/setting');
 
   // 设置模式侧边栏菜单（按权限动态渲染，扁平展示设置子模块）
@@ -142,9 +143,9 @@ export default function MainLayout() {
     // 用户管理承载「用户 / 角色 / 部门」三个分页，因此任一权限即可进入该页
     ...(hasPerm('system:user') || hasPerm('system:role') || hasPerm('system:dept') ? [{ key: '/setting/user', icon: <TeamOutlined />, label: t('menu.systemUser') }] : []),
     ...(hasPerm('system:perm') ? [{ key: '/setting/perm', icon: <SafetyOutlined />, label: t('menu.systemPerm') }] : []),
-    ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
     ...(hasPerm('system:channel') ? [{ key: '/setting/channel', icon: <ApiOutlined />, label: t('menu.systemChannel') }] : []),
     ...(hasPerm('system:customer-type') ? [{ key: '/setting/customer-type', icon: <TagsOutlined />, label: t('menu.customerType') }] : []),
+    ...(hasPerm('product:taxonomy:view') ? [{ key: '/setting/archive', icon: <AppstoreOutlined />, label: t('menu.systemArchive') }] : []),
     ...(hasPerm('system:data') ? [{ key: '/setting/data', icon: <DollarOutlined />, label: t('menu.systemData') }] : []),
     ...(hasPerm('system:approval') ? [{ key: '/setting/approval', icon: <NodeIndexOutlined />, label: t('menu.systemApproval') }] : []),
     ...(hasPerm('system:logs') ? [{ key: '/setting/logs', icon: <BarChartOutlined />, label: t('menu.systemLogs') }] : []),
@@ -240,10 +241,9 @@ export default function MainLayout() {
   })();
 
   // 当前路由所在的业务分组
-  const activeParentKey = useMemo(
-    () => parentKeys.find((p) => location.pathname.startsWith(p)),
-    [location.pathname, parentKeys],
-  );
+  const activeParentKey = useMemo(() => {
+    return parentKeys.find((p) => location.pathname.startsWith(p));
+  }, [location.pathname, parentKeys]);
 
   // 当前展开项：手风琴模式，任意时刻最多只有一个主导航分组展开；
   // 初始仅展开当前路由所在分组；收缩状态下清空 openKeys，避免弹出菜单被强制打开后无法收起。

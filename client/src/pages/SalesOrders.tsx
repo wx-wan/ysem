@@ -299,7 +299,7 @@ const SalesOrdersPage: React.FC = () => {
     }
   };
 
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const openDetail = async (id: string) => {
     setDetailLoading(true);
@@ -314,11 +314,14 @@ const SalesOrdersPage: React.FC = () => {
     }
   };
 
-  // 从产品/客户销售记录「查看」跳转过来时，携带 ?salesOrderId= 自动打开对应订单详情
+  // 从产品/客户销售记录「查看」跳转过来时，携带 ?salesOrderId= 自动打开对应订单详情；
+  // 打开后清理 URL 参数，避免刷新重复触发，并保留归属视图下的定位。
   useEffect(() => {
     const id = searchParams.get('salesOrderId');
     if (!id) return;
     openDetail(id);
+    searchParams.delete('salesOrderId');
+    setSearchParams(searchParams, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

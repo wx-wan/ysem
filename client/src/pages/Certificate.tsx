@@ -138,7 +138,7 @@ export default function CertificatePage() {
     <div className="pt-container">
       <div className="page-header">
         <div>
-          <h2>{t('menu.systemCertificates') || '证书管理'}</h2>
+          <h2>{t('menu.systemCertificateManage') || '证书管理'}</h2>
           <p className="page-header-desc">维护认证资质证书，可在产品新建时关联绑定</p>
         </div>
       </div>

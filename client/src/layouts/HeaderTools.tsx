@@ -56,18 +56,19 @@ export default function HeaderTools({ user, onLogout, onMenuClick }: HeaderTools
     else onMenuClick?.(info);
   };
 
-  // 拥有任一设置权限才显示「设置」入口（否则普通用户不应进入系统设置）
+  // 具备任一系统管理权限（system:*）或档案管理权限（product:taxonomy:view）即显示「设置」入口；
+  // 档案管理归属系统设置，因此 product:taxonomy:view 也纳入设置入口可见性判断。
   const canOpenSettings = [
     'system:user',
     'system:role',
     'system:dept',
     'system:perm',
-    'product:taxonomy:view',
     'system:channel',
     'system:customer-type',
     'system:approval',
     'system:logs',
     'system:data',
+    'product:taxonomy:view',
   ].some((code) => hasPerm(code));
 
   const avatarMenuItems: MenuProps['items'] = [

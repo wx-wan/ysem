@@ -38,7 +38,12 @@ export default function ProductManagement({ systemOnly = false }: { systemOnly?:
   return (
     <div className="product-management">
       {systemOnly && (
-        <SegmentedTabBar options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+        <>
+          <div className="page-header">
+            <h2>{t('menu.systemArchive')}</h2>
+          </div>
+          <SegmentedTabBar options={TABS} value={tab} onChange={(v) => setTab(v as Tab)} />
+        </>
       )}
       <div style={{ marginTop: 16 }}>
         {systemOnly ? (
