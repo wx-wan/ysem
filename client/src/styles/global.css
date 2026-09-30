@@ -524,6 +524,18 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 状态圆点：与看板「近期订单」状态列同款（6px 实心圆，色值跟随宿主文字色 currentColor） */
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+  margin-right: 4px;
+  margin-top: -2px;
+}
+
 /* 国旗后的国家 / 地区文本：与公司名同排，属次要信息（更小、更淡、不加粗） */
 .lead-card__country {
   font-size: 13px;
@@ -1941,12 +1953,7 @@ html, body {
   border-radius: 999px;
   white-space: nowrap;
 }
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-}
+
 
 /* 操作列图标按钮 */
 .user-actions {
